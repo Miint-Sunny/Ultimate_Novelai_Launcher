@@ -86,8 +86,6 @@ import {
   findVibeByImage,
   findVibeByEncoding,
   createVibeFromEncoding,
-  findCachedEncoding,
-  saveVibeEncoding,
   recordVibeUsageBatch,
   exportVibeToFile,
   exportVibesToBundle,
@@ -114,7 +112,6 @@ import {
   getPublicLibraryOwnerId,
   getPublicVibes,
   getPublicVibeFile,
-  fetchPublicVibeEncoding,
   getPublicCRs,
   getPublicCRPreviewUrl,
   getPublicArtists,
@@ -129,14 +126,7 @@ import {
 import { CloudManageModal } from '../vibe/CloudManageModal';
 import { cloudSyncQueue, type CloudSyncQueueStatus } from '../../services/cloudSyncQueue';
 import { shouldShowOnboarding, setOnboardingState } from '../../services/syncOnboarding';
-import {
-  type GenerateImageParams,
-  type VibeReference,
-  generateImageStream,
-  encodeVibeImage,
-  processCRImage,
-  processImg2ImgImage,
-} from '../../services/novelai';
+import { generateImageStream } from '../../services/novelai';
 import {
   translateChineseInPrompt,
   containsChinese,
@@ -182,6 +172,14 @@ import {
   useMobileMetadataImportHandler,
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
+import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
+import {
+  prepareMobileCharacterPrompts,
+  prepareMobileImg2Img,
+  prepareMobilePreciseReferences,
+  prepareMobilePrompts,
+  prepareMobileVibeReferences,
+} from './generate/mobileGenerationPreparation';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
   ActiveCR,
@@ -865,92 +863,18 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       cropInfoRef.current = cropInfo || null;
 
       try {
-        let finalPrompt = expandCollapsibleMarkers(filterHiddenTags(positivePrompt));
-        let finalNegative = filterHiddenTags(negativePrompt);
-
-        // 合并预设内容
-        const activePreset = promptPresets.find((p) => p.id === activePresetId);
-        if (activePreset) {
-          if (activePreset.positive) {
-            finalPrompt = finalPrompt ? `${activePreset.positive}, ${finalPrompt}` : activePreset.positive;
-          }
-          if (activePreset.negative) {
-            finalNegative = finalNegative ? `${activePreset.negative}, ${finalNegative}` : activePreset.negative;
-          }
-        }
-
-        if (containsChinese(finalPrompt)) finalPrompt = await translateChineseInPrompt(finalPrompt);
-        if (containsChinese(finalNegative)) finalNegative = await translateChineseInPrompt(finalNegative);
-
-        // 处理 Precise Reference 参数 - 支持多图，只处理启用的
-        let preciseReferences: { imageBase64: string; mode: 'character&style' | 'character' | 'style'; informationExtracted: number; strength: number }[] | undefined;
-        const enabledPreciseRefs = activePreciseRefs.filter(pr => pr.enabled);
-        if (enabledPreciseRefs.length > 0) {
-          preciseReferences = [];
-          for (const pr of enabledPreciseRefs) {
-            try {
-              const processedBase64 = await processCRImage(pr.preview);
-              preciseReferences.push({
-                imageBase64: processedBase64,
-                mode: pr.mode,
-                informationExtracted: pr.informationExtracted,
-                strength: pr.strength,
-              });
-            } catch (error) {
-              console.error('Failed to process Precise Reference image:', error);
-            }
-          }
-          if (preciseReferences.length === 0) {
-            preciseReferences = undefined;
-          }
-        }
-
-        // 处理 Vibe 参数 - 优先使用预编码缓存
-        const vibeRefs: VibeReference[] = [];
-        const currentModelApi = MODEL_MAP[model] || 'nai-diffusion-4-5-full';
-        for (const vibe of activeVibes.filter((v) => v.enabled)) {
-          let encoding: string | undefined;
-          // 1. 使用 findCachedEncoding 查找预编码缓存
-          if (vibe.encodings) {
-            const vibeDataForCache: VibeData = {
-              id: vibe.id, name: vibe.name, size: '', preview: vibe.preview || '',
-              image: vibe.image, encodings: vibe.encodings, createdAt: 0,
-            };
-            const cached = findCachedEncoding(vibeDataForCache, currentModelApi, vibe.informationExtracted);
-            if (cached) encoding = cached;
-          }
-          // 2. 如果本地没有，且是公共 vibe，查询远端编码缓存
-          if (!encoding && vibe.isPublic && vibe.fileName) {
-            try {
-              const remoteEncoding = await fetchPublicVibeEncoding(
-                vibe.fileName, currentModelApi, vibe.informationExtracted
-              );
-              if (remoteEncoding) {
-                encoding = remoteEncoding;
-                console.log(`使用远端公共编码缓存: ${vibe.name}`);
-              }
-            } catch (e) {
-              console.warn('查询远端编码缓存失败:', e);
-            }
-          }
-          // 3. 如果都没有，调用 API 编码
-          if (!encoding && vibe.image) {
-            try {
-              const result = await encodeVibeImage(vibe.image, vibe.informationExtracted, currentModelApi);
-              if (result) {
-                encoding = result;
-                try {
-                  await saveVibeEncoding(vibe.id, currentModelApi, vibe.informationExtracted, result);
-                } catch (e) {
-                  console.warn('保存编码缓存失败:', e);
-                }
-              }
-            } catch (err) { continue; }
-          }
-          if (encoding) {
-            vibeRefs.push({ encodedVibe: encoding, originalImage: vibe.image, strength: vibe.referenceStrength, informationExtracted: vibe.informationExtracted });
-          }
-        }
+        const { finalPrompt, finalNegative } = await prepareMobilePrompts({
+          positivePrompt,
+          negativePrompt,
+          promptPresets,
+          activePresetId,
+        });
+        const preciseReferences = await prepareMobilePreciseReferences(activePreciseRefs);
+        const vibeReferences = await prepareMobileVibeReferences({
+          activeVibes,
+          model,
+          includePublicRemoteCache: true,
+        });
 
         // 重绘完全独立，不插入图生图
         const result = await generate({
@@ -968,16 +892,9 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           ucPreset: 'heavy',
           qualityToggle: true,
           varietyPlus,
-          characterPrompts: characterPrompts
-            .filter((cp) => cp.enabled && cp.positive.trim())
-            .map((cp) => ({
-              positive: filterHiddenTags(cp.positive),
-              negative: filterHiddenTags(cp.negative),
-              enabled: cp.enabled,
-              position: cp.position,
-            })),
+          characterPrompts: prepareMobileCharacterPrompts(characterPrompts),
           preciseReferences,
-          vibeReferences: vibeRefs.length > 0 ? vibeRefs : undefined,
+          vibeReferences,
           inpaint: {
             imageBase64,
             maskBase64,
@@ -989,65 +906,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         // 裁切/扩图重绘回贴
         const savedCropInfo = cropInfoRef.current;
         if (savedCropInfo && result.success && result.imageData) {
-          try {
-            const { cropRect, originalImageBase64, originalWidth, originalHeight, isExpand } = savedCropInfo;
-
-            const origImg = new Image();
-            await new Promise<void>((resolve) => {
-              origImg.onload = () => resolve();
-              origImg.src = `data:image/png;base64,${originalImageBase64}`;
-            });
-
-            const cropResultBitmap = await createImageBitmap(result.imageData);
-
-            let compositeCanvas: HTMLCanvasElement;
-
-            if (isExpand) {
-              // 扩图回贴：创建包含原图+扩展区域的更大画布
-              const sel = cropRect;
-              const minX = Math.min(0, sel.x);
-              const minY = Math.min(0, sel.y);
-              const maxX = Math.max(originalWidth, sel.x + sel.width);
-              const maxY = Math.max(originalHeight, sel.y + sel.height);
-              const finalW = maxX - minX;
-              const finalH = maxY - minY;
-
-              compositeCanvas = document.createElement('canvas');
-              compositeCanvas.width = finalW;
-              compositeCanvas.height = finalH;
-              const ctx = compositeCanvas.getContext('2d')!;
-              ctx.fillStyle = '#ffffff';
-              ctx.fillRect(0, 0, finalW, finalH);
-              // 绘制原图
-              ctx.drawImage(origImg, -minX, -minY);
-              // 绘制生成结果到选区位置
-              ctx.drawImage(cropResultBitmap, sel.x - minX, sel.y - minY, sel.width, sel.height);
-
-              const compositeBlob = await new Promise<Blob>((resolve) => {
-                compositeCanvas.toBlob((blob) => resolve(blob!), 'image/png');
-              });
-              const compositeUrl = URL.createObjectURL(compositeBlob);
-              addInpaintedImage(compositeUrl, finalW, finalH, result.seed || 0);
-            } else {
-              // 裁切回贴：将裁切结果贴回原图
-              compositeCanvas = document.createElement('canvas');
-              compositeCanvas.width = originalWidth;
-              compositeCanvas.height = originalHeight;
-              const ctx = compositeCanvas.getContext('2d')!;
-              ctx.drawImage(origImg, 0, 0);
-              ctx.drawImage(cropResultBitmap, cropRect.x, cropRect.y, cropRect.width, cropRect.height);
-
-              const compositeBlob = await new Promise<Blob>((resolve) => {
-                compositeCanvas.toBlob((blob) => resolve(blob!), 'image/png');
-              });
-              const compositeUrl = URL.createObjectURL(compositeBlob);
-              addInpaintedImage(compositeUrl, originalWidth, originalHeight, result.seed || 0);
-            }
-            window.dispatchEvent(new Event('inpaint-pasteback-done'));
-          } catch (err) {
-            console.error('裁切/扩图重绘回贴失败:', err);
-            window.dispatchEvent(new Event('inpaint-pasteback-done'));
-          }
+          await pasteBackInpaintResult(result, savedCropInfo, addInpaintedImage);
           cropInfoRef.current = null;
         }
       } catch (error) {
@@ -1566,126 +1425,43 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
     setIsPreparing(true);
     try {
-      let finalPrompt = expandCollapsibleMarkers(filterHiddenTags(positivePrompt));
-      let finalNegative = filterHiddenTags(negativePrompt);
-
-      // 合并预设内容
-      const activePreset = promptPresets.find((p) => p.id === activePresetId);
-      if (activePreset) {
-        if (activePreset.positive) {
-          finalPrompt = finalPrompt ? `${activePreset.positive}, ${finalPrompt}` : activePreset.positive;
-        }
-        if (activePreset.negative) {
-          finalNegative = finalNegative ? `${activePreset.negative}, ${finalNegative}` : activePreset.negative;
-        }
-      }
-
-      if (containsChinese(finalPrompt)) finalPrompt = await translateChineseInPrompt(finalPrompt);
-      if (containsChinese(finalNegative)) finalNegative = await translateChineseInPrompt(finalNegative);
-
-      const vibeRefs: VibeReference[] = [];
-      const currentModelApi = MODEL_MAP[model] || 'nai-diffusion-4-5-full';
-      for (const vibe of activeVibes.filter((v) => v.enabled)) {
-        let encoding: string | undefined;
-        // 1. 使用 findCachedEncoding 查找预编码缓存（正确处理 encoding key 映射）
-        if (vibe.encodings) {
-          const vibeDataForCache: VibeData = {
-            id: vibe.id,
-            name: vibe.name,
-            size: '',
-            preview: vibe.preview || '',
-            image: vibe.image,
-            encodings: vibe.encodings,
-            createdAt: 0,
-          };
-          const cached = findCachedEncoding(vibeDataForCache, currentModelApi, vibe.informationExtracted);
-          if (cached) encoding = cached;
-        }
-        // 2. 如果没有预编码，调用 API 编码
-        if (!encoding && vibe.image) {
-          try {
-            const result = await encodeVibeImage(vibe.image, vibe.informationExtracted, currentModelApi);
-            if (result) {
-              encoding = result;
-              // 保存到 IndexedDB（持久化）
-              try {
-                await saveVibeEncoding(vibe.id, currentModelApi, vibe.informationExtracted, result);
-              } catch (e) {
-                console.warn('保存编码缓存失败:', e);
-              }
-            }
-          } catch (err) { continue; }
-        }
-        if (encoding) {
-          vibeRefs.push({ encodedVibe: encoding, originalImage: vibe.image, strength: vibe.referenceStrength, informationExtracted: vibe.informationExtracted });
-        }
-      }
-
-      // 处理 Precise Reference 参数 - 支持多图，只处理启用的
-      let preciseReferences: { imageBase64: string; mode: 'character&style' | 'character' | 'style'; informationExtracted: number; strength: number }[] | undefined;
-      const enabledPreciseRefs = activePreciseRefs.filter(pr => pr.enabled);
-      if (enabledPreciseRefs.length > 0) {
-        preciseReferences = [];
-        for (const pr of enabledPreciseRefs) {
-          try {
-            const processedBase64 = await processCRImage(pr.preview);
-            preciseReferences.push({
-              imageBase64: processedBase64,
-              mode: pr.mode,
-              informationExtracted: pr.informationExtracted,
-              strength: pr.strength,
-            });
-          } catch (error) {
-            console.error('Failed to process Precise Reference image:', error);
-          }
-        }
-        if (preciseReferences.length === 0) {
-          preciseReferences = undefined;
-        }
-      }
-
-      // 处理 Image2Image 参数
-      let img2img: { imageBase64: string; strength: number; noise: number } | undefined;
-      if (img2imgImage) {
-        try {
-          const processedBase64 = await processImg2ImgImage(img2imgImage, localWidth, localHeight);
-          img2img = {
-            imageBase64: processedBase64,
-            strength: img2imgStrength,
-            noise: img2imgNoise,
-          };
-        } catch (error) {
-          console.error('Failed to process img2img image:', error);
-        }
-      }
+      const { finalPrompt, finalNegative } = await prepareMobilePrompts({
+        positivePrompt,
+        negativePrompt,
+        promptPresets,
+        activePresetId,
+      });
+      const vibeReferences = await prepareMobileVibeReferences({ activeVibes, model });
+      const preciseReferences = await prepareMobilePreciseReferences(activePreciseRefs);
 
       // 如果有保存的重绘参数，注入 inpaint 参数（优先于 img2img）
-      const inpaintParams = savedInpaintRef.current ? {
+      const savedInpaint = savedInpaintRef.current;
+      const img2img = savedInpaint ? undefined : await prepareMobileImg2Img({
+        img2imgImage,
+        localWidth,
+        localHeight,
+        img2imgStrength,
+        img2imgNoise,
+      });
+      const inpaintParams = savedInpaint ? {
         inpaint: {
-          imageBase64: savedInpaintRef.current.imageBase64,
-          maskBase64: savedInpaintRef.current.maskBase64,
-          strength: savedInpaintRef.current.strength,
+          imageBase64: savedInpaint.imageBase64,
+          maskBase64: savedInpaint.maskBase64,
+          strength: savedInpaint.strength,
         },
       } : {};
 
       await generate({
         model, positivePrompt: finalPrompt, negativePrompt: finalNegative,
-        width: savedInpaintRef.current ? savedInpaintRef.current.width : localWidth,
-        height: savedInpaintRef.current ? savedInpaintRef.current.height : localHeight,
+        width: savedInpaint ? savedInpaint.width : localWidth,
+        height: savedInpaint ? savedInpaint.height : localHeight,
         seed: seed ? parseInt(seed) : Math.floor(Math.random() * 4294967295),
         steps, scale, sampler, cfgRescale,
         noiseSchedule, ucPreset: 'heavy', qualityToggle: true, varietyPlus,
-        vibeReferences: vibeRefs.length > 0 ? vibeRefs : undefined,
-        characterPrompts: characterPrompts
-          .filter((cp) => cp.enabled && cp.positive.trim())
-          .map((cp) => ({
-            positive: filterHiddenTags(cp.positive),
-            negative: filterHiddenTags(cp.negative),
-            enabled: cp.enabled,
-            position: cp.position,
-          })),
+        vibeReferences,
+        characterPrompts: prepareMobileCharacterPrompts(characterPrompts),
         preciseReferences,
-        img2img: savedInpaintRef.current ? undefined : img2img, // 有重绘参数时不使用 img2img
+        img2img,
         ...inpaintParams,
       });
     } finally {
