@@ -8,6 +8,14 @@ import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
 import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
+import {
+  extractEditorContent,
+  getEditorSelection,
+  insertCollapsibleTag,
+  removeCollapsibleTagsByType,
+  replaceEditorSelection,
+  setPlainTextSelection,
+} from './prompt-editor/promptEditorCommands';
 import { MultiSelectQuickPanel, type MultiSelectPanelState } from './prompt-editor/MultiSelectQuickPanel';
 import { HoverTagTranslationOverlay, NaturalLanguageLoadingPortal, SelectedTagHighlight } from './prompt-editor/PromptEditorOverlays';
 import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
@@ -176,7 +184,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       },
       onUpdate: ({ editor }) => {
         // 提取纯文本和标签
-        const { text, tags } = extractContent(editor);
+        const { text, tags } = extractEditorContent(editor);
         onChange?.(text);
         onTagsChange?.(tags);
 
@@ -277,33 +285,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       translationCacheRef,
       clearHoverTranslation,
     } = useTagHoverTranslation({ editor, mobileMode });
-
-    // 从编辑器提取内容
-    const extractContent = useCallback((ed: typeof editor) => {
-      if (!ed) return { text: '', tags: [] };
-
-      const tags: CollapsibleTag[] = [];
-      let text = '';
-
-      ed.state.doc.descendants((node) => {
-        if (node.type.name === 'collapsibleTag') {
-          const { id, type, label, content, collapsed } = node.attrs;
-          tags.push({ id, type, label, content, collapsed });
-          // 输出为 <<type:label:content>> 标记格式，保持与芯片模式兼容
-          text += `<<${type}:${label}:${content}>>`;
-        } else if (node.isText) {
-          text += node.text;
-        } else if (node.type.name === 'hardBreak') {
-          text += '\n';
-        } else if (node.type.name === 'paragraph') {
-          if (text) {
-            text += '\n';
-          }
-        }
-      });
-
-      return { text: text.trim(), tags };
-    }, []);
 
     // tagAutocomplete.reorderByConfig 已在服务层按设置里的源顺序/数量排好，这里直接透传
     const displaySuggs = suggestions;
@@ -777,7 +758,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
     useEffect(() => {
       if (!editor) return;
 
-      const { text: currentText } = extractContent(editor);
+      const { text: currentText } = extractEditorContent(editor);
 
       // 如果外部 value 与当前文本相同，不需要更新
       if (currentText === value) return;
@@ -788,100 +769,26 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       // 解析值中的标记为文档结构（包含芯片节点）
       const docContent = parseValueToDocContent(value || '');
       editor.commands.setContent(docContent);
-    }, [value, editor, extractContent]);
+    }, [value, editor]);
 
     // 暴露方法给父组件
     useImperativeHandle(ref, () => ({
       addCollapsibleTag: (tag) => {
-        if (!editor) return;
-
-        const id = `tag-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-        // 检查光标前是否已有逗号或在开头
-        const { state } = editor;
-        const { selection } = state;
-        const { $from } = selection;
-        const _addTagTextIdx = docOffsetToTextIndex($from.parent, $from.parentOffset);
-        const textBefore = $from.parent.textContent.slice(0, _addTagTextIdx);
-        const needCommaBefore = textBefore.length > 0 && !textBefore.trimEnd().endsWith(',');
-
-        // 构建插入内容
-        const content: Array<{ type: string; text?: string; attrs?: Record<string, unknown> }> = [];
-        if (needCommaBefore) {
-          content.push({ type: 'text', text: ',' });
-        }
-        content.push({
-          type: 'collapsibleTag',
-          attrs: {
-            id,
-            type: tag.type,
-            label: tag.label,
-            content: tag.content,
-            collapsed: tag.collapsed,
-          },
-        });
-        content.push({ type: 'text', text: ',' });
-
-        editor.chain().focus().insertContent(content).run();
+        insertCollapsibleTag(editor, tag);
       },
 
       getPlainText: () => {
-        if (!editor) return '';
-        const { text } = extractContent(editor);
+        const { text } = extractEditorContent(editor);
         return text;
       },
 
       getTags: () => {
-        if (!editor) return [];
-        const { tags } = extractContent(editor);
+        const { tags } = extractEditorContent(editor);
         return tags;
       },
 
       removeTagsByType: (type: CollapsibleTagType) => {
-        if (!editor) return;
-
-        // 收集要删除的标签位置
-        const nodesToDelete: { pos: number; size: number }[] = [];
-        editor.state.doc.descendants((node, pos) => {
-          if (node.type.name === 'collapsibleTag' && node.attrs.type === type) {
-            nodesToDelete.push({ pos, size: node.nodeSize });
-          }
-        });
-
-        if (nodesToDelete.length === 0) return;
-
-        // 从后往前删除，避免位置偏移问题
-        nodesToDelete.reverse();
-
-        editor.chain().focus().command(({ tr }) => {
-          nodesToDelete.forEach(({ pos, size }) => {
-            let deleteFrom = pos;
-            let deleteTo = pos + size;
-
-            // 检查前面是否有逗号，如果有则一起删除
-            const beforePos = pos - 1;
-            if (beforePos >= 0) {
-              const $before = tr.doc.resolve(beforePos);
-              const nodeBefore = $before.nodeBefore;
-              if (nodeBefore?.isText && nodeBefore.text?.endsWith(',')) {
-                deleteFrom = beforePos;
-              }
-            }
-
-            // 检查后面是否有逗号，如果有则一起删除
-            const afterPos = pos + size;
-            if (afterPos < tr.doc.content.size) {
-              const $after = tr.doc.resolve(afterPos);
-              const nodeAfter = $after.nodeAfter;
-              if (nodeAfter?.isText && nodeAfter.text?.startsWith(',')) {
-                deleteTo = afterPos + 1;
-              }
-            }
-
-            tr.delete(deleteFrom, deleteTo);
-          });
-          return true;
-        }).run();
+        removeCollapsibleTagsByType(editor, type);
       },
 
       focus: () => {
@@ -893,107 +800,15 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       },
 
       setSelection: (from, to) => {
-        if (!editor) return;
-
-        // 需要将纯文本偏移量转换为编辑器内部位置
-        // 首先计算原始文本（未 trim）的开头空格数量
-        let rawText = '';
-        editor.state.doc.descendants((node) => {
-          if (node.type.name === 'collapsibleTag') {
-            rawText += node.attrs.content || '';
-          } else if (node.isText && node.text) {
-            rawText += node.text;
-          } else if (node.type.name === 'paragraph' && rawText && !rawText.endsWith('\n')) {
-            rawText += '\n';
-          }
-        });
-
-        // 计算 trim 去掉的开头空格数量
-        const leadingSpaces = rawText.length - rawText.trimStart().length;
-
-        // 调整偏移量以补偿 trim 去掉的开头空格
-        const adjustedFrom = from + leadingSpaces;
-        const adjustedTo = to + leadingSpaces;
-
-        // 遍历文档节点，计算正确的位置
-        let textOffset = 0;
-        let editorFrom = 1;
-        let editorTo = 1;
-        let foundFrom = false;
-        let foundTo = false;
-
-        editor.state.doc.descendants((node, pos) => {
-          if (foundFrom && foundTo) return false; // 已找到，停止遍历
-
-          if (node.type.name === 'collapsibleTag') {
-            const contentLength = node.attrs.content?.length || 0;
-
-            // 检查 from 是否在这个标签的内容范围内
-            if (!foundFrom && textOffset + contentLength >= adjustedFrom) {
-              editorFrom = pos;
-              foundFrom = true;
-            }
-
-            // 检查 to 是否在这个标签的内容范围内
-            if (!foundTo && textOffset + contentLength >= adjustedTo) {
-              editorTo = pos + node.nodeSize;
-              foundTo = true;
-            }
-
-            textOffset += contentLength;
-          } else if (node.isText && node.text) {
-            const nodeLength = node.text.length;
-
-            // 检查 from 是否在这个文本节点内
-            if (!foundFrom && textOffset + nodeLength >= adjustedFrom) {
-              editorFrom = pos + (adjustedFrom - textOffset);
-              foundFrom = true;
-            }
-
-            // 检查 to 是否在这个文本节点内
-            if (!foundTo && textOffset + nodeLength >= adjustedTo) {
-              editorTo = pos + (adjustedTo - textOffset);
-              foundTo = true;
-            }
-
-            textOffset += nodeLength;
-          } else if (node.type.name === 'paragraph' && textOffset > 0) {
-            // 段落之间的换行符
-            if (!foundFrom && textOffset + 1 >= adjustedFrom) {
-              editorFrom = pos;
-              foundFrom = true;
-            }
-            if (!foundTo && textOffset + 1 >= adjustedTo) {
-              editorTo = pos;
-              foundTo = true;
-            }
-            textOffset += 1;
-          }
-        });
-
-        // 如果没找到，使用文档末尾
-        if (!foundFrom) editorFrom = editor.state.doc.content.size;
-        if (!foundTo) editorTo = editor.state.doc.content.size;
-
-        editor.chain().focus().setTextSelection({ from: editorFrom, to: editorTo }).run();
+        setPlainTextSelection(editor, from, to);
       },
 
       getSelection: () => {
-        if (!editor) return null;
-        const { from, to } = editor.state.selection;
-        if (from === to) return null;
-        const text = editor.state.doc.textBetween(from, to, '\n');
-        return { text, from, to };
+        return getEditorSelection(editor);
       },
 
       replaceSelection: (text: string) => {
-        if (!editor) return;
-        const { from, to } = editor.state.selection;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(text, from);
-          return true;
-        }).run();
+        replaceEditorSelection(editor, text);
       },
 
       getTranslationCache: () => {
@@ -1003,7 +818,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       setTranslationCache: (key: string, value: string) => {
         translationCacheRef.current.set(key, value);
       },
-    }), [editor, extractContent]);
+    }), [editor, translationCacheRef]);
 
     // 内容高度变化通知：监听编辑器内容更新，测量实际内容高度
     // 不能用 ResizeObserver + scrollHeight，因为 ProseMirror 有 height:100%，
