@@ -11,6 +11,7 @@ import { translateToNaturalLanguage } from '../services/translate';
 import { RelatedTagsRow } from './RelatedTagsRow';
 import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
+import { MultiSelectQuickPanel, type MultiSelectPanelState } from './prompt-editor/MultiSelectQuickPanel';
 import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
 import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
@@ -121,14 +122,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
     const isPanelActionRef = useRef(false); // 标记面板操作引起的编辑，跳过补全触发
 
     // 多选面板（用户划词选择多个标签时触发）
-    const [multiSelectPanel, setMultiSelectPanel] = useState<{
-      from: number;
-      to: number;
-      text: string;
-      tagCount: number;
-      screenX: number;
-      screenY: number;
-    } | null>(null);
+    const [multiSelectPanel, setMultiSelectPanel] = useState<MultiSelectPanelState | null>(null);
     const multiSelectPanelRef = useRef<HTMLDivElement>(null);
     const [multiNumWeight, setMultiNumWeight] = useState(1.0);
 
@@ -1913,67 +1907,15 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
           document.body
         )}
 
-        {/* 多选操作面板 */}
-        {multiSelectPanel && createPortal(
-          <div
-            ref={multiSelectPanelRef}
-            className="fixed z-[99999] tag-quick-panel"
-            style={{ top: multiSelectPanel.screenY, left: multiSelectPanel.screenX, minWidth: 300, maxWidth: 420 }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          >
-            <div className="bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden">
-            {/* 标题 */}
-            <div className="flex items-start gap-2 px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <div className="font-tag text-[14px] leading-tight text-[#fceda4] truncate">已选 {multiSelectPanel.tagCount} 个标签</div>
-                <div className="text-[11px] leading-tight text-white/50 mt-1">批量操作</div>
-              </div>
-              <button className="shrink-0 w-6 h-6 flex items-center justify-center text-white/40 hover:text-white/90 rounded-md hover:bg-white/[0.08] transition-colors" onClick={() => setMultiSelectPanel(null)} title="关闭">
-                <X className="w-3.5 h-3.5" strokeWidth={2} />
-              </button>
-            </div>
-            {/* 权重行 */}
-            <div className="px-2 pb-1.5">
-              <div className="flex items-center gap-1 mb-1.5">
-                <button className="px-2 h-6 text-[11px] font-mono bg-[#74270D]/50 hover:bg-[#74270D]/80 text-orange-200 rounded transition-colors" onClick={multiSelectActions.addWeight} title="增加权重 {tags}">{'{+}'}</button>
-                <button className="px-2 h-6 text-[11px] font-mono bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 rounded transition-colors" onClick={multiSelectActions.reduceWeight} title="降低权重 [tags]">{'[−]'}</button>
-                <div className="flex-1" />
-                <button className="w-6 h-6 flex items-center justify-center text-sm bg-blue-500/15 hover:bg-blue-500/35 text-blue-200 rounded transition-colors"
-                  onClick={() => { const v = stepNumericWeight(multiNumWeight, -0.1); setMultiNumWeight(v); multiSelectActions.setNumericWeight(v); }} title="减少 0.1">−</button>
-                <span className={`w-11 text-center text-[12px] font-mono tabular-nums font-medium ${multiNumWeight > 1 ? 'text-orange-200' : multiNumWeight < 1 ? 'text-blue-200' : 'text-white/80'}`}>{multiNumWeight.toFixed(1)}</span>
-                <button className="w-6 h-6 flex items-center justify-center text-sm bg-[#74270D]/40 hover:bg-[#74270D]/70 text-orange-200 rounded transition-colors"
-                  onClick={() => { const v = stepNumericWeight(multiNumWeight, 0.1); setMultiNumWeight(v); multiSelectActions.setNumericWeight(v); }} title="增加 0.1">+</button>
-              </div>
-              {/* 预设 */}
-              <div className="flex items-center gap-1">
-                {weightPresets.map(w => {
-                  const active = Math.abs(multiNumWeight - w) < 0.01;
-                  const isOrange = w > 1;
-                  const base = isOrange ? 'bg-[#74270D]/35 hover:bg-[#74270D]/65 text-orange-200' : 'bg-blue-500/15 hover:bg-blue-500/30 text-blue-200';
-                  return (
-                    <button key={w} className={`flex-1 h-6 text-[11px] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
-                      onClick={() => { setMultiNumWeight(w); multiSelectActions.setNumericWeight(w); }} title={`${w}::tags::`}>{w}</button>
-                  );
-                })}
-                <button className="px-2 h-6 text-[11px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] rounded transition-colors" onClick={multiSelectActions.clearWeight} title="清除所有权重">清除</button>
-              </div>
-            </div>
-            {/* 分隔 */}
-            <div className="mx-2 h-px bg-white/[0.08]" />
-            {/* 操作行 */}
-            <div className="px-2 py-1.5 flex items-center gap-0.5">
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={multiSelectActions.moveToFront} title="移到最前"><ArrowUp className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>置顶</span></button>
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={multiSelectActions.toggleHide} title="禁用/启用">
-                {(() => { const firstTag = multiSelectPanel.text.split(/[,，]/)[0]?.trim(); return firstTag?.startsWith('~') ? <Eye className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /> : <EyeOff className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />; })()}
-                <span>{(() => { const firstTag = multiSelectPanel.text.split(/[,，]/)[0]?.trim(); return firstTag?.startsWith('~') ? '启用' : '禁用'; })()}</span>
-              </button>
-              <div className="flex-1" />
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-red-400/75 hover:text-red-300 hover:bg-red-500/15 rounded transition-colors" onClick={multiSelectActions.deleteTag} title="删除标签"><Trash2 className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>删除</span></button>
-            </div>
-            </div>
-          </div>,
-          document.body
-        )}
+        <MultiSelectQuickPanel
+          panel={multiSelectPanel}
+          panelRef={multiSelectPanelRef}
+          weightPresets={weightPresets}
+          numWeight={multiNumWeight}
+          setNumWeight={setMultiNumWeight}
+          actions={multiSelectActions}
+          onClose={() => setMultiSelectPanel(null)}
+        />
 
         {children && (
           <div className="absolute inset-0 z-20 pointer-events-none [&>*]:pointer-events-auto">
