@@ -15,6 +15,7 @@ import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
+import { useTagPanelActions } from './prompt-editor/useTagPanelActions';
 import { useTagHoverTranslation } from './prompt-editor/useTagHoverTranslation';
 import { WeightHighlightExtension } from './prompt-editor/weightHighlightExtension';
 import type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
@@ -750,189 +751,18 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [tagPanel, editor]);
 
-    // 快捷面板操作函数
-    // 所有修改编辑器内容的操作前设置标记，跳过补全触发
-    const markPanelAction = () => { isPanelActionRef.current = true; };
-    const panelActions = useMemo(() => ({
-      // 增加权重 {tag}
-      addWeight: () => {
-        if (!editor || !tagPanel) return;
-        markPanelAction();
-        const { from, to, rawTag } = tagPanel;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(`{${rawTag}}`, from);
-          return true;
-        }).run();
-        setTagPanel(null);
-      },
-      // 减少权重 [tag]
-      reduceWeight: () => {
-        if (!editor || !tagPanel) return;
-        markPanelAction();
-        const { from, to, rawTag } = tagPanel;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(`[${rawTag}]`, from);
-          return true;
-        }).run();
-        setTagPanel(null);
-      },
-      // 去除所有权重
-      clearWeight: () => {
-        if (!editor || !tagPanel) return;
-        markPanelAction();
-        const { from, to, rawTag } = tagPanel;
-        // 去掉花括号/方括号权重和数字权重
-        let cleaned = rawTag.replace(/^\{+|\}+$|\[+|\]+$/g, '');
-        cleaned = cleaned.replace(/^-?\d+(?:\.\d+)?::(.+?)(?:::)?$/, '$1');
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(cleaned, from);
-          return true;
-        }).run();
-        setTagPanel(null);
-      },
-      // 设置数字权重 weight::tag:: (不关闭面板，更新位置)
-      setNumericWeight: (weight: number) => {
-        if (!editor || !tagPanel) return;
-        isWeightUpdateRef.current = true;
-        markPanelAction();
-        const { from, to, rawTag } = tagPanel;
-        // 先去掉已有的权重符号
-        let cleaned = rawTag.replace(/^\{+|\}+$|\[+|\]+$/g, '');
-        cleaned = cleaned.replace(/^-?\d+(?:\.\d+)?::(.+?)(?:::)?$/, '$1');
-        const result = `${weight}::${cleaned}::`;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(result, from);
-          return true;
-        }).run();
-        // 更新面板状态而不关闭
-        const newTo = from + result.length;
-        setTagPanel(prev => prev ? { ...prev, rawTag: result, to: newTo } : null);
-      },
-      // 删除标签
-      deleteTag: () => {
-        if (!editor || !tagPanel) return;
-        markPanelAction();
-        let { from, to } = tagPanel;
-        // 尝试把前面或后面的逗号也删掉
-        const $from = editor.state.doc.resolve(from);
-        const fullText = $from.parent.textContent;
-        const nodeStart = $from.start();
-        const localFrom = from - nodeStart;
-        const localTo = to - nodeStart;
-        // 检查后面是否有逗号+空格
-        if (localTo < fullText.length && fullText[localTo] === ',') {
-          to = nodeStart + localTo + 1;
-          if (localTo + 1 < fullText.length && fullText[localTo + 1] === ' ') {
-            to = nodeStart + localTo + 2;
-          }
-        } else if (localFrom > 0 && fullText[localFrom - 1] === ',') {
-          from = nodeStart + localFrom - 1;
-          if (localFrom >= 2 && fullText[localFrom - 2] === ' ') {
-            from = nodeStart + localFrom - 2;
-          }
-        }
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          return true;
-        }).run();
-        setTagPanel(null);
-      },
-      // 复制标签
-      copyTag: () => {
-        if (!tagPanel) return;
-        const tagValue = tagPanel.tag.replace(/ /g, '_');
-        navigator.clipboard.writeText(tagValue).catch(() => { });
-        setTagPanel(null);
-      },
-      // 跳转 Danbooru
-      openDanbooru: () => {
-        if (!tagPanel) return;
-        const tagValue = tagPanel.tag.replace(/ /g, '_');
-        window.open(`https://danbooru.donmai.us/wiki_pages/${tagValue}`, '_blank');
-        setTagPanel(null);
-      },
-      // 置顶标签
-      moveToFront: () => {
-        if (!editor || !tagPanel) return;
-        markPanelAction();
-        let { from, to, rawTag } = tagPanel;
-        // 删除标签及周围的逗号/空格
-        const $from = editor.state.doc.resolve(from);
-        const fullText = $from.parent.textContent;
-        const nodeStart = $from.start();
-        const localFrom = from - nodeStart;
-        const localTo = to - nodeStart;
-        let delFrom = from, delTo = to;
-        if (localTo < fullText.length && fullText[localTo] === ',') {
-          delTo = nodeStart + localTo + 1;
-          if (localTo + 1 < fullText.length && fullText[localTo + 1] === ' ') delTo = nodeStart + localTo + 2;
-        } else if (localFrom > 0 && fullText[localFrom - 1] === ',') {
-          delFrom = nodeStart + localFrom - 1;
-          if (localFrom >= 2 && fullText[localFrom - 2] === ' ') delFrom = nodeStart + localFrom - 2;
-        }
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(delFrom, delTo);
-          // 插入到文档开头
-          const insertText = nodeStart === 1 && delFrom === 1 ? `${rawTag}, ` : `${rawTag}, `;
-          tr.insertText(insertText, 1);
-          return true;
-        }).run();
-        setTagPanel(null);
-      },
-      // 禁用/启用标签
-      toggleHide: () => {
-        if (!editor || !tagPanel) return;
-        markPanelAction();
-        const { from, to, rawTag } = tagPanel;
-        const isHidden = rawTag.trim().startsWith('~');
-        const newTag = isHidden ? rawTag.replace(/^(\s*)~/, '$1') : `~${rawTag}`;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(newTag, from);
-          return true;
-        }).run();
-        setTagPanel(null);
-      },
-    }), [editor, tagPanel]);
-
-    const tagPanelExistingTagSet = useMemo(() => {
-      const set = new Set<string>();
-      if (!editor || !tagPanel) return set;
-      editor.state.doc.descendants(node => {
-        if (node.isText) {
-          const text = node.text || '';
-          text.split(/[,，]/).forEach(t => {
-            const cleaned = t.trim()
-              .replace(/^~/, '')
-              .replace(/^\{+|\}+$|\[+|\]+$/g, '')
-              .replace(/^-?\d+(?:\.\d+)?::(.+?)(?:::)?$/, '$1')
-              .toLowerCase()
-              .replace(/\s+/g, '_');
-            if (cleaned) set.add(cleaned);
-          });
-        }
-      });
-      return set;
-    }, [editor, tagPanel]);
-
-    const handleAddRelatedTag = useCallback((addedTag: string, addToEnd: boolean) => {
-      if (!editor || !tagPanel) return;
-      markPanelAction();
-      const { to } = tagPanel;
-      editor.chain().focus().command(({ tr }) => {
-        if (addToEnd) {
-          const docEnd = tr.doc.content.size;
-          tr.insertText(`, ${addedTag}`, docEnd);
-        } else {
-          tr.insertText(`, ${addedTag}`, to);
-        }
-        return true;
-      }).run();
-    }, [editor, tagPanel]);
+    const {
+      actions: panelActions,
+      existingTagSet: tagPanelExistingTagSet,
+      addRelatedTag: handleAddRelatedTag,
+      markPanelAction,
+    } = useTagPanelActions({
+      editor,
+      panel: tagPanel,
+      setPanel: setTagPanel,
+      isPanelActionRef,
+      isWeightUpdateRef,
+    });
 
     // 多选操作函数
     const multiSelectActions = useMemo(() => ({

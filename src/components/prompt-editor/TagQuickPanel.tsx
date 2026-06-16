@@ -14,11 +14,12 @@ export interface TagPanelState {
   screenY: number;
 }
 
-interface TagPanelActions {
+export interface TagPanelActions {
   addWeight: () => void;
   reduceWeight: () => void;
   clearWeight: () => void;
   setNumericWeight: (weight: number) => void;
+  copyTag: () => void;
   openDanbooru: () => void;
   moveToFront: () => void;
   toggleHide: () => void;
