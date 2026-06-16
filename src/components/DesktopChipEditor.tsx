@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
-import { getTagSuggestionsDebounced, fetchWikiChineseNames, type TagSuggestion, getTranslationCacheSnapshot, setTranslationCacheEntries, lookupCharacterChineseName } from '../services/tagAutocomplete';
-import { translateSegments } from '../services/translate';
+import { getTagSuggestionsDebounced, type TagSuggestion, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
@@ -12,6 +11,7 @@ import { DesktopSuggestionDropdown } from './desktop-chip-editor/DesktopSuggesti
 import { DesktopTagQuickPanel } from './desktop-chip-editor/DesktopTagQuickPanel';
 import { useDesktopSuggestionSelection } from './desktop-chip-editor/useDesktopSuggestionSelection';
 import { useDesktopPanelActions, useDesktopTagActions } from './desktop-chip-editor/useDesktopTagActions';
+import { useDesktopTagTranslations } from './desktop-chip-editor/useDesktopTagTranslations';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import {
@@ -23,8 +23,6 @@ import {
 // ========== 提示词工具函数已抽取至 utils/promptTags（与移动端共享） ==========
 
 // collapsible 芯片视觉已抽取至 tag-manager/markerVisual（与移动端共享）
-
-const globalTagTranslationCache = getTranslationCacheSnapshot();
 
 interface DesktopChipEditorProps {
   value: string;
@@ -48,8 +46,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   }, []);
 
   const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
-  const [tagTranslations, setTagTranslations] = useState<Map<string, string>>(() => new Map(globalTagTranslationCache));
-  const [translatingTags, setTranslatingTags] = useState<Set<string>>(new Set());
   const [inputText, setInputText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -97,11 +93,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
   }, []);
 
-  useEffect(() => {
-    tagTranslations.forEach((v, k) => globalTagTranslationCache.set(k, v));
-    setTranslationCacheEntries(tagTranslations);
-  }, [tagTranslations]);
-
   const saveValue = useCallback((newValue: string) => {
     if (!isUndoingRef.current && newValue !== value) {
       undoStackRef.current.push(value);
@@ -112,6 +103,7 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   }, [onChange, value]);
   const parsedTags = useMemo(() => splitPromptToTags(value), [value]);
   const tagGroups = useMemo(() => analyzeTagGroups(parsedTags), [parsedTags]);
+  const { tagTranslations, translatingTags, setTagTranslations } = useDesktopTagTranslations(parsedTags);
   const rebuildValue = useCallback((tags: string[]) => {
     // 逐 tag 构建：普通 tag 用逗号连接，NEWLINE_SENTINEL 输出为 \n
     let result = '';
@@ -181,49 +173,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     selectedTags.forEach(i => { if (i < parsedTags.length) valid.add(i); });
     if (valid.size !== selectedTags.size) setSelectedTags(valid);
   }, [parsedTags.length, selectedTags]);
-
-  const cleanTagKeys = useMemo(() => {
-    const set = new Set<string>();
-    parsedTags.forEach(t => {
-      if (isCollapsibleMarker(t)) return;
-      const c = cleanTagName(t);
-      if (c && !/[\u4e00-\u9fa5]/.test(c) && /[a-zA-Z]/.test(c) && !c.startsWith('artist:')) set.add(c);
-    });
-    return Array.from(set);
-  }, [parsedTags]);
-  const cleanTagKeysKey = cleanTagKeys.join('\n');
-
-  useEffect(() => {
-    if (cleanTagKeys.length === 0) return;
-    const toTranslate = cleanTagKeys.filter(t => !tagTranslations.has(t));
-    if (toTranslate.length === 0) return;
-    setTranslatingTags(prev => { const next = new Set(prev); toTranslate.forEach(t => next.add(t)); return next; });
-    let cancelled = false;
-    const load = async () => {
-      const newMap = new Map(tagTranslations);
-      try {
-        const queryTags = toTranslate.map(t => t.replace(/ /g, '_'));
-        const result = await fetchWikiChineseNames(queryTags);
-        if (cancelled) return;
-        for (const tag of toTranslate) { const qTag = tag.replace(/ /g, '_'); const tr = result[qTag]?.[0]; if (tr) newMap.set(tag, tr); }
-      } catch { /* ignore */ }
-      const stillMissing = toTranslate.filter(t => !newMap.has(t));
-      if (!cancelled && stillMissing.length > 0) {
-        try {
-          const aiResults = await translateSegments(stillMissing);
-          if (cancelled) return;
-          for (let i = 0; i < stillMissing.length; i++) { const translated = aiResults[i]; if (translated && translated !== stillMissing[i]) newMap.set(stillMissing[i], translated); }
-        } catch { /* ignore */ }
-      }
-      if (!cancelled) {
-        setTagTranslations(new Map(newMap));
-        setTranslatingTags(prev => { const next = new Set(prev); toTranslate.forEach(t => next.delete(t)); return next; });
-      }
-    };
-    const timer = setTimeout(load, 300);
-    return () => { cancelled = true; clearTimeout(timer); setTranslatingTags(prev => { const next = new Set(prev); toTranslate.forEach(t => next.delete(t)); return next; }); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cleanTagKeysKey]);
 
   const commitInput = useCallback((text: string) => {
     const trimmed = text.trim();
