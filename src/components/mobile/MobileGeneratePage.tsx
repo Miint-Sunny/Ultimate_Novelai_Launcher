@@ -79,13 +79,9 @@ import {
   type VibeData,
   saveVibe,
   createVibeFromImage,
-  createVibeFromImageBase64,
   importVibeFromFile,
   importVibeBundleFromFile,
   deleteVibe,
-  findVibeByImage,
-  findVibeByEncoding,
-  createVibeFromEncoding,
   recordVibeUsageBatch,
   exportVibeToFile,
   exportVibesToBundle,
@@ -136,7 +132,7 @@ import { InspirationModal } from '../InspirationModal';
 import { loadCodexData, type CodexItem } from '../../services/codexData';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import { getPictureSizeType } from '../../utils/imageMetadata';
-import { getUnsupportedImportSettings, formatUnsupportedSettings, normalizeNoiseSchedule } from '../../utils/generationOptions';
+import { getUnsupportedImportSettings, formatUnsupportedSettings } from '../../utils/generationOptions';
 import {
   MAX_TOTAL_PIXELS,
   MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
@@ -157,6 +153,7 @@ import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
+import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
 import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import {
@@ -466,6 +463,23 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setActiveVibes,
     setImg2imgWithAutoRes,
     setActiveCR,
+    closeImageImportModal: () => setShowImageImportModal(false),
+  });
+  const { importMetadata } = useMobileMetadataImportActions({
+    importImageMetadata,
+    importOptions,
+    setPositivePrompt,
+    setNegativePrompt,
+    setSteps,
+    setScale,
+    setSampler,
+    setNoiseSchedule,
+    setLocalWidth,
+    setLocalHeight,
+    setSeed,
+    setCharacterPrompts,
+    setLocalVibeFiles,
+    setActiveVibes,
     closeImageImportModal: () => setShowImageImportModal(false),
   });
 
@@ -4634,298 +4648,7 @@ const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeT
                   </div>
 
                   <button
-                    onClick={async () => {
-                      const meta = importImageMetadata;
-                      if (importOptions.cleanImports) {
-                        if (importOptions.prompt && meta.prompt) setPositivePrompt(meta.prompt);
-                        if (importOptions.negativePrompt && meta.negativePrompt) setNegativePrompt(meta.negativePrompt);
-                      } else {
-                        if (importOptions.prompt && meta.prompt) {
-                          setPositivePrompt((prev: string) => prev ? `${prev}, ${meta.prompt}` : meta.prompt);
-                        }
-                        if (importOptions.negativePrompt && meta.negativePrompt) {
-                          setNegativePrompt((prev: string) => prev ? `${prev}, ${meta.negativePrompt}` : meta.negativePrompt);
-                        }
-                      }
-                      // 仅 NovelAI 来源、且无不支持值时才导入生成设置（兜底，防 UI 状态残留）
-                      if (importOptions.settings && meta.sourceType === 'novelai' && getUnsupportedImportSettings(meta).length === 0) {
-                        if (meta.steps) setSteps(Number(meta.steps));
-                        if (meta.scale) setScale(Number(meta.scale));
-                        if (meta.sampler) setSampler(meta.sampler);   // 移动端 state 与元数据同为 API id，直接用
-                        if (meta.noiseSchedule) setNoiseSchedule(normalizeNoiseSchedule(meta.noiseSchedule));
-                        if (meta.width && meta.height) {
-                          setLocalWidth(meta.width);
-                          setLocalHeight(meta.height);
-                        }
-                      }
-                      if (importOptions.seed && meta.seed) {
-                        setSeed(String(meta.seed));
-                      }
-                      if (importOptions.characters && meta.characterPrompts) {
-                        const newChars = meta.characterPrompts.map((cp, idx) => ({
-                          id: `imported_${Date.now()}_${idx}`,
-                          positive: cp.prompt || '',
-                          negative: cp.uc || '',
-                          activeTab: 'prompt' as const,
-                          enabled: true,
-                        }));
-                        if (importOptions.cleanImports) {
-                          setCharacterPrompts(newChars);
-                        } else {
-                          setCharacterPrompts(prev => [...prev, ...newChars]);
-                        }
-                      }
-
-                      // 导入 Vibe
-                      if (importOptions.vibes && meta.vibes && meta.vibes.length > 0) {
-                        try {
-                        console.log(`[Vibe导入] 检测到 ${meta.vibes.length} 个 vibe 数据`);
-
-                        const generateVibeName = (vibeIndex: number) => {
-                          return `导入的 Vibe ${vibeIndex + 1}`;
-                        };
-
-                        // 从元数据 source 推断 API 模型名（用于编码导入）
-                        const inferApiModel = (source?: string): string => {
-                          if (!source) return 'nai-diffusion-4-5-full';
-                          const s = source.toLowerCase();
-                          if (s.includes('v4.5 curated')) return 'nai-diffusion-4-5-curated';
-                          if (s.includes('v4.5')) return 'nai-diffusion-4-5-full';
-                          if (s.includes('v4 curated')) return 'nai-diffusion-4-curated';
-                          if (s.includes('v4')) return 'nai-diffusion-4-full';
-                          if (s.includes('v3')) return 'nai-diffusion-3';
-                          return 'nai-diffusion-4-5-full';
-                        };
-
-                        const newVibes: ActiveVibe[] = [];
-
-                        for (let index = 0; index < meta.vibes.length; index++) {
-                          const vibe = meta.vibes[index];
-                          console.log(`[Vibe导入] Vibe ${index + 1}:`, {
-                            hasImage: !!vibe.image,
-                            hasEncoding: !!vibe.encoding,
-                            strength: vibe.strength,
-                            informationExtracted: vibe.informationExtracted,
-                          });
-
-                          if (vibe.image) {
-                            // 通过图片 hash 在本地存储中查找匹配的 vibe
-                            const found = await findVibeByImage(vibe.image);
-                            console.log(`[Vibe导入] 通过图片匹配结果:`, found ? found.name : '未找到');
-
-                            if (found) {
-                              let defaultInfoExtracted = found.defaultInfoExtracted ?? 1;
-                              if (found.encodings) {
-                                const firstModelKey = Object.keys(found.encodings)[0];
-                                if (firstModelKey) {
-                                  const firstEncoding = Object.values(found.encodings[firstModelKey])[0];
-                                  if (firstEncoding?.params) {
-                                    defaultInfoExtracted = firstEncoding.params.information_extracted;
-                                  }
-                                }
-                              }
-
-                              newVibes.push({
-                                id: found.id,
-                                name: found.name,
-                                preview: found.preview,
-                                image: found.image,
-                                encodings: found.encodings,
-                                referenceStrength: vibe.strength,
-                                informationExtracted: defaultInfoExtracted,
-                                supportedModels: found.supportedModels,
-                                enabled: true,
-                              });
-                              console.log(`Vibe "${found.name}" 从本地存储匹配成功`);
-                            } else {
-                              // 未找到本地 vibe，从图片数据创建新的 vibe
-                              console.log(`[Vibe导入] Vibe ${index + 1} 未在本地找到，从图片数据创建新 vibe...`);
-                              const importedVibe = await createVibeFromImageBase64(
-                                vibe.image,
-                                vibe.strength,
-                                vibe.informationExtracted ?? 1,
-                                generateVibeName(index)
-                              );
-
-                              newVibes.push({
-                                id: importedVibe.id,
-                                name: importedVibe.name,
-                                preview: importedVibe.preview,
-                                image: importedVibe.image,
-                                encodings: importedVibe.encodings,
-                                referenceStrength: vibe.strength,
-                                informationExtracted: vibe.informationExtracted ?? 1,
-                                supportedModels: importedVibe.supportedModels,
-                                enabled: true,
-                              });
-
-                              // 添加到本地文件列表
-                              setLocalVibeFiles(prev => [{
-                                id: importedVibe.id,
-                                name: importedVibe.name,
-                                preview: importedVibe.preview,
-                                image: importedVibe.image,
-                                encodings: importedVibe.encodings,
-                                defaultStrength: importedVibe.defaultStrength,
-                                defaultInfoExtracted: importedVibe.defaultInfoExtracted,
-                                supportedModels: importedVibe.supportedModels,
-                              }, ...prev]);
-
-                              console.log(`[Vibe导入] Vibe ${index + 1} 已从图片数据创建并保存`);
-                            }
-                          } else if (vibe.encoding) {
-                            // 兼容旧格式：通过编码匹配
-                            console.log(`[Vibe导入] 尝试通过编码匹配...`);
-                            const found = await findVibeByEncoding(vibe.encoding);
-                            console.log(`[Vibe导入] 通过编码匹配结果:`, found ? found.vibe.name : '未找到');
-
-                            if (found) {
-                              newVibes.push({
-                                id: found.vibe.id,
-                                name: found.vibe.name,
-                                preview: found.vibe.preview,
-                                image: found.vibe.image,
-                                encodings: found.vibe.encodings,
-                                referenceStrength: vibe.strength,
-                                informationExtracted: found.informationExtracted,
-                                supportedModels: found.vibe.supportedModels,
-                                enabled: true,
-                              });
-                              console.log(`Vibe "${found.vibe.name}" 从本地存储匹配成功（通过编码）`);
-                            } else {
-                              // 未找到本地 vibe，使用导入的编码数据创建新的vibe
-                              const importedVibe = await createVibeFromEncoding(
-                                vibe.encoding,
-                                vibe.informationExtracted ?? 1,
-                                vibe.strength,
-                                inferApiModel(meta.source),
-                                generateVibeName(index)
-                              );
-
-                              newVibes.push({
-                                id: importedVibe.id,
-                                name: importedVibe.name,
-                                preview: importedVibe.preview,
-                                image: importedVibe.image,
-                                encodings: importedVibe.encodings,
-                                referenceStrength: vibe.strength,
-                                informationExtracted: vibe.informationExtracted ?? 1,
-                                supportedModels: importedVibe.supportedModels,
-                                enabled: true,
-                              });
-
-                              // 添加到本地文件列表
-                              setLocalVibeFiles(prev => [{
-                                id: importedVibe.id,
-                                name: importedVibe.name,
-                                preview: importedVibe.preview,
-                                image: importedVibe.image,
-                                encodings: importedVibe.encodings,
-                                defaultStrength: importedVibe.defaultStrength,
-                                defaultInfoExtracted: importedVibe.defaultInfoExtracted,
-                                supportedModels: importedVibe.supportedModels,
-                              }, ...prev]);
-
-                              console.log(`Vibe ${index + 1} 未在本地找到，已创建新的 vibe 并保存`);
-                            }
-                          } else if (vibe.needsLocalMatch) {
-                            // 没有 image 和 encoding，尝试通过 seed 从 vibe 历史中匹配
-                            let matched = false;
-
-                            // 1. 首先尝试通过 seed 匹配（最可靠）
-                            if (meta.seed) {
-                              const historyStr = localStorage.getItem('novelai_vibe_history');
-                              if (historyStr) {
-                                try {
-                                  const history = JSON.parse(historyStr) as Record<string, {
-                                    vibes: Array<{ id: string; strength: number; informationExtracted: number }>;
-                                    timestamp: number;
-                                  }>;
-
-                                  const seedKey = String(meta.seed);
-                                  const historyEntry = history[seedKey];
-
-                                  if (historyEntry && historyEntry.vibes[index]) {
-                                    const historyVibe = historyEntry.vibes[index];
-                                    const allVibes = await getVibes();
-                                    const found = allVibes.find(v => v.id === historyVibe.id);
-
-                                    if (found) {
-                                      newVibes.push({
-                                        id: found.id,
-                                        name: found.name,
-                                        preview: found.preview,
-                                        image: found.image,
-                                        encodings: found.encodings,
-                                        referenceStrength: historyVibe.strength,
-                                        informationExtracted: historyVibe.informationExtracted,
-                                        supportedModels: found.supportedModels,
-                                        enabled: true,
-                                      });
-                                      console.log(`[Vibe导入] Vibe "${found.name}" 通过 seed=${seedKey} 匹配成功`);
-                                      matched = true;
-                                    }
-                                  }
-                                } catch (e) {
-                                  console.warn('[Vibe导入] 解析 vibe 历史失败:', e);
-                                }
-                              }
-                            }
-
-                            // 2. 回退：通过 strength 匹配
-                            if (!matched) {
-                              console.log(`[Vibe导入] seed 匹配失败，尝试通过参数匹配...`);
-                              const allVibes = await getVibes();
-                              for (const localVibe of allVibes) {
-                                if (!localVibe.encodings) continue;
-                                for (const modelKey in localVibe.encodings) {
-                                  const modelEncodings = localVibe.encodings[modelKey];
-                                  for (const hash in modelEncodings) {
-                                    const entry = modelEncodings[hash];
-                                    if (entry.params && Math.abs(entry.params.information_extracted - (vibe.informationExtracted ?? 1)) < 0.01) {
-                                      newVibes.push({
-                                        id: localVibe.id,
-                                        name: localVibe.name,
-                                        preview: localVibe.preview,
-                                        image: localVibe.image,
-                                        encodings: localVibe.encodings,
-                                        referenceStrength: vibe.strength,
-                                        informationExtracted: entry.params.information_extracted,
-                                        supportedModels: localVibe.supportedModels,
-                                        enabled: true,
-                                      });
-                                      console.log(`[Vibe导入] Vibe "${localVibe.name}" 通过参数匹配成功（可能不准确）`);
-                                      matched = true;
-                                      break;
-                                    }
-                                  }
-                                  if (matched) break;
-                                }
-                                if (matched) break;
-                              }
-                            }
-
-                            if (!matched) {
-                              console.log(`[Vibe导入] Vibe ${index + 1} 未能匹配到本地 vibe（无图片/编码数据）`);
-                            }
-                          }
-                        }
-
-                        if (newVibes.length > 0) {
-                          if (importOptions.cleanImports) {
-                            setActiveVibes(newVibes);
-                          } else {
-                            setActiveVibes(prev => [...prev, ...newVibes]);
-                          }
-                          console.log(`[Vibe导入] 成功导入 ${newVibes.length} 个 vibe`);
-                        }
-                        } catch (vibeErr) {
-                          console.error('[Vibe导入] 导入失败:', vibeErr);
-                        }
-                      }
-
-                      setShowImageImportModal(false);
-                    }}
+                    onClick={importMetadata}
                     className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 bg-nai-accent text-black font-bold rounded-xl"
                   >
                     <Download className="w-4 h-4" />
