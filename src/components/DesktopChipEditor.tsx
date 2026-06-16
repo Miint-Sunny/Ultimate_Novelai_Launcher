@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Plus } from 'lucide-react';
 import { type TagSuggestion } from '../services/tagAutocomplete';
 import { useDesktopContentHeight } from './desktop-chip-editor/useDesktopContentHeight';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
@@ -7,9 +6,8 @@ import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
 import { useDesktopChipKeyboard } from './desktop-chip-editor/useDesktopChipKeyboard';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
 import { useDesktopModifierKeys } from './desktop-chip-editor/useDesktopModifierKeys';
-import { DesktopInlineTagEditor } from './desktop-chip-editor/DesktopInlineTagEditor';
+import { DesktopChipList } from './desktop-chip-editor/DesktopChipList';
 import { DesktopMultiSelectPanel } from './desktop-chip-editor/DesktopMultiSelectPanel';
-import { DesktopMarkerChip, DesktopTagChip } from './desktop-chip-editor/DesktopPromptChips';
 import { DesktopSuggestionDropdown } from './desktop-chip-editor/DesktopSuggestionDropdown';
 import { DesktopTagQuickPanel } from './desktop-chip-editor/DesktopTagQuickPanel';
 import { useDesktopSuggestionSelection } from './desktop-chip-editor/useDesktopSuggestionSelection';
@@ -19,7 +17,7 @@ import { useDesktopWeightPresets } from './desktop-chip-editor/useDesktopWeightP
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import {
-  NEWLINE_SENTINEL, isCollapsibleMarker, parseCollapsibleMarker, splitPromptToTags,
+  NEWLINE_SENTINEL, isCollapsibleMarker, splitPromptToTags,
   cleanTagName, getTagWeightInfo,
   analyzeTagGroups,
 } from '../utils/promptTags';
@@ -332,130 +330,47 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
         .chip-insert-btn:hover { opacity: 1; }
         .chip-insert-btn:hover > * { background: #fceda4; color: #1e1e1e; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
       `}</style>
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide p-2" onClick={handleContainerClick} onDragOver={handleContainerDragOver}>
-        <div ref={chipContainerRef} className="chip-container flex flex-wrap gap-x-1 gap-y-0 items-center content-start select-none">
-          {parsedTags.map((rawTag, index) => {
-            // 换行标记：强制芯片换行
-            if (rawTag === NEWLINE_SENTINEL) {
-              // 检查是否为连续换行（多个 NEWLINE_SENTINEL 相邻 = 空行间距）
-              const isConsecutive = index > 0 && parsedTags[index - 1] === NEWLINE_SENTINEL;
-              // 单个换行：渲染零高度占位，强制 flex 换行但不增加间距
-              if (!isConsecutive) return <div key={`nl-${index}`} className="basis-full h-0" />;
-              // 连续换行（2+）：渲染间距
-              return <div key={`nl-${index}`} className="basis-full h-2" />;
-            }
-            const showDropIndicator = dragIndex !== null && dragOverIndex === index && dragIndex !== index && dragOverIndex !== dragIndex + 1;
-            const dropPlaceholder = showDropIndicator && dragGhostInfo ? (
-              <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border-2 border-dashed border-[#fceda4]/40 bg-[#fceda4]/8">
-                <span className="flex flex-col items-start">
-                  <span className="font-tag text-xs leading-tight text-[#fceda4]/40">{dragGhostInfo.text}</span>
-                  {dragGhostInfo.sub && <span className="text-[10px] leading-tight text-[#fceda4]/20">{dragGhostInfo.sub}</span>}
-                </span>
-              </div>
-            ) : null;
-            // 插入按钮：始终渲染以保持布局稳定，仅在可用时启用交互
-            const canInsert = dragIndex === null && editingTag === null && selectedTags.size === 0;
-            const insertBtn = (
-              <button
-                key={`ins-${index}`}
-                className={`chip-insert-btn inline-flex items-center justify-center w-0 h-5 rounded text-[#fceda4]/60${canInsert ? '' : ' !opacity-0 pointer-events-none'}`}
-                onClick={canInsert ? (e: React.MouseEvent) => {
-                  e.stopPropagation();
-                  const t = [...parsedTags];
-                  t.splice(index, 0, 'new_tag');
-                  rebuildValue(t);
-                  setTimeout(() => {
-                    const chipEl = chipRefsMap.current.get(index);
-                    const chipWidth = chipEl ? chipEl.getBoundingClientRect().width : 80;
-                    const chipHeight = chipEl ? chipEl.getBoundingClientRect().height : 32;
-                    setEditingTag({ index, text: '', width: Math.max(80, chipWidth), height: chipHeight });
-                  }, 0);
-                } : undefined}
-                title={canInsert ? "在此处插入标签" : undefined}
-              ><Plus className="w-3 h-3 flex-shrink-0" /></button>
-            );
-            const markerInfo = parseCollapsibleMarker(rawTag);
-            if (markerInfo) {
-              return (
-                <React.Fragment key={index}>
-                  {insertBtn}
-                  {dropPlaceholder}
-                  <DesktopMarkerChip
-                    index={index}
-                    markerInfo={markerInfo}
-                    isSelected={selectedTags.has(index)}
-                    chipRefsMap={chipRefsMap}
-                    dragIndex={dragIndex}
-                    handleDragStart={handleDragStart}
-                    handleDragEnd={handleDragEnd}
-                    handleDragOver={handleDragOver}
-                    handleChipClick={handleChipClick}
-                    handleChipDoubleClick={handleChipDoubleClick}
-                  />
-                </React.Fragment>
-              );
-            }
-            // 双击编辑模式：渲染内联输入框
-            if (editingTag && editingTag.index === index) {
-              return (
-                <React.Fragment key={index}>
-                  {insertBtn}
-                  {dropPlaceholder}
-                  <DesktopInlineTagEditor
-                    index={index}
-                    editingTag={editingTag}
-                    editInputRef={editInputRef}
-                    showSuggestions={showSuggestions}
-                    displaySuggs={displaySuggs}
-                    selectedSuggIdx={selectedSuggIdx}
-                    setSelectedSuggIdx={setSelectedSuggIdx}
-                    selectSuggestion={selectSuggestion}
-                    triggerAutocomplete={triggerAutocomplete}
-                    commitEdit={commitEdit}
-                    cancelEdit={cancelEdit}
-                    setEditingTag={setEditingTag}
-                    setShowSuggestions={setShowSuggestions}
-                    setSuggestions={setSuggestions}
-                  />
-                </React.Fragment>
-              );
-            }
-            return (
-              <React.Fragment key={index}>
-                {insertBtn}
-                {dropPlaceholder}
-                <DesktopTagChip
-                  index={index}
-                  rawTag={rawTag}
-                  group={tagGroups[index]}
-                  parsedTags={parsedTags}
-                  tagGroups={tagGroups}
-                  selectedTags={selectedTags}
-                  tagTranslations={tagTranslations}
-                  translatingTags={translatingTags}
-                  chipRefsMap={chipRefsMap}
-                  dragIndex={dragIndex}
-                  handleDragStart={handleDragStart}
-                  handleDragEnd={handleDragEnd}
-                  handleDragOver={handleDragOver}
-                  handleChipClick={handleChipClick}
-                  handleChipDoubleClick={handleChipDoubleClick}
-                />
-              </React.Fragment>
-            );
-          })}
-          <div className="relative inline-flex flex-1 min-w-[80px] my-[2px]">
-            <input ref={inputRef} type="text" value={inputText} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={handleInputKeyDown} onPaste={handlePaste}
-              placeholder={parsedTags.length === 0 ? placeholder : '继续添加...'} className="w-full bg-transparent text-white text-sm font-tag outline-none placeholder-gray-500 placeholder:text-sm py-0.5" onClick={(e) => e.stopPropagation()} />
-            {nlTranslating && (
-              <div className="absolute left-0 top-full mt-1 flex items-center gap-1.5 px-2.5 py-1 bg-[#1a1a1a]/90 backdrop-blur-md rounded-lg shadow-lg border border-cyan-500/20 z-50">
-                <span className="inline-block w-3 h-3 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-                <span className="text-[11px] text-cyan-200/80">翻译中...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <DesktopChipList
+        scrollRef={scrollRef}
+        chipContainerRef={chipContainerRef}
+        inputRef={inputRef}
+        editInputRef={editInputRef}
+        chipRefsMap={chipRefsMap}
+        parsedTags={parsedTags}
+        tagGroups={tagGroups}
+        selectedTags={selectedTags}
+        tagTranslations={tagTranslations}
+        translatingTags={translatingTags}
+        inputText={inputText}
+        placeholder={placeholder}
+        nlTranslating={nlTranslating}
+        editingTag={editingTag}
+        dragIndex={dragIndex}
+        dragOverIndex={dragOverIndex}
+        dragGhostInfo={dragGhostInfo}
+        showSuggestions={showSuggestions}
+        displaySuggs={displaySuggs}
+        selectedSuggIdx={selectedSuggIdx}
+        handleContainerClick={handleContainerClick}
+        handleContainerDragOver={handleContainerDragOver}
+        handleDragStart={handleDragStart}
+        handleDragEnd={handleDragEnd}
+        handleDragOver={handleDragOver}
+        handleChipClick={handleChipClick}
+        handleChipDoubleClick={handleChipDoubleClick}
+        handleInputChange={handleInputChange}
+        handleInputKeyDown={handleInputKeyDown}
+        handlePaste={handlePaste}
+        triggerAutocomplete={triggerAutocomplete}
+        commitEdit={commitEdit}
+        cancelEdit={cancelEdit}
+        selectSuggestion={selectSuggestion}
+        rebuildValue={rebuildValue}
+        setEditingTag={setEditingTag}
+        setSelectedSuggIdx={setSelectedSuggIdx}
+        setShowSuggestions={setShowSuggestions}
+        setSuggestions={setSuggestions}
+      />
 
       {showSuggestions && (
         <DesktopSuggestionDropdown
