@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
-import { getTagSuggestionsDebounced, type TagSuggestion, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { type TagSuggestion, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
+import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
 import { DesktopInlineTagEditor } from './desktop-chip-editor/DesktopInlineTagEditor';
 import { DesktopMultiSelectPanel } from './desktop-chip-editor/DesktopMultiSelectPanel';
@@ -46,7 +47,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   }, []);
 
   const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
-  const [inputText, setInputText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chipContainerRef = useRef<HTMLDivElement>(null);
@@ -174,86 +174,29 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     if (valid.size !== selectedTags.size) setSelectedTags(valid);
   }, [parsedTags.length, selectedTags]);
 
-  const commitInput = useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const newVal = value ? value + ', ' + trimmed : trimmed;
-    saveValue(newVal);
-    setInputText('');
-    setShowSuggestions(false);
-    setSuggestions([]);
-  }, [value, saveValue]);
-
-  const triggerAutocomplete = useCallback((text: string) => {
-    const trimmed = text.trim();
-    const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);
-    const minLen = hasChinese ? 1 : 2;
-    if (trimmed.length >= minLen) {
-      // 根据当前焦点选择定位元素
-      const posRef = editingTag ? editInputRef.current : inputRef.current;
-      if (posRef) {
-        const rect = posRef.getBoundingClientRect();
-        setSuggestionPos({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX });
-      }
-      getTagSuggestionsDebounced(trimmed, (newSuggestions) => {
-        if (newSuggestions.length > 0) {
-          setSuggestions([...newSuggestions]);
-          setShowSuggestions(true);
-          setSelectedSuggIdx(prev => Math.min(prev, newSuggestions.length - 1));
-        } else { setShowSuggestions(false); setSuggestions([]); }
-      }, 250);
-    } else { setShowSuggestions(false); setSuggestions([]); }
-  }, [editingTag]);
-
-  const handleInputChange = useCallback((text: string) => {
-    // 检测逗号 → 自动提交（仅当逗号前内容不含中文时触发）
-    const commaMatch = text.match(/[,，]/);
-    if (commaMatch) {
-      const beforeComma = text.slice(0, commaMatch.index);
-      const hasChinese = /[\u4e00-\u9fa5]/.test(beforeComma);
-      if (!hasChinese) {
-        const parts = text.split(/[,，]/);
-        const tagsToCommit = parts.slice(0, -1).map(s => s.trim()).filter(Boolean);
-        if (tagsToCommit.length > 0) {
-          const allTags = tagsToCommit.join(', ');
-          const newVal = value ? value + ', ' + allTags : allTags;
-          saveValue(newVal);
-        }
-        const remaining = parts[parts.length - 1];
-        setInputText(remaining);
-        setShowSuggestions(false);
-        setSuggestions([]);
-        triggerAutocomplete(remaining);
-        return;
-      }
-    }
-    setInputText(text);
-    triggerAutocomplete(text);
-  }, [value, saveValue, triggerAutocomplete]);
-
-  // 提交双击编辑
-  const commitEdit = useCallback((index: number, newText: string) => {
-    const trimmed = newText.trim();
-    if (!trimmed) {
-      rebuildValue(parsedTags.filter((_, i) => i !== index));
-    } else if (trimmed !== parsedTags[index]?.trim()) {
-      const t = [...parsedTags];
-      t[index] = trimmed;
-      rebuildValue(t);
-    }
-    setEditingTag(null);
-  }, [parsedTags, rebuildValue]);
-
-  // 取消双击编辑（如果是插入的占位符则删除）
-  const cancelEdit = useCallback(() => {
-    if (editingTag) {
-      const rawTag = parsedTags[editingTag.index];
-      if (rawTag && rawTag.trim() === 'new_tag') {
-        rebuildValue(parsedTags.filter((_, i) => i !== editingTag.index));
-      }
-    }
-    setEditingTag(null);
-  }, [editingTag, parsedTags, rebuildValue]);
+  const {
+    inputText,
+    setInputText,
+    commitInput,
+    triggerAutocomplete,
+    handleInputChange,
+    commitEdit,
+    cancelEdit,
+    handlePaste,
+  } = useDesktopChipInput({
+    value,
+    parsedTags,
+    editingTag,
+    inputRef,
+    editInputRef,
+    saveValue,
+    rebuildValue,
+    setEditingTag,
+    setSuggestionPos,
+    setShowSuggestions,
+    setSuggestions,
+    setSelectedSuggIdx,
+  });
 
   const { nlTranslating, selectSuggestion } = useDesktopSuggestionSelection({
     value,
@@ -268,24 +211,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setSuggestions,
     setTagTranslations,
   });
-
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pasted = e.clipboardData.getData('text');
-    if (!pasted) return;
-    // 保留换行结构：先按行拆分，每行内按逗号拆分
-    const lines = pasted.split(/\r?\n/).map(line =>
-      line.split(/[,，]/).map(s => s.trim()).filter(Boolean).join(', ')
-    ).filter(Boolean);
-    if (lines.length === 0) return;
-    if (lines.length === 1 && !lines[0].includes(',')) return; // 单个tag不拦截
-    e.preventDefault();
-    const allTags = lines.join('\n');
-    const newVal = value ? value + ', ' + allTags : allTags;
-    saveValue(newVal);
-    setInputText('');
-    setShowSuggestions(false);
-    setSuggestions([]);
-  }, [value, saveValue]);
 
   const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Ctrl+A / Cmd+A 全选所有标签
