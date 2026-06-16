@@ -127,17 +127,8 @@ import { CloudManageModal } from '../vibe/CloudManageModal';
 import { cloudSyncQueue, type CloudSyncQueueStatus } from '../../services/cloudSyncQueue';
 import { shouldShowOnboarding, setOnboardingState } from '../../services/syncOnboarding';
 import { generateImageStream } from '../../services/novelai';
-import {
-  translateChineseInPrompt,
-  containsChinese,
-} from '../../services/translate';
 import { countTokens } from '../../services/tokenizer';
-import {
-  agentService,
-  type AgentState,
-  KNOWLEDGE_SOURCES,
-  DEFAULT_AI_MODEL,
-} from '../../services/agentService';
+import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
 import { MetadataDetailPanel, type MetadataFile } from '../ToolsModal';
@@ -172,7 +163,9 @@ import {
   useMobileMetadataImportHandler,
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
+import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
+import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import {
   prepareMobileCharacterPrompts,
   prepareMobileImg2Img,
@@ -257,14 +250,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
   // AI 助手弹窗状态
   const [showAIAssistant, setShowAIAssistant] = useState(false);
-
-  // AI Agent 状态
-  const [aiModel, setAiModel] = useState<string>(DEFAULT_AI_MODEL);
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [agentState, setAgentState] = useState<AgentState>({ status: 'idle', logs: [] });
-
-  // 翻译状态
-  const [isTranslating, setIsTranslating] = useState(false);
 
   const { anlasInfo, isLoadingAnlas, fetchAnlas } = useMobileAnlas(isGenerating);
 
@@ -480,6 +465,43 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   });
   const [includeCharacter, setIncludeCharacter] = useState(true);
 
+  const {
+    aiModel,
+    setAiModel,
+    isGeneratingPrompt,
+    agentState,
+    handleAIGenerate,
+    handleAIRegenerate,
+    handleRestoreSnapshot,
+  } = useMobileAgentAssistant({
+    positivePrompt,
+    setPositivePrompt,
+    negativePrompt,
+    setNegativePrompt,
+    characterPrompts,
+    setCharacterPrompts,
+    activeVibes,
+    setActiveVibes,
+    vibeFiles,
+    localVibeFiles,
+    artistPublicFiles,
+    artistLocalFiles,
+    ocPublicFiles,
+    ocLocalFiles,
+    roleTagMap,
+    clearActiveCR: () => setActiveCR(null),
+  });
+  const {
+    hasChinesePrompt,
+    isTranslating,
+    handleTranslate,
+  } = useMobilePromptTranslation({
+    positivePrompt,
+    setPositivePrompt,
+    negativePrompt,
+    setNegativePrompt,
+  });
+
   useMobileEditorStateBridge({
     editorOpen,
     editingCharacterId,
@@ -587,12 +609,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     });
     return total;
   }, [negativePrompt, activePreset, characterPrompts]);
-
-  // 订阅 Agent 状态
-  useEffect(() => {
-    const unsubscribe = agentService.addEventListener(setAgentState);
-    return () => unsubscribe();
-  }, []);
 
   // 加载 Vibes
   const loadVibes = async () => {
@@ -933,236 +949,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     window.addEventListener('inpaint-panel-strength-change', handler);
     return () => window.removeEventListener('inpaint-panel-strength-change', handler);
   }, []);
-
-  // 翻译处理
-  const handleTranslate = async () => {
-    const hasChinese = containsChinese(positivePrompt) || containsChinese(negativePrompt);
-    if (hasChinese) {
-      setIsTranslating(true);
-      try {
-        if (containsChinese(positivePrompt)) {
-          setPositivePrompt(await translateChineseInPrompt(positivePrompt));
-        }
-        if (containsChinese(negativePrompt)) {
-          setNegativePrompt(await translateChineseInPrompt(negativePrompt));
-        }
-      } finally {
-        setIsTranslating(false);
-      }
-    }
-  };
-
-  // AI 生成处理
-  const handleAIGenerate = async (request: string) => {
-    if (!request || isGeneratingPrompt) return;
-    setIsGeneratingPrompt(true);
-    try {
-      agentService.setContext({
-        currentPositive: positivePrompt,
-        currentNegative: negativePrompt,
-        currentCharacters: characterPrompts
-          .filter((c) => c.enabled && c.positive.trim())
-          .map((c) => ({
-            name: c.name || '未命名角色',
-            positive: c.positive,
-            negative: c.negative || undefined,
-          })),
-        vibes: activeVibes.map((v) => ({ id: v.id, name: v.name, supportedModels: v.supportedModels || [] })),
-        artists: [...artistPublicFiles, ...artistLocalFiles].map((a) => ({
-          id: a.id,
-          name: a.name,
-          prompt: a.prompt,
-        })),
-        ocs: [...ocPublicFiles, ...ocLocalFiles].map((o) => ({
-          id: o.id,
-          name: o.name,
-          zhName: o.name,
-          positive: o.positive,
-          negative: o.negative || '',
-        })),
-        roleTags: roleTagMap,
-      });
-      const result = await agentService.execute(request, aiModel);
-      if (result) {
-        // 应用正向提示词
-        if (result.positive !== undefined) setPositivePrompt(result.positive);
-        // 应用反向提示词
-        if (result.negative !== undefined) setNegativePrompt(result.negative);
-        // 应用角色提示词
-        if (result.characters && result.characters.length > 0) {
-          const newChars = result.characters.map((char, index) => ({
-            id: `${Date.now()}-${index}`,
-            positive: char.positive,
-            negative: char.negative || '',
-            activeTab: 'prompt' as const,
-            enabled: true,
-            name: char.name || `角色${index + 1}`,
-          }));
-          setCharacterPrompts(newChars.slice(0, 6));
-        }
-        // 应用 Vibe（result.vibes 是 ID 数组）
-        if (result.vibes && result.vibes.length > 0) {
-          const allVibes = [...vibeFiles, ...localVibeFiles];
-          const newActiveVibes: ActiveVibe[] = [];
-          for (const id of result.vibes) {
-            const file = allVibes.find((f) => f.id === id);
-            if (file) {
-              newActiveVibes.push({
-                ...file,
-                referenceStrength: file.defaultStrength ?? 0.5,
-                informationExtracted: file.defaultInfoExtracted ?? 0.5,
-                enabled: true,
-              });
-            }
-          }
-          if (newActiveVibes.length > 0) {
-            setActiveVibes(newActiveVibes);
-            // Vibe 和 CR 互斥
-            setActiveCR(null);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('AI generation failed:', err);
-    } finally {
-      setIsGeneratingPrompt(false);
-    }
-  };
-
-  // AI 重新生成处理（使用指定的前置状态）
-  const handleAIRegenerate = async (
-    request: string,
-    preState: { positive: string; negative: string; characters: { positive: string; negative?: string; name?: string }[] },
-    imageBase64?: string,
-  ) => {
-    if (!request || isGeneratingPrompt) return;
-    setIsGeneratingPrompt(true);
-    try {
-      agentService.setContext({
-        currentPositive: preState.positive,
-        currentNegative: preState.negative,
-        currentCharacters: preState.characters.map((c, i) => ({
-          name: c.name || `角色${i + 1}`,
-          positive: c.positive,
-          negative: c.negative,
-        })),
-        vibes: activeVibes.map((v) => ({ id: v.id, name: v.name, supportedModels: v.supportedModels || [] })),
-        artists: [...artistPublicFiles, ...artistLocalFiles].map((a) => ({
-          id: a.id,
-          name: a.name,
-          prompt: a.prompt,
-        })),
-        ocs: [...ocPublicFiles, ...ocLocalFiles].map((o) => ({
-          id: o.id,
-          name: o.name,
-          zhName: o.name,
-          positive: o.positive,
-          negative: o.negative || '',
-        })),
-        roleTags: roleTagMap,
-      });
-      const result = await agentService.execute(request, aiModel, true, imageBase64);
-      if (result) {
-        // 应用正向提示词
-        if (result.positive !== undefined) setPositivePrompt(result.positive);
-        // 应用反向提示词
-        if (result.negative !== undefined) setNegativePrompt(result.negative);
-        // 应用角色提示词
-        if (result.characters && result.characters.length > 0) {
-          const newChars = result.characters.map((char, index) => ({
-            id: `${Date.now()}-${index}`,
-            positive: char.positive,
-            negative: char.negative || '',
-            activeTab: 'prompt' as const,
-            enabled: true,
-            name: char.name || `角色${index + 1}`,
-          }));
-          setCharacterPrompts(newChars.slice(0, 6));
-        }
-        // 应用 Vibe（result.vibes 是 ID 数组）
-        if (result.vibes && result.vibes.length > 0) {
-          const allVibes = [...vibeFiles, ...localVibeFiles];
-          const newActiveVibes: ActiveVibe[] = [];
-          for (const id of result.vibes) {
-            const file = allVibes.find((f) => f.id === id);
-            if (file) {
-              newActiveVibes.push({
-                ...file,
-                referenceStrength: file.defaultStrength ?? 0.5,
-                informationExtracted: file.defaultInfoExtracted ?? 0.5,
-                enabled: true,
-              });
-            }
-          }
-          if (newActiveVibes.length > 0) {
-            setActiveVibes(newActiveVibes);
-            // Vibe 和 CR 互斥
-            setActiveCR(null);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('AI regeneration failed:', err);
-    } finally {
-      setIsGeneratingPrompt(false);
-    }
-  };
-
-  // 恢复快照
-  const handleRestoreSnapshot = (snapshot: {
-    positive: string;
-    negative: string;
-    characters: { positive: string; negative?: string; name?: string }[];
-    vibes: string[];
-  }) => {
-    setPositivePrompt(snapshot.positive);
-    setNegativePrompt(snapshot.negative);
-    if (snapshot.characters.length > 0) {
-      setCharacterPrompts(
-        snapshot.characters.map((c, i) => ({
-          id: `${Date.now()}-${i}`,
-          positive: c.positive,
-          negative: c.negative || '',
-          activeTab: 'prompt' as const,
-          enabled: true,
-          name: c.name || `角色${i + 1}`,
-        }))
-      );
-    } else {
-      setCharacterPrompts([]);
-    }
-    restoreSnapshotVibes(snapshot.vibes);
-  };
-
-  // Vibe 操作
-  const restoreSnapshotVibes = (snapshotVibes: string[]) => {
-    const allVibes = [...vibeFiles, ...localVibeFiles];
-    if (snapshotVibes.length === 0) {
-      setActiveVibes([]);
-      return;
-    }
-
-    const restoredVibes: ActiveVibe[] = [];
-    for (const vibeRef of snapshotVibes) {
-      const file = allVibes.find((v) =>
-        v.id === vibeRef ||
-        v.name === vibeRef ||
-        v.name.toLowerCase() === vibeRef.toLowerCase()
-      );
-      if (!file) continue;
-      restoredVibes.push({
-        ...file,
-        referenceStrength: file.defaultStrength ?? 0.5,
-        informationExtracted: file.defaultInfoExtracted ?? 1,
-        enabled: true,
-      });
-    }
-
-    setActiveVibes(restoredVibes);
-    if (restoredVibes.length > 0) {
-      setActiveCR(null);
-    }
-  };
 
   const handleAddVibe = async (vibe: VibeFile) => {
     if (activeVibes.some((v) => v.id === vibe.id)) return;
@@ -2603,7 +2389,7 @@ const result = await deletePublicOC(oc.id);
           </div>
 
           {/* 翻译按钮 */}
-          {(containsChinese(positivePrompt) || containsChinese(negativePrompt)) && (
+          {hasChinesePrompt && (
             <button
               onClick={handleTranslate}
               disabled={isTranslating}
