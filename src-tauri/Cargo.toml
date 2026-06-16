@@ -1,0 +1,17 @@
+[package]
+name = "nai-studio-app"
+version = "0.1.0"
+description = "NAI Studio desktop shell over the refactored reference UI"
+authors = ["NAI Studio Contributors"]
+license = "GPL-3.0-only"
+edition = "2021"
+
+[lib]
+name = "nai_studio_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

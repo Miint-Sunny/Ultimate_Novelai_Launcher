@@ -1,0 +1,47 @@
+{
+  "name": "nai-studio-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "sidecar": ".venv/bin/python -m sidecar.server",
+    "test:sidecar": ".venv/bin/python -m unittest discover -s sidecar/tests",
+    "scan:secrets": "node scripts/scan-secrets.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.16"
+  },
+  "dependencies": {
+    "@gradio/client": "^2.0.1",
+    "@huggingface/tokenizers": "^0.1.3",
+    "@msgpack/msgpack": "^3.1.2",
+    "@tiptap/extension-placeholder": "^3.14.0",
+    "@tiptap/pm": "^3.14.0",
+    "@tiptap/react": "^3.14.0",
+    "@tiptap/starter-kit": "^3.14.0",
+    "@types/pako": "^2.0.4",
+    "canvas-confetti": "^1.9.4",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.561.0",
+    "pako": "^2.1.0",
+    "pinyin-pro": "^3.28.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-joyride": "^2.9.3",
+    "zustand": "^5.0.11"
+  }
+}

@@ -1,0 +1,1 @@
+export { OCGalleryTab } from './OCGalleryTab';

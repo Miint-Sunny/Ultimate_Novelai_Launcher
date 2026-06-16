@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>计费分摊 Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f1117;
+            color: #e4e4e7;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #a78bfa, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #71717a;
+            font-size: 0.85rem;
+            margin-bottom: 24px;
+        }
+
+        /* Search bar */
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 28px;
+        }
+
+        .search-bar input {
+            flex: 1;
+            background: #1e1e2e;
+            border: 1px solid #3f3f46;
+            border-radius: 10px;
+            padding: 10px 16px;
+            color: #e4e4e7;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-bar input:focus {
+            border-color: #818cf8;
+        }
+
+        .search-bar input::placeholder {
+            color: #52525b;
+        }
+
+        .search-bar button {
+            background: linear-gradient(135deg, #7c3aed, #6366f1);
+            border: none;
+            border-radius: 10px;
+            padding: 10px 24px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+
+        .search-bar button:hover {
+            opacity: 0.85;
+        }
+
+        /* Cards grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #1a1a2e;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: #71717a;
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .stat-card .value.purple {
+            color: #a78bfa;
+        }
+
+        .stat-card .value.blue {
+            color: #60a5fa;
+        }
+
+        .stat-card .value.green {
+            color: #34d399;
+        }
+
+        .stat-card .value.orange {
+            color: #fb923c;
+        }
+
+        .stat-card .value.red {
+            color: #f87171;
+        }
+
+        /* Tier info */
+        .tier-section {
+            background: #1a1a2e;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .tier-section h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #a1a1aa;
+        }
+
+        .tier-bar {
+            display: flex;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 40px;
+            margin-bottom: 12px;
+        }
+
+        .tier-bar .segment {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+            transition: flex-grow 0.5s ease;
+            min-width: 40px;
+        }
+
+        .tier-bar .seg-free {
+            background: #374151;
+        }
+
+        .tier-bar .seg-t1 {
+            background: #2563eb;
+        }
+
+        .tier-bar .seg-t2 {
+            background: #7c3aed;
+        }
+
+        .tier-bar .seg-t3 {
+            background: #dc2626;
+        }
+
+        .tier-bar .seg-even {
+            background: #6366f1;
+        }
+
+        .tier-labels {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .tier-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: #a1a1aa;
+        }
+
+        .tier-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+        }
+
+        .tier-dot.free {
+            background: #374151;
+        }
+
+        .tier-dot.t1 {
+            background: #2563eb;
+        }
+
+        .tier-dot.t2 {
+            background: #7c3aed;
+        }
+
+        .tier-dot.t3 {
+            background: #dc2626;
+        }
+
+        .tier-dot.even {
+            background: #6366f1;
+        }
+
+        /* User table */
+        .table-section {
+            background: #1a1a2e;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            overflow-x: auto;
+        }
+
+        .table-section h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #a1a1aa;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #71717a;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid #27272a;
+        }
+
+        td {
+            padding: 10px 12px;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #1e1e2e;
+        }
+
+        tr:hover td {
+            background: #1e1e2e;
+        }
+
+        tr.highlight td {
+            background: #1e1b4b;
+            border-color: #3730a3;
+        }
+
+        .tier-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .tier-badge.free {
+            background: #374151;
+            color: #9ca3af;
+        }
+
+        .tier-badge.t1 {
+            background: #1e3a8a;
+            color: #93c5fd;
+        }
+
+        .tier-badge.t2 {
+            background: #4c1d95;
+            color: #c4b5fd;
+        }
+
+        .tier-badge.t3 {
+            background: #7f1d1d;
+            color: #fca5a5;
+        }
+
+        .tier-badge.even {
+            background: #312e81;
+            color: #a5b4fc;
+        }
+
+        .fee {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .fee.zero {
+            color: #52525b;
+        }
+
+        /* User result card */
+        .user-result {
+            background: linear-gradient(135deg, #1e1b4b, #1a1a2e);
+            border: 1px solid #3730a3;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            display: none;
+        }
+
+        .user-result.visible {
+            display: block;
+        }
+
+        .user-result h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: #c4b5fd;
+        }
+
+        .user-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .user-detail-item {
+            text-align: center;
+        }
+
+        .user-detail-item .label {
+            font-size: 0.75rem;
+            color: #71717a;
+        }
+
+        .user-detail-item .value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-top: 2px;
+        }
+
+        .total-fee-box {
+            text-align: center;
+            padding: 16px;
+            background: rgba(99, 102, 241, 0.15);
+            border-radius: 10px;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .total-fee-box .label {
+            font-size: 0.85rem;
+            color: #a1a1aa;
+        }
+
+        .total-fee-box .amount {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #a78bfa;
+        }
+
+        .total-fee-box .unit {
+            font-size: 1rem;
+            color: #71717a;
+            margin-left: 4px;
+        }
+
+        .empty-msg {
+            text-align: center;
+            color: #52525b;
+            padding: 40px;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #71717a;
+        }
+
+        .anlas-note {
+            font-size: 0.8rem;
+            color: #71717a;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .anlas-note .highlight {
+            color: #fb923c;
+            font-weight: 600;
+        }
+
+        .month-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .month-selector label {
+            font-size: 0.85rem;
+            color: #71717a;
+        }
+
+        .month-selector select {
+            background: #1e1e2e;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: #e4e4e7;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .month-selector select:focus {
+            border-color: #818cf8;
+        }
+
+        .month-selector input[type="date"] {
+            background: #1e1e2e;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: #e4e4e7;
+            font-size: 0.85rem;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .month-selector input[type="date"]:focus {
+            border-color: #818cf8;
+        }
+
+        .month-selector .custom-range {
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .month-selector .custom-range.visible {
+            display: flex;
+        }
+
+        .month-selector .sep {
+            color: #52525b;
+            font-size: 0.8rem;
+        }
+
+        .month-selector .apply-btn {
+            background: linear-gradient(135deg, #7c3aed, #6366f1);
+            border: none;
+            border-radius: 8px;
+            padding: 6px 14px;
+            color: white;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+
+        .month-selector .apply-btn:hover {
+            opacity: 0.85;
+        }
+
+        .month-selector .toggle-custom {
+            background: none;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: #71717a;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .month-selector .toggle-custom:hover {
+            border-color: #818cf8;
+            color: #a78bfa;
+        }
+
+        .month-selector .toggle-custom.active {
+            border-color: #818cf8;
+            color: #a78bfa;
+        }
+
+        /* ============ 用户使用详情面板 ============ */
+        .detail-panel {
+            background: #1a1a2e;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: none;
+            animation: fadeSlideIn 0.3s ease-out;
+        }
+
+        .detail-panel.visible {
+            display: block;
+        }
+
+        @keyframes fadeSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .detail-panel .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .detail-panel .panel-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #c4b5fd;
+            margin: 0;
+        }
+
+        .detail-panel .panel-close {
+            background: none;
+            border: 1px solid #3f3f46;
+            border-radius: 6px;
+            color: #71717a;
+            cursor: pointer;
+            padding: 4px 12px;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .detail-panel .panel-close:hover {
+            border-color: #f87171;
+            color: #f87171;
+        }
+
+        /* Tabs */
+        .detail-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: #0f1117;
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .detail-tabs button {
+            flex: 1;
+            padding: 8px 12px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            color: #71717a;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .detail-tabs button.active {
+            background: #27272a;
+            color: #e4e4e7;
+        }
+
+        .detail-tabs button:hover:not(.active) {
+            color: #a1a1aa;
+        }
+
+        /* Tab content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Type breakdown */
+        .type-breakdown {
+            display: grid;
+            gap: 8px;
+        }
+
+        .type-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            background: #0f1117;
+            border-radius: 8px;
+            border: 1px solid #1e1e2e;
+        }
+
+        .type-item .type-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .type-item .type-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .type-item .type-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #e4e4e7;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .type-item .type-count {
+            font-size: 0.7rem;
+            color: #71717a;
+            margin-top: 2px;
+        }
+
+        .type-item .type-points {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #fb923c;
+            white-space: nowrap;
+        }
+
+        .type-item .type-bar-wrap {
+            width: 80px;
+            height: 4px;
+            background: #27272a;
+            border-radius: 2px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .type-item .type-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        /* Daily chart (simplified bar chart with CSS) */
+        .daily-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 360px;
+            overflow-y: auto;
+        }
+
+        .daily-chart::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .daily-chart::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .daily-chart::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 2px;
+        }
+
+        .daily-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+        }
+
+        .daily-date {
+            font-size: 0.75rem;
+            color: #71717a;
+            width: 56px;
+            flex-shrink: 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .daily-bars {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .daily-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .daily-bar-label {
+            font-size: 0.65rem;
+            color: #52525b;
+            width: 32px;
+            flex-shrink: 0;
+            text-align: right;
+        }
+
+        .daily-bar-track {
+            flex: 1;
+            height: 14px;
+            background: #1e1e2e;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .daily-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            padding-left: 6px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
+            min-width: fit-content;
+        }
+
+        .daily-bar-fill.img {
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+        }
+
+        .daily-bar-fill.pts {
+            background: linear-gradient(90deg, #f97316, #fb923c);
+        }
+
+        /* Records table */
+        .records-list {
+            max-height: 360px;
+            overflow-y: auto;
+        }
+
+        .records-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .records-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .records-list::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+            border-radius: 2px;
+        }
+
+        .record-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-bottom: 1px solid #1e1e2e;
+            transition: background 0.15s;
+        }
+
+        .record-item:hover {
+            background: #1e1e2e;
+        }
+
+        .record-item .rec-time {
+            font-size: 0.7rem;
+            color: #52525b;
+            width: 130px;
+            flex-shrink: 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .record-item .rec-reason {
+            flex: 1;
+            font-size: 0.78rem;
+            color: #a1a1aa;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .record-item .rec-points {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #fb923c;
+            white-space: nowrap;
+        }
+
+        .detail-empty {
+            text-align: center;
+            color: #52525b;
+            padding: 32px;
+            font-size: 0.85rem;
+        }
+
+        .detail-loading {
+            text-align: center;
+            color: #71717a;
+            padding: 32px;
+            font-size: 0.85rem;
+        }
+
+        /* Summary strip in detail panel */
+        .detail-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .detail-summary .ds-item {
+            text-align: center;
+            padding: 10px;
+            background: #0f1117;
+            border-radius: 8px;
+        }
+
+        .detail-summary .ds-item .ds-label {
+            font-size: 0.7rem;
+            color: #52525b;
+        }
+
+        .detail-summary .ds-item .ds-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-top: 2px;
+        }
+
+        /* View detail button */
+        .view-detail-btn {
+            background: none;
+            border: 1px solid #3730a3;
+            border-radius: 6px;
+            color: #818cf8;
+            cursor: pointer;
+            padding: 3px 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+
+        .view-detail-btn:hover {
+            background: rgba(99, 102, 241, 0.15);
+            border-color: #818cf8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>💰 计费分摊 Demo</h1>
+        <p class="subtitle">基于动态百分位阶梯的成本分摊系统 · 总成本 180元/期 · 每月27日结算</p>
+
+        <div class="month-selector">
+            <label>计费周期：</label>
+            <select id="monthSelect"></select>
+            <button class="toggle-custom" id="toggleCustomBtn" onclick="toggleCustomRange()">自定义</button>
+            <div class="custom-range" id="customRange">
+                <input type="date" id="customStart">
+                <span class="sep">~</span>
+                <input type="date" id="customEnd">
+                <span class="sep">|</span>
+                <label style="color:#71717a;font-size:0.8rem;">总额¥</label>
+                <input type="number" id="customTotalCost" placeholder="180" style="width:64px;background:#1e1e2e;border:1px solid #3f3f46;border-radius:8px;padding:6px 8px;color:#e4e4e7;font-size:0.85rem;outline:none;">
+                <label style="color:#71717a;font-size:0.8rem;">Anlas阈值</label>
+                <input type="number" id="customAnlasThreshold" placeholder="2000" style="width:72px;background:#1e1e2e;border:1px solid #3f3f46;border-radius:8px;padding:6px 8px;color:#e4e4e7;font-size:0.85rem;outline:none;">
+                <button class="apply-btn" onclick="applyCustomRange()">查询</button>
+            </div>
+        </div>
+
+        <div class="search-bar">
+            <input type="text" id="userIdInput" placeholder="输入用户ID查询个人账单...">
+            <button onclick="searchUser()">查询</button>
+        </div>
+
+        <!-- User result card (hidden by default) -->
+        <div class="user-result" id="userResult">
+            <h2 id="userResultTitle">用户账单</h2>
+            <div class="user-detail-grid">
+                <div class="user-detail-item">
+                    <div class="label">生图数</div>
+                    <div class="value blue" id="urImageCalls">-</div>
+                </div>
+                <div class="user-detail-item">
+                    <div class="label">Anlas消耗</div>
+                    <div class="value orange" id="urAnlas">-</div>
+                </div>
+                <div class="user-detail-item">
+                    <div class="label">阶梯 / 排名</div>
+                    <div class="value" id="urTierRank">-</div>
+                </div>
+            </div>
+            <div class="total-fee-box">
+                <div class="label">应付金额</div>
+                <div><span class="amount" id="urTotalFee">0</span><span class="unit">元</span></div>
+            </div>
+            <div class="anlas-note" id="urFeeBreakdown"></div>
+            <div style="text-align:center;">
+                <button class="view-detail-btn" id="urViewDetailBtn" onclick="loadUserDetail()">📊 查看使用详情</button>
+            </div>
+        </div>
+
+        <!-- User detail panel (hidden by default) -->
+        <div class="detail-panel" id="detailPanel">
+            <div class="panel-header">
+                <h2 id="detailTitle">📊 使用详情</h2>
+                <button class="panel-close" onclick="closeDetailPanel()">关闭</button>
+            </div>
+
+            <div class="detail-summary" id="detailSummary">
+                <div class="ds-item">
+                    <div class="ds-label">生图次数</div>
+                    <div class="ds-value blue" id="dsImgCalls">-</div>
+                </div>
+                <div class="ds-item">
+                    <div class="ds-label">总消耗点数</div>
+                    <div class="ds-value orange" id="dsTotalPts">-</div>
+                </div>
+                <div class="ds-item">
+                    <div class="ds-label">消耗类型数</div>
+                    <div class="ds-value purple" id="dsTypeCount">-</div>
+                </div>
+            </div>
+
+            <div class="detail-tabs">
+                <button class="active" onclick="switchDetailTab('types', this)">消耗类型</button>
+                <button onclick="switchDetailTab('daily', this)">每日统计</button>
+                <button onclick="switchDetailTab('records', this)">消耗记录</button>
+            </div>
+
+            <div class="tab-content active" id="tab-types">
+                <div class="detail-loading" id="detailLoading">加载中...</div>
+                <div class="type-breakdown" id="typeBreakdown"></div>
+            </div>
+
+            <div class="tab-content" id="tab-daily">
+                <div class="daily-chart" id="dailyChart"></div>
+            </div>
+
+            <div class="tab-content" id="tab-records">
+                <div class="records-list" id="recordsList"></div>
+            </div>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="label">活跃用户</div>
+                <div class="value purple" id="activeUsers">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">总生图数</div>
+                <div class="value blue" id="totalImages">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">总Anlas消耗</div>
+                <div class="value orange" id="totalAnlas">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">生图分摊池</div>
+                <div class="value green" id="imagePool">-</div>
+            </div>
+        </div>
+
+        <!-- Tier visualization -->
+        <div class="tier-section" id="tierSection">
+            <h2>阶梯分布</h2>
+            <div class="tier-bar" id="tierBar"></div>
+            <div class="tier-labels" id="tierLabels"></div>
+        </div>
+
+        <!-- User table -->
+        <div class="table-section">
+            <h2>用户明细</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>用户</th>
+                        <th>生图数</th>
+                        <th>Anlas</th>
+                        <th>阶梯</th>
+                        <th>权重</th>
+                        <th>生图费</th>
+                        <th>Anlas附加</th>
+                        <th>总计</th>
+                    </tr>
+                </thead>
+                <tbody id="userTableBody">
+                    <tr>
+                        <td colspan="9" class="loading">加载中...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND = 'https://nai.sora214.top';
+        const CYCLE_DAY = 27;
+        let currentReport = null;
+        let highlightUserId = null;
+        let currentDetailUserId = null;
+        let currentPeriodStart = null;
+        let currentPeriodEnd = null;
+
+        // 获取选中周期的 start/end ISO 字符串
+        function getSelectedPeriod() {
+            const sel = document.getElementById('monthSelect');
+            const opt = sel.options[sel.selectedIndex];
+            return {
+                start: opt.dataset.start,
+                end: opt.dataset.end,
+            };
+        }
+
+        let isCustomMode = false;
+
+        function toggleCustomRange() {
+            isCustomMode = !isCustomMode;
+            document.getElementById('customRange').classList.toggle('visible', isCustomMode);
+            document.getElementById('toggleCustomBtn').classList.toggle('active', isCustomMode);
+            document.getElementById('monthSelect').disabled = isCustomMode;
+            if (!isCustomMode) {
+                // 切回预设周期，重新加载
+                loadReport();
+            }
+        }
+
+        function getCustomOverrides() {
+            const tc = document.getElementById('customTotalCost').value;
+            const at = document.getElementById('customAnlasThreshold').value;
+            const params = [];
+            if (tc && Number(tc) > 0) params.push(`total_cost=${tc}`);
+            if (at && at !== '') params.push(`anlas_threshold=${at}`);
+            return params;
+        }
+
+        function applyCustomRange() {
+            const startVal = document.getElementById('customStart').value;
+            const endVal = document.getElementById('customEnd').value;
+            if (!startVal || !endVal) return;
+            currentPeriodStart = `${startVal}T00:00:00`;
+            currentPeriodEnd = `${endVal}T00:00:00`;
+            loadReportWithPeriod(currentPeriodStart, currentPeriodEnd);
+        }
+
+        async function loadReport() {
+            const { start, end } = getSelectedPeriod();
+            currentPeriodStart = start;
+            currentPeriodEnd = end;
+            await loadReportWithPeriod(start, end);
+        }
+
+        async function loadReportWithPeriod(start, end) {
+            try {
+                const params = [
+                    `period_start=${encodeURIComponent(start)}`,
+                    `period_end=${encodeURIComponent(end)}`,
+                ];
+                if (isCustomMode) params.push(...getCustomOverrides());
+                const res = await fetch(`${BACKEND}/api/billing/report?${params.join('&')}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                currentReport = await res.json();
+                renderReport(currentReport);
+            } catch (e) {
+                console.error('Failed to load billing report:', e);
+                document.getElementById('userTableBody').innerHTML =
+                    `<tr><td colspan="9" class="empty-msg">加载失败: ${e.message}</td></tr>`;
+            }
+        }
+
+        function renderReport(data) {
+            // Summary cards
+            document.getElementById('activeUsers').textContent = data.active_user_count;
+            document.getElementById('totalImages').textContent = data.total_image_calls.toLocaleString();
+            document.getElementById('totalAnlas').textContent = data.total_anlas.toLocaleString();
+            document.getElementById('imagePool').textContent = `¥${data.image_pool}`;
+
+            // Tier bar
+            const dist = data.tier_distribution || {};
+            const tierBar = document.getElementById('tierBar');
+            const tierLabels = document.getElementById('tierLabels');
+            tierBar.innerHTML = '';
+            tierLabels.innerHTML = '';
+
+            const tiers = data.tiers || {};
+            const tierOrder = [
+                { key: '免费', cls: 'free', dotCls: 'free', range: `≤${tiers.free}张` },
+                { key: '一阶', cls: 't1', dotCls: 't1', range: tiers.t1 ? `${tiers.free}~${tiers.t1}张` : '' },
+                { key: '二阶', cls: 't2', dotCls: 't2', range: tiers.t2 ? `${tiers.t1}~${tiers.t2}张` : '' },
+                { key: '三阶', cls: 't3', dotCls: 't3', range: tiers.t2 ? `>${tiers.t2}张` : '' },
+                { key: '均摊', cls: 'even', dotCls: 'even', range: '全员均摊' },
+            ];
+
+            for (const t of tierOrder) {
+                const d = dist[t.key];
+                if (!d) continue;
+                const seg = document.createElement('div');
+                seg.className = `segment seg-${t.cls}`;
+                seg.style.flexGrow = d.count;
+                seg.textContent = `${t.key} (${d.count}人)`;
+                tierBar.appendChild(seg);
+
+                const label = document.createElement('div');
+                label.className = 'tier-label';
+                label.innerHTML = `
+                    <span class="tier-dot ${t.dotCls}"></span>
+                    <span>${t.key} · ${t.range} · ${d.count}人 · ¥${d.total_fee}</span>
+                `;
+                tierLabels.appendChild(label);
+            }
+
+            // Anlas rule note
+            if (data.anlas_total_surcharge > 0) {
+                const anlasLabel = document.createElement('div');
+                anlasLabel.className = 'tier-label';
+                anlasLabel.innerHTML = `<span style="color:#fb923c;font-size:0.8rem;">⚡ Anlas超${data.anlas_threshold}点用户附加 ¥${data.anlas_surcharge}，本期共 ¥${data.anlas_total_surcharge}</span>`;
+                tierLabels.appendChild(anlasLabel);
+            }
+
+            // User table
+            const tbody = document.getElementById('userTableBody');
+            if (data.users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">该周期无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.users.map((u, i) => {
+                const tierCls = u.tier_name === '免费' ? 'free' :
+                    u.tier_name === '一阶' ? 't1' :
+                        u.tier_name === '二阶' ? 't2' :
+                            u.tier_name === '三阶' ? 't3' : 'even';
+                const isHighlight = highlightUserId && u.user_id === highlightUserId;
+                return `<tr class="${isHighlight ? 'highlight' : ''}" data-uid="${u.user_id}">
+                    <td>${i + 1}</td>
+                    <td title="${u.user_id}">${u.nickname || u.user_id}</td>
+                    <td>${u.image_calls.toLocaleString()}</td>
+                    <td>${u.anlas_used.toLocaleString()}</td>
+                    <td><span class="tier-badge ${tierCls}">${u.tier_name}</span></td>
+                    <td>${u.weight}</td>
+                    <td class="fee ${u.image_fee === 0 ? 'zero' : ''}">¥${u.image_fee}</td>
+                    <td class="fee ${u.anlas_fee === 0 ? 'zero' : ''}">${u.anlas_fee > 0 ? '+¥' + u.anlas_fee : '-'}</td>
+                    <td class="fee" style="color:#a78bfa;">¥${u.total_fee}</td>
+                </tr>`;
+            }).join('');
+
+            // Add click handlers
+            tbody.querySelectorAll('tr[data-uid]').forEach(row => {
+                row.style.cursor = 'pointer';
+                row.addEventListener('click', () => {
+                    const uid = row.dataset.uid;
+                    document.getElementById('userIdInput').value = uid;
+                    searchUser();
+                });
+            });
+        }
+
+        async function searchUser() {
+            const uid = document.getElementById('userIdInput').value.trim();
+            const resultCard = document.getElementById('userResult');
+            if (!uid) {
+                resultCard.classList.remove('visible');
+                highlightUserId = null;
+                closeDetailPanel();
+                if (currentReport) renderReport(currentReport);
+                return;
+            }
+
+            highlightUserId = uid;
+
+            try {
+                const d = new Date(currentPeriodStart);
+                const year = d.getFullYear();
+                const month = d.getMonth() + 1;
+                const res = await fetch(`${BACKEND}/api/billing/user?user_id=${encodeURIComponent(uid)}&year=${year}&month=${month}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const u = data.user;
+
+                document.getElementById('userResultTitle').textContent =
+                    `${u.nickname || u.user_id} 的 ${data.billing_month} 账单`;
+                document.getElementById('urImageCalls').textContent = u.image_calls.toLocaleString();
+                document.getElementById('urAnlas').textContent = u.anlas_used.toLocaleString();
+
+                const tierCls = u.tier_name === '免费' ? 'free' :
+                    u.tier_name === '一阶' ? 't1' :
+                        u.tier_name === '二阶' ? 't2' :
+                            u.tier_name === '三阶' ? 't3' : 'even';
+                document.getElementById('urTierRank').innerHTML =
+                    `<span class="tier-badge ${tierCls}">${u.tier_name}</span> ${data.rank > 0 ? `#${data.rank}` : ''}`;
+                document.getElementById('urTotalFee').textContent = u.total_fee;
+
+                const parts = [];
+                if (u.image_fee > 0) parts.push(`生图分摊 ¥${u.image_fee}`);
+                if (u.anlas_fee > 0) parts.push(`Anlas附加 ¥${u.anlas_fee}`);
+                if (parts.length === 0) parts.push('免费用户，无需支付');
+                document.getElementById('urFeeBreakdown').innerHTML = parts.join(' + ') +
+                    ` · 活跃用户 ${data.active_user_count} 人 · 权重比 ${u.weight}/${data.tier_weights.join(':')}`;
+
+                // 保存当前查询的 user_id（供详情按钮使用）
+                currentDetailUserId = uid;
+                resultCard.classList.add('visible');
+            } catch (e) {
+                console.error('Failed to search user:', e);
+            }
+
+            if (currentReport) renderReport(currentReport);
+        }
+
+        // ============ 使用详情面板 ============
+
+        async function loadUserDetail() {
+            if (!currentDetailUserId) return;
+
+            const panel = document.getElementById('detailPanel');
+            const sel = document.getElementById('monthSelect');
+            const periodLabel = sel.options[sel.selectedIndex].textContent;
+
+            // 显示面板
+            panel.classList.add('visible');
+            document.getElementById('detailTitle').textContent = `📊 ${currentDetailUserId} · ${periodLabel} 使用详情`;
+            document.getElementById('detailLoading').style.display = 'block';
+            document.getElementById('typeBreakdown').innerHTML = '';
+            document.getElementById('dailyChart').innerHTML = '';
+            document.getElementById('recordsList').innerHTML = '';
+
+            // 重置 tab
+            switchDetailTab('types', document.querySelector('.detail-tabs button'));
+
+            try {
+                const res = await fetch(`${BACKEND}/api/billing/user/details?user_id=${encodeURIComponent(currentDetailUserId)}&period_start=${encodeURIComponent(currentPeriodStart)}&period_end=${encodeURIComponent(currentPeriodEnd)}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                renderDetailPanel(data);
+            } catch (e) {
+                console.error('Failed to load user details:', e);
+                document.getElementById('detailLoading').textContent = `加载失败: ${e.message}`;
+            }
+        }
+
+        function closeDetailPanel() {
+            document.getElementById('detailPanel').classList.remove('visible');
+        }
+
+        function switchDetailTab(tabId, btn) {
+            // Update tab buttons
+            document.querySelectorAll('.detail-tabs button').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            const target = document.getElementById(`tab-${tabId}`);
+            if (target) target.classList.add('active');
+        }
+
+        function getReasonIcon(reason) {
+            if (!reason) return { icon: '❓', color: '#71717a', bg: 'rgba(113,113,122,0.2)' };
+            const r = reason.toLowerCase();
+            if (r.includes('vibe') || r.includes('编码')) return { icon: '🎨', color: '#a78bfa', bg: 'rgba(167,139,250,0.2)' };
+            if (r.includes('超分')) return { icon: '🔍', color: '#34d399', bg: 'rgba(52,211,153,0.2)' };
+            if (r.includes('角色参考') || r.includes('precise') || r.includes('pr')) return { icon: '👤', color: '#60a5fa', bg: 'rgba(96,165,250,0.2)' };
+            if (r.includes('生图') || r.includes('image') || r.includes('gen')) return { icon: '🖼️', color: '#fb923c', bg: 'rgba(251,146,60,0.2)' };
+            if (r.includes('香蕉') || r.includes('banana')) return { icon: '🍌', color: '#fbbf24', bg: 'rgba(251,191,36,0.2)' };
+            return { icon: '⚡', color: '#e4e4e7', bg: 'rgba(228,228,231,0.15)' };
+        }
+
+        function categorizeReason(reason) {
+            if (!reason) return '其他';
+            const r = reason.toLowerCase();
+            if (r.includes('vibe') || r.includes('编码')) return 'Vibe 编码';
+            if (r.includes('超分')) return '超分辨率';
+            if (r.includes('角色参考')) return '角色参考(PR)';
+            if (r.includes('生图')) return '图片生成';
+            if (r.includes('香蕉') || r.includes('banana')) return '香蕉重绘';
+            return '其他';
+        }
+
+        function renderDetailPanel(data) {
+            document.getElementById('detailLoading').style.display = 'none';
+
+            // Summary strip
+            document.getElementById('dsImgCalls').textContent = data.total_image_calls.toLocaleString();
+            document.getElementById('dsTotalPts').textContent = data.total_points.toLocaleString();
+            document.getElementById('dsTypeCount').textContent = data.type_breakdown.length;
+
+            // ===== Tab 1: Type breakdown =====
+            const tbContainer = document.getElementById('typeBreakdown');
+            if (data.type_breakdown.length === 0) {
+                tbContainer.innerHTML = '<div class="detail-empty">该周期无点数消耗记录</div>';
+            } else {
+                const maxPoints = Math.max(...data.type_breakdown.map(t => t.total_points));
+                tbContainer.innerHTML = data.type_breakdown.map(t => {
+                    const info = getReasonIcon(t.reason);
+                    const pct = maxPoints > 0 ? (t.total_points / maxPoints * 100) : 0;
+                    return `<div class="type-item">
+                        <div class="type-icon" style="background:${info.bg};color:${info.color}">${info.icon}</div>
+                        <div class="type-info">
+                            <div class="type-name" title="${t.reason}">${t.reason}</div>
+                            <div class="type-count">${t.count} 次</div>
+                        </div>
+                        <div class="type-bar-wrap">
+                            <div class="type-bar-fill" style="width:${pct}%;background:${info.color}"></div>
+                        </div>
+                        <div class="type-points">${t.total_points} 点</div>
+                    </div>`;
+                }).join('');
+            }
+
+            // ===== Tab 2: Daily chart =====
+            const dcContainer = document.getElementById('dailyChart');
+            if (data.daily_data.length === 0) {
+                dcContainer.innerHTML = '<div class="detail-empty">该周期无活动数据</div>';
+            } else {
+                const maxImg = Math.max(...data.daily_data.map(d => d.image_calls), 1);
+                const maxPts = Math.max(...data.daily_data.map(d => d.points_spent), 1);
+                dcContainer.innerHTML = data.daily_data.map(d => {
+                    const dateStr = d.date.split('-').slice(1).join('/');
+                    const imgPct = Math.max((d.image_calls / maxImg * 100), d.image_calls > 0 ? 8 : 0);
+                    const ptsPct = Math.max((d.points_spent / maxPts * 100), d.points_spent > 0 ? 8 : 0);
+                    return `<div class="daily-row">
+                        <div class="daily-date">${dateStr}</div>
+                        <div class="daily-bars">
+                            <div class="daily-bar-wrap">
+                                <div class="daily-bar-label">图</div>
+                                <div class="daily-bar-track">
+                                    <div class="daily-bar-fill img" style="width:${imgPct}%">${d.image_calls > 0 ? d.image_calls : ''}</div>
+                                </div>
+                            </div>
+                            <div class="daily-bar-wrap">
+                                <div class="daily-bar-label">点</div>
+                                <div class="daily-bar-track">
+                                    <div class="daily-bar-fill pts" style="width:${ptsPct}%">${d.points_spent > 0 ? d.points_spent : ''}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            // ===== Tab 3: Recent records =====
+            const rlContainer = document.getElementById('recordsList');
+            if (data.recent_records.length === 0) {
+                rlContainer.innerHTML = '<div class="detail-empty">该周期无消耗记录</div>';
+            } else {
+                rlContainer.innerHTML = data.recent_records.map(r => {
+                    const ts = r.timestamp || '';
+                    const timeStr = ts.replace('T', ' ').substring(0, 16);
+                    return `<div class="record-item">
+                        <div class="rec-time">${timeStr}</div>
+                        <div class="rec-reason" title="${r.reason}">${r.reason || '未知'}</div>
+                        <div class="rec-points">${r.points} 点</div>
+                    </div>`;
+                }).join('');
+            }
+
+            // 滚动到面板
+            document.getElementById('detailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // Enter key support
+        document.getElementById('userIdInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') searchUser();
+        });
+
+        // Period change
+        document.getElementById('monthSelect').addEventListener('change', () => {
+            highlightUserId = null;
+            document.getElementById('userResult').classList.remove('visible');
+            closeDetailPanel();
+            // Sync custom date inputs
+            const { start, end } = getSelectedPeriod();
+            document.getElementById('customStart').value = start.substring(0, 10);
+            document.getElementById('customEnd').value = end.substring(0, 10);
+            if (!isCustomMode) loadReport();
+        });
+
+        // Build billing period options (27-day cycles from 2025-07-27 to current)
+        (function buildPeriodOptions() {
+            const sel = document.getElementById('monthSelect');
+            const now = new Date();
+            // 生成周期列表：从 2025-07-27 开始
+            let start = new Date(2025, 6, CYCLE_DAY); // month is 0-indexed
+            const periods = [];
+
+            while (start < now) {
+                const end = new Date(start);
+                end.setMonth(end.getMonth() + 1);
+                periods.push({ start: new Date(start), end: new Date(end) });
+                start = new Date(end);
+            }
+
+            // 找到当前所在周期的上一个周期作为默认选中
+            // 当前周期 = 最后一个 start <= now 的周期
+            let defaultIdx = Math.max(periods.length - 2, 0);
+
+            const pad = n => String(n).padStart(2, '0');
+            periods.forEach((p, i) => {
+                const sY = p.start.getFullYear(), sM = p.start.getMonth() + 1, sD = p.start.getDate();
+                const eY = p.end.getFullYear(), eM = p.end.getMonth() + 1, eD = p.end.getDate();
+                const isCurrent = (i === periods.length - 1);
+                const label = `${sY}/${pad(sM)}/${pad(sD)} - ${eY}/${pad(eM)}/${pad(eD)}${isCurrent ? '（当期预估）' : ''}`;
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = label;
+                // 存储 ISO 字符串供 API 调用
+                opt.dataset.start = `${sY}-${pad(sM)}-${pad(sD)}T00:00:00`;
+                opt.dataset.end = `${eY}-${pad(eM)}-${pad(eD)}T00:00:00`;
+                if (i === defaultIdx) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        })();
+
+        // Set default custom date range to selected period
+        {
+            const { start, end } = getSelectedPeriod();
+            document.getElementById('customStart').value = start.substring(0, 10);
+            document.getElementById('customEnd').value = end.substring(0, 10);
+        }
+
+        // Initial load
+        loadReport();
+    </script>
+</body>
+
+</html>

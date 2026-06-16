@@ -1,0 +1,13 @@
+{
+  "prompt": {
+    "44": {"class_type": "UNETLoader", "inputs": {"unet_name": "anima-base-v1.0.safetensors", "weight_dtype": "default"}},
+    "45": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen_3_06b_base.safetensors", "type": "stable_diffusion", "device": "default"}},
+    "15": {"class_type": "VAELoader", "inputs": {"vae_name": "qwen_image_vae.safetensors"}},
+    "28": {"class_type": "EmptyLatentImage", "inputs": {"width": 832, "height": 1216, "batch_size": 1}},
+    "11": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["45", 0], "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, 1girl, solo, miko, white kimono, red hakama, long black hair, at a shrine, cherry blossoms, soft sunlight, detailed background, looking at viewer"}},
+    "12": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["45", 0], "text": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia"}},
+    "19": {"class_type": "KSampler", "inputs": {"model": ["44", 0], "positive": ["11", 0], "negative": ["12", 0], "latent_image": ["28", 0], "seed": 123456, "steps": 30, "cfg": 4.5, "sampler_name": "er_sde", "scheduler": "simple", "denoise": 1.0}},
+    "8": {"class_type": "VAEDecode", "inputs": {"samples": ["19", 0], "vae": ["15", 0]}},
+    "46": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "anima_bot/base"}}
+  }
+}
