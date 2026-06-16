@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
-import { type TagSuggestion, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { type TagSuggestion } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
+import { useDesktopChipKeyboard } from './desktop-chip-editor/useDesktopChipKeyboard';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
+import { useDesktopModifierKeys } from './desktop-chip-editor/useDesktopModifierKeys';
 import { DesktopInlineTagEditor } from './desktop-chip-editor/DesktopInlineTagEditor';
 import { DesktopMultiSelectPanel } from './desktop-chip-editor/DesktopMultiSelectPanel';
 import { DesktopMarkerChip, DesktopTagChip } from './desktop-chip-editor/DesktopPromptChips';
@@ -74,24 +76,7 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const [editingTag, setEditingTag] = useState<{ index: number; text: string; width: number; height: number } | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  // Ctrl 按下状态：按住 Ctrl 多选时隐藏面板
-  const [ctrlHeld, setCtrlHeld] = useState(false);
-  const [shiftHeld, setShiftHeld] = useState(false);
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 'Control') setCtrlHeld(true);
-      if (e.key === 'Shift') setShiftHeld(true);
-    };
-    const up = (e: KeyboardEvent) => {
-      if (e.key === 'Control') setCtrlHeld(false);
-      if (e.key === 'Shift') setShiftHeld(false);
-    };
-    const blur = () => { setCtrlHeld(false); setShiftHeld(false); };
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    window.addEventListener('blur', blur);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
-  }, []);
+  const { ctrlHeld, shiftHeld } = useDesktopModifierKeys();
 
   const saveValue = useCallback((newValue: string) => {
     if (!isUndoingRef.current && newValue !== value) {
@@ -212,37 +197,26 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setTagTranslations,
   });
 
-  const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Ctrl+A / Cmd+A 全选所有标签
-    if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !inputText) {
-      e.preventDefault();
-      if (parsedTags.length > 0) {
-        const allIndices = new Set<number>();
-        for (let i = 0; i < parsedTags.length; i++) allIndices.add(i);
-        setSelectedTags(allIndices);
-        setTagPanel(null);
-      }
-      return;
-    }
-    if (e.key === 'Enter' || e.key === 'Tab') {
-      if (showSuggestions && displaySuggs.length > 0) {
-        e.preventDefault();
-        const idx = selectedSuggIdx >= 0 && selectedSuggIdx < displaySuggs.length ? selectedSuggIdx : 0;
-        const s = displaySuggs[idx];
-        if (s.isAiLoading) return; // 跳过 AI 加载占位项
-        if (s.isOrigin) {
-          const chars = s.originCharacters || [];
-          if (chars.length > 0) { const rc = chars[Math.floor(Math.random() * chars.length)]; selectSuggestion({ ...s, value: rc, chineseName: lookupCharacterChineseName(rc), isOrigin: false }); }
-        } else { selectSuggestion(s); }
-      } else if (e.key === 'Enter' && inputText.trim()) { e.preventDefault(); commitInput(inputText); }
-    } else if (e.key === 'ArrowDown' && showSuggestions && displaySuggs.length > 0) { e.preventDefault(); setSelectedSuggIdx(prev => { let next = (prev + 1) % displaySuggs.length; if (displaySuggs[next]?.isAiLoading) next = (next + 1) % displaySuggs.length; return next; }); }
-    else if (e.key === 'ArrowUp' && showSuggestions && displaySuggs.length > 0) { e.preventDefault(); setSelectedSuggIdx(prev => { let next = (prev - 1 + displaySuggs.length) % displaySuggs.length; if (displaySuggs[next]?.isAiLoading) next = (next - 1 + displaySuggs.length) % displaySuggs.length; return next; }); }
-    else if (e.key === 'Escape') {
-      if (showSuggestions) { setShowSuggestions(false); setSuggestions([]); }
-      else if (tagPanel) setTagPanel(null);
-      else if (selectedTags.size > 0) setSelectedTags(new Set());
-    } else if (e.key === 'Backspace' && !inputText && parsedTags.length > 0) { e.preventDefault(); const tags = [...parsedTags]; tags.pop(); rebuildValue(tags); }
-  }, [showSuggestions, displaySuggs, selectedSuggIdx, selectSuggestion, inputText, commitInput, parsedTags, rebuildValue, selectedTags, tagPanel]);
+  const { handleInputKeyDown, handleContainerKeyDown } = useDesktopChipKeyboard({
+    inputText,
+    parsedTags,
+    selectedTags,
+    tagPanel,
+    showSuggestions,
+    displaySuggs,
+    selectedSuggIdx,
+    undoStackRef,
+    isUndoingRef,
+    selectSuggestion,
+    commitInput,
+    rebuildValue,
+    saveValue,
+    setSelectedSuggIdx,
+    setSelectedTags,
+    setShowSuggestions,
+    setSuggestions,
+    setTagPanel,
+  });
 
   const tagActions = useDesktopTagActions({
     selectedTags,
@@ -355,48 +329,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingIndex]);
-
-  // 全局键盘事件处理（支持在容器聚焦时 Ctrl+A 全选、Delete/Backspace 删除、Ctrl+C 复制）
-  const handleContainerKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Ctrl+A / Cmd+A 全选所有标签
-    if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-      // 如果输入框有内容，让输入框处理
-      if (inputText) return;
-      e.preventDefault();
-      if (parsedTags.length > 0) {
-        const allIndices = new Set<number>();
-        for (let i = 0; i < parsedTags.length; i++) allIndices.add(i);
-        setSelectedTags(allIndices);
-        setTagPanel(null);
-      }
-    }
-    // Ctrl+C / Cmd+C 复制选中的标签
-    if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedTags.size > 0 && !inputText) {
-      e.preventDefault();
-      const indices = Array.from(selectedTags).sort((a, b) => a - b);
-      const tagsToCopy = indices.map(i => parsedTags[i]).join(', ');
-      navigator.clipboard.writeText(tagsToCopy).catch(() => { });
-    }
-    // Delete / Backspace 删除选中的标签
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedTags.size > 0 && !inputText) {
-      e.preventDefault();
-      rebuildValue(parsedTags.filter((_, i) => !selectedTags.has(i)));
-      setSelectedTags(new Set());
-      setTagPanel(null);
-    }
-    // Ctrl+Z / Cmd+Z 撤回操作
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !inputText) {
-      const prev = undoStackRef.current.pop();
-      if (prev !== undefined) {
-        e.preventDefault();
-        isUndoingRef.current = true;
-        saveValue(prev);
-        isUndoingRef.current = false;
-        setSelectedTags(new Set());
-        setTagPanel(null);
-      }
-    }
-  }, [inputText, parsedTags, selectedTags, rebuildValue, saveValue]);
 
   return (
     <div className={`flex flex-col h-full ${className}`} onKeyDown={handleContainerKeyDown} tabIndex={-1}>
