@@ -22,6 +22,7 @@ import { translateSegments } from '../services/translate';
 import { getAppSettings } from '../services/localLibrary';
 import { getBackendUrl } from '../utils/apiConfig';
 import { useDesktopSuggestionSelection } from './desktop-chip-editor/useDesktopSuggestionSelection';
+import { useDesktopPanelActions, useDesktopTagActions } from './desktop-chip-editor/useDesktopTagActions';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import { canCheckSuggestionWiki, normalizeWikiTagKey } from './prompt-editor/wikiUtils';
@@ -30,7 +31,7 @@ import { getMarkerVisual } from './tag-manager/markerVisual';
 import {
   NEWLINE_SENTINEL, isCollapsibleMarker, parseCollapsibleMarker, splitPromptToTags,
   cleanTagName, getTagWeightInfo, detectAbnormalWeight, isSDWeightFormat, parseSDWeight,
-  convertSDToNAI, analyzeTagGroups, getEffectiveWeight, getWeightStyle, extractTagsFromList,
+  analyzeTagGroups, getEffectiveWeight, getWeightStyle,
   stepNumericWeight,
 } from '../utils/promptTags';
 
@@ -375,164 +376,22 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     } else if (e.key === 'Backspace' && !inputText && parsedTags.length > 0) { e.preventDefault(); const tags = [...parsedTags]; tags.pop(); rebuildValue(tags); }
   }, [showSuggestions, displaySuggs, selectedSuggIdx, selectSuggestion, inputText, commitInput, parsedTags, rebuildValue, selectedTags, tagPanel]);
 
-  const tagActions = useMemo(() => {
-    const getIndices = (): number[] => {
-      const arr = Array.from(selectedTags).sort((a, b) => a - b);
-      if (arr.length === 0) return [];
-      if (arr.length === 1) {
-        const g = tagGroups[arr[0]];
-        if (g && g.groupId !== -1) return tagGroups.map((tg, idx) => tg.groupId === g.groupId ? idx : -1).filter(x => x >= 0);
-      }
-      return arr;
-    };
-    return {
-      addBrace: () => {
-        const indices = getIndices(); if (indices.length === 0) return;
-        const t = [...parsedTags];
-        const groups: number[][] = []; let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) { if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]); else { groups.push(cur); cur = [indices[i]]; } }
-        groups.push(cur);
-        for (const g of groups) { t[g[0]] = `{${t[g[0]]}`; t[g[g.length - 1]] = `${t[g[g.length - 1]]}}`; }
-        rebuildValue(t);
-      },
-      addBracket: () => {
-        const indices = getIndices(); if (indices.length === 0) return;
-        const t = [...parsedTags];
-        const groups: number[][] = []; let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) { if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]); else { groups.push(cur); cur = [indices[i]]; } }
-        groups.push(cur);
-        for (const g of groups) { t[g[0]] = `[${t[g[0]]}`; t[g[g.length - 1]] = `${t[g[g.length - 1]]}]`; }
-        rebuildValue(t);
-      },
-      setNumeric: (w: number) => {
-        const indices = getIndices(); if (indices.length === 0) return;
-        const t = [...parsedTags];
-        const groups: number[][] = []; let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) { if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]); else { groups.push(cur); cur = [indices[i]]; } }
-        groups.push(cur);
-        for (const g of groups) {
-          if (g.length === 1) { t[g[0]] = `${w}::${cleanTagName(t[g[0]]).replace(/ /g, '_')}::`; }
-          else { for (const i of g) t[i] = cleanTagName(t[i]); t[g[0]] = `${w}::${t[g[0]]}`; t[g[g.length - 1]] = `${t[g[g.length - 1]]}::`; }
-        }
-        rebuildValue(t);
-      },
-      clearWeight: () => {
-        const indices = getIndices(); if (indices.length === 0) return;
-        const t = [...parsedTags];
-        const toClear = new Set<number>(indices);
-        for (const i of indices) { const g = tagGroups[i]; if (g && g.groupId !== -1) tagGroups.forEach((tg, idx) => { if (tg.groupId === g.groupId) toClear.add(idx); }); }
-        for (const i of toClear) t[i] = cleanTagName(t[i]);
-        rebuildValue(t);
-      },
-      convertSDToNAI: () => {
-        const indices = getIndices(); if (indices.length === 0) return;
-        const t = [...parsedTags];
-        for (const i of indices) { if (isSDWeightFormat(t[i])) t[i] = convertSDToNAI(t[i]); }
-        rebuildValue(t);
-      },
-      deleteTag: () => { if (selectedTags.size === 0) return; rebuildValue(parsedTags.filter((_, i) => !selectedTags.has(i))); setSelectedTags(new Set()); setTagPanel(null); },
-      toggleHide: () => {
-        if (selectedTags.size === 0) return;
-        const indices = Array.from(selectedTags).sort((a, b) => a - b);
-        const t = [...parsedTags];
-        const isHidden = t[indices[0]]?.trim().startsWith('~');
-        for (const i of indices) {
-          if (isHidden) t[i] = t[i].replace(/^(\s*)~/, '$1');
-          else t[i] = t[i].replace(/^(\s*)/, '$1~');
-        }
-        rebuildValue(t); setSelectedTags(new Set()); setTagPanel(null);
-      },
-      moveToFront: () => {
-        const indices = Array.from(selectedTags).sort((a, b) => a - b);
-        const { extracted, remaining } = extractTagsFromList(parsedTags, selectedTags, tagGroups);
-        rebuildValue([...extracted, ...remaining]); setSelectedTags(new Set(extracted.map((_, i) => i))); setTagPanel(null);
-      },
-      openDanbooru: () => {
-        const indices = Array.from(selectedTags); if (indices.length !== 1) return;
-        window.open(`https://danbooru.donmai.us/wiki_pages/${encodeURIComponent(cleanTagName(parsedTags[indices[0]]).replace(/ /g, '_'))}`, '_blank'); setTagPanel(null);
-      },
-    };
-  }, [selectedTags, tagGroups, parsedTags, rebuildValue]);
-
-  const panelActions = useMemo(() => {
-    // 获取面板标签所在的组索引（如果在组内，返回整个组）
-    const getGroupIndices = (): number[] => {
-      if (!tagPanel) return [];
-      const g = tagGroups[tagPanel.index];
-      if (g && g.groupId !== -1) {
-        return tagGroups.map((tg, idx) => tg.groupId === g.groupId ? idx : -1).filter(x => x >= 0);
-      }
-      return [tagPanel.index];
-    };
-    return {
-      addWeight: () => {
-        if (!tagPanel) return;
-        const t = [...parsedTags];
-        const indices = getGroupIndices();
-        const groups: number[][] = []; let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) { if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]); else { groups.push(cur); cur = [indices[i]]; } }
-        groups.push(cur);
-        for (const g of groups) { t[g[0]] = `{${t[g[0]]}`; t[g[g.length - 1]] = `${t[g[g.length - 1]]}}`; }
-        rebuildValue(t); setTagPanel(null);
-      },
-      reduceWeight: () => {
-        if (!tagPanel) return;
-        const t = [...parsedTags];
-        const indices = getGroupIndices();
-        const groups: number[][] = []; let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) { if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]); else { groups.push(cur); cur = [indices[i]]; } }
-        groups.push(cur);
-        for (const g of groups) { t[g[0]] = `[${t[g[0]]}`; t[g[g.length - 1]] = `${t[g[g.length - 1]]}]`; }
-        rebuildValue(t); setTagPanel(null);
-      },
-      clearWeight: () => {
-        if (!tagPanel) return; const t = [...parsedTags];
-        const toClear = new Set<number>(getGroupIndices());
-        for (const i of toClear) t[i] = cleanTagName(t[i]);
-        rebuildValue(t); setTagPanel(null);
-      },
-      setNumericWeight: (weight: number) => {
-        if (!tagPanel) return;
-        const t = [...parsedTags];
-        const indices = getGroupIndices();
-        if (indices.length === 1) {
-          t[indices[0]] = `${weight}::${cleanTagName(t[indices[0]]).replace(/ /g, '_')}::`;
-        } else {
-          for (const i of indices) t[i] = cleanTagName(t[i]);
-          t[indices[0]] = `${weight}::${t[indices[0]]}`;
-          t[indices[indices.length - 1]] = `${t[indices[indices.length - 1]]}::`;
-        }
-        rebuildValue(t); setTagPanel(prev => prev ? { ...prev, rawTag: t[tagPanel.index] } : null);
-      },
-      convertSDToNAI: () => {
-        if (!tagPanel) return;
-        const t = [...parsedTags];
-        const converted = convertSDToNAI(t[tagPanel.index]);
-        t[tagPanel.index] = converted;
-        rebuildValue(t);
-        setTagPanel(null);
-      },
-      deleteTag: () => { if (!tagPanel) return; rebuildValue(parsedTags.filter((_, i) => i !== tagPanel.index)); setSelectedTags(new Set()); setTagPanel(null); },
-      copyTag: () => { if (!tagPanel) return; navigator.clipboard.writeText(tagPanel.tag.replace(/ /g, '_')).catch(() => { }); setTagPanel(null); },
-      openDanbooru: () => { if (!tagPanel) return; window.open(`https://danbooru.donmai.us/wiki_pages/${encodeURIComponent(tagPanel.tag.replace(/ /g, '_'))}`, '_blank'); setTagPanel(null); },
-      toggleHide: () => {
-        if (!tagPanel) return;
-        const t = [...parsedTags];
-        const indices = getGroupIndices();
-        const isHidden = t[tagPanel.index]?.trim().startsWith('~');
-        for (const i of indices) {
-          if (isHidden) t[i] = t[i].replace(/^(\s*)~/, '$1');
-          else t[i] = t[i].replace(/^(\s*)/, '$1~');
-        }
-        rebuildValue(t); setTagPanel(null); setSelectedTags(new Set());
-      },
-      moveToFront: () => {
-        if (!tagPanel) return;
-        const { extracted, remaining } = extractTagsFromList(parsedTags, new Set([tagPanel.index]), tagGroups);
-        rebuildValue([...extracted, ...remaining]); setSelectedTags(new Set([0])); setTagPanel(null);
-      },
-    };
-  }, [tagPanel, parsedTags, tagGroups, rebuildValue]);
+  const tagActions = useDesktopTagActions({
+    selectedTags,
+    tagGroups,
+    parsedTags,
+    rebuildValue,
+    setSelectedTags,
+    setTagPanel,
+  });
+  const panelActions = useDesktopPanelActions({
+    tagPanel,
+    tagGroups,
+    parsedTags,
+    rebuildValue,
+    setSelectedTags,
+    setTagPanel,
+  });
 
   const currentNumericWeight = useMemo(() => {
     if (selectedTags.size === 0) return null;
