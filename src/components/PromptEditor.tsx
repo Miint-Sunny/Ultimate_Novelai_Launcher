@@ -1,12 +1,8 @@
 import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useRef, useState } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { TextSelection } from '@tiptap/pm/state';
-import Placeholder from '@tiptap/extension-placeholder';
-import { getTagSuggestionsDebounced, fetchWikiChineseNames, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { EditorContent } from '@tiptap/react';
+import { fetchWikiChineseNames, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
-import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
 import {
   extractEditorContent,
@@ -23,10 +19,10 @@ import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
 import { useMultiSelectActions } from './prompt-editor/useMultiSelectActions';
+import { requestAutocompleteAtSelection, usePromptTipTapEditor } from './prompt-editor/usePromptTipTapEditor';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import { useTagPanelActions } from './prompt-editor/useTagPanelActions';
 import { useTagHoverTranslation } from './prompt-editor/useTagHoverTranslation';
-import { WeightHighlightExtension } from './prompt-editor/weightHighlightExtension';
 import type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
 export type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
 
@@ -114,169 +110,25 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
     // 自然语言翻译加载状态
     const [nlTranslating, setNlTranslating] = useState<{ top: number; left: number } | null>(null);
 
-    const editor = useEditor({
-      extensions: [
-        StarterKit.configure({
-          // 禁用不需要的功能
-          heading: false,
-          blockquote: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-          codeBlock: false,
-          horizontalRule: false,
-        }),
-        ...(disableCollapsibleTags ? [] : [CollapsibleTagNode]),
-        WeightHighlightExtension,
-        Placeholder.configure({
-          placeholder: placeholder || '',
-          emptyEditorClass: 'is-editor-empty',
-        }),
-      ],
-      content: '',
-      editorProps: {
-        attributes: {
-          class: `prompt-editor-content outline-none min-h-full scrollbar-hide ${className}`,
-          spellcheck: 'false',
-        },
-        // 双击选中整个标签（逗号之间的内容）
-        handleDoubleClick: (view, pos, event) => {
-          const { state } = view;
-          const $pos = state.doc.resolve(pos);
-          const node = $pos.parent;
-
-          if (!node.isTextblock) return false;
-
-          const text = node.textContent;
-          // 使用辅助函数修正 atom 节点导致的偏移量不一致
-          const offset = docOffsetToTextIndex(node, $pos.parentOffset);
-          const nodeStart = $pos.start();
-
-          // 找到当前位置所在的标签（以逗号分隔）
-          let start = offset;
-          let end = offset;
-
-          // 向前找到标签开始
-          while (start > 0 && text[start - 1] !== ',') {
-            start--;
-          }
-          // 向后找到标签结束
-          while (end < text.length && text[end] !== ',') {
-            end++;
-          }
-
-          // 去掉前后空格
-          while (start < end && text[start] === ' ') start++;
-          while (end > start && text[end - 1] === ' ') end--;
-
-          if (start < end) {
-            // 使用辅助函数将 textContent 索引转回文档偏移
-            const from = nodeStart + textIndexToDocOffset(node, start);
-            const to = nodeStart + textIndexToDocOffset(node, end);
-            view.dispatch(state.tr.setSelection(
-              TextSelection.create(state.doc, from, to)
-            ));
-            return true;
-          }
-
-          return false;
-        },
-      },
-      onUpdate: ({ editor }) => {
-        // 提取纯文本和标签
-        const { text, tags } = extractEditorContent(editor);
-        onChange?.(text);
-        onTagsChange?.(tags);
-
-        // 如果是程序设置值，跳过自动补全检测
-        if (isProgrammaticUpdateRef.current) {
-          isProgrammaticUpdateRef.current = false;
-          setShowSuggestions(false);
-          setTagPanel(null);
-          setMultiSelectPanel(null);
-          return;
-        }
-
-        // 如果刚刚选择了补全，跳过这次检测
-        if (justSelectedRef.current) {
-          justSelectedRef.current = false;
-          return;
-        }
-
-        // 用户正在输入，关闭快捷面板（数字权重更新时跳过）
-        if (isWeightUpdateRef.current) {
-          isWeightUpdateRef.current = false;
-        } else {
-          setTagPanel(null);
-          setMultiSelectPanel(null);
-        }
-
-        // 面板操作引起的编辑，跳过补全触发
-        if (isPanelActionRef.current) {
-          isPanelActionRef.current = false;
-          return;
-        }
-
-        // 自动补全逻辑
-        const { state } = editor;
-        const { selection } = state;
-        const { $from } = selection;
-
-        // 获取光标前的文本（使用辅助函数修正 atom 节点偏移）
-        const _textIdx = docOffsetToTextIndex($from.parent, $from.parentOffset);
-        const textBefore = $from.parent.textContent.slice(0, _textIdx);
-        // 获取光标后的文本
-        const textAfter = $from.parent.textContent.slice(_textIdx);
-
-        // 如果文本为空，可能是编辑器状态还没同步，跳过
-        if (!textBefore) {
-          return;
-        }
-
-        // 找到当前正在输入的单词（以逗号、空格或开头为边界，支持中文和英文）
-        // 光标前的部分
-        const matchBefore = textBefore.match(/(?:^|[,，\s])([a-zA-Z0-9_\u4e00-\u9fa5]+)$/);
-        // 光标后如果紧跟着字母/数字/中文（没有分隔符），说明光标在单词中间
-        const isInMiddleOfWord = /^[a-zA-Z0-9_\u4e00-\u9fa5]/.test(textAfter);
-
-        // 中文1个字符就触发，英文需要2个
-        const hasChinese = matchBefore && /[\u4e00-\u9fa5]/.test(matchBefore[1]);
-        const minLength = hasChinese ? 1 : 2;
-
-        // 组合过程中不触发搜索，等选字确认后再搜
-        if (isComposingRef.current) {
-          return;
-        }
-
-        if (matchBefore && matchBefore[1] && matchBefore[1].length >= minLength) {
-          const word = matchBefore[1];
-          const start = $from.pos - word.length;
-          setCurrentWord(word);
-          setWordStart(start);
-
-          // 获取光标位置（使用屏幕绝对坐标，用于Portal渲染）
-          const coords = editor.view.coordsAtPos(selection.from);
-          setCursorPosition({
-            top: coords.bottom + window.scrollY,
-            left: coords.left + window.scrollX,
-          });
-
-          // 获取建议（使用防抖延迟避免闪烁）
-          const debounceDelay = 250;
-          getTagSuggestionsDebounced(word, (newSuggestions) => {
-            if (newSuggestions.length > 0) {
-              // 创建新数组以触发React重新渲染（wiki回调更新时也会调用这里）
-              setSuggestions([...newSuggestions]);
-              setShowSuggestions(true);
-              setSelectedIndex(prev => Math.min(prev, newSuggestions.length - 1));
-            } else {
-              setShowSuggestions(false);
-            }
-          }, debounceDelay);
-        } else {
-          setShowSuggestions(false);
-        }
-      },
+    const editor = usePromptTipTapEditor({
+      className,
+      placeholder,
+      disableCollapsibleTags,
+      onChange,
+      onTagsChange,
+      isProgrammaticUpdateRef,
+      justSelectedRef,
+      isWeightUpdateRef,
+      isPanelActionRef,
+      isComposingRef,
+      setSuggestions,
+      setShowSuggestions,
+      setSelectedIndex,
+      setCurrentWord,
+      setWordStart,
+      setCursorPosition,
+      setTagPanel,
+      setMultiSelectPanel,
     });
     const {
       tagTooltip,
@@ -468,35 +320,16 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
         requestAnimationFrame(() => {
           setTimeout(() => {
             if (!editor || editor.isDestroyed) return;
-            const state = editor.view.state;
-            const { selection } = state;
-            const { $from } = selection;
-            const _compTextIdx = docOffsetToTextIndex($from.parent, $from.parentOffset);
-            const textBefore = $from.parent.textContent.slice(0, _compTextIdx);
-            if (!textBefore) return;
-            const matchBefore = textBefore.match(/(?:^|[,，\s])([a-zA-Z0-9_\u4e00-\u9fa5]+)$/);
-            const hasChinese = matchBefore && /[\u4e00-\u9fa5]/.test(matchBefore[1]);
-            const minLength = hasChinese ? 1 : 2;
-            if (matchBefore && matchBefore[1] && matchBefore[1].length >= minLength) {
-              const word = matchBefore[1];
-              const start = $from.pos - word.length;
-              setCurrentWord(word);
-              setWordStart(start);
-              const coords = editor.view.coordsAtPos(selection.from);
-              setCursorPosition({
-                top: coords.bottom + window.scrollY,
-                left: coords.left + window.scrollX,
-              });
-              getTagSuggestionsDebounced(word, (newSuggestions) => {
-                if (newSuggestions.length > 0) {
-                  setSuggestions([...newSuggestions]);
-                  setShowSuggestions(true);
-                  setSelectedIndex(prev => Math.min(prev, newSuggestions.length - 1));
-                } else {
-                  setShowSuggestions(false);
-                }
-              }, 250);
-            }
+            requestAutocompleteAtSelection({
+              editor,
+              isComposingRef,
+              setSuggestions,
+              setShowSuggestions,
+              setSelectedIndex,
+              setCurrentWord,
+              setWordStart,
+              setCursorPosition,
+            });
           }, 20);
         });
       };
