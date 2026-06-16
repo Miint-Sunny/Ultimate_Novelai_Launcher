@@ -17,10 +17,11 @@ import {
   EyeOff,
   X,
 } from 'lucide-react';
-import { getTagSuggestionsDebounced, fetchWikiChineseNames, type TagSuggestion, getTranslationCacheSnapshot, setTranslationCacheEntries, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
-import { translateSegments, translateToNaturalLanguage } from '../services/translate';
+import { getTagSuggestionsDebounced, fetchWikiChineseNames, type TagSuggestion, getTranslationCacheSnapshot, setTranslationCacheEntries, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { translateSegments } from '../services/translate';
 import { getAppSettings } from '../services/localLibrary';
 import { getBackendUrl } from '../utils/apiConfig';
+import { useDesktopSuggestionSelection } from './desktop-chip-editor/useDesktopSuggestionSelection';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import { canCheckSuggestionWiki, normalizeWikiTagKey } from './prompt-editor/wikiUtils';
@@ -94,9 +95,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [dragGhostInfo, setDragGhostInfo] = useState<{ text: string; sub?: string } | null>(null);
-
-  // 自然语言翻译加载状态
-  const [nlTranslating, setNlTranslating] = useState(false);
 
   const [editingTag, setEditingTag] = useState<{ index: number; text: string; width: number; height: number } | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -313,70 +311,19 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setEditingTag(null);
   }, [editingTag, parsedTags, rebuildValue]);
 
-  const selectSuggestion = useCallback((suggestion: TagSuggestion) => {
-    // 编辑模式：选取补全后直接替换标签
-    if (editingTag) {
-      if (suggestion.isNaturalLanguage || suggestion.isArtist || suggestion.isOC) {
-        // 特殊类型在编辑模式下不处理
-        setShowSuggestions(false); setSuggestions([]);
-        return;
-      }
-      commitEdit(editingTag.index, suggestion.value);
-      setShowSuggestions(false); setSuggestions([]);
-      if (suggestion.chineseName) {
-        const cleanKey = suggestion.value.replace(/_/g, ' ').trim();
-        if (cleanKey && !tagTranslations.has(cleanKey)) {
-          setTagTranslations(prev => new Map(prev).set(cleanKey, suggestion.chineseName!));
-        }
-      }
-      return;
-    }
-    if (suggestion.isNaturalLanguage) {
-      const chineseText = inputText.trim();
-      setInputText('');
-      setShowSuggestions(false);
-      setSuggestions([]);
-      cancelPendingAutocomplete();
-      setNlTranslating(true);
-      translateToNaturalLanguage(chineseText).then((translated) => {
-        setNlTranslating(false);
-        if (translated && translated !== chineseText) {
-          const newVal = value ? value + ', ' + translated : translated;
-          saveValue(newVal);
-        } else {
-          setInputText(chineseText);
-        }
-      });
-      return;
-    }
-    if (suggestion.isArtist && suggestion.artistContent) {
-      const artistMarker = `<<artist:${suggestion.label}:${suggestion.artistContent}>>`;
-      const newVal = value ? value + ', ' + artistMarker : artistMarker;
-      saveValue(newVal);
-      setInputText('');
-      setShowSuggestions(false);
-      setSuggestions([]);
-      return;
-    }
-    if (suggestion.isOC && suggestion.ocContent) {
-      const ocMarker = `<<oc:${suggestion.label}:${suggestion.ocContent}>>`;
-      const newVal = value ? value + ', ' + ocMarker : ocMarker;
-      saveValue(newVal);
-      setInputText('');
-      setShowSuggestions(false);
-      setSuggestions([]);
-      return;
-    }
-    commitInput(suggestion.value);
-    setShowSuggestions(false);
-    setSuggestions([]);
-    if (suggestion.chineseName) {
-      const cleanKey = suggestion.value.replace(/_/g, ' ').trim();
-      if (cleanKey && !tagTranslations.has(cleanKey)) {
-        setTagTranslations(prev => new Map(prev).set(cleanKey, suggestion.chineseName!));
-      }
-    }
-  }, [commitInput, tagTranslations, inputText, value, saveValue, editingTag, commitEdit]);
+  const { nlTranslating, selectSuggestion } = useDesktopSuggestionSelection({
+    value,
+    inputText,
+    editingTag,
+    tagTranslations,
+    saveValue,
+    commitInput,
+    commitEdit,
+    setInputText,
+    setShowSuggestions,
+    setSuggestions,
+    setTagTranslations,
+  });
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData('text');
