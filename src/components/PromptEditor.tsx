@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useRef, useState } from 'react';
 import { EditorContent } from '@tiptap/react';
-import { fetchWikiChineseNames, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { fetchWikiChineseNames, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
@@ -19,7 +19,8 @@ import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
 import { useMultiSelectActions } from './prompt-editor/useMultiSelectActions';
-import { requestAutocompleteAtSelection, usePromptTipTapEditor } from './prompt-editor/usePromptTipTapEditor';
+import { usePromptTipTapEditor } from './prompt-editor/usePromptTipTapEditor';
+import { useSuggestionInputEvents } from './prompt-editor/useSuggestionInputEvents';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import { useTagPanelActions } from './prompt-editor/useTagPanelActions';
 import { useTagHoverTranslation } from './prompt-editor/useTagHoverTranslation';
@@ -161,14 +162,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       }
     }, [displaySuggs]);
 
-    // 键盘上下移动时，将选中项滚入其所在分组的可视区
-    useEffect(() => {
-      if (!showSuggestions || !suggestionsRef.current) return;
-      if (suggestionScrollLockRef.current) { suggestionScrollLockRef.current = false; return; }
-      const el = suggestionsRef.current.querySelector(`[data-sugg-idx="${selectedIndex}"]`) as HTMLElement | null;
-      el?.scrollIntoView({ block: 'nearest' });
-    }, [selectedIndex, showSuggestions]);
-
     // 选择自动补全建议
     const selectSuggestion = useCallback((suggestion: TagSuggestion) => {
       if (!editor) return;
@@ -253,95 +246,22 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       setSuggestions([]);
     }, [editor, wordStart, currentWord]);
 
-    // 键盘事件处理
-    useEffect(() => {
-      if (!editor) return;
-
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (!showSuggestions || displaySuggs.length === 0) return;
-
-        switch (event.key) {
-          case 'ArrowDown':
-            event.preventDefault();
-            setSelectedIndex(prev => { let next = (prev + 1) % displaySuggs.length; if (displaySuggs[next]?.isAiLoading) next = (next + 1) % displaySuggs.length; return next; });
-            break;
-          case 'ArrowUp':
-            event.preventDefault();
-            setSelectedIndex(prev => { let next = (prev - 1 + displaySuggs.length) % displaySuggs.length; if (displaySuggs[next]?.isAiLoading) next = (next - 1 + displaySuggs.length) % displaySuggs.length; return next; });
-            break;
-          case 'Tab':
-          case 'Enter':
-            if (showSuggestions && displaySuggs[selectedIndex]) {
-              event.preventDefault();
-              const s = displaySuggs[selectedIndex];
-              if (s.isAiLoading) break; // 跳过 AI 加载占位项
-              if (s.isOrigin) {
-                const chars = s.originCharacters || [];
-                if (chars.length > 0) {
-                  const randomChar = chars[Math.floor(Math.random() * chars.length)];
-                  selectSuggestion({ ...s, value: randomChar, chineseName: lookupCharacterChineseName(randomChar), isOrigin: false });
-                }
-              } else {
-                selectSuggestion(s);
-              }
-            }
-            break;
-          case 'Escape':
-            setShowSuggestions(false);
-            break;
-        }
-      };
-
-      const editorDom = editor.view.dom;
-      editorDom.addEventListener('keydown', handleKeyDown);
-
-      return () => {
-        editorDom.removeEventListener('keydown', handleKeyDown);
-      };
-    }, [editor, showSuggestions, displaySuggs, selectedIndex, selectSuggestion]);
-
-    // IME 输入法组合事件处理
-    useEffect(() => {
-      if (!editor) return;
-
-      const editorDom = editor.view.dom;
-
-      const handleCompositionStart = () => {
-        isComposingRef.current = true;
-        // 组合开始时不再隐藏补全菜单，允许拼音组合时也显示补全
-        // setShowSuggestions(false);
-      };
-
-      const handleCompositionEnd = () => {
-        isComposingRef.current = false;
-        // compositionend 后 ProseMirror 可能已经完成了最后一次 onUpdate（在 compositionend 之前），
-        // 所以不会再有新的 onUpdate 触发。必须主动执行一次补全检测。
-        // 使用 requestAnimationFrame + setTimeout 确保 DOM 和 ProseMirror 状态都已同步
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            if (!editor || editor.isDestroyed) return;
-            requestAutocompleteAtSelection({
-              editor,
-              isComposingRef,
-              setSuggestions,
-              setShowSuggestions,
-              setSelectedIndex,
-              setCurrentWord,
-              setWordStart,
-              setCursorPosition,
-            });
-          }, 20);
-        });
-      };
-
-      editorDom.addEventListener('compositionstart', handleCompositionStart);
-      editorDom.addEventListener('compositionend', handleCompositionEnd);
-
-      return () => {
-        editorDom.removeEventListener('compositionstart', handleCompositionStart);
-        editorDom.removeEventListener('compositionend', handleCompositionEnd);
-      };
-    }, [editor]);
+    useSuggestionInputEvents({
+      editor,
+      suggestions: displaySuggs,
+      showSuggestions,
+      selectedIndex,
+      suggestionsRef,
+      suggestionScrollLockRef,
+      isComposingRef,
+      onSelectSuggestion: selectSuggestion,
+      setSuggestions,
+      setShowSuggestions,
+      setSelectedIndex,
+      setCurrentWord,
+      setWordStart,
+      setCursorPosition,
+    });
 
     // 点击外部关闭自动补全
     useEffect(() => {
