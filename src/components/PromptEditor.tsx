@@ -1,16 +1,15 @@
 import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useMemo, useRef, useLayoutEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Eye, EyeOff } from 'lucide-react';
 import { getTagSuggestionsDebounced, fetchWikiChineseNames, fetchWikiExistsBatch, fetchTagWikiPreview, fetchTagWikiSummaryZh, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
 import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
 import { MultiSelectQuickPanel, type MultiSelectPanelState } from './prompt-editor/MultiSelectQuickPanel';
+import { HoverTagTranslationOverlay, NaturalLanguageLoadingPortal, SelectedTagHighlight } from './prompt-editor/PromptEditorOverlays';
 import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
 import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
@@ -1690,131 +1689,22 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
           onHide={() => hideSuggestionWikiPreview(80)}
         />
 
-        {/* 自然语言翻译加载浮层 */}
-        {nlTranslating && createPortal(
-          <div className="fixed z-[99999] flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1a1a]/90 backdrop-blur-md rounded-lg shadow-lg border border-cyan-500/20"
-            style={{ top: nlTranslating.top + 4, left: nlTranslating.left }}>
-            <span className="inline-block w-3 h-3 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-            <span className="text-xs text-cyan-200/80">翻译中...</span>
-          </div>,
-          document.body
-        )}
+        <NaturalLanguageLoadingPortal position={nlTranslating} />
 
-        {/* 标签翻译提示 - hover 时虚线下划线（面板打开时隐藏） */}
-        {editor && hoverTagRange && !tagPanel && (
-          (() => {
-            const docSize = editor.state.doc.content.size;
-            if (hoverTagRange.from < 0 || hoverTagRange.to > docSize) return null;
+        <HoverTagTranslationOverlay
+          editor={editor}
+          containerRef={containerRef}
+          hoverTagRange={hoverTagRange}
+          tagPanelOpen={Boolean(tagPanel)}
+          tagTooltip={tagTooltip}
+          isLoadingTranslation={isLoadingTranslation}
+        />
 
-            try {
-              const startCoords = editor.view.coordsAtPos(hoverTagRange.from);
-              const endCoords = editor.view.coordsAtPos(hoverTagRange.to);
-              const editorRect = containerRef.current?.getBoundingClientRect();
-              if (!editorRect) return null;
-
-              const isMultiLine = Math.abs(startCoords.top - endCoords.top) > 5;
-
-              // hover 虚线下划线样式
-              const underlineStyle: React.CSSProperties = {
-                height: 0,
-                borderBottom: '1.5px dashed rgba(252, 237, 164, 0.6)',
-                pointerEvents: 'none' as const,
-                position: 'absolute' as const,
-              };
-
-              // 翻译气泡
-              const renderTooltip = (anchorLeft: number, anchorBottom: number) => (
-                tagTooltip ? (
-                  <div className="absolute pointer-events-none z-30" style={{ left: anchorLeft, top: anchorBottom + 4 }}>
-                    <div className="px-2 py-1 bg-[#1a1a2e]/95 text-[#fceda4]/90 text-xs rounded shadow-md whitespace-nowrap border border-[#fceda4]/15">{tagTooltip.translation}</div>
-                  </div>
-                ) : isLoadingTranslation ? (
-                  <div className="absolute pointer-events-none z-30" style={{ left: anchorLeft, top: anchorBottom + 4 }}>
-                    <div className="px-2 py-1 bg-[#1a1a2e]/95 text-[#fceda4]/90 text-xs rounded shadow-md whitespace-nowrap flex items-center border border-[#fceda4]/15">
-                      <span className="inline-block w-3 h-3 border-2 border-[#fceda4]/25 border-t-[#fceda4]/70 rounded-full animate-spin" />
-                    </div>
-                  </div>
-                ) : null
-              );
-
-              if (isMultiLine) {
-                const line1Left = startCoords.left - editorRect.left;
-                const line1Width = editorRect.width - line1Left - 8;
-                const line2Left = 8;
-                const line2Width = endCoords.right - editorRect.left - 8;
-
-                return (
-                  <>
-                    <div style={{ ...underlineStyle, left: line1Left, top: startCoords.bottom - editorRect.top, width: line1Width }} />
-                    <div style={{ ...underlineStyle, left: line2Left, top: endCoords.bottom - editorRect.top, width: line2Width }} />
-                    {renderTooltip(line2Left, endCoords.bottom - editorRect.top)}
-                  </>
-                );
-              }
-
-              const left = startCoords.left - editorRect.left;
-              const width = endCoords.right - startCoords.left;
-              const bottom = startCoords.bottom - editorRect.top;
-
-              return (
-                <>
-                  <div style={{ ...underlineStyle, left, top: bottom, width }} />
-                  {renderTooltip(left, bottom)}
-                </>
-              );
-            } catch { return null; }
-          })()
-        )}
-
-        {/* 选中标签高亮（面板打开时）- 实线下划线 + 背景 */}
-        {editor && tagPanel && (() => {
-          try {
-            const docSize = editor.state.doc.content.size;
-            if (tagPanel.from < 0 || tagPanel.to > docSize) return null;
-
-            const startCoords = editor.view.coordsAtPos(tagPanel.from);
-            const endCoords = editor.view.coordsAtPos(tagPanel.to);
-            const editorRect = containerRef.current?.getBoundingClientRect();
-            if (!editorRect) return null;
-
-            const isMultiLine = Math.abs(startCoords.top - endCoords.top) > 5;
-
-            // 选中样式：背景 + 实线下划线
-            const selectedBg: React.CSSProperties = {
-              backgroundColor: 'rgba(252, 237, 164, 0.12)',
-              borderBottom: '2px solid rgba(252, 237, 164, 0.8)',
-              pointerEvents: 'none' as const,
-              position: 'absolute' as const,
-              borderRadius: '2px 2px 0 0',
-            };
-
-            if (isMultiLine) {
-              const line1Left = startCoords.left - editorRect.left;
-              const line1Width = editorRect.width - line1Left - 8;
-              const line2Left = 8;
-              const line2Width = endCoords.right - editorRect.left - 8;
-              return (
-                <>
-                  <div style={{
-                    ...selectedBg, left: line1Left, top: startCoords.top - editorRect.top,
-                    width: line1Width, height: startCoords.bottom - startCoords.top
-                  }} />
-                  <div style={{
-                    ...selectedBg, left: line2Left, top: endCoords.top - editorRect.top,
-                    width: line2Width, height: endCoords.bottom - endCoords.top
-                  }} />
-                </>
-              );
-            }
-
-            const left = startCoords.left - editorRect.left;
-            const width = endCoords.right - startCoords.left;
-            const top = startCoords.top - editorRect.top;
-            const height = startCoords.bottom - startCoords.top;
-
-            return <div style={{ ...selectedBg, left, top, width, height }} />;
-          } catch { return null; }
-        })()}
+        <SelectedTagHighlight
+          editor={editor}
+          containerRef={containerRef}
+          tagPanel={tagPanel}
+        />
 
         <TagQuickPanel
           panel={tagPanel}
