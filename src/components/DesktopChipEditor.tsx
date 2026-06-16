@@ -5,13 +5,6 @@ import {
   Trash2,
   Copy,
   ExternalLink,
-  Languages,
-  Palette,
-  Users,
-  Dices,
-  User,
-  Sparkles,
-  Tag,
   Plus,
   Eye,
   EyeOff,
@@ -21,11 +14,11 @@ import { getTagSuggestionsDebounced, fetchWikiChineseNames, type TagSuggestion, 
 import { translateSegments } from '../services/translate';
 import { getAppSettings } from '../services/localLibrary';
 import { getBackendUrl } from '../utils/apiConfig';
+import { DesktopSuggestionDropdown } from './desktop-chip-editor/DesktopSuggestionDropdown';
 import { useDesktopSuggestionSelection } from './desktop-chip-editor/useDesktopSuggestionSelection';
 import { useDesktopPanelActions, useDesktopTagActions } from './desktop-chip-editor/useDesktopTagActions';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
-import { canCheckSuggestionWiki, normalizeWikiTagKey } from './prompt-editor/wikiUtils';
 import { RelatedTagsRow } from './RelatedTagsRow';
 import { getMarkerVisual } from './tag-manager/markerVisual';
 import {
@@ -961,159 +954,22 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
         </div>
       </div>
 
-      {showSuggestions && displaySuggs.length > 0 && suggestionPos && (() => {
-        const SECTION_MAX_H: Record<string, number> = {
-          nl: 47, artists: 141, ocs: 141, characters: 141, origins: 141, danbooru: 282,
-        };
-        const getSectionInfo = (s: TagSuggestion) => {
-          if (s.isAiLoading) return { key: 'danbooru', label: '标签', color: '#fcd34d', Icon: Tag };
-          if (s.isNaturalLanguage) return { key: 'nl', label: '翻译', color: '#67e8f9', Icon: Languages };
-          if (s.isArtist) return { key: 'artists', label: '画师', color: '#f0abfc', Icon: Palette };
-          if (s.isOC) return { key: 'ocs', label: 'OC', color: '#86efac', Icon: Users };
-          if (s.isOrigin) return { key: 'origins', label: '作品', color: '#d8b4fe', Icon: Dices };
-          if (s.source === 'local') return { key: 'characters', label: '角色', color: '#7dd3fc', Icon: User };
-          return { key: 'danbooru', label: '标签', color: '#fcd34d', Icon: Tag };
-        };
-        const sectionsMap = new Map<string, { label: string; color: string; Icon: typeof Tag; items: { s: TagSuggestion; index: number }[] }>();
-        const orderKeys: string[] = [];
-        displaySuggs.forEach((s, index) => {
-          const info = getSectionInfo(s);
-          if (!sectionsMap.has(info.key)) {
-            sectionsMap.set(info.key, { label: info.label, color: info.color, Icon: info.Icon, items: [] });
-            orderKeys.push(info.key);
-          }
-          sectionsMap.get(info.key)!.items.push({ s, index });
-        });
-        const sections = orderKeys.map(k => ({ key: k, ...sectionsMap.get(k)! }));
-        const isMulti = sections.length > 1;
-
-        return createPortal(
-          <div ref={suggestionsRef} className="chip-suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden flex flex-col"
-            style={(() => {
-              const MAX_H = 600, GAP = 4, MARGIN = 8, MIN_H = 120, ITEM_H = 47;
-              const vh = window.innerHeight;
-              const anchorBottomVp = suggestionPos.top - window.scrollY;
-              const anchorTopVp = anchorBottomVp - 28;
-              const spaceBelow = vh - anchorBottomVp - MARGIN - GAP;
-              const spaceAbove = anchorTopVp - MARGIN - GAP;
-              const desiredH = Math.min(
-                MAX_H,
-                isMulti
-                  ? sections.reduce((acc, s) => acc + Math.min(SECTION_MAX_H[s.key] ?? 168, s.items.length * ITEM_H), 0)
-                  : Math.min(360, displaySuggs.length * ITEM_H)
-              );
-              const placeAbove = desiredH > spaceBelow && spaceAbove > spaceBelow;
-              const maxH = Math.max(MIN_H, Math.min(desiredH, placeAbove ? spaceAbove : spaceBelow));
-              const top = placeAbove ? anchorTopVp - GAP - maxH : anchorBottomVp + GAP;
-              const left = suggestionPos.left - window.scrollX;
-              return { top, left, minWidth: 240, maxWidth: 380, maxHeight: maxH };
-            })()}>
-            {sections.map((sec) => {
-              return (
-                <div key={sec.key} className="flex flex-col min-h-0">
-                  <div className="overflow-y-auto scrollbar-hide" style={{ maxHeight: isMulti ? (SECTION_MAX_H[sec.key] ?? 168) : 360 }}>
-                    {sec.items.map(({ s: suggestion, index }) => {
-                      if (suggestion.isAiLoading) {
-                        return (
-                          <div key="__ai_loading__" data-sugg-idx={index} className="px-3 py-2 flex items-center gap-2 text-[#8b949e] border-l-2 border-transparent">
-                            <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
-                            <span className="text-[11px]">AI 推荐加载中…</span>
-                          </div>
-                        );
-                      }
-                      const isSel = index === selectedSuggIdx;
-
-                      const typeInfo = (() => {
-                        if (suggestion.isNaturalLanguage) return { color: '#67e8f9', Icon: Languages, label: '翻译' };
-                        if (suggestion.isArtist) return { color: '#f0abfc', Icon: Palette, label: '画师' };
-                        if (suggestion.isOC) return { color: '#86efac', Icon: Users, label: 'OC' };
-                        if (suggestion.isOrigin) return { color: '#d8b4fe', Icon: Dices, label: '作品' };
-                        if (suggestion.source === 'local') return { color: '#7dd3fc', Icon: User, label: '角色' };
-                        if (suggestion.verified && !suggestion.postCount) return { color: '#fceda4', Icon: Sparkles, label: '标签' };
-                        return { color: '#fcd34d', Icon: Tag, label: '标签' };
-                      })();
-                      const { Icon } = typeInfo;
-
-                      const mainText = suggestion.isNaturalLanguage
-                        ? suggestion.label
-                        : suggestion.value;
-
-                      const subtitle = suggestion.isNaturalLanguage
-                        ? suggestion.chineseName
-                        : suggestion.isArtist
-                          ? '画师串'
-                          : suggestion.isOC
-                            ? (suggestion.chineseName || 'OC')
-                            : suggestion.isOrigin
-                              ? `${suggestion.chineseName || ''}${suggestion.chineseName ? ' · ' : ''}${suggestion.originCharCount}个角色`
-                              : (suggestion.chineseName && getAppSettings().autocompleteShowWiki ? suggestion.chineseName : null);
-
-                      const countText = suggestion.postCount && !suggestion.isOrigin && !suggestion.isArtist && !suggestion.isOC
-                        ? (suggestion.postCount >= 1000 ? `${(suggestion.postCount / 1000).toFixed(0)}k` : String(suggestion.postCount))
-                        : null;
-                      const wikiKey = normalizeWikiTagKey(suggestion.value);
-                      const wikiState = suggestionWikiMap[wikiKey];
-
-                      return (
-                        <div key={`${suggestion.value}-${suggestion.isNaturalLanguage ? 'nl' : suggestion.isArtist ? 'artist' : suggestion.isOC ? 'oc' : suggestion.isOrigin ? 'origin' : suggestion.source}`}
-                          data-sugg-idx={index}
-                          className={`chip-sugg-item px-2.5 py-1.5 cursor-pointer flex items-center gap-2 border-l-2 transition-colors duration-150 ${isSel ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}
-                          style={{ borderLeftColor: isSel ? typeInfo.color : `${typeInfo.color}55` }}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => { if (suggestion.isOrigin) { const chars = suggestion.originCharacters || []; if (chars.length > 0) { const rc = chars[Math.floor(Math.random() * chars.length)]; selectSuggestion({ ...suggestion, value: rc, chineseName: lookupCharacterChineseName(rc), isOrigin: false }); } } else selectSuggestion(suggestion); }}
-                          onMouseEnter={() => {
-                            suggestionScrollLockRef.current = true;
-                            setSelectedSuggIdx(prev => prev === index ? prev : index);
-                          }}
-                          >
-                          <Icon className="shrink-0 w-3.5 h-3.5 transition-opacity duration-150" style={{ color: typeInfo.color, opacity: isSel ? 1 : 0.75 }} />
-                          <div className="flex flex-col min-w-0 flex-1 overflow-hidden leading-tight gap-0.5">
-                            <span className={`${suggestion.isNaturalLanguage ? 'text-[14px]' : 'font-tag text-[14px]'} truncate transition-colors duration-150 ${isSel ? 'text-white' : 'text-[#d4d4d4]'}`} title={mainText}>
-                              {mainText}
-                            </span>
-                            {subtitle && (
-                              <span className={`chip-chinese-name-fade text-[11px] truncate transition-colors duration-150 ${isSel ? 'text-white/55' : 'text-[#6e7681]'}`} title={subtitle}>
-                                {subtitle}
-                              </span>
-                            )}
-                          </div>
-                          {countText && (
-                            <span className={`shrink-0 ml-auto text-right text-[10px] tabular-nums transition-colors duration-150 ${isSel ? 'text-white/60' : 'text-[#6e7681]'}`}>
-                              {countText}
-                            </span>
-                          )}
-                          {canCheckSuggestionWiki(suggestion) && (
-                            wikiState === false ? (
-                              <span
-                                className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681]/35 cursor-default inline-flex items-center justify-center`}
-                                title="无 Wiki 数据"
-                                onMouseDown={(e) => e.preventDefault()}
-                              >
-                                <EyeOff className="w-4 h-4" />
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681] hover:text-[#fceda4] hover:bg-white/[0.08] transition-colors inline-flex items-center justify-center`}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseEnter={(e) => { e.stopPropagation(); showSuggestionWikiPreview(suggestion, e.currentTarget, 100, wikiState === true); }}
-                                onMouseLeave={() => hideSuggestionWikiPreview()}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                            )
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>, document.body
-        );
-      })()}
+      {showSuggestions && (
+        <DesktopSuggestionDropdown
+          suggestions={displaySuggs}
+          selectedIndex={selectedSuggIdx}
+          suggestionPos={suggestionPos}
+          suggestionsRef={suggestionsRef}
+          suggestionWikiMap={suggestionWikiMap}
+          onSelectSuggestion={selectSuggestion}
+          onHighlight={(index) => {
+            suggestionScrollLockRef.current = true;
+            setSelectedSuggIdx(prev => prev === index ? prev : index);
+          }}
+          onShowWikiPreview={showSuggestionWikiPreview}
+          onHideWikiPreview={hideSuggestionWikiPreview}
+        />
+      )}
 
       <SuggestionWikiPreviewCard
         preview={suggestionWikiPreview}
