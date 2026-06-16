@@ -58,10 +58,7 @@ import {
 } from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useDragDrop } from '../../contexts/DragDropContext';
-import { registerBackHandler } from './MobileLayout';
 import {
-  getAppSettings,
   getPromptPresets,
   savePromptPresets,
   getActivePresetId,
@@ -109,7 +106,6 @@ import { copyToClipboard } from '../../utils/clipboard';
 import { getBackendUrl } from '../../utils/apiConfig';
 import { parseCharacterPromptContent } from '../../utils/promptParser';
 import {
-  botService,
   addCloudTombstone,
   deleteCloudVibe,
   putCloudTagPool,
@@ -134,15 +130,12 @@ import { CloudManageModal } from '../vibe/CloudManageModal';
 import { cloudSyncQueue, type CloudSyncQueueStatus } from '../../services/cloudSyncQueue';
 import { shouldShowOnboarding, setOnboardingState } from '../../services/syncOnboarding';
 import {
-  getAnlas,
-  type AnlasInfo,
   type GenerateImageParams,
   type VibeReference,
   generateImageStream,
   encodeVibeImage,
   processCRImage,
   processImg2ImgImage,
-  updateCachedIsOpus,
 } from '../../services/novelai';
 import {
   translateChineseInPrompt,
@@ -183,6 +176,13 @@ import {
 } from '../generation/modelResolutionOptions';
 import { FullscreenEditor, expandCollapsibleMarkers } from './FullscreenEditor';
 import { blobToBase64 } from './imageUtils';
+import {
+  useMobileBackHandlers,
+  useMobileEditorStateBridge,
+  useMobileMetadataImportHandler,
+} from './generate/useMobileGeneratePageEffects';
+import { useMobileAnlas } from './generate/useMobileAnlas';
+import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
   ActiveCR,
   ActivePreciseRef,
@@ -221,36 +221,38 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   const { isAuthenticated, requireAuth } = useAuth();
   const currentUserId = getPublicLibraryOwnerId();
 
-  // 从 localStorage 恢复状态
-  const getSavedState = () => {
-    try {
-      const saved = localStorage.getItem('mobile_generate_state');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Failed to load saved state:', e);
-    }
-    return null;
-  };
-
-  const savedState = getSavedState();
-
-  const [localWidth, setLocalWidth] = useState(savedState?.localWidth ?? targetWidth);
-  const [localHeight, setLocalHeight] = useState(savedState?.localHeight ?? targetHeight);
-  const [model, setModel] = useState(savedState?.model ?? 'v4.5-full');
-  const [positivePrompt, setPositivePrompt] = useState(savedState?.positivePrompt ?? '');
-  const [negativePrompt, setNegativePrompt] = useState(savedState?.negativePrompt ?? '');
-  const [steps, setSteps] = useState(savedState?.steps ?? 28);
-
-  // 高级生成参数
-  const [scale, setScale] = useState(savedState?.scale ?? 5);
-  const [sampler, setSampler] = useState(savedState?.sampler ?? 'k_euler_ancestral');
-  const [noiseSchedule, setNoiseSchedule] = useState(savedState?.noiseSchedule ?? 'karras');
-  const [cfgRescale, setCfgRescale] = useState(savedState?.cfgRescale ?? 0);
-  const [varietyPlus, setVarietyPlus] = useState(savedState?.varietyPlus ?? false);
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
-  const [isPresetExpanded, setIsPresetExpanded] = useState(false);
+  const {
+    localWidth,
+    setLocalWidth,
+    localHeight,
+    setLocalHeight,
+    model,
+    setModel,
+    positivePrompt,
+    setPositivePrompt,
+    negativePrompt,
+    setNegativePrompt,
+    steps,
+    setSteps,
+    scale,
+    setScale,
+    sampler,
+    setSampler,
+    noiseSchedule,
+    setNoiseSchedule,
+    cfgRescale,
+    setCfgRescale,
+    varietyPlus,
+    setVarietyPlus,
+    showAdvancedSettings,
+    setShowAdvancedSettings,
+    isPresetExpanded,
+    setIsPresetExpanded,
+    characterPrompts,
+    setCharacterPrompts,
+    activePresetId,
+    setActivePresetId,
+  } = useMobileGenerationParams({ targetWidth, targetHeight });
 
   // 全屏编辑器状态
   const [editorOpen, setEditorOpen] = useState<'prompt' | 'undesired' | null>(null);
@@ -266,9 +268,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   // 翻译状态
   const [isTranslating, setIsTranslating] = useState(false);
 
-  // Anlas 状态
-  const [anlasInfo, setAnlasInfo] = useState<AnlasInfo | null>(null);
-  const [isLoadingAnlas, setIsLoadingAnlas] = useState(false);
+  const { anlasInfo, isLoadingAnlas, fetchAnlas } = useMobileAnlas(isGenerating);
 
   // 下拉菜单状态
   const [showModelDropdown, setShowModelDropdown] = useState(false);
@@ -401,28 +401,9 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   }, [setImage]);
 
   // Character Prompts 状态
-  const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(() => {
-    if (savedState?.characterPrompts) {
-      return savedState.characterPrompts.map((c: any) => ({
-        id: c.id || Date.now().toString(),
-        positive: c.positive || '',
-        negative: c.negative || '',
-        activeTab: 'prompt' as const,
-        enabled: c.enabled ?? true,
-        position: c.position || '',
-        name: c.name,
-      }));
-    }
-    return [];
-  });
   const [isCharacterExpanded, setIsCharacterExpanded] = useState(true);
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
-
-  // 通知父组件编辑器状态变化
-  useEffect(() => {
-    onEditorStateChange?.(editorOpen !== null || editingCharacterId !== null || showAIAssistant);
-  }, [editorOpen, editingCharacterId, showAIAssistant, onEditorStateChange]);
 
   // 灵感弹窗
   const [isInspirationModalOpen, setIsInspirationModalOpen] = useState(false);
@@ -446,7 +427,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
   // 预设状态
   const [promptPresets, setPromptPresets] = useState<PromptPresetData[]>([]);
-  const [activePresetId, setActivePresetId] = useState<string>(savedState?.activePresetId ?? 'heavy');
 
   // OC 状态
   const [showOCModal, setShowOCModal] = useState(false);
@@ -501,6 +481,39 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     cleanImports: true,
   });
   const [includeCharacter, setIncludeCharacter] = useState(true);
+
+  useMobileEditorStateBridge({
+    editorOpen,
+    editingCharacterId,
+    showAIAssistant,
+    onEditorStateChange,
+  });
+  useMobileMetadataImportHandler({
+    setPositivePrompt,
+    setNegativePrompt,
+  });
+  useMobileBackHandlers({
+    editorOpen,
+    setEditorOpen,
+    editingCharacterId,
+    setEditingCharacterId,
+    editingPositionId,
+    setEditingPositionId,
+    showAIAssistant,
+    setShowAIAssistant,
+    showImageImportModal,
+    setShowImageImportModal,
+    isInspirationModalOpen,
+    setIsInspirationModalOpen,
+    showArtistModal,
+    setShowArtistModal,
+    showOCModal,
+    setShowOCModal,
+    showVibeModal,
+    setShowVibeModal,
+    showCRModal,
+    setShowCRModal,
+  });
 
   // 获取当前激活的预设
   const activePreset = useMemo(
@@ -582,141 +595,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     const unsubscribe = agentService.addEventListener(setAgentState);
     return () => unsubscribe();
   }, []);
-
-  // 注册元数据导入处理器（供工具页权重转换等使用）
-  const { setHandleMetadataImport } = useDragDrop();
-  useEffect(() => {
-    const handler = (metadata: any, options: any) => {
-      if (options.prompt && metadata.prompt) {
-        if (options.cleanImports) {
-          setPositivePrompt(metadata.prompt);
-        } else {
-          setPositivePrompt((prev: string) => prev ? `${prev}, ${metadata.prompt}` : metadata.prompt);
-        }
-      }
-      if (options.negativePrompt && metadata.negativePrompt) {
-        if (options.cleanImports) {
-          setNegativePrompt(metadata.negativePrompt);
-        } else {
-          setNegativePrompt((prev: string) => prev ? `${prev}, ${metadata.negativePrompt}` : metadata.negativePrompt);
-        }
-      }
-    };
-    setHandleMetadataImport(handler);
-    return () => setHandleMetadataImport(null);
-  }, [setHandleMetadataImport]);
-
-  // 注册返回处理器 - 处理各种弹出层的关闭
-  useEffect(() => {
-    const handleBack = () => {
-      // 按优先级处理各种弹出层
-      if (editorOpen !== null) {
-        setEditorOpen(null);
-        return true;
-      }
-      if (editingCharacterId !== null) {
-        setEditingCharacterId(null);
-        return true;
-      }
-      if (editingPositionId !== null) {
-        setEditingPositionId(null);
-        return true;
-      }
-      if (showAIAssistant) {
-        setShowAIAssistant(false);
-        return true;
-      }
-      if (showImageImportModal) {
-        setShowImageImportModal(false);
-        return true;
-      }
-      if (isInspirationModalOpen) {
-        setIsInspirationModalOpen(false);
-        return true;
-      }
-      if (showArtistModal) {
-        setShowArtistModal(false);
-        return true;
-      }
-      if (showOCModal) {
-        setShowOCModal(false);
-        return true;
-      }
-      if (showVibeModal) {
-        setShowVibeModal(false);
-        return true;
-      }
-      if (showCRModal) {
-        setShowCRModal(false);
-        return true;
-      }
-      return false;
-    };
-
-    return registerBackHandler(handleBack);
-  }, [editorOpen, editingCharacterId, editingPositionId, showAIAssistant, showImageImportModal, isInspirationModalOpen, showArtistModal, showOCModal, showVibeModal, showCRModal]);
-
-  // 保存状态到 localStorage
-  useEffect(() => {
-    const stateToSave = {
-      localWidth,
-      localHeight,
-      model,
-      positivePrompt,
-      negativePrompt,
-      steps,
-      scale,
-      sampler,
-      noiseSchedule,
-      cfgRescale,
-      varietyPlus,
-      activePresetId,
-      characterPrompts: characterPrompts.map((c) => ({
-        id: c.id,
-        positive: c.positive,
-        negative: c.negative,
-        name: c.name,
-        enabled: c.enabled,
-        position: c.position,
-      })),
-    };
-    localStorage.setItem('mobile_generate_state', JSON.stringify(stateToSave));
-  }, [
-    localWidth,
-    localHeight,
-    model,
-    positivePrompt,
-    negativePrompt,
-    steps,
-    scale,
-    sampler,
-    noiseSchedule,
-    cfgRescale,
-    varietyPlus,
-    activePresetId,
-    characterPrompts,
-  ]);
-
-  // 获取点数
-  const fetchAnlas = async () => {
-    setIsLoadingAnlas(true);
-    try {
-      const settings = getAppSettings();
-      if (settings.loginMode === 'bot') {
-        const result = await botService.getAnlas();
-        if (result) {
-          setAnlasInfo({ fixedTrainingStepsLeft: result.anlas, purchasedTrainingSteps: 0, isOpus: true });
-          updateCachedIsOpus(true);
-        }
-      } else {
-        const info = await getAnlas();
-        setAnlasInfo(info);
-        if (info) updateCachedIsOpus(info.isOpus);
-      }
-    } finally {
-      setIsLoadingAnlas(false);
-    }
-  };
 
   // 加载 Vibes
   const loadVibes = async () => {
@@ -1196,15 +1074,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     window.addEventListener('inpaint-panel-strength-change', handler);
     return () => window.removeEventListener('inpaint-panel-strength-change', handler);
   }, []);
-
-  // 生成完成后刷新点数
-  const wasGeneratingRef = useRef(false);
-  useEffect(() => {
-    if (wasGeneratingRef.current && !isGenerating) {
-      fetchAnlas();
-    }
-    wasGeneratingRef.current = isGenerating;
-  }, [isGenerating]);
 
   // 翻译处理
   const handleTranslate = async () => {
