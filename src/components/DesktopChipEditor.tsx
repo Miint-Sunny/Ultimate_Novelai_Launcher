@@ -4,6 +4,7 @@ import { getTagSuggestionsDebounced, fetchWikiChineseNames, type TagSuggestion, 
 import { translateSegments } from '../services/translate';
 import { getAppSettings } from '../services/localLibrary';
 import { getBackendUrl } from '../utils/apiConfig';
+import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { DesktopMultiSelectPanel } from './desktop-chip-editor/DesktopMultiSelectPanel';
 import { DesktopSuggestionDropdown } from './desktop-chip-editor/DesktopSuggestionDropdown';
 import { DesktopTagQuickPanel } from './desktop-chip-editor/DesktopTagQuickPanel';
@@ -76,10 +77,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const undoStackRef = useRef<string[]>([]);
   const isUndoingRef = useRef(false);
 
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [dragGhostInfo, setDragGhostInfo] = useState<{ text: string; sub?: string } | null>(null);
-
   const [editingTag, setEditingTag] = useState<{ index: number; text: string; width: number; height: number } | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -135,6 +132,22 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     }
     saveValue(result.replace(/,\s*$/, ''));
   }, [saveValue]);
+
+  const {
+    dragIndex,
+    dragOverIndex,
+    dragGhostInfo,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleContainerDragOver,
+  } = useDesktopChipDrag({
+    parsedTags,
+    tagTranslations,
+    scrollRef,
+    rebuildValue,
+    setSelectedTags,
+  });
 
   // 现在 tagAutocomplete.reorderByConfig 已经在服务层按配置顺序/数量组装好结果，这里直接透传
   const displaySuggs = suggestions;
@@ -529,70 +542,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     });
   }, [value, onContentHeightChange]);
 
-  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
-    setDragIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index));
-    // 使用 1x1 透明像素替代默认拖拽预览
-    const emptyImg = new Image();
-    emptyImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    e.dataTransfer.setDragImage(emptyImg, 0, 0);
-    (e.currentTarget as HTMLElement).style.opacity = '0.4';
-    const rawTag = parsedTags[index];
-    const markerInfo = parseCollapsibleMarker(rawTag);
-    if (markerInfo) {
-      const tagCount = markerInfo.content.split(/[,，]/).filter(t => t.trim()).length;
-      setDragGhostInfo({ text: `${getMarkerVisual(markerInfo.type).label} · ${markerInfo.name}`, sub: `${tagCount} 个标签` });
-    } else {
-      const clean = cleanTagName(rawTag);
-      setDragGhostInfo({ text: rawTag.trim(), sub: tagTranslations.get(clean) || undefined });
-    }
-  }, [parsedTags, tagTranslations]);
-
-  const handleDragEnd = useCallback((e: React.DragEvent) => {
-    (e.currentTarget as HTMLElement).style.opacity = '1';
-    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
-      const tags = [...parsedTags]; const [moved] = tags.splice(dragIndex, 1);
-      tags.splice(dragOverIndex > dragIndex ? dragOverIndex - 1 : dragOverIndex, 0, moved);
-      rebuildValue(tags); setSelectedTags(new Set());
-    }
-    setDragIndex(null); setDragOverIndex(null); setDragGhostInfo(null);
-  }, [dragIndex, dragOverIndex, parsedTags, rebuildValue]);
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverIndex(index);
-  }, []);
-
-  // 容器级 dragOver：处理边缘自动滚动
-  const dragMouseY = useRef<number | null>(null);
-
-  // 持续自动滚动：根据鼠标位置决定滚动方向和速度
-  useEffect(() => {
-    if (dragIndex === null) {
-      dragMouseY.current = null;
-      return;
-    }
-    const timer = setInterval(() => {
-      const container = scrollRef.current;
-      const y = dragMouseY.current;
-      if (!container || y === null) return;
-      const rect = container.getBoundingClientRect();
-      const edgeZone = 50;
-      if (y < rect.top + edgeZone) {
-        const intensity = Math.max(2, Math.round((rect.top + edgeZone - y) / edgeZone * 12));
-        container.scrollTop -= intensity;
-      } else if (y > rect.bottom - edgeZone) {
-        const intensity = Math.max(2, Math.round((y - (rect.bottom - edgeZone)) / edgeZone * 12));
-        container.scrollTop += intensity;
-      }
-    }, 16);
-    return () => clearInterval(timer);
-  }, [dragIndex]);
-
-  const handleContainerDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragMouseY.current = e.clientY;
-  }, []);
-
-
   const handleChipClick = useCallback((e: React.MouseEvent, index: number) => {
     e.stopPropagation();
     chipClickTimeRef.current = Date.now();
@@ -685,62 +634,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
       }
     }
   }, [inputText, parsedTags, selectedTags, rebuildValue, saveValue]);
-
-  // 拖拽期间允许滚轮滚动（浏览器默认会阻止拖拽时的滚轮事件）
-  useEffect(() => {
-    if (dragIndex === null) return;
-    const container = scrollRef.current;
-    if (!container) return;
-    const handleWheel = (e: WheelEvent) => {
-      container.scrollTop += e.deltaY;
-    };
-    // capture 阶段拦截，确保拖拽期间也能收到 wheel 事件
-    window.addEventListener('wheel', handleWheel, { capture: true, passive: true });
-    return () => {
-      window.removeEventListener('wheel', handleWheel, { capture: true } as EventListenerOptions);
-    };
-  }, [dragIndex]);
-
-  // 原生滚轮处理，解决滚动到底部时外部接力的卡顿问题
-  // 以及 Shift+滚轮时强制垂直滚动（浏览器默认 Shift+滚轮 = 水平滚动）
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const handleWheel = (e: WheelEvent) => {
-      // 如果正在拖拽，交由上面的 capture 逻辑处理
-      if (dragIndex !== null) return;
-
-      // Shift+滚轮：浏览器默认会变成水平滚动，这里拦截并强制垂直滚动
-      if (e.shiftKey && el.scrollHeight > el.clientHeight) {
-        e.preventDefault();
-        const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
-        el.scrollTop += delta;
-        return;
-      }
-
-      // 如果内容不足以出现滚动条（如空状态），交由原生处理，保证原生顺滑的整体滚动体验
-      if (el.scrollHeight <= el.clientHeight) {
-        return;
-      }
-
-      const isAtTop = el.scrollTop <= 0;
-      const isAtBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight - 1;
-
-      if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
-        const outerScroll = el.parentElement?.closest('.overflow-y-auto, .custom-scrollbar') as HTMLElement;
-        if (outerScroll) {
-          e.preventDefault();
-          let delta = e.deltaY;
-          if (e.deltaMode === 1) delta *= 40;
-          else if (e.deltaMode === 2) delta *= outerScroll.clientHeight || 800;
-          const isTouchpad = e.deltaMode === 0 && (Math.abs(e.deltaY) < 50 || e.deltaY % 1 !== 0);
-          outerScroll.scrollBy({ top: delta, behavior: isTouchpad ? 'auto' : 'smooth' });
-        }
-      }
-    };
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, [dragIndex]);
 
   return (
     <div className={`flex flex-col h-full ${className}`} onKeyDown={handleContainerKeyDown} tabIndex={-1}>
