@@ -1,4 +1,4 @@
-import { getBackendUrl } from '../../utils/apiConfig';
+import { sidecarApi } from '../../api/sidecar';
 import { getOptionalSessionId, getPublicLibraryOwnerId } from './session';
 
 export interface PublicOCData {
@@ -78,13 +78,11 @@ export async function getPublicOCs(forceRefresh = false): Promise<PublicOCData[]
     }
   }
 
-  const backendUrl = getBackendUrl();
   try {
     const sessionId = getOptionalSessionId();
-    const response = await fetch(`${backendUrl}/api/oc/list?session_id=${encodeURIComponent(sessionId)}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: PublicOCListResponse = await response.json();
+    const data = await sidecarApi.getJson<PublicOCListResponse>(
+      `/api/oc/list?session_id=${encodeURIComponent(sessionId)}`,
+    );
     const ocs = data.ocs || [];
     setPublicOCCache(ocs);
     console.log(`[公共OC] 已从服务器获取 ${ocs.length} 个OC`);
@@ -108,23 +106,17 @@ export function clearPublicOCCache(): void {
 }
 
 export function getOCPreviewUrl(ocName: string): string {
-  return `${getBackendUrl()}/api/oc/preview/${encodeURIComponent(ocName)}`;
+  return sidecarApi.url(`/api/oc/preview/${encodeURIComponent(ocName)}`);
 }
 
 export async function createPublicOC(
   params: CreateOCParams
 ): Promise<{ success: boolean; message: string; oc?: PublicOCData }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/oc/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...params, created_by: params.created_by || getPublicLibraryOwnerId() }),
+    const data = await sidecarApi.postJson<{ message?: string; oc?: PublicOCData }>('/api/oc/create', {
+      ...params,
+      created_by: params.created_by || getPublicLibraryOwnerId(),
     });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
     clearPublicOCCache();
     return {
       success: true,
@@ -141,17 +133,11 @@ export async function updatePublicOC(
   ocName: string,
   params: UpdateOCParams
 ): Promise<{ success: boolean; message: string; oc?: PublicOCData }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/oc/${encodeURIComponent(ocName)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.putJson<{ message?: string; oc?: PublicOCData }>(
+      `/api/oc/${encodeURIComponent(ocName)}`,
+      params,
+    );
     clearPublicOCCache();
     return {
       success: true,
@@ -165,15 +151,8 @@ export async function updatePublicOC(
 }
 
 export async function deletePublicOC(ocName: string): Promise<{ success: boolean; message: string }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/oc/${encodeURIComponent(ocName)}`, {
-      method: 'DELETE',
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.deleteJson<{ message?: string }>(`/api/oc/${encodeURIComponent(ocName)}`);
     clearPublicOCCache();
     return { success: true, message: data.message || '删除成功' };
   } catch (error) {

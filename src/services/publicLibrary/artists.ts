@@ -1,4 +1,4 @@
-import { getBackendUrl } from '../../utils/apiConfig';
+import { sidecarApi } from '../../api/sidecar';
 import { getOptionalSessionId, getPublicLibraryOwnerId } from './session';
 
 export interface PublicArtistData {
@@ -73,13 +73,11 @@ export async function getPublicArtists(forceRefresh = false): Promise<PublicArti
     }
   }
 
-  const backendUrl = getBackendUrl();
   try {
     const sessionId = getOptionalSessionId();
-    const response = await fetch(`${backendUrl}/api/artists/list?session_id=${encodeURIComponent(sessionId)}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: PublicArtistListResponse = await response.json();
+    const data = await sidecarApi.getJson<PublicArtistListResponse>(
+      `/api/artists/list?session_id=${encodeURIComponent(sessionId)}`,
+    );
     const artists = data.artists || [];
     setPublicArtistCache(artists);
     console.log(`[公共画师串] 已从服务器获取 ${artists.length} 个画师串`);
@@ -103,23 +101,17 @@ export function clearPublicArtistCache(): void {
 }
 
 export function getArtistPreviewUrl(filename: string): string {
-  return `${getBackendUrl()}/api/artists/preview/${encodeURIComponent(filename)}`;
+  return sidecarApi.url(`/api/artists/preview/${encodeURIComponent(filename)}`);
 }
 
 export async function createPublicArtist(
   params: CreateArtistParams
 ): Promise<{ success: boolean; message: string; artist?: PublicArtistData }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/artists/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...params, added_by: params.added_by || getPublicLibraryOwnerId() }),
+    const data = await sidecarApi.postJson<{ message?: string; artist?: PublicArtistData }>('/api/artists/create', {
+      ...params,
+      added_by: params.added_by || getPublicLibraryOwnerId(),
     });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
     clearPublicArtistCache();
     return { success: true, message: data.message || '创建成功', artist: data.artist };
   } catch (error) {
@@ -132,17 +124,11 @@ export async function updatePublicArtist(
   artistName: string,
   params: UpdateArtistParams
 ): Promise<{ success: boolean; message: string; artist?: PublicArtistData }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/artists/${encodeURIComponent(artistName)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.putJson<{ message?: string; artist?: PublicArtistData }>(
+      `/api/artists/${encodeURIComponent(artistName)}`,
+      params,
+    );
     clearPublicArtistCache();
     return { success: true, message: data.message || '更新成功', artist: data.artist };
   } catch (error) {
@@ -152,15 +138,8 @@ export async function updatePublicArtist(
 }
 
 export async function deletePublicArtist(artistName: string): Promise<{ success: boolean; message: string }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/artists/${encodeURIComponent(artistName)}`, {
-      method: 'DELETE',
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.deleteJson<{ message?: string }>(`/api/artists/${encodeURIComponent(artistName)}`);
     clearPublicArtistCache();
     return { success: true, message: data.message || '删除成功' };
   } catch (error) {
@@ -170,12 +149,9 @@ export async function deletePublicArtist(artistName: string): Promise<{ success:
 }
 
 export async function usePublicArtist(artistName: string): Promise<boolean> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/artists/${encodeURIComponent(artistName)}/use`, {
-      method: 'POST',
-    });
-    return response.ok;
+    await sidecarApi.postJson<{ success?: boolean }>(`/api/artists/${encodeURIComponent(artistName)}/use`);
+    return true;
   } catch (error) {
     console.error('记录画师串使用失败:', error);
     return false;

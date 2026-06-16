@@ -1,4 +1,4 @@
-import { getBackendUrl } from '../../utils/apiConfig';
+import { sidecarApi } from '../../api/sidecar';
 import { getOptionalSessionId, getPublicLibraryOwnerId } from './session';
 
 export interface PublicVibeData {
@@ -84,17 +84,15 @@ export async function getPublicVibes(forceRefresh = false): Promise<PublicVibeDa
     const cache = getPublicVibeCache();
     if (cache) {
       console.log('[公共Vibe] 使用缓存数据');
-      return cache.data.map(v => ({ ...v, thumbnail: `/api/vibes/thumbnail/${v.filename}` }));
+      return cache.data.map(v => ({ ...v, thumbnail: sidecarApi.url(`/api/vibes/thumbnail/${v.filename}`) }));
     }
   }
 
-  const backendUrl = getBackendUrl();
   try {
     const sessionId = getOptionalSessionId();
-    const response = await fetch(`${backendUrl}/api/vibes/list?session_id=${encodeURIComponent(sessionId)}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data: PublicVibeListResponse = await response.json();
+    const data = await sidecarApi.getJson<PublicVibeListResponse>(
+      `/api/vibes/list?session_id=${encodeURIComponent(sessionId)}`,
+    );
     const vibes = data.vibes || [];
     setPublicVibeCache(vibes);
     console.log(`[公共Vibe] 已从服务器获取 ${vibes.length} 个Vibe`);
@@ -106,7 +104,7 @@ export async function getPublicVibes(forceRefresh = false): Promise<PublicVibeDa
       if (cached) {
         const cache: PublicVibeCache = JSON.parse(cached);
         console.log('[公共Vibe] 使用过期缓存作为fallback');
-        return cache.data.map(v => ({ ...v, thumbnail: `/api/vibes/thumbnail/${v.filename}` }));
+        return cache.data.map(v => ({ ...v, thumbnail: sidecarApi.url(`/api/vibes/thumbnail/${v.filename}`) }));
       }
     } catch { }
     return [];
@@ -114,11 +112,8 @@ export async function getPublicVibes(forceRefresh = false): Promise<PublicVibeDa
 }
 
 export async function getPublicVibeFile(filename: string): Promise<Record<string, unknown> | null> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/vibes/file/${encodeURIComponent(filename)}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
+    return await sidecarApi.getJson<Record<string, unknown>>(`/api/vibes/file/${encodeURIComponent(filename)}`);
   } catch (error) {
     console.error('获取Vibe文件失败:', error);
     return null;
@@ -130,15 +125,12 @@ export async function fetchPublicVibeEncoding(
   model: string,
   informationExtracted: number
 ): Promise<string | null> {
-  const backendUrl = getBackendUrl();
-  if (!backendUrl) return null;
-
   try {
     const params = new URLSearchParams({ model, ie: String(informationExtracted) });
-    const response = await fetch(`${backendUrl}/api/vibes/encoding/${encodeURIComponent(filename)}?${params}`);
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data.found ? data.encoding : null;
+    const data = await sidecarApi.getJson<{ found?: boolean; encoding?: string }>(
+      `/api/vibes/encoding/${encodeURIComponent(filename)}?${params}`,
+    );
+    return data.found && data.encoding ? data.encoding : null;
   } catch {
     return null;
   }
@@ -149,17 +141,11 @@ export function clearPublicVibeCache(): void {
 }
 
 export async function deletePublicVibe(filename: string): Promise<{ success: boolean; message?: string }> {
-  const backendUrl = getBackendUrl();
   const sessionId = getOptionalSessionId();
   try {
-    const response = await fetch(
-      `${backendUrl}/api/vibes/file/${encodeURIComponent(filename)}?session_id=${encodeURIComponent(sessionId)}`,
-      { method: 'DELETE' }
+    await sidecarApi.deleteJson<{ success?: boolean }>(
+      `/api/vibes/file/${encodeURIComponent(filename)}?session_id=${encodeURIComponent(sessionId)}`,
     );
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || `HTTP ${response.status}`);
-    }
     clearPublicVibeCache();
     return { success: true };
   } catch (error) {
@@ -172,21 +158,17 @@ export async function updatePublicVibeMeta(
   filename: string,
   meta: { name?: string; defaultStrength?: number; defaultInfoExtracted?: number }
 ): Promise<{ success: boolean; message?: string }> {
-  const backendUrl = getBackendUrl();
   const sessionId = getOptionalSessionId();
   try {
-    const response = await fetch(`${backendUrl}/api/vibes/file/${encodeURIComponent(filename)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    await sidecarApi.putJson<{ success?: boolean }>(
+      `/api/vibes/file/${encodeURIComponent(filename)}`,
+      {
         session_id: sessionId,
         name: meta.name,
         default_strength: meta.defaultStrength,
         default_info_extracted: meta.defaultInfoExtracted,
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+      },
+    );
     clearPublicVibeCache();
     return { success: true };
   } catch (error) {
@@ -199,17 +181,15 @@ export async function uploadVibeToPublic(
   vibeData: Record<string, unknown>,
   name?: string
 ): Promise<{ success: boolean; message: string; filename?: string }> {
-  const backendUrl = getBackendUrl();
   const sessionId = getOptionalSessionId();
   const uploaderId = getPublicLibraryOwnerId();
   try {
-    const response = await fetch(`${backendUrl}/api/vibes/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vibe_data: vibeData, name, session_id: sessionId, uploader_id: uploaderId }),
+    const data = await sidecarApi.postJson<{ message?: string; filename?: string }>('/api/vibes/upload', {
+      vibe_data: vibeData,
+      name,
+      session_id: sessionId,
+      uploader_id: uploaderId,
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
     clearPublicVibeCache();
     return { success: true, message: data.message || '上传成功', filename: data.filename };
   } catch (error) {

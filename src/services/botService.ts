@@ -3,6 +3,7 @@
  */
 
 import { getBackendUrl, getQueueServerUrl } from '../utils/apiConfig';
+import { sidecarApi } from '../api/sidecar';
 
 export interface BotAuthState {
   isAuthorized: boolean;
@@ -587,12 +588,12 @@ class BotService {
    */
   async getAnlas(): Promise<{ anlas: number; fresh: boolean } | null> {
     try {
-      const serverUrl = getQueueServerUrl();
-      const response = await fetch(`${serverUrl}/api/anlas`);
-      if (response.ok) {
-        const data = await response.json();
-        return { anlas: data.anlas, fresh: data.fresh };
-      }
+      const info = await sidecarApi.getAnlas();
+      if (!info) return null;
+      return {
+        anlas: info.fixedTrainingStepsLeft + info.purchasedTrainingSteps,
+        fresh: true,
+      };
     } catch (error) {
       console.error('获取点数失败:', error);
     }
@@ -1153,10 +1154,6 @@ class OnlineService {
     });
   }
 
-  private getServerUrl(): string {
-    return getBackendUrl();
-  }
-
   /**
    * 启动心跳（每60秒发送一次）
    */
@@ -1172,15 +1169,8 @@ class OnlineService {
 
   private async sendHeartbeat() {
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/online/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: this.userId }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        this.emit(data.count);
-      }
+      const data = await sidecarApi.postJson<{ count: number }>('/api/online/heartbeat', { user_id: this.userId });
+      this.emit(data.count);
     } catch (e) {
       // 静默失败，不影响用户体验
     }
@@ -1191,11 +1181,8 @@ class OnlineService {
    */
   async fetchCount() {
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/online/count`);
-      if (response.ok) {
-        const data = await response.json();
-        this.emit(data.count);
-      }
+      const data = await sidecarApi.getJson<{ count: number }>('/api/online/count');
+      this.emit(data.count);
     } catch (e) {
       // 静默失败
     }

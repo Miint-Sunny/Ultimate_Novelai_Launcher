@@ -4,7 +4,7 @@
  * - 中译英：用于将提示词中的中文替换为英文
  */
 
-import { getBackendUrl } from '../utils/apiConfig';
+import { sidecarApi } from '../api/sidecar';
 
 export interface ChatMessage {
   role: string;
@@ -16,29 +16,11 @@ export async function requestSidecarChatCompletion(
   temperature = 0.3,
   maxTokens = 1000
 ): Promise<any> {
-  const backendUrl = getBackendUrl();
-  const response = await fetch(`${backendUrl}/api/translate/en2zh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  return sidecarApi.postJson('/api/translate/en2zh', {
       messages,
       temperature,
       max_tokens: maxTokens,
-    }),
   });
-
-  if (!response.ok) {
-    let detail = `API error: ${response.status}`;
-    try {
-      const body = await response.json();
-      detail = body?.detail?.message || body?.detail || detail;
-    } catch {
-      // keep status-only error
-    }
-    throw new Error(String(detail));
-  }
-
-  return response.json();
 }
 
 // ==================== 标签翻译映射库 ====================
@@ -63,24 +45,18 @@ async function lookupTagTranslations(tags: string[]): Promise<Record<string, str
     normalizedMap.get(key)!.push(tag);
   }
   try {
-    const backendUrl = getBackendUrl();
-    const res = await fetch(`${backendUrl}/api/tags/translations/lookup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tags: [...normalizedMap.keys()] }),
+    const data = await sidecarApi.postJson<Record<string, string>>('/api/tags/translations/lookup', {
+      tags: [...normalizedMap.keys()],
     });
-    if (res.ok) {
-      const data: Record<string, string> = await res.json();
-      // 将结果映射回所有原始 tag 形式
-      const result: Record<string, string> = {};
-      for (const [normalized, zh] of Object.entries(data)) {
-        const originals = normalizedMap.get(normalized) || [normalized];
-        for (const orig of originals) {
-          result[orig] = zh;
-        }
+    // 将结果映射回所有原始 tag 形式
+    const result: Record<string, string> = {};
+    for (const [normalized, zh] of Object.entries(data)) {
+      const originals = normalizedMap.get(normalized) || [normalized];
+      for (const orig of originals) {
+        result[orig] = zh;
       }
-      return result;
     }
+    return result;
   } catch (e) {
     console.warn('[TagTranslations] lookup failed:', e);
   }
@@ -92,12 +68,7 @@ async function lookupTagTranslations(tags: string[]): Promise<Record<string, str
  */
 function submitTagTranslations(entries: { tag: string; zh: string; source: 'ai' | 'wiki' }[]): void {
   if (entries.length === 0) return;
-  const backendUrl = getBackendUrl();
-  fetch(`${backendUrl}/api/tags/translations/submit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ entries }),
-  }).catch(() => {});
+  sidecarApi.postJson('/api/tags/translations/submit', { entries }).catch(() => {});
 }
 
 // 导出供 tagAutocomplete 使用

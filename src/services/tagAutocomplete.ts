@@ -1,5 +1,6 @@
 // Danbooru 标签自动补全服务
 import { getBackendUrl } from '../utils/apiConfig';
+import { sidecarApi } from '../api/sidecar';
 import { getAppSettings, type AutocompleteSourceId, type AutocompleteSourceConfig } from './localLibrary';
 import { requestSidecarChatCompletion, submitTagTranslations } from './translate';
 import { botService } from './botService';
@@ -146,13 +147,8 @@ async function loadRoleTagMapping() {
   if (roleTagMapping) return roleTagMapping;
 
   try {
-    const backendUrl = getBackendUrl();
-    const res = await fetch(`${backendUrl}/api/data/role_tag_mapping.json`);
-    console.log('Loading role_tag_mapping.json, status:', res.status);
-    if (res.ok) {
-      roleTagMapping = await res.json();
-      console.log('Loaded role_tag_mapping.json, entries:', Object.keys(roleTagMapping || {}).length);
-    }
+    roleTagMapping = await sidecarApi.getJson<typeof roleTagMapping>('/api/data/role_tag_mapping.json');
+    console.log('Loaded role_tag_mapping.json, entries:', Object.keys(roleTagMapping || {}).length);
   } catch (e) {
     console.warn('Failed to load role_tag_mapping.json:', e);
   }
@@ -166,21 +162,19 @@ async function loadArtistData(): Promise<ArtistData[]> {
 
   artistDataLoading = (async () => {
     try {
-      const backendUrl = getBackendUrl();
       const sessionId = botService.getAuthState().sessionId || '';
-      const res = await fetch(`${backendUrl}/api/artists/list?session_id=${encodeURIComponent(sessionId)}`);
-      if (res.ok) {
-        const data = await res.json();
-        const artists: ArtistData[] = (data.artists || []).map((a: any) => ({
-          id: a.id,
-          name: a.name,
-          artist_string: a.artist_string,
-          added_by: a.added_by,
-        }));
-        artistDataCache = artists;
-        console.log('Loaded artist data, entries:', artists.length);
-        return artists;
-      }
+      const data = await sidecarApi.getJson<{ artists?: any[] }>(
+        `/api/artists/list?session_id=${encodeURIComponent(sessionId)}`,
+      );
+      const artists: ArtistData[] = (data.artists || []).map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        artist_string: a.artist_string,
+        added_by: a.added_by,
+      }));
+      artistDataCache = artists;
+      console.log('Loaded artist data, entries:', artists.length);
+      return artists;
     } catch (e) {
       console.warn('Failed to load artist data:', e);
     }
@@ -199,23 +193,21 @@ async function loadOCData(): Promise<OCData[]> {
 
   ocDataLoading = (async () => {
     try {
-      const backendUrl = getBackendUrl();
       const sessionId = botService.getAuthState().sessionId || '';
-      const res = await fetch(`${backendUrl}/api/oc/list?session_id=${encodeURIComponent(sessionId)}`);
-      if (res.ok) {
-        const data = await res.json();
-        const ocs: OCData[] = (data.ocs || []).map((oc: any) => ({
-          id: oc.id,
-          name: oc.zh_name || oc.en_name,
-          en_name: oc.en_name,
-          aliases: oc.zh_aliases || [],
-          tag_group: oc.tag_group,
-          created_by: oc.created_by,
-        }));
-        ocDataCache = ocs;
-        console.log('Loaded OC data, entries:', ocs.length);
-        return ocs;
-      }
+      const data = await sidecarApi.getJson<{ ocs?: any[] }>(
+        `/api/oc/list?session_id=${encodeURIComponent(sessionId)}`,
+      );
+      const ocs: OCData[] = (data.ocs || []).map((oc: any) => ({
+        id: oc.id,
+        name: oc.zh_name || oc.en_name,
+        en_name: oc.en_name,
+        aliases: oc.zh_aliases || [],
+        tag_group: oc.tag_group,
+        created_by: oc.created_by,
+      }));
+      ocDataCache = ocs;
+      console.log('Loaded OC data, entries:', ocs.length);
+      return ocs;
     } catch (e) {
       console.warn('Failed to load OC data:', e);
     }

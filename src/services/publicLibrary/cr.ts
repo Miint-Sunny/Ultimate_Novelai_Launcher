@@ -1,4 +1,4 @@
-import { getBackendUrl } from '../../utils/apiConfig';
+import { sidecarApi } from '../../api/sidecar';
 
 export interface PublicCRData {
   id: string;
@@ -27,14 +27,8 @@ export function clearPublicCRCache(): void {
 export async function getPublicCRs(): Promise<PublicCRData[]> {
   if (publicCRCache) return publicCRCache;
 
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/cr/list`);
-    if (!response.ok) {
-      console.error('获取公共CR列表失败:', response.status);
-      return [];
-    }
-    const data = await response.json();
+    const data = await sidecarApi.getJson<{ crs?: PublicCRData[] }>('/api/cr/list');
     const crs = data.crs || [];
     publicCRCache = crs;
     return crs;
@@ -45,23 +39,14 @@ export async function getPublicCRs(): Promise<PublicCRData[]> {
 }
 
 export function getPublicCRPreviewUrl(crId: string): string {
-  return `${getBackendUrl()}/api/cr/preview/${encodeURIComponent(crId)}`;
+  return sidecarApi.url(`/api/cr/preview/${encodeURIComponent(crId)}`);
 }
 
 export async function createPublicCR(
   params: CreateCRParams
 ): Promise<{ success: boolean; message: string; cr?: PublicCRData }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/cr/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.postJson<{ message?: string; cr?: PublicCRData }>('/api/cr/create', params);
     clearPublicCRCache();
     return { success: true, message: data.message || '创建成功', cr: data.cr };
   } catch (error) {
@@ -71,15 +56,8 @@ export async function createPublicCR(
 }
 
 export async function deletePublicCR(crId: string): Promise<{ success: boolean; message: string }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/cr/${encodeURIComponent(crId)}`, {
-      method: 'DELETE',
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.deleteJson<{ message?: string }>(`/api/cr/${encodeURIComponent(crId)}`);
     clearPublicCRCache();
     return { success: true, message: data.message || '删除成功' };
   } catch (error) {
@@ -92,17 +70,11 @@ export async function updatePublicCR(
   crId: string,
   params: UpdateCRParams
 ): Promise<{ success: boolean; message: string; cr?: PublicCRData }> {
-  const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/cr/${encodeURIComponent(crId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, message: data.detail || `HTTP ${response.status}` };
-    }
+    const data = await sidecarApi.putJson<{ message?: string; cr?: PublicCRData }>(
+      `/api/cr/${encodeURIComponent(crId)}`,
+      params,
+    );
     clearPublicCRCache();
     return { success: true, message: data.message || '更新成功', cr: data.cr };
   } catch (error) {

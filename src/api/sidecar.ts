@@ -205,6 +205,19 @@ export function imageUrl(path: string): string {
 }
 
 export const sidecarApi = {
+  url: (path: string) => `${getSidecarUrl()}${path.startsWith('/') ? path : `/${path}`}`,
+  getJson: <T>(path: string) => requestJson<T>(path),
+  postJson: <T>(path: string, body?: unknown) =>
+    requestJson<T>(path, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+    }),
+  putJson: <T>(path: string, body?: unknown) =>
+    requestJson<T>(path, {
+      method: 'PUT',
+      body: JSON.stringify(body ?? {}),
+    }),
+  deleteJson: <T>(path: string) => requestJson<T>(path, { method: 'DELETE' }),
   health: () => requestJson<{ ok: boolean; version: string }>('/health'),
   settings: () => requestJson<AppSettings>('/settings'),
   updateSettings: (settings: Partial<Pick<AppSettings, 'nai_base_url' | 'llm_base_url' | 'llm_model'>>) =>
@@ -253,10 +266,13 @@ export const sidecarApi = {
     ),
   getAnlas: async (): Promise<AnlasInfo | null> => {
     try {
-      const settings = await sidecarApi.settings();
-      return settings.nai_configured
-        ? { fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0, isOpus: false }
-        : null;
+      const data = await requestJson<AnlasInfo & { configured?: boolean }>('/api/anlas');
+      if (data.configured === false) return null;
+      return {
+        fixedTrainingStepsLeft: Number(data.fixedTrainingStepsLeft || 0),
+        purchasedTrainingSteps: Number(data.purchasedTrainingSteps || 0),
+        isOpus: Boolean(data.isOpus),
+      };
     } catch {
       return null;
     }
