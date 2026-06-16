@@ -4,17 +4,19 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Languages, Palette, Users, Dices, User, Sparkles, Tag, ArrowUp, Eye, EyeOff, ExternalLink, X, Trash2 } from 'lucide-react';
-import { getTagSuggestionsDebounced, fetchWikiChineseNames, fetchWikiExistsBatch, fetchTagWikiPreview, fetchTagWikiSummaryZh, translateTagWithGemini, type TagSuggestion, type TagWikiPreview, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { ArrowUp, Eye, EyeOff, ExternalLink, X, Trash2 } from 'lucide-react';
+import { getTagSuggestionsDebounced, fetchWikiChineseNames, fetchWikiExistsBatch, fetchTagWikiPreview, fetchTagWikiSummaryZh, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
 import { RelatedTagsRow } from './RelatedTagsRow';
 import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
 import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
-import { canCheckSuggestionWiki, clipWikiSummaryText, normalizeWikiTagKey, stepNumericWeight } from './prompt-editor/wikiUtils';
+import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
+import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
+import { canCheckSuggestionWiki, normalizeWikiTagKey, stepNumericWeight } from './prompt-editor/wikiUtils';
 import { WeightHighlightExtension } from './prompt-editor/weightHighlightExtension';
-import type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
+import type { CollapsibleTag, CollapsibleTagType, SuggestionWikiPreviewState } from './prompt-editor/types';
 export type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
 
 interface PromptEditorProps {
@@ -87,14 +89,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
 
     // 自动补全 Wiki 预览（与 DesktopChipEditor 一致）
     const [suggestionWikiMap, setSuggestionWikiMap] = useState<Record<string, boolean>>({});
-    const [suggestionWikiPreview, setSuggestionWikiPreview] = useState<{
-      tag: string;
-      data: TagWikiPreview | null;
-      loading: boolean;
-      summaryZhLoading?: boolean;
-      anchor: DOMRect;
-      closing?: boolean;
-    } | null>(null);
+    const [suggestionWikiPreview, setSuggestionWikiPreview] = useState<SuggestionWikiPreviewState | null>(null);
     const [wikiPreviewImageIndex, setWikiPreviewImageIndex] = useState(0);
     const [suggestionWikiPreviewHeight, setSuggestionWikiPreviewHeight] = useState<number | null>(null);
     const suggestionWikiPreviewContentRef = useRef<HTMLDivElement>(null);
@@ -431,6 +426,10 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
           }
         }, 140);
       }, delay);
+    }, []);
+
+    const keepSuggestionWikiPreviewVisible = useCallback(() => {
+      if (suggestionPreviewHideTimerRef.current) clearTimeout(suggestionPreviewHideTimerRef.current);
     }, []);
 
     const showSuggestionWikiPreview = useCallback((suggestion: TagSuggestion, anchor: HTMLElement, delay = 220, showLoading = true) => {
@@ -1642,297 +1641,33 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
           className="h-full scrollbar-hide"
         />
 
-        {/* 自动补全下拉框 - 使用Portal渲染到body，避免被其他元素遮挡 */}
-        {showSuggestions && displaySuggs.length > 0 && cursorPosition && (() => {
-          // 按类型分组：每个分组独立滚动
-          // 各组最大高度（px）：发散性来源（标签）大，确定性来源（画师/OC/角色）紧凑，nl 单条
-          const SECTION_MAX_H: Record<string, number> = {
-            nl: 47, artists: 141, ocs: 141, characters: 141, origins: 141, danbooru: 282,
-          };
-          const getSectionInfo = (s: TagSuggestion) => {
-            if (s.isAiLoading) return { key: 'danbooru', label: '标签', color: '#fcd34d', Icon: Tag };
-            if (s.isNaturalLanguage) return { key: 'nl', label: '翻译', color: '#67e8f9', Icon: Languages };
-            if (s.isArtist) return { key: 'artists', label: '画师', color: '#f0abfc', Icon: Palette };
-            if (s.isOC) return { key: 'ocs', label: 'OC', color: '#86efac', Icon: Users };
-            if (s.isOrigin) return { key: 'origins', label: '作品', color: '#d8b4fe', Icon: Dices };
-            if (s.source === 'local') return { key: 'characters', label: '角色', color: '#7dd3fc', Icon: User };
-            // danbooru 原生 / AI 直译 / AI 推荐 都验证过，统一归入"标签"
-            return { key: 'danbooru', label: '标签', color: '#fcd34d', Icon: Tag };
-          };
-          const sectionsMap = new Map<string, { label: string; color: string; Icon: typeof Tag; items: { s: TagSuggestion; index: number }[] }>();
-          const orderKeys: string[] = [];
-          displaySuggs.forEach((s, index) => {
-            const info = getSectionInfo(s);
-            if (!sectionsMap.has(info.key)) {
-              sectionsMap.set(info.key, { label: info.label, color: info.color, Icon: info.Icon, items: [] });
-              orderKeys.push(info.key);
-            }
-            sectionsMap.get(info.key)!.items.push({ s, index });
-          });
-          const sections = orderKeys.map(k => ({ key: k, ...sectionsMap.get(k)! }));
-          const isMulti = sections.length > 1;
-
-          return createPortal(
-            <div
-              ref={suggestionsRef}
-              className="suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden flex flex-col"
-              style={(() => {
-                const MAX_H = 600, GAP = 4, MARGIN = 8, MIN_H = 120, ITEM_H = 47;
-                const vh = window.innerHeight;
-                const cursorBottomVp = cursorPosition.top - window.scrollY;
-                const cursorTopVp = cursorBottomVp - 18;
-                const spaceBelow = vh - cursorBottomVp - MARGIN - GAP;
-                const spaceAbove = cursorTopVp - MARGIN - GAP;
-                // 期望高度按"实际项数 × 行高"估算，按各组上限和总上限封顶
-                const desiredH = Math.min(
-                  MAX_H,
-                  isMulti
-                    ? sections.reduce((acc, s) => acc + Math.min(SECTION_MAX_H[s.key] ?? 168, s.items.length * ITEM_H), 0)
-                    : Math.min(360, displaySuggs.length * ITEM_H)
-                );
-                const placeAbove = desiredH > spaceBelow && spaceAbove > spaceBelow;
-                const maxH = Math.max(MIN_H, Math.min(desiredH, placeAbove ? spaceAbove : spaceBelow));
-                const top = placeAbove ? cursorTopVp - GAP - maxH : cursorBottomVp + GAP;
-                const left = cursorPosition.left - window.scrollX;
-                return { top, left, minWidth: 240, maxWidth: 380, maxHeight: maxH };
-              })()}
-            >
-              {sections.map((sec) => {
-                return (
-                  <div key={sec.key} className="flex flex-col min-h-0">
-                    <div className="overflow-y-auto scrollbar-hide" style={{ maxHeight: isMulti ? (SECTION_MAX_H[sec.key] ?? 168) : 360 }}>
-                      {sec.items.map(({ s: suggestion, index }) => {
-                        if (suggestion.isAiLoading) {
-                          return (
-                            <div key="__ai_loading__" data-sugg-idx={index} className="px-3 py-2 flex items-center gap-2 text-[#8b949e] border-l-2 border-transparent">
-                              <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
-                              <span className="text-[11px]">AI 推荐加载中…</span>
-                            </div>
-                          );
-                        }
-                        const isSelected = index === selectedIndex;
-
-                        const typeInfo = (() => {
-                          if (suggestion.isNaturalLanguage) return { color: '#67e8f9', Icon: Languages, label: '翻译' };
-                          if (suggestion.isArtist) return { color: '#f0abfc', Icon: Palette, label: '画师' };
-                          if (suggestion.isOC) return { color: '#86efac', Icon: Users, label: 'OC' };
-                          if (suggestion.isOrigin) return { color: '#d8b4fe', Icon: Dices, label: '作品' };
-                          if (suggestion.source === 'local') return { color: '#7dd3fc', Icon: User, label: '角色' };
-                          if (suggestion.verified && !suggestion.postCount) return { color: '#fceda4', Icon: Sparkles, label: '标签' };
-                          return { color: '#fcd34d', Icon: Tag, label: '标签' };
-                        })();
-                        const { Icon } = typeInfo;
-
-                        const mainText = suggestion.isNaturalLanguage
-                          ? suggestion.label
-                          : suggestion.value;
-
-                        const subtitle = suggestion.isNaturalLanguage
-                          ? suggestion.chineseName
-                          : suggestion.isArtist
-                            ? '画师串'
-                            : suggestion.isOC
-                              ? (suggestion.chineseName || 'OC')
-                              : suggestion.isOrigin
-                                ? `${suggestion.chineseName || ''}${suggestion.chineseName ? ' · ' : ''}${suggestion.originCharCount}个角色`
-                                : (suggestion.chineseName && getAppSettings().autocompleteShowWiki ? suggestion.chineseName : null);
-
-                        const countText = suggestion.postCount && !suggestion.isOrigin && !suggestion.isArtist && !suggestion.isOC
-                          ? (suggestion.postCount >= 1000 ? `${(suggestion.postCount / 1000).toFixed(0)}k` : String(suggestion.postCount))
-                          : null;
-                        const wikiKey = normalizeWikiTagKey(suggestion.value);
-                        const wikiState = suggestionWikiMap[wikiKey];
-
-                        return (
-                          <div
-                            key={`${suggestion.value}-${suggestion.isNaturalLanguage ? 'nl' : suggestion.isArtist ? 'artist' : suggestion.isOC ? 'oc' : suggestion.isOrigin ? 'origin' : suggestion.source}`}
-                            data-sugg-idx={index}
-                            className={`sugg-item px-2.5 py-1.5 cursor-pointer flex items-center gap-2 border-l-2 transition-colors duration-150 ${isSelected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}
-                            style={{ borderLeftColor: isSelected ? typeInfo.color : `${typeInfo.color}55` }}
-                            onClick={() => {
-                              if (suggestion.isOrigin) {
-                                const chars = suggestion.originCharacters || [];
-                                if (chars.length > 0) {
-                                  const randomChar = chars[Math.floor(Math.random() * chars.length)];
-                                  selectSuggestion({ ...suggestion, value: randomChar, chineseName: lookupCharacterChineseName(randomChar), isOrigin: false });
-                                }
-                              } else {
-                                selectSuggestion(suggestion);
-                              }
-                            }}
-                            onMouseEnter={() => {
-                              suggestionScrollLockRef.current = true;
-                              setSelectedIndex(prev => prev === index ? prev : index);
-                            }}
-                          >
-                            <Icon className="shrink-0 w-3.5 h-3.5 transition-opacity duration-150" style={{ color: typeInfo.color, opacity: isSelected ? 1 : 0.75 }} />
-                            <div className="flex flex-col min-w-0 flex-1 overflow-hidden leading-tight gap-0.5">
-                              <span className={`${suggestion.isNaturalLanguage ? 'text-[14px]' : 'font-tag text-[14px]'} truncate transition-colors duration-150 ${isSelected ? 'text-white' : 'text-[#d4d4d4]'}`} title={mainText}>
-                                {mainText}
-                              </span>
-                              {subtitle && (
-                                <span className={`chinese-name-fade text-[11px] truncate transition-colors duration-150 ${isSelected ? 'text-white/55' : 'text-[#6e7681]'}`} title={subtitle}>
-                                  {subtitle}
-                                </span>
-                              )}
-                            </div>
-                            {countText && (
-                              <span className={`shrink-0 ml-auto text-right text-[10px] tabular-nums transition-colors duration-150 ${isSelected ? 'text-white/60' : 'text-[#6e7681]'}`}>
-                                {countText}
-                              </span>
-                            )}
-                            {canCheckSuggestionWiki(suggestion) && (
-                              wikiState === false ? (
-                                <span
-                                  className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681]/35 cursor-default inline-flex items-center justify-center`}
-                                  title="无 Wiki 数据"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                >
-                                  <EyeOff className="w-4 h-4" />
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681] hover:text-[#fceda4] hover:bg-white/[0.08] transition-colors inline-flex items-center justify-center`}
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onMouseEnter={(e) => { e.stopPropagation(); showSuggestionWikiPreview(suggestion, e.currentTarget, 100, wikiState === true); }}
-                                  onMouseLeave={() => hideSuggestionWikiPreview()}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                              )
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>,
-            document.body
-          );
-        })()}
-
-        {/* 自动补全 Wiki 预览（与 DesktopChipEditor 一致） */}
-        {suggestionWikiPreview && createPortal(
-          <div
-            className={`wiki-preview-floating ${suggestionWikiPreview.closing ? 'is-closing' : ''} fixed z-[100000] w-[320px] max-w-[calc(100vw-16px)] overflow-x-hidden rounded-lg bg-[#111315] shadow-[0_20px_50px_-14px_rgba(0,0,0,0.9),0_0_0_1px_rgba(252,237,164,0.22)]`}
-            style={(() => {
-              const GAP = 8;
-              const CARD_W = 320;
-              const MARGIN = 8;
-              const anchor = suggestionWikiPreview.anchor;
-              const viewportW = window.innerWidth;
-              const viewportH = window.innerHeight;
-              const cardW = Math.min(CARD_W, viewportW - MARGIN * 2);
-              const imageCount = suggestionWikiPreview.data?.examples?.filter(example => example.previewUrl).length
-                || (suggestionWikiPreview.data?.example?.previewUrl ? 1 : 0);
-              const estimatedH = suggestionWikiPreview.loading ? 112 : suggestionWikiPreview.data ? (imageCount > 0 ? 390 : 230) : 80;
-              const cardH = Math.min(suggestionWikiPreviewHeight ?? estimatedH, viewportH - MARGIN * 2);
-              const placeLeft = anchor.right + GAP + cardW > viewportW - MARGIN;
-              const left = placeLeft
-                ? Math.max(MARGIN, anchor.left - GAP - cardW)
-                : Math.min(viewportW - MARGIN - cardW, anchor.right + GAP);
-              const top = Math.max(MARGIN, Math.min(anchor.top - 8, viewportH - MARGIN - cardH));
-              return {
-                left,
-                top,
-                height: suggestionWikiPreviewHeight ?? undefined,
-                maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
-                // 仅当内容真正超出视口才允许滚动，避免高度过渡期间冒出滚动条导致内容区宽度跳变
-                overflowY: (suggestionWikiPreviewHeight ?? 0) > viewportH - MARGIN * 2 ? 'auto' : 'hidden',
-              } as const;
-            })()}
-            onMouseEnter={() => {
-              if (suggestionPreviewHideTimerRef.current) clearTimeout(suggestionPreviewHideTimerRef.current);
+        {showSuggestions && (
+          <SuggestionDropdown
+            suggestions={displaySuggs}
+            selectedIndex={selectedIndex}
+            cursorPosition={cursorPosition}
+            suggestionWikiMap={suggestionWikiMap}
+            suggestionsRef={suggestionsRef}
+            onSelect={selectSuggestion}
+            onHighlight={(index) => {
+              suggestionScrollLockRef.current = true;
+              setSelectedIndex(prev => prev === index ? prev : index);
             }}
-            onMouseLeave={() => hideSuggestionWikiPreview(80)}
-          >
-            {suggestionWikiPreview.loading ? (
-              <div ref={suggestionWikiPreviewContentRef} key={`loading-${suggestionWikiPreview.tag}`} className="wiki-preview-content h-28 flex items-center justify-center gap-2 text-[#fceda4]/75">
-                <span className="inline-block w-4 h-4 border-2 border-[#fceda4]/20 border-t-[#fceda4] rounded-full animate-spin" />
-                <span className="text-xs">加载 Wiki...</span>
-              </div>
-            ) : suggestionWikiPreview.data ? (
-              (() => {
-                const wikiPreviewData = suggestionWikiPreview.data!;
-                const imageExamples = suggestionWikiPreview.data.examples?.filter(example => example.previewUrl) || (suggestionWikiPreview.data.example?.previewUrl ? [suggestionWikiPreview.data.example] : []);
-                const activeImageIndex = imageExamples.length > 0 ? wikiPreviewImageIndex % imageExamples.length : 0;
-                const summaryText = wikiPreviewData.summaryZh
-                  ? clipWikiSummaryText(wikiPreviewData.summaryZh, 140)
-                  : clipWikiSummaryText(wikiPreviewData.summary, 260);
-                const isPendingZhSummary = !wikiPreviewData.summaryZh && suggestionWikiPreview.summaryZhLoading;
-                return (
-                  <div ref={suggestionWikiPreviewContentRef} key={`data-${suggestionWikiPreview.tag}`} className="wiki-preview-content">
-                    {imageExamples.length > 0 && (
-                      <div className="relative h-44 overflow-hidden bg-black/40">
-                        <div
-                          className="flex h-full transition-transform duration-500 ease-out"
-                          style={{ transform: `translateX(-${activeImageIndex * 100}%)` }}
-                        >
-                          {imageExamples.map((example) => (
-                            <div key={`${example.type}-${example.id}`} className="flex h-44 w-full shrink-0 items-center justify-center">
-                              <img
-                                src={example.previewUrl}
-                                alt={wikiPreviewData.title}
-                                className="max-h-44 w-full object-contain"
-                                loading="lazy"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                        {imageExamples.length > 1 && (
-                          <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1">
-                            {imageExamples.map((example, idx) => (
-                              <span
-                                key={`${example.type}-${example.id}`}
-                                className={`h-1.5 rounded-full transition-all duration-200 ${idx === activeImageIndex ? 'w-4 bg-[#fceda4]' : 'w-1.5 bg-white/25'}`}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="p-3">
-                      <div className="font-tag text-[14px] leading-tight text-[#fceda4] truncate" title={suggestionWikiPreview.data.title}>
-                        {suggestionWikiPreview.data.title}
-                      </div>
-                      {suggestionWikiPreview.data.otherNames.length > 0 && (
-                        <div className="mt-1 text-[11px] leading-snug text-white/42 line-clamp-1" title={suggestionWikiPreview.data.otherNames.join(' / ')}>
-                          {suggestionWikiPreview.data.otherNames.slice(0, 4).join(' / ')}
-                        </div>
-                      )}
-                      {summaryText && (
-                        <p
-                          key={wikiPreviewData.summaryZh ? 'zh' : 'raw'}
-                          className={`mt-2 text-[12px] leading-relaxed text-white/72 line-clamp-4 break-words ${isPendingZhSummary ? 'animate-wiki-summary-pending' : 'animate-wiki-summary-swap'}`}
-                        >
-                          {summaryText}
-                        </p>
-                      )}
-                      <a
-                        href={`https://danbooru.donmai.us/wiki_pages/${encodeURIComponent(suggestionWikiPreview.data.title)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 flex items-center justify-center gap-1.5 w-full rounded-md px-3 py-2 text-[12px] font-medium text-nai-accent bg-nai-accent/10 hover:bg-nai-accent/20 border border-nai-accent/20 hover:border-nai-accent/40 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nai-accent/40"
-                        onClick={(e) => e.stopPropagation()}
-                        title={`打开 ${suggestionWikiPreview.data.title} Wiki`}
-                      >
-                        <span>在 Danbooru Wiki 查看</span>
-                        <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
-                      </a>
-                    </div>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="p-3 text-xs text-white/55">Wiki 预览不可用</div>
-            )}
-          </div>,
-          document.body
+            onShowWikiPreview={(suggestion, anchor, showLoading) => {
+              showSuggestionWikiPreview(suggestion, anchor, 100, showLoading);
+            }}
+            onHideWikiPreview={() => hideSuggestionWikiPreview()}
+          />
         )}
+
+        <SuggestionWikiPreviewCard
+          preview={suggestionWikiPreview}
+          height={suggestionWikiPreviewHeight}
+          contentRef={suggestionWikiPreviewContentRef}
+          imageIndex={wikiPreviewImageIndex}
+          onKeepVisible={keepSuggestionWikiPreviewVisible}
+          onHide={() => hideSuggestionWikiPreview(80)}
+        />
 
         {/* 自然语言翻译加载浮层 */}
         {nlTranslating && createPortal(
