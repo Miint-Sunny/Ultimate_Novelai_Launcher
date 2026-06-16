@@ -135,17 +135,8 @@ import { MetadataDetailPanel, type MetadataFile } from '../ToolsModal';
 import { InspirationModal } from '../InspirationModal';
 import { loadCodexData, type CodexItem } from '../../services/codexData';
 import { calculateCostFromUI } from '../../services/costCalculator';
-import {
-  extractImageMetadata,
-  getPictureSizeType,
-  type ImageMetadata,
-} from '../../utils/imageMetadata';
+import { getPictureSizeType } from '../../utils/imageMetadata';
 import { getUnsupportedImportSettings, formatUnsupportedSettings, normalizeNoiseSchedule } from '../../utils/generationOptions';
-import {
-  analyzeImageWithWDTagger,
-  extractBase64FromDataUrl,
-  type WDTaggerResult,
-} from '../../services/wdTagger';
 import {
   MAX_TOTAL_PIXELS,
   MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
@@ -164,6 +155,8 @@ import {
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
+import { useMobileImageImport } from './generate/useMobileImageImport';
+import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
 import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import {
@@ -445,25 +438,36 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   // 准备状态
   const [isPreparing, setIsPreparing] = useState(false);
 
-  // 图片导入弹窗状态
-  const [showImageImportModal, setShowImageImportModal] = useState(false);
-  const [importImageDataUrl, setImportImageDataUrl] = useState<string | null>(null);
-  const [importImageMetadata, setImportImageMetadata] = useState<ImageMetadata | null>(null);
-  const [isParsingMetadata, setIsParsingMetadata] = useState(false);
-  const [isAnalyzingTagger, setIsAnalyzingTagger] = useState(false);
-  const [taggerResult, setTaggerResult] = useState<WDTaggerResult | null>(null);
-  const [showTaggerResult, setShowTaggerResult] = useState(false);
-  const [showFullMetadata, setShowFullMetadata] = useState(false);
-  const [importOptions, setImportOptions] = useState({
-    prompt: true,
-    negativePrompt: true,
-    characters: true,
-    settings: false,
-    seed: false,
-    vibes: true,
-    cleanImports: true,
+  const {
+    showImageImportModal,
+    setShowImageImportModal,
+    importImageDataUrl,
+    importImageMetadata,
+    isParsingMetadata,
+    isAnalyzingTagger,
+    taggerResult,
+    showTaggerResult,
+    setShowTaggerResult,
+    showFullMetadata,
+    setShowFullMetadata,
+    importOptions,
+    setImportOptions,
+    includeCharacter,
+    setIncludeCharacter,
+    openImageFile,
+    analyzeWithTagger,
+  } = useMobileImageImport();
+  const {
+    useImportedImageAsVibe,
+    useImportedImageAsImg2Img,
+    useImportedImageAsCR,
+  } = useMobileImportedImageActions({
+    importImageDataUrl,
+    setActiveVibes,
+    setImg2imgWithAutoRes,
+    setActiveCR,
+    closeImageImportModal: () => setShowImageImportModal(false),
   });
-  const [includeCharacter, setIncludeCharacter] = useState(true);
 
   const {
     aiModel,
@@ -850,22 +854,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     window.addEventListener('regenerate-image', handleRegenerate);
     return () => window.removeEventListener('regenerate-image', handleRegenerate);
   }, [isGenerating, isQueuing, isPreparing]);
-
-  // 监听从图库页面发来的导入元数据事件
-  useEffect(() => {
-    const handleOpenImageImport = (event: Event) => {
-      const { dataUrl, metadata } = (event as CustomEvent).detail;
-      setImportImageDataUrl(dataUrl);
-      setImportImageMetadata(metadata || null);
-      setIsParsingMetadata(false);
-      setTaggerResult(null);
-      setShowTaggerResult(false);
-      setShowFullMetadata(false);
-      setShowImageImportModal(true);
-    };
-    window.addEventListener('open-image-import', handleOpenImageImport);
-    return () => window.removeEventListener('open-image-import', handleOpenImageImport);
-  }, []);
 
   // 监听局部重绘事件
   useEffect(() => {
@@ -2432,31 +2420,7 @@ const result = await deletePublicOC(oc.id);
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    const dataUrl = reader.result as string;
-                    setImportImageDataUrl(dataUrl);
-                    setImportImageMetadata(null);
-                    setTaggerResult(null);
-                    setShowTaggerResult(false);
-                    setShowImageImportModal(true);
-
-                    // 解析元数据
-                    if (!file.name.endsWith('.vibe')) {
-                      setIsParsingMetadata(true);
-                      extractImageMetadata(dataUrl)
-                        .then((metadata) => {
-                          setImportImageMetadata(metadata);
-                        })
-                        .catch((err) => {
-                          console.error('解析元数据失败:', err);
-                        })
-                        .finally(() => {
-                          setIsParsingMetadata(false);
-                        });
-                    }
-                  };
-                  reader.readAsDataURL(file);
+                  openImageFile(file);
                 }
                 e.target.value = '';
               }}
@@ -4437,55 +4401,21 @@ const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeT
                   <div className="text-xs text-gray-500 mb-2">或用作</div>
                   <div className="flex gap-2">
                     <button
-                      onClick={async () => {
-                        if (importImageDataUrl) {
-                          try {
-                            // 从 data URL 提取 base64 数据
-                            const base64Data = importImageDataUrl.split(',')[1];
-                            const newVibe = await createVibeFromImageBase64(base64Data, 0.6, 1, `vibe_${Date.now()}`);
-                            if (newVibe) {
-                              setActiveVibes(prev => [...prev, {
-                                ...newVibe,
-                                referenceStrength: newVibe.defaultStrength || 0.6,
-                                informationExtracted: newVibe.defaultInfoExtracted || 1,
-                                enabled: true,
-                              }]);
-                            }
-                          } catch (err) {
-                            console.error('创建 Vibe 失败:', err);
-                          }
-                        }
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsVibe}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
                     >
                       <Palette className="w-4 h-4 text-nai-accent" />
                       <span className="text-xs text-gray-300">Vibe</span>
                     </button>
                     <button
-                      onClick={() => {
-                        if (importImageDataUrl) setImg2imgWithAutoRes(importImageDataUrl);
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsImg2Img}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
                     >
                       <ImageIcon className="w-4 h-4 text-nai-accent" />
                       <span className="text-xs text-gray-300">Img2Img</span>
                     </button>
                     <button
-                      onClick={() => {
-                        if (importImageDataUrl) {
-                          const newCR: ActiveCR = {
-                            id: `cr_${Date.now()}`,
-                            name: '导入的CR',
-                            preview: importImageDataUrl,
-                            fidelity: 1,
-                            styleAware: false,
-                          };
-                          setActiveCR(newCR);
-                        }
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsCR}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
                     >
                       <User className="w-4 h-4 text-nai-accent" />
@@ -5008,55 +4938,21 @@ const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeT
                   <div className="text-xs text-gray-500 mb-2">或用作</div>
                   <div className="flex gap-2">
                     <button
-                      onClick={async () => {
-                        if (importImageDataUrl) {
-                          try {
-                            // 从 data URL 提取 base64 数据
-                            const base64Data = importImageDataUrl.split(',')[1];
-                            const newVibe = await createVibeFromImageBase64(base64Data, 0.6, 1, `vibe_${Date.now()}`);
-                            if (newVibe) {
-                              setActiveVibes(prev => [...prev, {
-                                ...newVibe,
-                                referenceStrength: newVibe.defaultStrength || 0.6,
-                                informationExtracted: newVibe.defaultInfoExtracted || 1,
-                                enabled: true,
-                              }]);
-                            }
-                          } catch (err) {
-                            console.error('创建 Vibe 失败:', err);
-                          }
-                        }
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsVibe}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
                     >
                       <Palette className="w-4 h-4 text-nai-accent" />
                       <span className="text-xs text-gray-300">Vibe</span>
                     </button>
                     <button
-                      onClick={() => {
-                        if (importImageDataUrl) setImg2imgWithAutoRes(importImageDataUrl);
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsImg2Img}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
                     >
                       <ImageIcon className="w-4 h-4 text-nai-accent" />
                       <span className="text-xs text-gray-300">Img2Img</span>
                     </button>
                     <button
-                      onClick={() => {
-                        if (importImageDataUrl) {
-                          const newCR: ActiveCR = {
-                            id: `cr_${Date.now()}`,
-                            name: '导入的CR',
-                            preview: importImageDataUrl,
-                            fidelity: 1,
-                            styleAware: false,
-                          };
-                          setActiveCR(newCR);
-                        }
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsCR}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
                     >
                       <User className="w-4 h-4 text-nai-accent" />
@@ -5089,25 +4985,7 @@ const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeT
                     <div className="p-3 bg-gray-800/50 rounded-xl border border-gray-700">
                       <div className="text-xs text-gray-400 mb-2">未检测到元数据</div>
                       <button
-                        onClick={async () => {
-                          if (!importImageDataUrl || isAnalyzingTagger) return;
-                          setIsAnalyzingTagger(true);
-                          try {
-                            const base64 = extractBase64FromDataUrl(importImageDataUrl);
-                            const result = await analyzeImageWithWDTagger(base64);
-                            if (result) {
-                              setTaggerResult(result);
-                              setShowTaggerResult(true);
-                            } else {
-                              alert('反推失败，请稍后重试');
-                            }
-                          } catch (error) {
-                            console.error('WD Tagger 分析失败:', error);
-                            alert('反推失败，请稍后重试');
-                          } finally {
-                            setIsAnalyzingTagger(false);
-                          }
-                        }}
+                        onClick={analyzeWithTagger}
                         disabled={isAnalyzingTagger}
                         className="w-full flex items-center justify-center gap-2 py-2.5 bg-nai-accent/20 text-nai-accent border border-nai-accent/30 rounded-xl text-sm disabled:opacity-50"
                       >
@@ -5129,55 +5007,21 @@ const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeT
                     </div>
 
                     <button
-                      onClick={async () => {
-                        if (importImageDataUrl) {
-                          try {
-                            // 从 data URL 提取 base64 数据
-                            const base64Data = importImageDataUrl.split(',')[1];
-                            const newVibe = await createVibeFromImageBase64(base64Data, 0.6, 1, `vibe_${Date.now()}`);
-                            if (newVibe) {
-                              setActiveVibes(prev => [...prev, {
-                                ...newVibe,
-                                referenceStrength: newVibe.defaultStrength || 0.6,
-                                informationExtracted: newVibe.defaultInfoExtracted || 1,
-                                enabled: true,
-                              }]);
-                            }
-                          } catch (err) {
-                            console.error('创建 Vibe 失败:', err);
-                          }
-                        }
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsVibe}
                       className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl"
                     >
                       <Palette className="w-5 h-5 text-nai-accent" />
                       <span className="text-sm text-white">Vibe Transfer</span>
                     </button>
                     <button
-                      onClick={() => {
-                        if (importImageDataUrl) setImg2imgWithAutoRes(importImageDataUrl);
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsImg2Img}
                       className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl"
                     >
                       <ImageIcon className="w-5 h-5 text-nai-accent" />
                       <span className="text-sm text-white">Image2Image</span>
                     </button>
                     <button
-                      onClick={() => {
-                        if (importImageDataUrl) {
-                          const newCR: ActiveCR = {
-                            id: `cr_${Date.now()}`,
-                            name: '导入的CR',
-                            preview: importImageDataUrl,
-                            fidelity: 1,
-                            styleAware: false,
-                          };
-                          setActiveCR(newCR);
-                        }
-                        setShowImageImportModal(false);
-                      }}
+                      onClick={useImportedImageAsCR}
                       className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl"
                     >
                       <User className="w-5 h-5 text-nai-accent" />
