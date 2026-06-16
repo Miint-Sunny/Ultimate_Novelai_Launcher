@@ -4,6 +4,7 @@ import { useDesktopContentHeight } from './desktop-chip-editor/useDesktopContent
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
 import { useDesktopChipKeyboard } from './desktop-chip-editor/useDesktopChipKeyboard';
+import { useDesktopChipValue } from './desktop-chip-editor/useDesktopChipValue';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
 import { useDesktopModifierKeys } from './desktop-chip-editor/useDesktopModifierKeys';
 import { DesktopChipList } from './desktop-chip-editor/DesktopChipList';
@@ -17,7 +18,7 @@ import { useDesktopWeightPresets } from './desktop-chip-editor/useDesktopWeightP
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import {
-  NEWLINE_SENTINEL, isCollapsibleMarker, splitPromptToTags,
+  isCollapsibleMarker, splitPromptToTags,
   cleanTagName, getTagWeightInfo,
   analyzeTagGroups,
 } from '../utils/promptTags';
@@ -61,44 +62,15 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   // 芯片点击防抖：防止点击芯片引发的布局重排触发 scroll 事件关闭面板
   const chipClickTimeRef = useRef<number>(0);
 
-  // 撤回栈：所有修改操作自动入栈
-  const undoStackRef = useRef<string[]>([]);
-  const isUndoingRef = useRef(false);
-
   const [editingTag, setEditingTag] = useState<{ index: number; text: string; width: number; height: number } | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
   const { ctrlHeld, shiftHeld } = useDesktopModifierKeys();
 
-  const saveValue = useCallback((newValue: string) => {
-    if (!isUndoingRef.current && newValue !== value) {
-      undoStackRef.current.push(value);
-      // 限制栈深度
-      if (undoStackRef.current.length > 50) undoStackRef.current.shift();
-    }
-    onChange(newValue);
-  }, [onChange, value]);
+  const { saveValue, rebuildValue, undoStackRef, isUndoingRef } = useDesktopChipValue({ value, onChange });
   const parsedTags = useMemo(() => splitPromptToTags(value), [value]);
   const tagGroups = useMemo(() => analyzeTagGroups(parsedTags), [parsedTags]);
   const { tagTranslations, translatingTags, setTagTranslations } = useDesktopTagTranslations(parsedTags);
-  const rebuildValue = useCallback((tags: string[]) => {
-    // 逐 tag 构建：普通 tag 用逗号连接，NEWLINE_SENTINEL 输出为 \n
-    let result = '';
-    for (const t of tags) {
-      if (t === NEWLINE_SENTINEL) {
-        // 去掉换行前多余的逗号和空格
-        result = result.replace(/,\s*$/, '');
-        result += '\n';
-      } else {
-        // 如果 result 不为空且不以换行结尾，加逗号分隔
-        if (result && !result.endsWith('\n')) {
-          result += ', ';
-        }
-        result += t;
-      }
-    }
-    saveValue(result.replace(/,\s*$/, ''));
-  }, [saveValue]);
 
   const {
     dragIndex,
