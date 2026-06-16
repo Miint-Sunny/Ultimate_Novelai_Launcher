@@ -4,18 +4,18 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
 import Placeholder from '@tiptap/extension-placeholder';
-import { ArrowUp, Eye, EyeOff, ExternalLink, X, Trash2 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { getTagSuggestionsDebounced, fetchWikiChineseNames, fetchWikiExistsBatch, fetchTagWikiPreview, fetchTagWikiSummaryZh, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
-import { RelatedTagsRow } from './RelatedTagsRow';
 import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
 import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
 import { MultiSelectQuickPanel, type MultiSelectPanelState } from './prompt-editor/MultiSelectQuickPanel';
 import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
 import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
-import { canCheckSuggestionWiki, normalizeWikiTagKey, stepNumericWeight } from './prompt-editor/wikiUtils';
+import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
+import { canCheckSuggestionWiki, normalizeWikiTagKey } from './prompt-editor/wikiUtils';
 import { WeightHighlightExtension } from './prompt-editor/weightHighlightExtension';
 import type { CollapsibleTag, CollapsibleTagType, SuggestionWikiPreviewState } from './prompt-editor/types';
 export type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
@@ -106,15 +106,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
     const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // 标签快捷面板（点击触发）
-    const [tagPanel, setTagPanel] = useState<{
-      tag: string;          // 清理后的标签名（空格分隔）
-      rawTag: string;       // 原始标签文本（含权重符号）
-      translation: string;
-      from: number;         // 文档中的绝对位置
-      to: number;
-      screenX: number;      // 面板显示的屏幕坐标
-      screenY: number;
-    } | null>(null);
+    const [tagPanel, setTagPanel] = useState<TagPanelState | null>(null);
     const tagPanelRef = useRef<HTMLDivElement>(null);
     const [numWeight, setNumWeight] = useState(1.0);
     const [translationLoading, setTranslationLoading] = useState(false);
@@ -1195,6 +1187,41 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       },
     }), [editor, tagPanel]);
 
+    const tagPanelExistingTagSet = useMemo(() => {
+      const set = new Set<string>();
+      if (!editor || !tagPanel) return set;
+      editor.state.doc.descendants(node => {
+        if (node.isText) {
+          const text = node.text || '';
+          text.split(/[,，]/).forEach(t => {
+            const cleaned = t.trim()
+              .replace(/^~/, '')
+              .replace(/^\{+|\}+$|\[+|\]+$/g, '')
+              .replace(/^-?\d+(?:\.\d+)?::(.+?)(?:::)?$/, '$1')
+              .toLowerCase()
+              .replace(/\s+/g, '_');
+            if (cleaned) set.add(cleaned);
+          });
+        }
+      });
+      return set;
+    }, [editor, tagPanel]);
+
+    const handleAddRelatedTag = useCallback((addedTag: string, addToEnd: boolean) => {
+      if (!editor || !tagPanel) return;
+      markPanelAction();
+      const { to } = tagPanel;
+      editor.chain().focus().command(({ tr }) => {
+        if (addToEnd) {
+          const docEnd = tr.doc.content.size;
+          tr.insertText(`, ${addedTag}`, docEnd);
+        } else {
+          tr.insertText(`, ${addedTag}`, to);
+        }
+        return true;
+      }).run();
+    }, [editor, tagPanel]);
+
     // 多选操作函数
     const multiSelectActions = useMemo(() => ({
       addWeight: () => {
@@ -1789,123 +1816,18 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
           } catch { return null; }
         })()}
 
-        {/* 标签快捷面板 - 点击触发 */}
-        {tagPanel && createPortal(
-          <div
-            ref={tagPanelRef}
-            className="fixed z-[99999] tag-quick-panel bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden"
-            style={{ top: tagPanel.screenY, left: tagPanel.screenX, minWidth: 300, maxWidth: 420 }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          >
-            {/* 标题 */}
-            <div className="flex items-start gap-2 px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <div className="font-tag text-[14px] leading-tight text-[#fceda4] truncate" title={tagPanel.tag}>
-                  {tagPanel.tag.replace(/ /g, '_')}
-                </div>
-                <div className="text-[11px] leading-tight text-white/50 mt-1 relative">
-                  <span className={tagPanel.translation ? '' : 'invisible'}>{tagPanel.translation || '\u00A0'}</span>
-                  {!tagPanel.translation && translationLoading && (
-                    <span className="absolute inset-0 flex items-center gap-1">
-                      <span className="inline-block w-1 h-1 rounded-full bg-white/50 animate-pulse" style={{ animationDelay: '0ms' }} />
-                      <span className="inline-block w-1 h-1 rounded-full bg-white/50 animate-pulse" style={{ animationDelay: '150ms' }} />
-                      <span className="inline-block w-1 h-1 rounded-full bg-white/50 animate-pulse" style={{ animationDelay: '300ms' }} />
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button className="shrink-0 w-6 h-6 flex items-center justify-center text-white/40 hover:text-white/90 rounded-md hover:bg-white/[0.08] transition-colors" onClick={() => setTagPanel(null)} title="关闭">
-                <X className="w-3.5 h-3.5" strokeWidth={2} />
-              </button>
-            </div>
-
-            {/* 权重行 */}
-            <div className="px-2 pb-1.5">
-              <div className="flex items-center gap-1 mb-1.5">
-                <button className="px-2 h-6 text-[11px] font-mono bg-[#74270D]/50 hover:bg-[#74270D]/80 text-orange-200 rounded transition-colors" onClick={panelActions.addWeight} title="增加权重 {tag}">{'{+}'}</button>
-                <button className="px-2 h-6 text-[11px] font-mono bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 rounded transition-colors" onClick={panelActions.reduceWeight} title="降低权重 [tag]">{'[−]'}</button>
-                <div className="flex-1" />
-                <button className="w-6 h-6 flex items-center justify-center text-sm bg-blue-500/15 hover:bg-blue-500/35 text-blue-200 rounded transition-colors" onClick={() => { const v = stepNumericWeight(numWeight, -0.1); setNumWeight(v); panelActions.setNumericWeight(v); }} title="减少 0.1">−</button>
-                <span className={`w-11 text-center text-[12px] font-mono tabular-nums font-medium ${numWeight > 1 ? 'text-orange-200' : numWeight < 1 ? 'text-blue-200' : 'text-white/80'}`}>{numWeight.toFixed(1)}</span>
-                <button className="w-6 h-6 flex items-center justify-center text-sm bg-[#74270D]/40 hover:bg-[#74270D]/70 text-orange-200 rounded transition-colors" onClick={() => { const v = stepNumericWeight(numWeight, 0.1); setNumWeight(v); panelActions.setNumericWeight(v); }} title="增加 0.1">+</button>
-              </div>
-              {/* 预设 */}
-              <div className="flex items-center gap-1">
-                {weightPresets.map(w => {
-                  const active = Math.abs(numWeight - w) < 0.01;
-                  const isOrange = w > 1;
-                  const base = isOrange ? 'bg-[#74270D]/35 hover:bg-[#74270D]/65 text-orange-200' : 'bg-blue-500/15 hover:bg-blue-500/30 text-blue-200';
-                  return (
-                    <button
-                      key={w}
-                      className={`flex-1 h-6 text-[11px] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
-                      onClick={() => { setNumWeight(w); panelActions.setNumericWeight(w); }}
-                      title={`${w}::tag::`}
-                    >
-                      {w}
-                    </button>
-                  );
-                })}
-                <button className="px-2 h-6 text-[11px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.clearWeight} title="清除所有权重">清除</button>
-              </div>
-            </div>
-
-            {/* 分隔 */}
-            <div className="mx-2 h-px bg-white/[0.08]" />
-
-            {/* 关联推荐: 紧贴权重栏与操作行之间; 失败/空时整段不渲染 */}
-            <RelatedTagsRow
-              anchorTags={[tagPanel.tag]}
-              existingTagSet={(() => {
-                const set = new Set<string>();
-                if (!editor) return set;
-                editor.state.doc.descendants(node => {
-                  if (node.isText) {
-                    const text = node.text || '';
-                    text.split(/[,，]/).forEach(t => {
-                      const cleaned = t.trim()
-                        .replace(/^~/, '')
-                        .replace(/^\{+|\}+$|\[+|\]+$/g, '')
-                        .replace(/^-?\d+(?:\.\d+)?::(.+?)(?:::)?$/, '$1')
-                        .toLowerCase()
-                        .replace(/\s+/g, '_');
-                      if (cleaned) set.add(cleaned);
-                    });
-                  }
-                });
-                return set;
-              })()}
-              onAdd={(addedTag, addToEnd) => {
-                if (!editor) return;
-                markPanelAction();
-                const { to } = tagPanel;
-                editor.chain().focus().command(({ tr }) => {
-                  if (addToEnd) {
-                    const docEnd = tr.doc.content.size;
-                    tr.insertText(`, ${addedTag}`, docEnd);
-                  } else {
-                    tr.insertText(`, ${addedTag}`, to);
-                  }
-                  return true;
-                }).run();
-              }}
-            />
-
-            <div className="mx-2 h-px bg-white/[0.08]" />
-
-            {/* 操作行 */}
-            <div className="px-2 py-1.5 flex items-center gap-0.5">
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.openDanbooru} title="在 Danbooru 中查看"><ExternalLink className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>Wiki</span></button>
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.moveToFront} title="移到最前"><ArrowUp className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>置顶</span></button>
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.toggleHide} title={tagPanel.rawTag.trim().startsWith('~') ? '启用此标签' : '禁用此标签'}>
-                {tagPanel.rawTag.trim().startsWith('~') ? <Eye className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /> : <EyeOff className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />}<span>{tagPanel.rawTag.trim().startsWith('~') ? '启用' : '禁用'}</span>
-              </button>
-              <div className="flex-1" />
-              <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-red-400/75 hover:text-red-300 hover:bg-red-500/15 rounded transition-colors" onClick={panelActions.deleteTag} title="删除标签"><Trash2 className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>删除</span></button>
-            </div>
-          </div>,
-          document.body
-        )}
+        <TagQuickPanel
+          panel={tagPanel}
+          panelRef={tagPanelRef}
+          weightPresets={weightPresets}
+          numWeight={numWeight}
+          setNumWeight={setNumWeight}
+          translationLoading={translationLoading}
+          actions={panelActions}
+          existingTagSet={tagPanelExistingTagSet}
+          onAddRelatedTag={handleAddRelatedTag}
+          onClose={() => setTagPanel(null)}
+        />
 
         <MultiSelectQuickPanel
           panel={multiSelectPanel}
