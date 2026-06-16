@@ -3,7 +3,7 @@ import { EditorContent } from '@tiptap/react';
 import { fetchWikiChineseNames, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
-import { docOffsetToTextIndex, parseValueToDocContent, textIndexToDocOffset } from './prompt-editor/documentMapping';
+import { parseValueToDocContent } from './prompt-editor/documentMapping';
 import {
   extractEditorContent,
   getEditorSelection,
@@ -19,6 +19,7 @@ import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
 import { useMultiSelectActions } from './prompt-editor/useMultiSelectActions';
+import { usePromptEditorPanelEvents } from './prompt-editor/usePromptEditorPanelEvents';
 import { usePromptTipTapEditor } from './prompt-editor/usePromptTipTapEditor';
 import { useSuggestionInputEvents } from './prompt-editor/useSuggestionInputEvents';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
@@ -294,152 +295,19 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       };
     }, [showSuggestions]);
 
-    // 标签快捷面板 - 点击事件处理（移动端禁用）
-    useEffect(() => {
-      if (!editor || mobileMode) return;
-
-      const editorDom = editor.view.dom;
-
-      const handleClick = (e: MouseEvent) => {
-        // 如果点击的是面板本身，不处理
-        if (tagPanelRef.current?.contains(e.target as globalThis.Node)) return;
-        if (multiSelectPanelRef.current?.contains(e.target as globalThis.Node)) return;
-
-        // 如果有选区（划词），不触发单标签面板
-        const { from: selFrom, to: selTo } = editor.state.selection;
-        if (selTo - selFrom > 1) return;
-
-        const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
-        if (!pos) { setTagPanel(null); return; }
-
-        const $pos = editor.state.doc.resolve(pos.pos);
-        const node = $pos.parent;
-        if (!node.isTextblock) { setTagPanel(null); return; }
-
-        const text = node.textContent;
-        const offset = docOffsetToTextIndex(node, $pos.parentOffset);
-        const nodeStart = $pos.start();
-
-        // 找到当前位置所在的标签（以逗号分隔）
-        let start = offset;
-        let end = offset;
-        while (start > 0 && text[start - 1] !== ',') start--;
-        while (end < text.length && text[end] !== ',') end++;
-
-        const rawTag = text.slice(start, end).trim();
-        if (!rawTag || rawTag.length < 2 || rawTag.length > 80) { setTagPanel(null); return; }
-
-        // 去掉权重符号得到纯标签名
-        const cleanTag = rawTag.replace(/^\{+|\}+$|\[+|\]+$/g, '').replace(/_/g, ' ').trim();
-        if (!cleanTag) { setTagPanel(null); return; }
-
-        // 计算标签在文档中的绝对位置
-        const tagStartInText = start + (text.slice(start, end).length - text.slice(start, end).trimStart().length);
-        const tagEndInText = end - (text.slice(start, end).length - text.slice(start, end).trimEnd().length);
-        const absoluteFrom = nodeStart + textIndexToDocOffset(node, tagStartInText);
-        const absoluteTo = nodeStart + textIndexToDocOffset(node, tagEndInText);
-
-        // Toggle：点击同一个标签时关闭面板
-        if (tagPanel && tagPanel.from === absoluteFrom && tagPanel.to === absoluteTo) {
-          setTagPanel(null);
-          return;
-        }
-
-        // 获取翻译（从缓存）
-        const cleanForCache = rawTag.replace(/^\{+|\}+$|\[+|\]+$/g, '').replace(/_/g, ' ').trim();
-        const translation = translationCacheRef.current.get(cleanForCache) || '';
-
-        // 获取标签底部坐标作为面板位置
-        const coords = editor.view.coordsAtPos(absoluteFrom);
-
-        // 清除 hover 状态和多选面板，避免冲突
-        clearHoverTranslation();
-        setMultiSelectPanel(null);
-
-        setTagPanel({
-          tag: cleanTag,
-          rawTag,
-          translation,
-          from: absoluteFrom,
-          to: absoluteTo,
-          screenX: coords.left,
-          screenY: coords.bottom + 4,
-        });
-      };
-
-      editorDom.addEventListener('click', handleClick);
-      return () => { editorDom.removeEventListener('click', handleClick); };
-    }, [clearHoverTranslation, editor, tagPanel, mobileMode]);
-
-    // 划词多选检测
-    useEffect(() => {
-      if (!editor || mobileMode) return;
-      const editorDom = editor.view.dom;
-
-      const handleMouseUp = () => {
-        const { from, to } = editor.state.selection;
-        if (to - from < 2) {
-          setMultiSelectPanel(null);
-          return;
-        }
-        // 获取选区文本
-        const selectedText = editor.state.doc.textBetween(from, to, '\n', '');
-        if (!selectedText.trim()) { setMultiSelectPanel(null); return; }
-
-        // 计算扩展到完整标签边界的范围（向前找逗号/行首，向后找逗号/行尾）
-        // 但不强制修改用户选区，仅在面板操作时使用扩展范围
-        const $from = editor.state.doc.resolve(from);
-        const $to = editor.state.doc.resolve(to);
-        const fromText = $from.parent.textContent;
-        const toText = $to.parent.textContent;
-        const fromNodeStart = $from.start();
-        const toNodeStart = $to.start();
-        const fromLocal = docOffsetToTextIndex($from.parent, $from.parentOffset);
-        const toLocal = docOffsetToTextIndex($to.parent, $to.parentOffset);
-
-        // 向前扩展到标签开始
-        let expandedFromLocal = fromLocal;
-        while (expandedFromLocal > 0 && fromText[expandedFromLocal - 1] !== ',' && fromText[expandedFromLocal - 1] !== '，') expandedFromLocal--;
-        const expandedFrom = fromNodeStart + textIndexToDocOffset($from.parent, expandedFromLocal);
-
-        // 向后扩展到标签结束
-        let expandedToLocal = toLocal;
-        while (expandedToLocal < toText.length && toText[expandedToLocal] !== ',' && toText[expandedToLocal] !== '，') expandedToLocal++;
-        const expandedTo = toNodeStart + textIndexToDocOffset($to.parent, expandedToLocal);
-
-        const fullText = editor.state.doc.textBetween(expandedFrom, expandedTo, '\n', '');
-        const tags = fullText.split(/[,，]/).filter(t => t.trim());
-        if (tags.length < 2) { setMultiSelectPanel(null); return; }
-
-        // 不强制扩选用户选区，面板操作时使用扩展范围
-        const coords = editor.view.coordsAtPos(from);
-        setTagPanel(null);
-        setMultiSelectPanel({
-          from: expandedFrom,
-          to: expandedTo,
-          text: fullText,
-          tagCount: tags.length,
-          screenX: coords.left,
-          screenY: coords.bottom + 4,
-        });
-        setMultiNumWeight(1.0);
-      };
-
-      editorDom.addEventListener('mouseup', handleMouseUp);
-      return () => { editorDom.removeEventListener('mouseup', handleMouseUp); };
-    }, [editor, mobileMode]);
-
-    // 点击外部关闭多选面板
-    useEffect(() => {
-      if (!multiSelectPanel || !editor) return;
-      const handleClickOutside = (e: MouseEvent) => {
-        if (multiSelectPanelRef.current?.contains(e.target as globalThis.Node)) return;
-        if (editor.view.dom.contains(e.target as globalThis.Node)) return;
-        setMultiSelectPanel(null);
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [multiSelectPanel, editor]);
+    usePromptEditorPanelEvents({
+      editor,
+      mobileMode,
+      tagPanel,
+      setTagPanel,
+      tagPanelRef,
+      multiSelectPanel,
+      setMultiSelectPanel,
+      multiSelectPanelRef,
+      setMultiNumWeight,
+      translationCacheRef,
+      clearHoverTranslation,
+    });
 
     // 面板打开时解析当前数字权重
     useEffect(() => {
@@ -473,18 +341,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       })();
       return () => { cancelled = true; };
     }, [tagPanel?.from, tagPanel?.tag, tagPanel?.translation]);
-
-    // 点击面板外部关闭（排除编辑器内点击，编辑器内由 click handler 处理 toggle）
-    useEffect(() => {
-      if (!tagPanel || !editor) return;
-      const handleClickOutside = (e: MouseEvent) => {
-        if (tagPanelRef.current?.contains(e.target as globalThis.Node)) return;
-        if (editor.view.dom.contains(e.target as globalThis.Node)) return;
-        setTagPanel(null);
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [tagPanel, editor]);
 
     const {
       actions: panelActions,
