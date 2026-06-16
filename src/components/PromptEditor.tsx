@@ -15,6 +15,7 @@ import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
+import { useTagHoverTranslation } from './prompt-editor/useTagHoverTranslation';
 import { WeightHighlightExtension } from './prompt-editor/weightHighlightExtension';
 import type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
 export type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
@@ -86,13 +87,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
     const isComposingRef = useRef(false); // 标记输入法是否正在组合中
     const isProgrammaticUpdateRef = useRef(false); // 标记是否是程序设置值（非用户输入）
     const suggestionScrollLockRef = useRef(false); // 鼠标 hover 改变 selectedIndex 时不触发 scrollIntoView
-
-    // 标签翻译 hover tooltip
-    const [tagTooltip, setTagTooltip] = useState<{ tag: string; translation: string; from: number; to: number } | null>(null);
-    const [hoverTagRange, setHoverTagRange] = useState<{ from: number; to: number } | null>(null);
-    const [isLoadingTranslation, setIsLoadingTranslation] = useState(false);
-    const translationCacheRef = useRef<Map<string, string>>(new Map());
-    const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // 标签快捷面板（点击触发）
     const [tagPanel, setTagPanel] = useState<TagPanelState | null>(null);
@@ -274,6 +268,13 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
         }
       },
     });
+    const {
+      tagTooltip,
+      hoverTagRange,
+      isLoadingTranslation,
+      translationCacheRef,
+      clearHoverTranslation,
+    } = useTagHoverTranslation({ editor, mobileMode });
 
     // 从编辑器提取内容
     const extractContent = useCallback((ed: typeof editor) => {
@@ -557,166 +558,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       };
     }, [showSuggestions]);
 
-    // 标签翻译 hover tooltip（移动端禁用）
-    useEffect(() => {
-      if (!editor || mobileMode) return;
-
-      const editorDom = editor.view.dom;
-      let currentTag = ''; // 当前正在处理的标签
-
-      const handleMouseMove = (e: MouseEvent) => {
-        // 获取鼠标位置对应的文本
-        const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
-        if (!pos) {
-          setTagTooltip(null);
-          setHoverTagRange(null);
-          currentTag = '';
-          return;
-        }
-
-        const $pos = editor.state.doc.resolve(pos.pos);
-        const node = $pos.parent;
-
-        if (!node.isTextblock) {
-          setTagTooltip(null);
-          setHoverTagRange(null);
-          currentTag = '';
-          return;
-        }
-
-        const text = node.textContent;
-        const offset = docOffsetToTextIndex(node, $pos.parentOffset);
-        const nodeStart = $pos.start();
-
-        // 找到当前位置所在的标签（以逗号分隔）
-        let start = offset;
-        let end = offset;
-
-        // 向前找到标签开始
-        while (start > 0 && text[start - 1] !== ',') {
-          start--;
-        }
-        // 向后找到标签结束
-        while (end < text.length && text[end] !== ',') {
-          end++;
-        }
-
-        const tag = text.slice(start, end).trim();
-
-        // 计算标签在文档中的绝对位置（去掉前后空格）
-        const tagStartInText = start + (text.slice(start, end).length - text.slice(start, end).trimStart().length);
-        const tagEndInText = end - (text.slice(start, end).length - text.slice(start, end).trimEnd().length);
-        const absoluteFrom = nodeStart + textIndexToDocOffset(node, tagStartInText);
-        const absoluteTo = nodeStart + textIndexToDocOffset(node, tagEndInText);
-
-        // 只处理英文标签（不含中文，长度合理）
-        if (!tag || tag.length < 2 || tag.length > 50 || /[\u4e00-\u9fa5]/.test(tag)) {
-          setTagTooltip(null);
-          setHoverTagRange(null);
-          currentTag = '';
-          return;
-        }
-
-        // 去掉权重符号
-        const cleanTag = tag.replace(/^\{+|\}+$|\[+|\]+$/g, '').replace(/_/g, ' ').trim();
-        if (!cleanTag) {
-          setTagTooltip(null);
-          setHoverTagRange(null);
-          currentTag = '';
-          return;
-        }
-
-        // 如果还是同一个标签，不重复处理
-        if (cleanTag === currentTag) {
-          return;
-        }
-
-        // 切换到新标签，清除之前的 timeout
-        if (tooltipTimeoutRef.current) {
-          clearTimeout(tooltipTimeoutRef.current);
-          tooltipTimeoutRef.current = null;
-        }
-        currentTag = cleanTag;
-
-        // 设置高亮范围
-        setHoverTagRange({ from: absoluteFrom, to: absoluteTo });
-
-        // 检查缓存
-        const cached = translationCacheRef.current.get(cleanTag);
-        if (cached) {
-          setTagTooltip({ tag: cleanTag, translation: cached, from: absoluteFrom, to: absoluteTo });
-          setIsLoadingTranslation(false);
-          return;
-        }
-
-        // 先清除翻译，显示加载状态
-        setTagTooltip(null);
-        setIsLoadingTranslation(true);
-
-        // 防抖 100ms 后查询翻译
-        const tagToFetch = cleanTag;
-        const rangeFrom = absoluteFrom;
-        const rangeTo = absoluteTo;
-
-        tooltipTimeoutRef.current = setTimeout(async () => {
-          // 检查当前标签是否还是请求时的标签
-          if (currentTag !== tagToFetch) return;
-
-          try {
-            // 用原始格式（下划线）查询 wiki
-            const queryTag = tagToFetch.replace(/ /g, '_');
-            const result = await fetchWikiChineseNames([queryTag]);
-
-            // 再次检查，防止异步返回时标签已切换
-            if (currentTag !== tagToFetch) return;
-
-            const translation = result[queryTag]?.[0];
-            if (translation) {
-              translationCacheRef.current.set(tagToFetch, translation);
-              setTagTooltip({ tag: tagToFetch, translation, from: rangeFrom, to: rangeTo });
-              setIsLoadingTranslation(false);
-            } else {
-              // Wiki 没有翻译，使用 Gemini 翻译
-              const geminiTranslation = await translateTagWithGemini(tagToFetch);
-
-              // 再次检查
-              if (currentTag !== tagToFetch) return;
-
-              if (geminiTranslation) {
-                translationCacheRef.current.set(tagToFetch, geminiTranslation);
-                setTagTooltip({ tag: tagToFetch, translation: geminiTranslation, from: rangeFrom, to: rangeTo });
-              }
-              setIsLoadingTranslation(false);
-            }
-          } catch {
-            setIsLoadingTranslation(false);
-          }
-        }, 100);
-      };
-
-      const handleMouseLeave = () => {
-        if (tooltipTimeoutRef.current) {
-          clearTimeout(tooltipTimeoutRef.current);
-          tooltipTimeoutRef.current = null;
-        }
-        setTagTooltip(null);
-        setHoverTagRange(null);
-        setIsLoadingTranslation(false);
-        currentTag = '';
-      };
-
-      editorDom.addEventListener('mousemove', handleMouseMove);
-      editorDom.addEventListener('mouseleave', handleMouseLeave);
-
-      return () => {
-        editorDom.removeEventListener('mousemove', handleMouseMove);
-        editorDom.removeEventListener('mouseleave', handleMouseLeave);
-        if (tooltipTimeoutRef.current) {
-          clearTimeout(tooltipTimeoutRef.current);
-        }
-      };
-    }, [editor, mobileMode]);
-
     // 标签快捷面板 - 点击事件处理（移动端禁用）
     useEffect(() => {
       if (!editor || mobileMode) return;
@@ -776,9 +617,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
         const coords = editor.view.coordsAtPos(absoluteFrom);
 
         // 清除 hover 状态和多选面板，避免冲突
-        setTagTooltip(null);
-        setHoverTagRange(null);
-        setIsLoadingTranslation(false);
+        clearHoverTranslation();
         setMultiSelectPanel(null);
 
         setTagPanel({
@@ -794,7 +633,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
 
       editorDom.addEventListener('click', handleClick);
       return () => { editorDom.removeEventListener('click', handleClick); };
-    }, [editor, tagPanel, mobileMode]);
+    }, [clearHoverTranslation, editor, tagPanel, mobileMode]);
 
     // 划词多选检测
     useEffect(() => {
