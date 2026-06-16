@@ -12,7 +12,7 @@ export interface MultiSelectPanelState {
   screenY: number;
 }
 
-interface MultiSelectActions {
+export interface MultiSelectActions {
   addWeight: () => void;
   reduceWeight: () => void;
   clearWeight: () => void;

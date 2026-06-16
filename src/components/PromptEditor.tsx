@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
@@ -14,6 +14,7 @@ import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
 import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
+import { useMultiSelectActions } from './prompt-editor/useMultiSelectActions';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import { useTagPanelActions } from './prompt-editor/useTagPanelActions';
 import { useTagHoverTranslation } from './prompt-editor/useTagHoverTranslation';
@@ -764,142 +765,12 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       isWeightUpdateRef,
     });
 
-    // 多选操作函数
-    const multiSelectActions = useMemo(() => ({
-      addWeight: () => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        const { from, to, text } = multiSelectPanel;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(`{${text}}`, from);
-          return true;
-        }).run();
-        setMultiSelectPanel(null);
-      },
-      reduceWeight: () => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        const { from, to, text } = multiSelectPanel;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(`[${text}]`, from);
-          return true;
-        }).run();
-        setMultiSelectPanel(null);
-      },
-      clearWeight: () => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        const { from, to, text } = multiSelectPanel;
-        // 先整体去除合并权重 weight::...:: 格式
-        let stripped = text.replace(/^-?\d+(?:\.\d+)?::([\s\S]*?)(?:::)?$/, '$1');
-        // 再去除外层花括号/方括号
-        stripped = stripped.replace(/^\{+|\}+$/g, '').replace(/^\[+|\]+$/g, '');
-        // 逐个标签清理残留权重
-        const tags = stripped.split(/[,，]/);
-        const cleaned = tags.map(t => {
-          let c = t.replace(/^\s*\{+|\}+\s*$/g, '').replace(/^\s*\[+|\]+\s*$/g, '');
-          c = c.replace(/^(\s*)-?\d+(?:\.\d+)?::([\s\S]*?)(?:::)?\s*$/, '$1$2');
-          return c;
-        }).join(', ');
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(cleaned, from);
-          return true;
-        }).run();
-        setMultiSelectPanel(null);
-      },
-      setNumericWeight: (weight: number) => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        const { from, to, text } = multiSelectPanel;
-        // 先清理所有标签的权重，再合并为 weight::tag1, tag2::
-        const tags = text.split(/[,，]/);
-        const cleaned = tags.map(t => {
-          let c = t.trim();
-          if (!c) return '';
-          c = c.replace(/^\{+|\}+$/g, '').replace(/^\[+|\]+$/g, '');
-          c = c.replace(/^-?\d+(?:\.\d+)?::(.+?)(?:::)?$/, '$1');
-          return c;
-        }).filter(Boolean).join(', ');
-        const result = `${weight}::${cleaned}::`;
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(result, from);
-          return true;
-        }).run();
-        const newTo = from + result.length;
-        setMultiSelectPanel(prev => prev ? { ...prev, text: result, to: newTo } : null);
-      },
-      moveToFront: () => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        let { from, to, text } = multiSelectPanel;
-        // 删除选区及周围逗号
-        const $from = editor.state.doc.resolve(from);
-        const fullText = $from.parent.textContent;
-        const nodeStart = $from.start();
-        const localFrom = from - nodeStart;
-        const localTo = to - nodeStart;
-        let delFrom = from, delTo = to;
-        if (localTo < fullText.length && (fullText[localTo] === ',' || fullText[localTo] === '，')) {
-          delTo = nodeStart + localTo + 1;
-          if (localTo + 1 < fullText.length && fullText[localTo + 1] === ' ') delTo = nodeStart + localTo + 2;
-        } else if (localFrom > 0 && (fullText[localFrom - 1] === ',' || fullText[localFrom - 1] === '，')) {
-          delFrom = nodeStart + localFrom - 1;
-          if (localFrom >= 2 && fullText[localFrom - 2] === ' ') delFrom = nodeStart + localFrom - 2;
-        }
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(delFrom, delTo);
-          tr.insertText(`${text.trim()}, `, 1);
-          return true;
-        }).run();
-        setMultiSelectPanel(null);
-      },
-      toggleHide: () => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        const { from, to, text } = multiSelectPanel;
-        const tags = text.split(/[,，]/);
-        const isHidden = tags[0]?.trim().startsWith('~');
-        const result = tags.map(t => {
-          const trimmed = t.trim();
-          if (!trimmed) return t;
-          const leading = t.match(/^\s*/)?.[0] || '';
-          if (isHidden) return leading + trimmed.replace(/^~/, '');
-          return leading + '~' + trimmed;
-        }).join(',');
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          tr.insertText(result, from);
-          return true;
-        }).run();
-        setMultiSelectPanel(null);
-      },
-      deleteTag: () => {
-        if (!editor || !multiSelectPanel) return;
-        markPanelAction();
-        let { from, to } = multiSelectPanel;
-        const $from = editor.state.doc.resolve(from);
-        const fullText = $from.parent.textContent;
-        const nodeStart = $from.start();
-        const localFrom = from - nodeStart;
-        const localTo = to - nodeStart;
-        if (localTo < fullText.length && (fullText[localTo] === ',' || fullText[localTo] === '，')) {
-          to = nodeStart + localTo + 1;
-          if (localTo + 1 < fullText.length && fullText[localTo + 1] === ' ') to = nodeStart + localTo + 2;
-        } else if (localFrom > 0 && (fullText[localFrom - 1] === ',' || fullText[localFrom - 1] === '，')) {
-          from = nodeStart + localFrom - 1;
-          if (localFrom >= 2 && fullText[localFrom - 2] === ' ') from = nodeStart + localFrom - 2;
-        }
-        editor.chain().focus().command(({ tr }) => {
-          tr.delete(from, to);
-          return true;
-        }).run();
-        setMultiSelectPanel(null);
-      },
-    }), [editor, multiSelectPanel]);
+    const multiSelectActions = useMultiSelectActions({
+      editor,
+      panel: multiSelectPanel,
+      setPanel: setMultiSelectPanel,
+      markPanelAction,
+    });
 
     // 同步外部 value 到编辑器
     // 解析 <<artist:...>> 等标记为芯片节点，实现芯片模式 ↔ 文本模式无损切换
