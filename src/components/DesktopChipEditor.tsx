@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { type TagSuggestion } from '../services/tagAutocomplete';
-import { getAppSettings } from '../services/localLibrary';
+import { useDesktopContentHeight } from './desktop-chip-editor/useDesktopContentHeight';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
 import { useDesktopChipKeyboard } from './desktop-chip-editor/useDesktopChipKeyboard';
@@ -15,6 +15,7 @@ import { DesktopTagQuickPanel } from './desktop-chip-editor/DesktopTagQuickPanel
 import { useDesktopSuggestionSelection } from './desktop-chip-editor/useDesktopSuggestionSelection';
 import { useDesktopPanelActions, useDesktopTagActions } from './desktop-chip-editor/useDesktopTagActions';
 import { useDesktopTagTranslations } from './desktop-chip-editor/useDesktopTagTranslations';
+import { useDesktopWeightPresets } from './desktop-chip-editor/useDesktopWeightPresets';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import {
@@ -39,14 +40,7 @@ interface DesktopChipEditorProps {
 export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   value, onChange, placeholder = '输入标签，逗号分隔...', className = '', type = 'prompt', onContentHeightChange,
 }) => {
-  const [weightPresets, setWeightPresets] = useState(() => getAppSettings().weightPresets || [-1, 0.5, 0.8, 1.5, 2.0]);
-  // 监听设置变更（同页面 + 跨标签页）
-  useEffect(() => {
-    const sync = () => setWeightPresets(getAppSettings().weightPresets || [-1, 0.5, 0.8, 1.5, 2.0]);
-    window.addEventListener('storage', sync);
-    window.addEventListener('app-settings-changed', sync);
-    return () => { window.removeEventListener('storage', sync); window.removeEventListener('app-settings-changed', sync); };
-  }, []);
+  const weightPresets = useDesktopWeightPresets();
 
   const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -268,16 +262,7 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setSuggestions,
   });
 
-  // 内容高度变化通知：仅在 value 变化时测量（用户增删 tag），
-  // 不用 ResizeObserver 避免翻译加载等异步事件导致高度波动
-  useEffect(() => {
-    if (!onContentHeightChange || !chipContainerRef.current) return;
-    requestAnimationFrame(() => {
-      if (chipContainerRef.current) {
-        onContentHeightChange(chipContainerRef.current.offsetHeight + 16);
-      }
-    });
-  }, [value, onContentHeightChange]);
+  useDesktopContentHeight(value, chipContainerRef, onContentHeightChange);
 
   const handleChipClick = useCallback((e: React.MouseEvent, index: number) => {
     e.stopPropagation();
