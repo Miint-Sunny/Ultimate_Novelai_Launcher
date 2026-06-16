@@ -3,8 +3,8 @@ import { Copy, Plus } from 'lucide-react';
 import { getTagSuggestionsDebounced, fetchWikiChineseNames, type TagSuggestion, getTranslationCacheSnapshot, setTranslationCacheEntries, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { translateSegments } from '../services/translate';
 import { getAppSettings } from '../services/localLibrary';
-import { getBackendUrl } from '../utils/apiConfig';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
+import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
 import { DesktopMultiSelectPanel } from './desktop-chip-editor/DesktopMultiSelectPanel';
 import { DesktopSuggestionDropdown } from './desktop-chip-editor/DesktopSuggestionDropdown';
 import { DesktopTagQuickPanel } from './desktop-chip-editor/DesktopTagQuickPanel';
@@ -66,9 +66,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const tagPanelRef = useRef<HTMLDivElement>(null);
   const chipRefsMap = useRef<Map<number, HTMLElement>>(new Map());
   const [numWeight, setNumWeight] = useState(1.0);
-  const [translationLoading, setTranslationLoading] = useState(false);
-  // 当前 tagPanel 标签在 Danbooru 的 post_count；null=未拉取/无数据
-  const [tagPanelPostCount, setTagPanelPostCount] = useState<number | null>(null);
 
   // 芯片点击防抖：防止点击芯片引发的布局重排触发 scroll 事件关闭面板
   const chipClickTimeRef = useRef<number>(0);
@@ -403,133 +400,24 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const [multiNumWeight, setMultiNumWeight] = useState(1.0);
   useEffect(() => { setMultiNumWeight(currentNumericWeight ?? 1.0); }, [currentNumericWeight]);
 
-  useEffect(() => { if (!tagPanel) return; const m = tagPanel.rawTag.match(/^(-?\d+(?:\.\d+)?)::/); setNumWeight(m ? parseFloat(m[1]) : 1.0); }, [tagPanel]);
-
-  useEffect(() => {
-    if (!tagPanel || tagPanel.translation) { setTranslationLoading(false); return; }
-    let cancelled = false;
-    const queryTag = tagPanel.tag.replace(/ /g, '_');
-    setTranslationLoading(true);
-    (async () => {
-      try {
-        const result = await fetchWikiChineseNames([queryTag]);
-        if (cancelled) return;
-        let translation = result[queryTag]?.[0] || '';
-        if (!translation) { const aiResults = await translateSegments([tagPanel.tag]); if (cancelled) return; translation = aiResults[0] && aiResults[0] !== tagPanel.tag ? aiResults[0] : ''; }
-        if (cancelled) return;
-        if (translation) {
-          setTagTranslations(prev => new Map(prev).set(tagPanel.tag, translation));
-          setTagPanel(prev => prev && prev.index === tagPanel.index ? { ...prev, translation } : prev);
-        }
-      } catch { } finally {
-        if (!cancelled) setTranslationLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [tagPanel?.index, tagPanel?.tag, tagPanel?.translation]);
-
-  // 拉当前 tagPanel 标签的 Danbooru post_count
-  useEffect(() => {
-    if (!tagPanel) { setTagPanelPostCount(null); return; }
-    let cancelled = false;
-    const queryTag = tagPanel.tag.toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
-    setTagPanelPostCount(null);
-    (async () => {
-      try {
-        const res = await fetch(`${getBackendUrl()}/api/tags/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tags: [queryTag] }),
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json() as Record<string, number>;
-        const v = data[queryTag];
-        if (typeof v === 'number') setTagPanelPostCount(v);
-      } catch { /* 静默 */ }
-    })();
-    return () => { cancelled = true; };
-  }, [tagPanel?.index, tagPanel?.tag]);
-
-  useEffect(() => {
-    if (!tagPanel) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (tagPanelRef.current?.contains(e.target as globalThis.Node)) return;
-      if (scrollRef.current?.contains(e.target as globalThis.Node)) return;
-      setTagPanel(null);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [tagPanel]);
-
-  // 面板打开时支持左右方向键切换到相邻芯片
-  useEffect(() => {
-    if (!tagPanel) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      const ae = document.activeElement as HTMLElement | null;
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-      const dir = e.key === 'ArrowLeft' ? -1 : 1;
-      let newIndex = tagPanel.index + dir;
-      while (newIndex >= 0 && newIndex < parsedTags.length && parsedTags[newIndex] === NEWLINE_SENTINEL) {
-        newIndex += dir;
-      }
-      if (newIndex < 0 || newIndex >= parsedTags.length) return;
-      const rawTag = parsedTags[newIndex];
-      if (!rawTag) return;
-      e.preventDefault();
-      // 抑制即将由 scrollIntoView 触发的 scroll 关闭面板
-      chipClickTimeRef.current = Date.now();
-      const chipEl = chipRefsMap.current.get(newIndex);
-      chipEl?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-      requestAnimationFrame(() => {
-        const el = chipRefsMap.current.get(newIndex);
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const clean = cleanTagName(rawTag);
-        setSelectedTags(new Set([newIndex]));
-        setTagPanel({
-          index: newIndex,
-          rawTag: rawTag.trim(),
-          tag: clean,
-          translation: tagTranslations.get(clean) || '',
-          screenX: rect.left,
-          screenY: rect.bottom + 4,
-        });
-      });
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [tagPanel, parsedTags, tagTranslations]);
-
-  useEffect(() => {
-    if (!showSuggestions) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as globalThis.Node;
-      if (suggestionsRef.current?.contains(target)) return;
-      if (inputRef.current?.contains(target)) return;
-      // Wiki 预览卡片是独立 portal，点击其中（如 Wiki 跳转链接）不应关闭补全，
-      // 否则会触发清空 suggestionWikiPreview，使卡片在 click 派发前卸载、链接失效
-      if (target instanceof Element && target.closest('.wiki-preview-floating')) return;
-      setShowSuggestions(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showSuggestions]);
-
-  // 滚动时关闭面板和补全（保留选中状态，只在点击空白处才清除）
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      // 芯片点击后短时间内忽略 scroll 事件，避免布局重排导致面板被误关
-      if (Date.now() - chipClickTimeRef.current < 150) return;
-      setTagPanel(null);
-      setShowSuggestions(false);
-      setSuggestions([]);
-    };
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+  const { translationLoading, tagPanelPostCount } = useDesktopFloatingPanelLifecycle({
+    tagPanel,
+    tagPanelRef,
+    scrollRef,
+    suggestionsRef,
+    inputRef,
+    chipRefsMap,
+    chipClickTimeRef,
+    parsedTags,
+    tagTranslations,
+    showSuggestions,
+    setNumWeight,
+    setTagPanel,
+    setSelectedTags,
+    setTagTranslations,
+    setShowSuggestions,
+    setSuggestions,
+  });
 
   // 内容高度变化通知：仅在 value 变化时测量（用户增删 tag），
   // 不用 ResizeObserver 避免翻译加载等异步事件导致高度波动
