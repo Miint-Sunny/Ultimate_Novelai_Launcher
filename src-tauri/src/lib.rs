@@ -26,16 +26,20 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running NAI Studio");
+        .expect("error while running Ultimate Novelai launcher");
 }
 
 fn spawn_python_sidecar() -> Option<Child> {
-    if std::env::var("NAI_STUDIO_SKIP_SIDECAR").ok().as_deref() == Some("1") {
+    let skip_sidecar = std::env::var("ULTIMATE_NOVELAI_LAUNCHER_SKIP_SIDECAR")
+        .or_else(|_| std::env::var("NAI_STUDIO_SKIP_SIDECAR"))
+        .ok();
+    if skip_sidecar.as_deref() == Some("1") {
         return None;
     }
 
     let root = project_root();
-    let requested_port = std::env::var("NAI_STUDIO_SIDECAR_PORT")
+    let requested_port = std::env::var("ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT")
+        .or_else(|_| std::env::var("NAI_STUDIO_SIDECAR_PORT"))
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(38176);
@@ -45,18 +49,18 @@ fn spawn_python_sidecar() -> Option<Child> {
         .arg("-m")
         .arg("sidecar.server")
         .current_dir(root)
-        .env("NAI_STUDIO_SIDECAR_HOST", "127.0.0.1")
-        .env("NAI_STUDIO_SIDECAR_PORT", &port)
+        .env("ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_HOST", "127.0.0.1")
+        .env("ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT", &port)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
     {
         Ok(child) => {
-            eprintln!("NAI Studio sidecar started on 127.0.0.1:{port}");
+            eprintln!("Ultimate Novelai launcher sidecar started on 127.0.0.1:{port}");
             Some(child)
         }
         Err(error) => {
-            eprintln!("failed to start NAI Studio sidecar: {error}");
+            eprintln!("failed to start Ultimate Novelai launcher sidecar: {error}");
             None
         }
     }

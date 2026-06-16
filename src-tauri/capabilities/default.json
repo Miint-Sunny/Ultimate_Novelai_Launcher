@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default desktop capability for NAI Studio.",
+  "description": "Default desktop capability for Ultimate Novelai launcher.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

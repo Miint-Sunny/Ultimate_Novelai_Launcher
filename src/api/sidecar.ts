@@ -146,7 +146,7 @@ async function resolveSidecarUrl(): Promise<string> {
       const body = await response.json();
       if (body?.ok === true) {
         resolvedSidecarUrl = url;
-        window.localStorage.setItem('nai_studio_sidecar_url', url);
+        window.localStorage.setItem('ultimate_novelai_launcher_sidecar_url', url);
         return url;
       }
       errors.push(`${url}: invalid health response`);
@@ -155,7 +155,7 @@ async function resolveSidecarUrl(): Promise<string> {
     }
   }
 
-  throw new Error(`无法连接 NAI Studio sidecar。已尝试：${errors.join('; ')}`);
+  throw new Error(`无法连接 Ultimate Novelai launcher sidecar。已尝试：${errors.join('; ')}`);
 }
 
 function sidecarCandidates(): string[] {
@@ -173,7 +173,8 @@ function sidecarCandidates(): string[] {
 }
 
 function cachedSidecarUrl(): string | null {
-  const cached = window.localStorage.getItem('nai_studio_sidecar_url');
+  const cached = window.localStorage.getItem('ultimate_novelai_launcher_sidecar_url')
+    || window.localStorage.getItem('nai_studio_sidecar_url');
   if (!cached) return null;
   try {
     const url = new URL(cached);

@@ -1,3 +1,3 @@
 fn main() {
-    nai_studio_app_lib::run()
+    ultimate_novelai_launcher_lib::run()
 }

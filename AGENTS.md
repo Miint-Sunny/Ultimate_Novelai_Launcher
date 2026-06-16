@@ -1,6 +1,6 @@
-# NAI Studio Engineering Rules
+# Ultimate Novelai launcher Engineering Rules
 
-NAI Studio is a NovelAI desktop creation tool, macOS first and Windows-aware.
+Ultimate Novelai launcher is a NovelAI desktop creation tool, macOS first and Windows-aware.
 
 ## Product Direction
 

@@ -1,13 +1,13 @@
 [package]
-name = "nai-studio-app"
+name = "ultimate_novelai_launcher"
 version = "0.1.0"
-description = "NAI Studio desktop shell over the refactored reference UI"
-authors = ["NAI Studio Contributors"]
+description = "Ultimate Novelai launcher desktop shell over the refactored reference UI"
+authors = ["Ultimate Novelai launcher Contributors"]
 license = "GPL-3.0-only"
 edition = "2021"
 
 [lib]
-name = "nai_studio_app_lib"
+name = "ultimate_novelai_launcher_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

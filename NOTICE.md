@@ -1,6 +1,6 @@
-# NAI Studio Notices
+# Ultimate Novelai launcher Notices
 
-NAI Studio is licensed under GPL-3.0-only.
+Ultimate Novelai launcher is licensed under GPL-3.0-only.
 
 ## Referenced Projects
 

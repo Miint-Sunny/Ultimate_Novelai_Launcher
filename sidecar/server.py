@@ -105,10 +105,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_: FastAPI):
         init_db(resolved_settings)
         init_library(resolved_settings)
-        logger.info("NAI Studio sidecar ready at data_dir=%s", resolved_settings.data_dir)
+        logger.info("Ultimate Novelai launcher sidecar ready at data_dir=%s", resolved_settings.data_dir)
         yield
 
-    app = FastAPI(title="NAI Studio Sidecar", version=APP_VERSION, lifespan=lifespan)
+    app = FastAPI(title="Ultimate Novelai launcher Sidecar", version=APP_VERSION, lifespan=lifespan)
     app.state.settings = resolved_settings
 
     app.add_middleware(

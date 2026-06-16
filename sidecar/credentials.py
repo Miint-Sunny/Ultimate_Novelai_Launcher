@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SERVICE_NAME = "NAI Studio"
+SERVICE_NAME = "Ultimate Novelai launcher"
 ACCOUNT_NAME = "novelai-token"
 
 
