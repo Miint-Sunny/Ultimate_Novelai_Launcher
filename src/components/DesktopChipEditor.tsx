@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { type TagSuggestion } from '../services/tagAutocomplete';
 import { useDesktopContentHeight } from './desktop-chip-editor/useDesktopContentHeight';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
 import { useDesktopChipKeyboard } from './desktop-chip-editor/useDesktopChipKeyboard';
+import { useDesktopChipSelection } from './desktop-chip-editor/useDesktopChipSelection';
 import { useDesktopChipValue } from './desktop-chip-editor/useDesktopChipValue';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
 import { useDesktopModifierKeys } from './desktop-chip-editor/useDesktopModifierKeys';
@@ -18,8 +19,7 @@ import { useDesktopWeightPresets } from './desktop-chip-editor/useDesktopWeightP
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import {
-  isCollapsibleMarker, splitPromptToTags,
-  cleanTagName, getTagWeightInfo,
+  splitPromptToTags,
   analyzeTagGroups,
 } from '../utils/promptTags';
 
@@ -41,7 +41,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
 }) => {
   const weightPresets = useDesktopWeightPresets();
 
-  const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chipContainerRef = useRef<HTMLDivElement>(null);
@@ -71,6 +70,28 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const parsedTags = useMemo(() => splitPromptToTags(value), [value]);
   const tagGroups = useMemo(() => analyzeTagGroups(parsedTags), [parsedTags]);
   const { tagTranslations, translatingTags, setTagTranslations } = useDesktopTagTranslations(parsedTags);
+
+  const {
+    selectedTags,
+    setSelectedTags,
+    multiNumWeight,
+    setMultiNumWeight,
+    hasSelection,
+    handleChipClick,
+    handleChipDoubleClick,
+    handleContainerClick,
+  } = useDesktopChipSelection({
+    parsedTags,
+    tagTranslations,
+    editingTag,
+    tagPanel,
+    chipRefsMap,
+    chipClickTimeRef,
+    inputRef,
+    editInputRef,
+    setEditingTag,
+    setTagPanel,
+  });
 
   const {
     dragIndex,
@@ -115,13 +136,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     const el = suggestionsRef.current.querySelector(`[data-sugg-idx="${selectedSuggIdx}"]`) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
   }, [selectedSuggIdx, showSuggestions]);
-
-  useEffect(() => {
-    if (selectedTags.size === 0) return;
-    const valid = new Set<number>();
-    selectedTags.forEach(i => { if (i < parsedTags.length) valid.add(i); });
-    if (valid.size !== selectedTags.size) setSelectedTags(valid);
-  }, [parsedTags.length, selectedTags]);
 
   const {
     inputText,
@@ -199,20 +213,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setTagPanel,
   });
 
-  const currentNumericWeight = useMemo(() => {
-    if (selectedTags.size === 0) return null;
-    const idx = Array.from(selectedTags).sort((a, b) => a - b)[0];
-    const w = getTagWeightInfo(parsedTags[idx]?.trim() || '');
-    return w.type === 'numeric' ? w.numericValue ?? null : null;
-  }, [selectedTags, parsedTags]);
-
-  const selectedTag = selectedTags.size === 1 ? parsedTags[Array.from(selectedTags)[0]] : null;
-  const hasSelection = selectedTags.size > 0 && !tagPanel;
-
-  // 多选时的数值权重状态
-  const [multiNumWeight, setMultiNumWeight] = useState(1.0);
-  useEffect(() => { setMultiNumWeight(currentNumericWeight ?? 1.0); }, [currentNumericWeight]);
-
   const { translationLoading, tagPanelPostCount } = useDesktopFloatingPanelLifecycle({
     tagPanel,
     tagPanelRef,
@@ -233,57 +233,6 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   });
 
   useDesktopContentHeight(value, chipContainerRef, onContentHeightChange);
-
-  const handleChipClick = useCallback((e: React.MouseEvent, index: number) => {
-    e.stopPropagation();
-    chipClickTimeRef.current = Date.now();
-    if (editingTag !== null) return;
-    if (e.ctrlKey || e.metaKey) {
-      setTagPanel(null);
-      setSelectedTags(prev => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next; });
-    } else if (e.shiftKey && selectedTags.size > 0) {
-      setTagPanel(null);
-      const existing = Array.from(selectedTags).sort((a, b) => a - b);
-      const from = Math.min(existing[0], index), to = Math.max(existing[0], index);
-      const next = new Set<number>(); for (let i = from; i <= to; i++) next.add(i);
-      setSelectedTags(next);
-    } else {
-      const rawTag = parsedTags[index]; if (!rawTag) return;
-      if (tagPanel && tagPanel.index === index) { setTagPanel(null); setSelectedTags(new Set()); return; }
-      setSelectedTags(new Set([index]));
-      const chipEl = e.currentTarget as HTMLElement;
-      const rect = chipEl.getBoundingClientRect();
-      const clean = cleanTagName(rawTag);
-      setTagPanel({ index, rawTag: rawTag.trim(), tag: clean, translation: tagTranslations.get(clean) || '', screenX: rect.left, screenY: rect.bottom + 4 });
-    }
-  }, [selectedTags, parsedTags, tagPanel, tagTranslations, editingTag]);
-
-  // 双击芯片：进入编辑模式
-  const handleChipDoubleClick = useCallback((e: React.MouseEvent, index: number) => {
-    e.stopPropagation();
-    const rawTag = parsedTags[index];
-    if (!rawTag || isCollapsibleMarker(rawTag)) return;
-    setTagPanel(null);
-    setSelectedTags(new Set());
-    const chipEl = chipRefsMap.current.get(index);
-    const chipWidth = chipEl ? chipEl.getBoundingClientRect().width : 80;
-    const chipHeight = chipEl ? chipEl.getBoundingClientRect().height : 32;
-    setEditingTag({ index, text: rawTag.trim(), width: Math.max(80, chipWidth), height: chipHeight });
-  }, [parsedTags]);
-
-  const handleContainerClick = useCallback(() => {
-    setSelectedTags(new Set()); setTagPanel(null); setEditingTag(null);
-    inputRef.current?.focus();
-  }, []);
-
-  // 编辑模式激活时聚焦并全选（仅在进入编辑或切换编辑目标时触发）
-  const editingIndex = editingTag?.index ?? null;
-  useEffect(() => {
-    if (editingIndex !== null && editInputRef.current) {
-      editInputRef.current.focus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingIndex]);
 
   return (
     <div className={`flex flex-col h-full ${className}`} onKeyDown={handleContainerKeyDown} tabIndex={-1}>
