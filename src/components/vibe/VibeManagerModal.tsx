@@ -15,10 +15,9 @@ import {
   migrateFavoritedToTag, syncVibesFromCloud, pushAllToCloud, SyncProtocolMismatchError,
   getRecentVibeEntries, recordVibeUsageBatch, clearRecentVibeEntries, removeRecentVibeEntry, type RecentVibeEntry,
 } from '../../services/localLibrary';
-import { getBackendUrl } from '../../utils/apiConfig';
 import {
   getPublicVibes, getPublicVibeFile, deletePublicVibe, uploadVibeToPublic,
-  getPublicLibraryOwnerId,
+  getPublicLibraryOwnerId, getPublicVibeDownloadUrl, resolvePublicVibeThumbnailUrl,
 } from '../../services/publicLibrary';
 import {
   deleteCloudVibe, addCloudTombstone, putCloudTagPool,
@@ -26,6 +25,13 @@ import {
 import { CloudManageModal } from './CloudManageModal';
 import { encodeVibeImage } from '../../services/novelai';
 import { useConfirm } from '../tag-manager/parts/useConfirm';
+import {
+  filterVibesBySearchAndModel,
+  filterVibesByTags,
+  mapLocalVibeToFile,
+  mapPublicVibeToFile,
+  sortVibesByCreatedAtDesc,
+} from './vibeManagerUtils';
 
 // ─── 模块级状态：跨 modal 卸载/重挂载存活，用于还原滚动位置和无限滚动累计数 ──
 let savedPublicScrollTop = 0;
@@ -214,36 +220,16 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
   // ── Filtered / sorted lists ──────────────────────────────────────────────
 
   const filteredPublicFiles = useMemo(() => {
-    let files = publicFiles;
-    if (vibeSearchQuery.trim()) {
-      const q = vibeSearchQuery.trim().toLowerCase();
-      files = files.filter(f => f.name.toLowerCase().includes(q));
-    }
-    if (vibeModelFilter !== 'all') {
-      files = files.filter(f => f.supportedModels?.includes(vibeModelFilter));
-    }
-    return files;
+    return filterVibesBySearchAndModel(publicFiles, vibeSearchQuery, vibeModelFilter);
   }, [publicFiles, vibeSearchQuery, vibeModelFilter]);
 
   const filteredLocalFiles = useMemo(() => {
-    let files = localFiles;
-    if (vibeSearchQuery.trim()) {
-      const q = vibeSearchQuery.trim().toLowerCase();
-      files = files.filter(f => f.name.toLowerCase().includes(q));
-    }
-    if (vibeModelFilter !== 'all') {
-      files = files.filter(f => f.supportedModels?.includes(vibeModelFilter));
-    }
-    return files;
+    return filterVibesBySearchAndModel(localFiles, vibeSearchQuery, vibeModelFilter);
   }, [localFiles, vibeSearchQuery, vibeModelFilter]);
 
   // 在 filteredLocalFiles 之上再应用标签筛选（用户选中标签的并集）
   const tagFilteredLocalFiles = useMemo(() => {
-    if (selectedTagFilter.size === 0) return filteredLocalFiles;
-    return filteredLocalFiles.filter(f => {
-      const tags = f.tags || [];
-      return tags.some(t => selectedTagFilter.has(t));
-    });
+    return filterVibesByTags(filteredLocalFiles, selectedTagFilter);
   }, [filteredLocalFiles, selectedTagFilter]);
 
   // 当前用户在公共库的上传数量
@@ -270,15 +256,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
   const loadLocalVibes = async () => {
     try {
       const savedVibes = await getVibes();
-      const vibeFiles: VibeFile[] = savedVibes.map(v => ({
-        id: v.id, name: v.name, size: v.size, preview: v.preview, image: v.image,
-        encodings: v.encodings, defaultStrength: v.defaultStrength,
-        defaultInfoExtracted: v.defaultInfoExtracted, supportedModels: v.supportedModels,
-        createdAt: v.createdAt,
-        tags: v.tags,
-        cloudSync: v.cloudSync,
-        cloudFilename: v.cloudFilename,
-      }));
+      const vibeFiles = savedVibes.map(mapLocalVibeToFile);
       setLocalFiles(vibeFiles);
     } catch (err) {
       console.error("Error loading local vibes:", err);
@@ -289,15 +267,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
     setIsLoadingPublicVibes(true);
     try {
       const vibes = await getPublicVibes(forceRefresh);
-      const backendUrl = getBackendUrl();
-      const vibeFiles: VibeFile[] = vibes.map(v => ({
-        id: v.id || v.filename || `vibe-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: v.name, size: '',
-        preview: v.thumbnail ? (v.thumbnail.startsWith('/') ? `${backendUrl}${v.thumbnail}` : v.thumbnail) : '',
-        supportedModels: v.supportedModels, defaultStrength: v.defaultStrength,
-        defaultInfoExtracted: v.defaultInfoExtracted, fileName: v.filename, hasImage: v.hasImage,
-        uploaderId: v.uploaderId,
-      }));
+      const vibeFiles = vibes.map(vibe => mapPublicVibeToFile(vibe, resolvePublicVibeThumbnailUrl));
       // 用 transition 包裹大列表更新，让用户的 tab 切换/点击保持响应
       startTransition(() => {
         setPublicFiles(vibeFiles);
@@ -898,10 +868,9 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
   const handlePublicVibeDownload = (file: VibeFile, e: React.MouseEvent) => {
     e.stopPropagation();
     const fileName = file.fileName || `${file.name}.naiv4vibe`;
-    const backendUrl = getBackendUrl();
 
     const a = document.createElement('a');
-    a.href = `${backendUrl}/api/vibes/download/${encodeURIComponent(fileName)}`;
+    a.href = getPublicVibeDownloadUrl(fileName);
     a.download = fileName;
     a.click();
   };
@@ -1221,9 +1190,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-2">
                   {/* IndexedDB 本地 vibe */}
-                  {[...tagFilteredLocalFiles].sort((a, b) => {
-                    return (b.createdAt || 0) - (a.createdAt || 0);
-                  }).map((file) => {
+                  {sortVibesByCreatedAtDesc(tagFilteredLocalFiles).map((file) => {
                     const inPublic = isVibeInPublic(file.id);
                     return (
                       <VibeCard

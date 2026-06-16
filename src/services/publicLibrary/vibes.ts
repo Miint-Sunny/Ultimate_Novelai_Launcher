@@ -140,6 +140,15 @@ export function clearPublicVibeCache(): void {
   localStorage.removeItem(PUBLIC_VIBE_CACHE_KEY);
 }
 
+export function resolvePublicVibeThumbnailUrl(thumbnail?: string): string {
+  if (!thumbnail) return '';
+  return thumbnail.startsWith('/') ? sidecarApi.url(thumbnail) : thumbnail;
+}
+
+export function getPublicVibeDownloadUrl(filename: string): string {
+  return sidecarApi.url(`/api/vibes/download/${encodeURIComponent(filename)}`);
+}
+
 export async function deletePublicVibe(filename: string): Promise<{ success: boolean; message?: string }> {
   const sessionId = getOptionalSessionId();
   try {
