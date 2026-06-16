@@ -5,6 +5,7 @@ import { translateSegments } from '../services/translate';
 import { getAppSettings } from '../services/localLibrary';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopFloatingPanelLifecycle } from './desktop-chip-editor/useDesktopFloatingPanelLifecycle';
+import { DesktopInlineTagEditor } from './desktop-chip-editor/DesktopInlineTagEditor';
 import { DesktopMultiSelectPanel } from './desktop-chip-editor/DesktopMultiSelectPanel';
 import { DesktopSuggestionDropdown } from './desktop-chip-editor/DesktopSuggestionDropdown';
 import { DesktopTagQuickPanel } from './desktop-chip-editor/DesktopTagQuickPanel';
@@ -612,49 +613,22 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
                 <React.Fragment key={index}>
                   {insertBtn}
                   {dropPlaceholder}
-                  <div className="inline-flex items-center rounded border border-[#fceda4]/50 bg-[#fceda4]/10" style={{ width: editingTag.width, height: editingTag.height }}>
-                    <input
-                      ref={editInputRef}
-                      type="text"
-                      value={editingTag.text}
-                      onChange={(e) => {
-                        const newText = e.target.value;
-                        setEditingTag(prev => prev ? { ...prev, text: newText } : null);
-                        triggerAutocomplete(newText);
-                      }}
-                      onKeyDown={(e) => {
-                        if (showSuggestions && displaySuggs.length > 0) {
-                          if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedSuggIdx(prev => { let next = (prev + 1) % displaySuggs.length; if (displaySuggs[next]?.isAiLoading) next = (next + 1) % displaySuggs.length; return next; }); return; }
-                          if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedSuggIdx(prev => { let next = (prev - 1 + displaySuggs.length) % displaySuggs.length; if (displaySuggs[next]?.isAiLoading) next = (next - 1 + displaySuggs.length) % displaySuggs.length; return next; }); return; }
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const s = displaySuggs[selectedSuggIdx];
-                            if (s && !s.isAiLoading) {
-                              if (s.isOrigin) { const chars = s.originCharacters || []; if (chars.length > 0) { const rc = chars[Math.floor(Math.random() * chars.length)]; selectSuggestion({ ...s, value: rc, chineseName: lookupCharacterChineseName(rc), isOrigin: false }); } }
-                              else selectSuggestion(s);
-                            }
-                            e.stopPropagation(); return;
-                          }
-                          if (e.key === 'Escape') { e.preventDefault(); setShowSuggestions(false); setSuggestions([]); e.stopPropagation(); return; }
-                        }
-                        if (e.key === 'Enter') { e.preventDefault(); commitEdit(index, editingTag.text); }
-                        else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-                        e.stopPropagation();
-                      }}
-                      onBlur={(e) => {
-                        // 点击补全列表时不要提交
-                        const related = e.relatedTarget as HTMLElement | null;
-                        if (related?.closest('.chip-suggestion-dropdown')) return;
-                        setTimeout(() => {
-                          if (!showSuggestions) commitEdit(index, editingTag.text);
-                          else commitEdit(index, editingTag.text);
-                        }, 150);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="bg-transparent text-[#fceda4] text-sm font-tag outline-none px-1.5 py-0.5 w-full"
-                      autoFocus
-                    />
-                  </div>
+                  <DesktopInlineTagEditor
+                    index={index}
+                    editingTag={editingTag}
+                    editInputRef={editInputRef}
+                    showSuggestions={showSuggestions}
+                    displaySuggs={displaySuggs}
+                    selectedSuggIdx={selectedSuggIdx}
+                    setSelectedSuggIdx={setSelectedSuggIdx}
+                    selectSuggestion={selectSuggestion}
+                    triggerAutocomplete={triggerAutocomplete}
+                    commitEdit={commitEdit}
+                    cancelEdit={cancelEdit}
+                    setEditingTag={setEditingTag}
+                    setShowSuggestions={setShowSuggestions}
+                    setSuggestions={setSuggestions}
+                  />
                 </React.Fragment>
               );
             }
