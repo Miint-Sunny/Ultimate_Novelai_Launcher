@@ -1,9 +1,9 @@
-import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useMemo, useRef, useLayoutEffect, useState } from 'react';
+import React, { useEffect, useCallback, useImperativeHandle, forwardRef, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
 import Placeholder from '@tiptap/extension-placeholder';
-import { getTagSuggestionsDebounced, fetchWikiChineseNames, fetchWikiExistsBatch, fetchTagWikiPreview, fetchTagWikiSummaryZh, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
+import { getTagSuggestionsDebounced, fetchWikiChineseNames, translateTagWithGemini, type TagSuggestion, cancelPendingAutocomplete, lookupCharacterChineseName } from '../services/tagAutocomplete';
 import { getAppSettings } from '../services/localLibrary';
 import { translateToNaturalLanguage } from '../services/translate';
 import { CollapsibleTagNode } from './prompt-editor/collapsibleTagExtension';
@@ -14,9 +14,9 @@ import { PromptEditorStyles } from './prompt-editor/PromptEditorStyles';
 import { SuggestionDropdown } from './prompt-editor/SuggestionDropdown';
 import { SuggestionWikiPreviewCard } from './prompt-editor/SuggestionWikiPreviewCard';
 import { TagQuickPanel, type TagPanelState } from './prompt-editor/TagQuickPanel';
-import { canCheckSuggestionWiki, normalizeWikiTagKey } from './prompt-editor/wikiUtils';
+import { useSuggestionWikiPreview } from './prompt-editor/useSuggestionWikiPreview';
 import { WeightHighlightExtension } from './prompt-editor/weightHighlightExtension';
-import type { CollapsibleTag, CollapsibleTagType, SuggestionWikiPreviewState } from './prompt-editor/types';
+import type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
 export type { CollapsibleTag, CollapsibleTagType } from './prompt-editor/types';
 
 interface PromptEditorProps {
@@ -86,16 +86,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
     const isComposingRef = useRef(false); // 标记输入法是否正在组合中
     const isProgrammaticUpdateRef = useRef(false); // 标记是否是程序设置值（非用户输入）
     const suggestionScrollLockRef = useRef(false); // 鼠标 hover 改变 selectedIndex 时不触发 scrollIntoView
-
-    // 自动补全 Wiki 预览（与 DesktopChipEditor 一致）
-    const [suggestionWikiMap, setSuggestionWikiMap] = useState<Record<string, boolean>>({});
-    const [suggestionWikiPreview, setSuggestionWikiPreview] = useState<SuggestionWikiPreviewState | null>(null);
-    const [wikiPreviewImageIndex, setWikiPreviewImageIndex] = useState(0);
-    const [suggestionWikiPreviewHeight, setSuggestionWikiPreviewHeight] = useState<number | null>(null);
-    const suggestionWikiPreviewContentRef = useRef<HTMLDivElement>(null);
-    const suggestionPreviewHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const suggestionPreviewShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const suggestionPreviewReqRef = useRef(0);
 
     // 标签翻译 hover tooltip
     const [tagTooltip, setTagTooltip] = useState<{ tag: string; translation: string; from: number; to: number } | null>(null);
@@ -314,6 +304,19 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
 
     // tagAutocomplete.reorderByConfig 已在服务层按设置里的源顺序/数量排好，这里直接透传
     const displaySuggs = suggestions;
+    const {
+      wikiMap: suggestionWikiMap,
+      preview: suggestionWikiPreview,
+      previewHeight: suggestionWikiPreviewHeight,
+      previewContentRef: suggestionWikiPreviewContentRef,
+      previewImageIndex: wikiPreviewImageIndex,
+      showPreview: showSuggestionWikiPreview,
+      hidePreview: hideSuggestionWikiPreview,
+      keepPreviewVisible: keepSuggestionWikiPreviewVisible,
+    } = useSuggestionWikiPreview({
+      suggestions: displaySuggs,
+      visible: showSuggestions,
+    });
 
     // displaySuggs 变化时约束 selectedIndex
     useEffect(() => {
@@ -329,135 +332,6 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       const el = suggestionsRef.current.querySelector(`[data-sugg-idx="${selectedIndex}"]`) as HTMLElement | null;
       el?.scrollIntoView({ block: 'nearest' });
     }, [selectedIndex, showSuggestions]);
-
-    // Wiki 存在性批量检查
-    useEffect(() => {
-      if (!showSuggestions || displaySuggs.length === 0) {
-        setSuggestionWikiPreview(null);
-        return;
-      }
-      const tags = Array.from(new Set(
-        displaySuggs
-          .filter(canCheckSuggestionWiki)
-          .map(s => normalizeWikiTagKey(s.value))
-          .filter(Boolean)
-      ));
-      if (tags.length === 0) return;
-
-      let cancelled = false;
-      fetchWikiExistsBatch(tags).then((result) => {
-        if (cancelled) return;
-        setSuggestionWikiMap(prev => ({ ...prev, ...result }));
-      }).catch(() => { /* ignore */ });
-
-      return () => { cancelled = true; };
-    }, [showSuggestions, displaySuggs]);
-
-    // 卸载时清理预览定时器
-    useEffect(() => {
-      return () => {
-        if (suggestionPreviewHideTimerRef.current) clearTimeout(suggestionPreviewHideTimerRef.current);
-        if (suggestionPreviewShowTimerRef.current) clearTimeout(suggestionPreviewShowTimerRef.current);
-      };
-    }, []);
-
-    // 多图预览自动轮播
-    useEffect(() => {
-      setWikiPreviewImageIndex(0);
-      const examples = suggestionWikiPreview?.data?.examples?.filter(example => example.previewUrl) || [];
-      if (examples.length <= 1) return;
-      const timer = setInterval(() => {
-        setWikiPreviewImageIndex(prev => (prev + 1) % examples.length);
-      }, 2600);
-      return () => clearInterval(timer);
-    }, [suggestionWikiPreview?.tag, suggestionWikiPreview?.data]);
-
-    useLayoutEffect(() => {
-      if (!suggestionWikiPreview) {
-        setSuggestionWikiPreviewHeight(null);
-        return;
-      }
-
-      const content = suggestionWikiPreviewContentRef.current;
-      if (!content) return;
-
-      const updateHeight = () => {
-        const maxHeight = Math.max(80, window.innerHeight - 16);
-        const nextHeight = Math.min(Math.ceil(content.scrollHeight), maxHeight);
-        setSuggestionWikiPreviewHeight(prev => (
-          prev !== null && Math.abs(prev - nextHeight) < 1 ? prev : nextHeight
-        ));
-      };
-
-      const frame = requestAnimationFrame(updateHeight);
-      const observer = new ResizeObserver(updateHeight);
-      observer.observe(content);
-
-      return () => {
-        cancelAnimationFrame(frame);
-        observer.disconnect();
-      };
-    }, [suggestionWikiPreview?.tag, suggestionWikiPreview?.loading, suggestionWikiPreview?.data, suggestionWikiPreview?.summaryZhLoading, wikiPreviewImageIndex]);
-
-    const hideSuggestionWikiPreview = useCallback((delay = 120) => {
-      if (suggestionPreviewHideTimerRef.current) clearTimeout(suggestionPreviewHideTimerRef.current);
-      if (suggestionPreviewShowTimerRef.current) clearTimeout(suggestionPreviewShowTimerRef.current);
-      suggestionPreviewHideTimerRef.current = setTimeout(() => {
-        const reqId = ++suggestionPreviewReqRef.current;
-        setSuggestionWikiPreview(prev => prev ? { ...prev, closing: true } : prev);
-        suggestionPreviewHideTimerRef.current = setTimeout(() => {
-          if (suggestionPreviewReqRef.current === reqId) {
-            setSuggestionWikiPreview(null);
-          }
-        }, 140);
-      }, delay);
-    }, []);
-
-    const keepSuggestionWikiPreviewVisible = useCallback(() => {
-      if (suggestionPreviewHideTimerRef.current) clearTimeout(suggestionPreviewHideTimerRef.current);
-    }, []);
-
-    const showSuggestionWikiPreview = useCallback((suggestion: TagSuggestion, anchor: HTMLElement, delay = 220, showLoading = true) => {
-      const tag = normalizeWikiTagKey(suggestion.value);
-      if (!tag) return;
-      if (suggestionPreviewHideTimerRef.current) clearTimeout(suggestionPreviewHideTimerRef.current);
-      if (suggestionPreviewShowTimerRef.current) clearTimeout(suggestionPreviewShowTimerRef.current);
-      const anchorRect = anchor.getBoundingClientRect();
-      suggestionPreviewShowTimerRef.current = setTimeout(() => {
-        const reqId = ++suggestionPreviewReqRef.current;
-        if (showLoading) {
-          setSuggestionWikiPreview({ tag, data: null, loading: true, anchor: anchorRect, closing: false });
-        }
-        fetchTagWikiPreview(tag).then((data) => {
-          if (suggestionPreviewReqRef.current !== reqId) return;
-          if (!data) {
-            setSuggestionWikiMap(prev => ({ ...prev, [tag]: false }));
-            setSuggestionWikiPreview(prev => prev && prev.tag === tag ? null : prev);
-            return;
-          }
-          setSuggestionWikiMap(prev => ({ ...prev, [tag]: true }));
-          setSuggestionWikiPreview(prev => prev && prev.tag === tag
-            ? { ...prev, data, loading: false, summaryZhLoading: !data.summaryZh, closing: false }
-            : { tag, data, loading: false, summaryZhLoading: !data.summaryZh, anchor: anchorRect, closing: false });
-          if (!data.summaryZh) {
-            fetchTagWikiSummaryZh(tag).then((summaryZh) => {
-              if (suggestionPreviewReqRef.current !== reqId) return;
-              setSuggestionWikiPreview(prev => prev && prev.tag === tag && prev.data ? {
-                ...prev,
-                summaryZhLoading: false,
-                data: summaryZh ? { ...prev.data, summaryZh } : prev.data,
-              } : prev);
-            }).catch(() => {
-              if (suggestionPreviewReqRef.current !== reqId) return;
-              setSuggestionWikiPreview(prev => prev && prev.tag === tag ? { ...prev, summaryZhLoading: false } : prev);
-            });
-          }
-        }).catch(() => {
-          if (suggestionPreviewReqRef.current !== reqId) return;
-          setSuggestionWikiPreview(prev => prev && prev.tag === tag ? null : prev);
-        });
-      }, delay);
-    }, []);
 
     // 选择自动补全建议
     const selectSuggestion = useCallback((suggestion: TagSuggestion) => {
