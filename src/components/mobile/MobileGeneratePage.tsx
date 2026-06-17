@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Sparkles,
   Bot,
-  RefreshCw,
   X,
   Loader2,
   Languages,
@@ -54,6 +53,7 @@ import { MobileCharacterPromptsCard } from './MobileCharacterPromptsCard';
 import { MobileImageImportModal } from './MobileImageImportModal';
 import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
+import { MobileGenerateHeader } from './MobileGenerateHeader';
 import { MobileGenerateToolbar } from './MobileGenerateToolbar';
 import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
@@ -62,7 +62,6 @@ import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
 import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
-import { MODELS } from '../generation/modelResolutionOptions';
 import { FullscreenEditor, expandCollapsibleMarkers } from './FullscreenEditor';
 import {
   useMobileBackHandlers,
@@ -629,41 +628,15 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-nai-bg">
-      {/* 顶部栏 */}
-      <header className="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-nai-panel border-b border-gray-800">
-        <div className="relative flex-1 max-w-[220px]">
-          <button
-            onClick={() => setShowModelDropdown(!showModelDropdown)}
-            className="w-full flex items-center justify-between px-3 py-1.5 bg-gray-800/80 border border-gray-700/50 rounded-lg text-sm active:scale-[0.98]"
-          >
-            <span className="font-medium text-white">{MODELS.find((m) => m.id === model)?.name}</span>
-            <ChevronDown className={`w-4 h-4 ml-1.5 text-gray-400 transition-transform ${showModelDropdown ? 'rotate-180' : ''}`} />
-          </button>
-          {showModelDropdown && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowModelDropdown(false)} />
-              <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden animate-fade-in">
-                {MODELS.map((m) => (
-                  <button key={m.id} onClick={() => { setModel(m.id); setShowModelDropdown(false); }}
-                    className={`w-full px-3 py-2.5 text-left text-sm ${model === m.id ? 'bg-gray-700 text-nai-accent' : 'hover:bg-gray-700'}`}>
-                    <div className="font-medium">{m.name}</div>
-                    <div className="text-xs text-gray-500">{m.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={fetchAnlas} disabled={isLoadingAnlas}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800/80 border border-gray-700/50 rounded-lg active:scale-[0.98]">
-            <span className="text-base">💎</span>
-            <span className="text-sm font-mono text-nai-accent min-w-[32px]">
-              {isLoadingAnlas ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : anlasInfo ? anlasInfo.fixedTrainingStepsLeft + anlasInfo.purchasedTrainingSteps : '—'}
-            </span>
-          </button>
-        </div>
-      </header>
+      <MobileGenerateHeader
+        model={model}
+        setModel={setModel}
+        showModelDropdown={showModelDropdown}
+        setShowModelDropdown={setShowModelDropdown}
+        anlasInfo={anlasInfo}
+        isLoadingAnlas={isLoadingAnlas}
+        fetchAnlas={fetchAnlas}
+      />
 
       {/* 可滚动内容区 */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
