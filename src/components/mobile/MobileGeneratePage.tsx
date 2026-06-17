@@ -5,8 +5,8 @@ import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
 import { MobileGenerateCards } from './MobileGenerateCards';
 import { MobileGenerateEditors } from './MobileGenerateEditors';
+import { MobileGenerateImageImportSheet } from './MobileGenerateImageImportSheet';
 import { MobileGenerateReferenceSheets } from './MobileGenerateReferenceSheets';
-import { MobileImageImportModal } from './MobileImageImportModal';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
 import { MobileGenerateToolbar } from './MobileGenerateToolbar';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
@@ -573,31 +573,29 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         codexInspiration={codexInspiration}
       />
 
-      {/* 图片导入弹窗 */}
-      {showImageImportModal && (
-        <MobileImageImportModal
-          dataUrl={importImageDataUrl}
-          metadata={importImageMetadata}
-          isParsingMetadata={isParsingMetadata}
-          isAnalyzingTagger={isAnalyzingTagger}
-          taggerResult={taggerResult}
-          showTaggerResult={showTaggerResult}
-          setShowTaggerResult={setShowTaggerResult}
-          showFullMetadata={showFullMetadata}
-          setShowFullMetadata={setShowFullMetadata}
-          importOptions={importOptions}
-          setImportOptions={setImportOptions}
-          includeCharacter={includeCharacter}
-          setIncludeCharacter={setIncludeCharacter}
-          onClose={() => setShowImageImportModal(false)}
-          onAnalyzeWithTagger={analyzeWithTagger}
-          onImportTaggerPrompt={importTaggerPrompt}
-          onImportMetadata={importMetadata}
-          onUseAsVibe={useImportedImageAsVibe}
-          onUseAsImg2Img={useImportedImageAsImg2Img}
-          onUseAsCR={useImportedImageAsCR}
-        />
-      )}
+      <MobileGenerateImageImportSheet
+        isOpen={showImageImportModal}
+        dataUrl={importImageDataUrl}
+        metadata={importImageMetadata}
+        isParsingMetadata={isParsingMetadata}
+        isAnalyzingTagger={isAnalyzingTagger}
+        taggerResult={taggerResult}
+        showTaggerResult={showTaggerResult}
+        setShowTaggerResult={setShowTaggerResult}
+        showFullMetadata={showFullMetadata}
+        setShowFullMetadata={setShowFullMetadata}
+        importOptions={importOptions}
+        setImportOptions={setImportOptions}
+        includeCharacter={includeCharacter}
+        setIncludeCharacter={setIncludeCharacter}
+        onClose={() => setShowImageImportModal(false)}
+        onAnalyzeWithTagger={analyzeWithTagger}
+        onImportTaggerPrompt={importTaggerPrompt}
+        onImportMetadata={importMetadata}
+        onUseAsVibe={useImportedImageAsVibe}
+        onUseAsImg2Img={useImportedImageAsImg2Img}
+        onUseAsCR={useImportedImageAsCR}
+      />
     </div>
   );
 };
