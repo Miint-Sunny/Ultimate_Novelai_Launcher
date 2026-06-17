@@ -21,15 +21,14 @@ import { useMobileArtistSelection } from './generate/useMobileArtistSelection';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
 import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
-import { useMobileGenerateRunner } from './generate/useMobileGenerateRunner';
 import { useMobileGenerateSheetState } from './generate/useMobileGenerateSheetState';
+import { useMobileGenerationWorkflow } from './generate/useMobileGenerationWorkflow';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImportWorkflow } from './generate/useMobileImageImportWorkflow';
 import { useMobileInspirationApply } from './generate/useMobileInspirationApply';
 import { useMobileOCManager } from './generate/useMobileOCManager';
 import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
-import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
 import { useMobilePromptTokenCounts } from './generate/useMobilePromptTokenCounts';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
@@ -347,7 +346,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     characterPrompts,
   });
 
-  const { isPreparing, handleGenerate } = useMobileGenerateRunner({
+  const { isPreparing, handleGenerate } = useMobileGenerationWorkflow({
     isGenerating,
     isQueuing,
     isAuthenticated,
@@ -360,6 +359,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     activePreciseRefs,
     characterPrompts,
     savedInpaintRef,
+    cropInfoRef,
     img2imgImage,
     img2imgStrength,
     img2imgNoise,
@@ -373,29 +373,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     cfgRescale,
     noiseSchedule,
     varietyPlus,
-    generate,
-  });
-
-  useMobileInpaintGenerate({
-    isGenerating,
-    isQueuing,
-    isPreparing,
-    positivePrompt,
-    negativePrompt,
-    promptPresets,
-    activePresetId,
-    model,
-    seed,
-    steps,
-    scale,
-    sampler,
-    cfgRescale,
-    noiseSchedule,
-    varietyPlus,
-    characterPrompts,
-    activePreciseRefs,
-    activeVibes,
-    cropInfoRef,
     generate,
     addInpaintedImage,
     clearInpaintParams,
