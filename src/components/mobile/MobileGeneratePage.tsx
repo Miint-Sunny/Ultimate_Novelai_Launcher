@@ -12,7 +12,6 @@ import {
   Send,
   RefreshCw,
   X,
-  Palette,
   Loader2,
   Languages,
   Wrench,
@@ -22,7 +21,6 @@ import {
   Grid,
   Upload,
   Image as ImageIcon,
-  Power,
   User,
   ImagePlus,
   Brush,
@@ -61,7 +59,9 @@ import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
 import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
+import { MobilePreciseReferenceCard } from './MobilePreciseReferenceCard';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
+import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import {
@@ -101,7 +101,6 @@ import { useMobileGenerationParams } from './generate/useMobileGenerationParams'
 import type {
   ActiveVibe,
   CharacterPrompt,
-  PreciseReferenceMode,
   VibeFile,
 } from './types';
 
@@ -194,12 +193,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     localVibeFiles,
     setLocalVibeFiles,
     vibeFiles,
-    isVibeExpanded,
-    setIsVibeExpanded,
-    loadingVibeIds,
-    isVibeCompatibleWithModel,
-    removeActiveVibe,
-    updateActiveVibe,
     loadVibes,
   } = vibeLibrary;
 
@@ -211,11 +204,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     activePreciseRefs,
     activeCR,
     setActiveCR,
-    isCRExpanded,
-    setIsCRExpanded,
     loadCRs,
-    removePreciseRef,
-    updatePreciseRefParam,
   } = preciseReferenceLibrary;
 
   const img2imgState = useMobileImg2Img({
@@ -802,300 +791,15 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
           <MobileCharacterPromptsCard manager={characterPromptManager} />
 
-          {/* Vibes 区域 - 支持收起/展开 */}
-          <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
-            <div
-              className="flex items-center justify-between p-3 active:bg-gray-800/50 transition-colors cursor-pointer"
-              onClick={() => {
-                if (activeVibes.length > 0) {
-                  setIsVibeExpanded(!isVibeExpanded);
-                } else {
-                  setShowVibeModal(true);
-                }
-              }}
-            >
-              <div className="flex items-center gap-2">
-                {activeVibes.length > 0 && (
-                  <ChevronDown
-                    className={`w-5 h-5 text-gray-400 transition-transform ${isVibeExpanded ? '' : '-rotate-90'}`}
-                  />
-                )}
-                <Palette className="w-5 h-5 text-purple-400" />
-                <span className="text-sm font-bold text-gray-200">Vibes</span>
-                {activeVibes.length > 0 && (
-                  <span className="text-xs text-purple-400 bg-purple-500/20 px-1.5 py-0.5 rounded">
-                    {activeVibes.length}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowVibeModal(true);
-                }}
-                className="px-3 py-2 bg-purple-500/20 text-purple-400 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                添加
-              </button>
-            </div>
-            {activeVibes.length > 0 && isVibeExpanded && (
-              <div className="border-t border-gray-700/30">
-                {activeVibes.map((vibe, index) => {
-                  // 检查是否有原图（可以重新编码）
-                  const hasOriginalImage = !!vibe.image;
-                  const isLoading = loadingVibeIds.has(vibe.id);
-                  const isCompatible = isVibeCompatibleWithModel(vibe);
-                  return (
-                    <div
-                      key={vibe.id}
-                      className={`flex items-center gap-3 p-3 ${index > 0 ? 'border-t border-gray-700/30' : ''} ${!isCompatible ? 'bg-red-900/10' : ''}`}
-                    >
-                      {/* 预览图 - 与 CR 一致 */}
-                      {isLoading ? (
-                        <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0">
-                          <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                        </div>
-                      ) : vibe.preview ? (
-                        <img src={vibe.preview} alt={vibe.name} className={`w-14 h-14 rounded-lg object-cover flex-shrink-0 ${!isCompatible ? 'grayscale opacity-60' : !vibe.enabled ? 'opacity-50' : ''}`} />
-                      ) : (
-                        <div className={`w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 ${!isCompatible ? 'opacity-60' : !vibe.enabled ? 'opacity-50' : ''}`}>
-                          <Palette className="w-6 h-6 text-gray-600" />
-                        </div>
-                      )}
-                      {/* 名称和滑块 */}
-                      <div className={`flex-1 min-w-0 flex flex-col justify-center ${!isCompatible ? 'opacity-70' : !vibe.enabled ? 'opacity-50' : ''}`}>
-                        <div className={`text-sm font-medium truncate ${!isCompatible ? 'text-red-300/80 line-through' : vibe.enabled ? 'text-gray-200' : 'text-gray-500'}`}>
-                          {vibe.name}
-                        </div>
-                        {!isCompatible && (
-                          <div className="text-[11px] text-red-400 mt-0.5">不兼容当前模型</div>
-                        )}
-                        {/* 强度滑块 */}
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs text-gray-500 w-6">强度</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value={vibe.referenceStrength}
-                            onChange={(e) => {
-                              setActiveVibes((prev) =>
-                                prev.map((v) =>
-                                  v.id === vibe.id ? { ...v, referenceStrength: parseFloat(e.target.value) } : v
-                                )
-                              );
-                            }}
-                            className="flex-1 h-1.5 accent-purple-500"
-                          />
-                          <span className="text-xs text-gray-400 w-8 text-right">{vibe.referenceStrength.toFixed(2)}</span>
-                        </div>
-                        {/* 信息提取滑块 - 有原图或正在加载时显示 */}
-                        {(hasOriginalImage || isLoading) && (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <span className="text-xs text-gray-500 w-6">提取</span>
-                            {isLoading ? (
-                              <>
-                                <div className="flex-1 h-1.5 bg-gray-700 rounded-full" />
-                                <span className="text-xs text-gray-500 w-8 text-right">加载中</span>
-                              </>
-                            ) : (
-                              <>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="1"
-                                  step="0.05"
-                                  value={vibe.informationExtracted}
-                                  onChange={(e) => {
-                                    setActiveVibes((prev) =>
-                                      prev.map((v) =>
-                                        v.id === vibe.id ? { ...v, informationExtracted: parseFloat(e.target.value) } : v
-                                      )
-                                    );
-                                  }}
-                                  className="flex-1 h-1.5 accent-blue-500"
-                                />
-                                <span className="text-xs text-gray-400 w-8 text-right">{vibe.informationExtracted.toFixed(2)}</span>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {/* 右侧操作按钮 - 竖排 */}
-                      <div className="flex flex-col gap-1.5">
-                        {/* 启用开关 - 电源按钮 */}
-                        <button
-                          onClick={() => {
-                            if (!isCompatible) return;
-                            setActiveVibes((prev) =>
-                              prev.map((v) => (v.id === vibe.id ? { ...v, enabled: !v.enabled } : v))
-                            );
-                          }}
-                          disabled={!isCompatible}
-                          title={!isCompatible ? '不兼容当前模型' : vibe.enabled ? '禁用' : '启用'}
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${!isCompatible
-                              ? 'bg-red-900/20 text-red-500/50 cursor-not-allowed'
-                              : vibe.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-700/50 text-gray-500'
-                            }`}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                        {/* 删除按钮 */}
-                        <button
-                          onClick={() => removeActiveVibe(vibe.id)}
-                          className="w-9 h-9 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-500 hover:text-red-400 active:scale-95 transition-all"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Precise Reference 区域 - 支持收起/展开 */}
-          {(model === 'v4-full' || model === 'v4-curated-preview') ? (
-            <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg opacity-50">
-              <div className="flex items-center gap-2 p-3">
-                <User className="w-5 h-5 text-gray-500" />
-                <span className="text-sm font-bold text-gray-500">精确参考</span>
-                <span className="text-xs text-gray-600 ml-auto">V4 模型不支持</span>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
-              <div
-                className="flex items-center justify-between p-3 active:bg-gray-800/50 transition-colors cursor-pointer"
-                onClick={() => {
-                  if (activePreciseRefs.length > 0) {
-                    setIsCRExpanded(!isCRExpanded);
-                  } else {
-                    setShowCRModal(true);
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  {activePreciseRefs.length > 0 && (
-                    <ChevronDown
-                      className={`w-5 h-5 text-gray-400 transition-transform ${isCRExpanded ? '' : '-rotate-90'}`}
-                    />
-                  )}
-                  <User className="w-5 h-5 text-cyan-400" />
-                  <span className="text-sm font-bold text-gray-200">精确参考</span>
-                  {activePreciseRefs.length > 0 && (
-                    <span className="text-xs text-cyan-400 bg-cyan-500/20 px-1.5 py-0.5 rounded">
-                      {activePreciseRefs.filter(pr => pr.enabled).length}/{activePreciseRefs.length}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowCRModal(true);
-                  }}
-                  className="px-3 py-2 bg-cyan-500/20 text-cyan-400 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  {activePreciseRefs.length > 0 ? '管理' : '添加'}
-                </button>
-              </div>
-              {activePreciseRefs.length > 0 && isCRExpanded && (
-                <div className="border-t border-gray-700/30">
-                  {activePreciseRefs.map((pr, index) => (
-                    <div
-                      key={pr.id}
-                      className={`flex items-center gap-3 p-3 ${index > 0 ? 'border-t border-gray-700/30' : ''}`}
-                    >
-                      {/* 预览图 - 增大尺寸 */}
-                      <img
-                        src={pr.preview}
-                        alt={pr.name}
-                        className={`w-14 h-14 rounded-lg object-cover flex-shrink-0 ${!pr.enabled ? 'opacity-50' : ''}`}
-                      />
-                      {/* 名称和设置 */}
-                      <div className={`flex-1 min-w-0 flex flex-col justify-center ${!pr.enabled ? 'opacity-50' : ''}`}>
-                        {/* 名称和 Mode 下拉框在同一行 */}
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-200 truncate flex-1 min-w-0">{pr.name}</div>
-                          {/* Mode 自定义下拉框 */}
-                          <div className="relative w-28 shrink-0">
-                            <select
-                              value={pr.mode}
-                              onChange={(e) => updatePreciseRefParam(pr.id, { mode: e.target.value as PreciseReferenceMode })}
-                              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:border-cyan-500 outline-none appearance-none cursor-pointer opacity-0 absolute inset-0 z-10"
-                            >
-                              <option value="character&style">Character & Style</option>
-                              <option value="character">Character</option>
-                              <option value="style">Style</option>
-                            </select>
-                            {/* 显示层 - 缩写 */}
-                            <div
-                              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 flex items-center justify-between pointer-events-none"
-                            >
-                              <span>{pr.mode === 'character&style' ? 'Char & Style' : pr.mode === 'character' ? 'Character' : 'Style'}</span>
-                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-500">
-                                <path d="m6 9 6 6 6-6" />
-                              </svg>
-                            </div>
-                          </div>
-                        </div>
-                        {/* Strength 滑块 */}
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs text-gray-500 w-6">强度</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value={pr.strength}
-                            onChange={(e) => updatePreciseRefParam(pr.id, { strength: parseFloat(e.target.value) })}
-                            className="flex-1 h-1.5 accent-cyan-500"
-                          />
-                          <span className="text-xs text-gray-400 w-8 text-right">{pr.strength.toFixed(2)}</span>
-                        </div>
-                        {/* Fidelity 滑块 */}
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-xs text-gray-500 w-6">保真</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value={pr.informationExtracted}
-                            onChange={(e) => updatePreciseRefParam(pr.id, { informationExtracted: parseFloat(e.target.value) })}
-                            className="flex-1 h-1.5 accent-blue-500"
-                          />
-                          <span className="text-xs text-gray-400 w-8 text-right">{pr.informationExtracted.toFixed(2)}</span>
-                        </div>
-                      </div>
-                      {/* 右侧操作按钮 - 竖排 */}
-                      <div className="flex flex-col gap-1.5">
-                        {/* 启用开关 */}
-                        <button
-                          onClick={() => updatePreciseRefParam(pr.id, { enabled: !pr.enabled })}
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${pr.enabled ? 'bg-cyan-500/20 text-cyan-400' : 'bg-gray-700/50 text-gray-500'
-                            }`}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                        {/* 删除按钮 */}
-                        <button
-                          onClick={() => removePreciseRef(pr.id)}
-                          className="w-9 h-9 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-500 hover:text-red-400 active:scale-95 transition-all"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <MobileVibeReferencesCard
+            library={vibeLibrary}
+            onOpenManager={() => setShowVibeModal(true)}
+          />
+          <MobilePreciseReferenceCard
+            model={model}
+            library={preciseReferenceLibrary}
+            onOpenManager={() => setShowCRModal(true)}
+          />
 
           <MobileImg2ImgCard
             imageState={img2imgState}
