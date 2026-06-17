@@ -24,10 +24,8 @@ import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts'
 import { useMobileGenerateRunner } from './generate/useMobileGenerateRunner';
 import { useMobileGenerateSheetState } from './generate/useMobileGenerateSheetState';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
-import { useMobileImageImport } from './generate/useMobileImageImport';
-import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
+import { useMobileImageImportWorkflow } from './generate/useMobileImageImportWorkflow';
 import { useMobileInspirationApply } from './generate/useMobileInspirationApply';
-import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
 import { useMobileOCManager } from './generate/useMobileOCManager';
 import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
@@ -37,7 +35,6 @@ import { useMobilePromptTokenCounts } from './generate/useMobilePromptTokenCount
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import { useMobileRoleTags } from './generate/useMobileRoleTags';
-import { useMobileTaggerImportAction } from './generate/useMobileTaggerImportAction';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
@@ -202,6 +199,22 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
   const roleTagMap = useMobileRoleTags();
 
+  const imageImportWorkflow = useMobileImageImportWorkflow({
+    setActiveVibes,
+    setImg2imgWithAutoRes,
+    setActiveCR,
+    setPositivePrompt,
+    setNegativePrompt,
+    setSteps,
+    setScale,
+    setSampler,
+    setNoiseSchedule,
+    setLocalWidth,
+    setLocalHeight,
+    setSeed,
+    setCharacterPrompts,
+    setLocalVibeFiles,
+  });
   const {
     showImageImportModal,
     setShowImageImportModal,
@@ -220,42 +233,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setIncludeCharacter,
     openImageFile,
     analyzeWithTagger,
-  } = useMobileImageImport();
-  const {
     useImportedImageAsVibe,
     useImportedImageAsImg2Img,
     useImportedImageAsCR,
-  } = useMobileImportedImageActions({
-    importImageDataUrl,
-    setActiveVibes,
-    setImg2imgWithAutoRes,
-    setActiveCR,
-    closeImageImportModal: () => setShowImageImportModal(false),
-  });
-  const { importMetadata } = useMobileMetadataImportActions({
-    importImageMetadata,
-    importOptions,
-    setPositivePrompt,
-    setNegativePrompt,
-    setSteps,
-    setScale,
-    setSampler,
-    setNoiseSchedule,
-    setLocalWidth,
-    setLocalHeight,
-    setSeed,
-    setCharacterPrompts,
-    setLocalVibeFiles,
-    setActiveVibes,
-    closeImageImportModal: () => setShowImageImportModal(false),
-  });
-  const { importTaggerPrompt } = useMobileTaggerImportAction({
-    taggerResult,
-    includeCharacter,
-    importOptions,
-    setPositivePrompt,
-    closeImageImportModal: () => setShowImageImportModal(false),
-  });
+    importMetadata,
+    importTaggerPrompt,
+  } = imageImportWorkflow;
 
   const {
     aiModel,
