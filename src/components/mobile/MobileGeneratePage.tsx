@@ -1,28 +1,7 @@
 import React, { useState } from 'react';
-import {
-  ChevronDown,
-  Sparkles,
-  X,
-  Wrench,
-  RotateCcw,
-  Check,
-  Plus,
-  Grid,
-  Upload,
-  Image as ImageIcon,
-  ArrowLeft,
-  AlignLeft,
-  Eye,
-  EyeOff,
-  Search,
-  Clock,
-  Undo2,
-  ExternalLink,
-} from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
-import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
 import { MobileArtistModal } from './MobileArtistModal';
@@ -73,12 +52,6 @@ import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker'
 import { useMobileRoleTags } from './generate/useMobileRoleTags';
 import { useMobileTaggerImportAction } from './generate/useMobileTaggerImportAction';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
-import type {
-  ActiveVibe,
-  CharacterPrompt,
-  VibeFile,
-} from './types';
-
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
   onEditorStateChange?: (isOpen: boolean) => void;
