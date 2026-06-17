@@ -8,13 +8,7 @@ import { MobileGenerateEditors } from './MobileGenerateEditors';
 import { MobileGenerateImageImportSheet } from './MobileGenerateImageImportSheet';
 import { MobileGenerateReferenceSheets } from './MobileGenerateReferenceSheets';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
-import {
-  useMobileBackHandlers,
-  useMobileEditorStateBridge,
-  useMobileLibraryBootstrap,
-  useMobileMetadataImportHandler,
-  useMobileOCSheetLifecycle,
-} from './generate/useMobileGeneratePageEffects';
+import { useMobileGeneratePageLifecycle } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
@@ -265,17 +259,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     closeArtistModal: () => setShowArtistModal(false),
   });
 
-  useMobileEditorStateBridge({
-    editorOpen,
-    editingCharacterId,
-    showAIAssistant,
-    onEditorStateChange,
-  });
-  useMobileMetadataImportHandler({
-    setPositivePrompt,
-    setNegativePrompt,
-  });
-  useMobileBackHandlers({
+  useMobileGeneratePageLifecycle({
     editorOpen,
     setEditorOpen,
     editingCharacterId,
@@ -296,16 +280,13 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setShowVibeModal,
     showCRModal,
     setShowCRModal,
-  });
-  useMobileLibraryBootstrap({
+    onEditorStateChange,
+    setPositivePrompt,
+    setNegativePrompt,
     fetchAnlas,
     loadVibes,
     loadCRs,
     loadArtists,
-    loadOCs,
-  });
-  useMobileOCSheetLifecycle({
-    showOCModal,
     loadOCs,
     resetOCSelection,
   });

@@ -68,6 +68,13 @@ interface UseMobileOCSheetLifecycleOptions {
   resetOCSelection: () => void;
 }
 
+interface UseMobileGeneratePageLifecycleOptions extends
+  UseMobileEditorStateBridgeOptions,
+  UseMobileMetadataImportHandlerOptions,
+  UseMobileBackHandlersOptions,
+  UseMobileLibraryBootstrapOptions,
+  UseMobileOCSheetLifecycleOptions {}
+
 export function useMobileEditorStateBridge({
   editorOpen,
   editingCharacterId,
@@ -135,6 +142,14 @@ export function useMobileOCSheetLifecycle({
     }
     void loadOCs();
   }, [loadOCs, resetOCSelection, showOCModal]);
+}
+
+export function useMobileGeneratePageLifecycle(options: UseMobileGeneratePageLifecycleOptions) {
+  useMobileEditorStateBridge(options);
+  useMobileMetadataImportHandler(options);
+  useMobileBackHandlers(options);
+  useMobileLibraryBootstrap(options);
+  useMobileOCSheetLifecycle(options);
 }
 
 export function useMobileBackHandlers({
