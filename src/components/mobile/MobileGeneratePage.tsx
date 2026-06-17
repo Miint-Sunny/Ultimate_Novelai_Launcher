@@ -2,12 +2,10 @@ import React from 'react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
-import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
 import { MobileArtistModal } from './MobileArtistModal';
 import { MobileGenerateCards } from './MobileGenerateCards';
-import { MobileCharacterPromptEditor } from './MobileCharacterPromptEditor';
-import { MobileCharacterPositionSheet } from './MobileCharacterPositionSheet';
+import { MobileGenerateEditors } from './MobileGenerateEditors';
 import { MobileImageImportModal } from './MobileImageImportModal';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
@@ -17,7 +15,6 @@ import { MobileOCSheet } from './MobileOCSheet';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
-import { FullscreenEditor } from './FullscreenEditor';
 import {
   useMobileBackHandlers,
   useMobileEditorStateBridge,
@@ -538,43 +535,28 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         setVarietyPlus={setVarietyPlus}
       />
 
-      {/* 全屏编辑器 */}
-      <FullscreenEditor
-        isOpen={editorOpen === 'prompt'}
-        onClose={() => setEditorOpen(null)}
-        type="prompt"
-        value={positivePrompt}
-        onChange={setPositivePrompt}
-        presetTokens={positivePresetTokens}
-        totalTokens={positiveTokens}
-      />
-      <FullscreenEditor
-        isOpen={editorOpen === 'undesired'}
-        onClose={() => setEditorOpen(null)}
-        type="undesired"
-        value={negativePrompt}
-        onChange={setNegativePrompt}
-        presetTokens={negativePresetTokens}
-        totalTokens={negativeTokens}
-      />
-      <MobileAIAssistantSheet
-        isOpen={showAIAssistant}
-        onClose={() => setShowAIAssistant(false)}
-        aiModel={aiModel}
-        onAiModelChange={setAiModel}
-        agentState={agentState}
-        isGeneratingPrompt={isGeneratingPrompt}
-        onAIGenerate={handleAIGenerate}
-        onAIRegenerate={handleAIRegenerate}
-        onRestoreSnapshot={handleRestoreSnapshot}
-      />
-
-      <MobileCharacterPromptEditor
-        manager={characterPromptManager}
+      <MobileGenerateEditors
+        editorOpen={editorOpen}
+        setEditorOpen={setEditorOpen}
+        positivePrompt={positivePrompt}
+        setPositivePrompt={setPositivePrompt}
+        negativePrompt={negativePrompt}
+        setNegativePrompt={setNegativePrompt}
+        positivePresetTokens={positivePresetTokens}
+        negativePresetTokens={negativePresetTokens}
         positiveTokens={positiveTokens}
         negativeTokens={negativeTokens}
+        showAIAssistant={showAIAssistant}
+        closeAIAssistant={() => setShowAIAssistant(false)}
+        aiModel={aiModel}
+        setAiModel={setAiModel}
+        agentState={agentState}
+        isGeneratingPrompt={isGeneratingPrompt}
+        handleAIGenerate={handleAIGenerate}
+        handleAIRegenerate={handleAIRegenerate}
+        handleRestoreSnapshot={handleRestoreSnapshot}
+        characterPromptManager={characterPromptManager}
       />
-      <MobileCharacterPositionSheet manager={characterPromptManager} />
 
       <MobileVibeManagerSheet
         isOpen={showVibeModal}
