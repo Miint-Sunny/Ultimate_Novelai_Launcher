@@ -36,7 +36,6 @@ import {
   SlidersHorizontal,
   ArrowLeft,
   AlignLeft,
-  Edit2,
   Eye,
   EyeOff,
   Search,
@@ -60,6 +59,7 @@ import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
 import { MobileImageImportModal } from './MobileImageImportModal';
+import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
 import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
@@ -82,6 +82,7 @@ import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
+import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
 import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
@@ -218,44 +219,20 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     updatePreciseRefParam,
   } = preciseReferenceLibrary;
 
-  // Image2Image 状态
-  const [img2imgImage, setImg2imgImage] = useState<string | null>(null);
-  const [img2imgStrength, setImg2imgStrength] = useState(0.7);
-  const [img2imgNoise, setImg2imgNoise] = useState(0);
-  const [isImg2ImgExpanded, setIsImg2ImgExpanded] = useState(true);
-
-  // 重绘后自动循环：保存重绘参数供循环生成使用
-  const savedInpaintRef = useRef<{ imageBase64: string; maskBase64: string; strength: number; width: number; height: number } | null>(null);
-  // 裁切/扩图重绘回贴信息
-  const cropInfoRef = useRef<{ cropRect: { x: number; y: number; width: number; height: number }; originalImageBase64: string; originalWidth: number; originalHeight: number; isExpand?: boolean } | null>(null);
-  const [hasInpaintParams, setHasInpaintParams] = useState(false);
-  const [inpaintStrength, setInpaintStrength] = useState(0.7); // 重绘强度（独立于 img2imgStrength）
-
-  // 设置图生图图片并自动匹配分辨率
-  const MAX_TOTAL_PIXELS = 1024 * 3072;
-  const setImg2imgWithAutoRes = useCallback((dataUrl: string) => {
-    setImg2imgImage(dataUrl);
-    savedInpaintRef.current = null;
-    setHasInpaintParams(false);
-    const img = new Image();
-    img.onload = () => {
-      let w = Math.round(img.naturalWidth / 64) * 64;
-      let h = Math.round(img.naturalHeight / 64) * 64;
-      w = Math.max(64, w);
-      h = Math.max(64, h);
-      const pixels = w * h;
-      if (pixels > MAX_TOTAL_PIXELS) {
-        const scale = Math.sqrt(MAX_TOTAL_PIXELS / pixels);
-        w = Math.max(64, Math.floor((w * scale) / 64) * 64);
-        h = Math.max(64, Math.floor((h * scale) / 64) * 64);
-      }
-      setLocalWidth(w);
-      setLocalHeight(h);
-      // 同步更新主画布显示为导入的图片
-      setImage(dataUrl, w, h);
-    };
-    img.src = dataUrl;
-  }, [setImage]);
+  const img2imgState = useMobileImg2Img({
+    setLocalWidth,
+    setLocalHeight,
+    setImage,
+  });
+  const {
+    img2imgImage,
+    img2imgStrength,
+    img2imgNoise,
+    savedInpaintRef,
+    cropInfoRef,
+    clearInpaintParams,
+    setImg2imgWithAutoRes,
+  } = img2imgState;
 
   // Character Prompts 状态
   const [isCharacterExpanded, setIsCharacterExpanded] = useState(true);
@@ -605,28 +582,14 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         }
       } catch (error) {
         console.error('局部重绘失败:', error);
-        savedInpaintRef.current = null;
-        setHasInpaintParams(false);
+        clearInpaintParams();
         cropInfoRef.current = null;
       }
     };
 
     window.addEventListener('inpaint-generate', handleInpaintGenerate);
     return () => window.removeEventListener('inpaint-generate', handleInpaintGenerate);
-  }, [isGenerating, isQueuing, isPreparing, positivePrompt, negativePrompt, promptPresets, activePresetId, model, seed, steps, scale, sampler, cfgRescale, noiseSchedule, varietyPlus, characterPrompts, generate, addInpaintedImage, activePreciseRefs, activeVibes]);
-
-  // 监听重绘面板的强度变化，同步到图生图区域
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { strength } = (e as CustomEvent).detail;
-      setInpaintStrength(strength);
-      if (savedInpaintRef.current) {
-        savedInpaintRef.current.strength = strength;
-      }
-    };
-    window.addEventListener('inpaint-panel-strength-change', handler);
-    return () => window.removeEventListener('inpaint-panel-strength-change', handler);
-  }, []);
+  }, [isGenerating, isQueuing, isPreparing, positivePrompt, negativePrompt, promptPresets, activePresetId, model, seed, steps, scale, sampler, cfgRescale, noiseSchedule, varietyPlus, characterPrompts, generate, addInpaintedImage, activePreciseRefs, activeVibes, clearInpaintParams]);
 
   // Character Prompt 操作
   const addCharacterPrompt = () => {
@@ -1389,130 +1352,11 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
             </div>
           )}
 
-          {/* Image2Image 区域 - 支持收起/展开 */}
-          <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
-            <div
-              className="flex items-center justify-between p-3 active:bg-gray-800/50 transition-colors cursor-pointer"
-              onClick={() => {
-                if (img2imgImage) {
-                  setIsImg2ImgExpanded(!isImg2ImgExpanded);
-                }
-              }}
-            >
-              <div className="flex items-center gap-2">
-                {img2imgImage && (
-                  <ChevronDown
-                    className={`w-5 h-5 text-gray-400 transition-transform ${isImg2ImgExpanded ? '' : '-rotate-90'}`}
-                  />
-                )}
-                <ImagePlus className="w-5 h-5 text-orange-400" />
-                <span className="text-sm font-bold text-gray-200">图生图</span>
-                {hasInpaintParams && (
-                  <span className="text-xs text-blue-400 bg-blue-500/20 px-1.5 py-0.5 rounded">重绘</span>
-                )}
-                {img2imgImage && (
-                  <span className="text-xs text-orange-400 bg-orange-500/20 px-1.5 py-0.5 rounded">1</span>
-                )}
-              </div>
-              <label
-                onClick={(e) => e.stopPropagation()}
-                className="px-3 py-2 bg-orange-500/20 text-orange-400 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                {img2imgImage ? '更换' : '添加'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setImg2imgWithAutoRes(reader.result as string);
-                    };
-                    reader.readAsDataURL(file);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            </div>
-            {img2imgImage && isImg2ImgExpanded && (
-              <div className="border-t border-gray-700/30 p-3">
-                <div className="flex items-start gap-3">
-                  {/* 预览图 */}
-                  <img src={img2imgImage} alt="Img2Img" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                  {/* 设置 */}
-                  <div className="flex-1 min-w-0">
-                    {/* Strength 滑块 */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-6">强度</span>
-                      <input
-                        type="range"
-                        min="0.01"
-                        max="0.99"
-                        step="0.01"
-                        value={hasInpaintParams ? inpaintStrength : img2imgStrength}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          if (hasInpaintParams) {
-                            setInpaintStrength(val);
-                            if (savedInpaintRef.current) {
-                              savedInpaintRef.current.strength = val;
-                            }
-                            // 同步到重绘面板
-                            window.dispatchEvent(new CustomEvent('inpaint-strength-sync', { detail: { strength: val } }));
-                          } else {
-                            setImg2imgStrength(val);
-                          }
-                        }}
-                        className="flex-1 h-1 accent-orange-500"
-                      />
-                      <span className="text-xs text-gray-400 w-8 text-right">{(hasInpaintParams ? inpaintStrength : img2imgStrength).toFixed(2)}</span>
-                    </div>
-                    {/* Noise 滑块 - 仅在非重绘模式显示 */}
-                    {!hasInpaintParams && (
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-xs text-gray-500 w-6">噪声</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="0.99"
-                          step="0.01"
-                          value={img2imgNoise}
-                          onChange={(e) => setImg2imgNoise(parseFloat(e.target.value))}
-                          className="flex-1 h-1 accent-yellow-500"
-                        />
-                        <span className="text-xs text-gray-400 w-8 text-right">{img2imgNoise.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* 操作按钮 */}
-                  <div className="flex flex-col gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => {
-                        const base64 = savedInpaintRef.current?.imageBase64 || (img2imgImage?.startsWith('data:') ? img2imgImage.split(',')[1] : null);
-                        const w = localWidth;
-                        const h = localHeight;
-                        setHasInpaintParams(true);
-                        window.dispatchEvent(new CustomEvent('open-inpaint-mode', { detail: { maskBase64: savedInpaintRef.current?.maskBase64 || null, imageBase64: base64, width: w, height: h } }));
-                      }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-400 active:scale-95 transition-all"
-                      title="重绘"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => { setImg2imgImage(null); savedInpaintRef.current = null; setHasInpaintParams(false); }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-500 hover:text-red-400 active:scale-95 transition-all"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <MobileImg2ImgCard
+            imageState={img2imgState}
+            width={localWidth}
+            height={localHeight}
+          />
 
           {/* 翻译按钮 */}
           {hasChinesePrompt && (
