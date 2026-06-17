@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
@@ -36,6 +36,7 @@ import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
 import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
 import { useMobileGenerateRunner } from './generate/useMobileGenerateRunner';
+import { useMobileGenerateSheetState } from './generate/useMobileGenerateSheetState';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
@@ -111,29 +112,35 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setActivePresetId,
   } = useMobileGenerationParams({ targetWidth, targetHeight });
 
-  // 全屏编辑器状态
-  const [editorOpen, setEditorOpen] = useState<'prompt' | 'undesired' | null>(null);
-
-  // AI 助手弹窗状态
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const {
+    editorOpen,
+    setEditorOpen,
+    showAIAssistant,
+    setShowAIAssistant,
+    showModelDropdown,
+    setShowModelDropdown,
+    showResolutionDropdown,
+    setShowResolutionDropdown,
+    showVibeModal,
+    setShowVibeModal,
+    showCRModal,
+    setShowCRModal,
+    isInspirationModalOpen,
+    setIsInspirationModalOpen,
+    showArtistModal,
+    setShowArtistModal,
+    showOCModal,
+    setShowOCModal,
+  } = useMobileGenerateSheetState();
 
   const { anlasInfo, isLoadingAnlas, fetchAnlas } = useMobileAnlas(isGenerating);
 
-  // 下拉菜单状态
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [showResolutionDropdown, setShowResolutionDropdown] = useState(false);
   const {
     resolutionTab,
     setResolutionTab,
     currentResLabel,
     currentOptions: currentResolutionOptions,
   } = useMobileResolutionPicker(localWidth, localHeight);
-
-  // Vibe 管理器弹窗状态
-  const [showVibeModal, setShowVibeModal] = useState(false);
-
-  // Precise Reference 管理器弹窗状态
-  const [showCRModal, setShowCRModal] = useState(false);
 
   const vibeLibrary = useMobileVibeLibrary({
     model,
@@ -186,20 +193,14 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setEditingPositionId,
   } = characterPromptManager;
 
-  // 灵感弹窗
-  const [isInspirationModalOpen, setIsInspirationModalOpen] = useState(false);
   const codexInspiration = useMobileCodexInspiration(isInspirationModalOpen);
 
-  // 画师串状态
-  const [showArtistModal, setShowArtistModal] = useState(false);
   const {
     artistPublicFiles,
     artistLocalFiles,
     loadArtists,
   } = useMobileArtistLibrary();
 
-  // OC 管理器弹窗状态
-  const [showOCModal, setShowOCModal] = useState(false);
   const ocManager = useMobileOCManager({
     currentUserId,
     isAuthenticated,
