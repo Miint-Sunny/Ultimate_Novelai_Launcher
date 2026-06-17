@@ -89,7 +89,7 @@ import { useMobileMetadataImportActions } from './generate/useMobileMetadataImpo
 import { useMobileOCManager } from './generate/useMobileOCManager';
 import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
-import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
+import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import {
   prepareMobileCharacterPrompts,
@@ -522,74 +522,30 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     return () => window.removeEventListener('regenerate-image', handleRegenerate);
   }, [isGenerating, isQueuing, isPreparing]);
 
-  // 监听局部重绘事件
-  useEffect(() => {
-    const handleInpaintGenerate = async (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (isGenerating || isQueuing || isPreparing) return;
-
-      const { imageBase64, maskBase64, strength, width, height, cropInfo } = customEvent.detail;
-
-      // 保存裁切信息用于生成后回贴
-      cropInfoRef.current = cropInfo || null;
-
-      try {
-        const { finalPrompt, finalNegative } = await prepareMobilePrompts({
-          positivePrompt,
-          negativePrompt,
-          promptPresets,
-          activePresetId,
-        });
-        const preciseReferences = await prepareMobilePreciseReferences(activePreciseRefs);
-        const vibeReferences = await prepareMobileVibeReferences({
-          activeVibes,
-          model,
-          includePublicRemoteCache: true,
-        });
-
-        // 重绘完全独立，不插入图生图
-        const result = await generate({
-          model,
-          positivePrompt: finalPrompt,
-          negativePrompt: finalNegative,
-          width,
-          height,
-          seed: seed ? parseInt(seed) : undefined,
-          steps,
-          scale,
-          sampler,
-          cfgRescale,
-          noiseSchedule,
-          ucPreset: 'heavy',
-          qualityToggle: true,
-          varietyPlus,
-          characterPrompts: prepareMobileCharacterPrompts(characterPrompts),
-          preciseReferences,
-          vibeReferences,
-          inpaint: {
-            imageBase64,
-            maskBase64,
-            strength,
-          },
-          skipHistory: !!cropInfoRef.current,
-        });
-
-        // 裁切/扩图重绘回贴
-        const savedCropInfo = cropInfoRef.current;
-        if (savedCropInfo && result.success && result.imageData) {
-          await pasteBackInpaintResult(result, savedCropInfo, addInpaintedImage);
-          cropInfoRef.current = null;
-        }
-      } catch (error) {
-        console.error('局部重绘失败:', error);
-        clearInpaintParams();
-        cropInfoRef.current = null;
-      }
-    };
-
-    window.addEventListener('inpaint-generate', handleInpaintGenerate);
-    return () => window.removeEventListener('inpaint-generate', handleInpaintGenerate);
-  }, [isGenerating, isQueuing, isPreparing, positivePrompt, negativePrompt, promptPresets, activePresetId, model, seed, steps, scale, sampler, cfgRescale, noiseSchedule, varietyPlus, characterPrompts, generate, addInpaintedImage, activePreciseRefs, activeVibes, clearInpaintParams]);
+  useMobileInpaintGenerate({
+    isGenerating,
+    isQueuing,
+    isPreparing,
+    positivePrompt,
+    negativePrompt,
+    promptPresets,
+    activePresetId,
+    model,
+    seed,
+    steps,
+    scale,
+    sampler,
+    cfgRescale,
+    noiseSchedule,
+    varietyPlus,
+    characterPrompts,
+    activePreciseRefs,
+    activeVibes,
+    cropInfoRef,
+    generate,
+    addInpaintedImage,
+    clearInpaintParams,
+  });
 
   // Character Prompt 操作
   const addCharacterPrompt = () => {
