@@ -59,14 +59,10 @@ import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
 import { MobilePreciseReferenceCard } from './MobilePreciseReferenceCard';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
+import { MobileResolutionSheet } from './MobileResolutionSheet';
 import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
-import {
-  MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
-  MOBILE_WALLPAPER_RESOLUTIONS as WALLPAPER_RESOLUTIONS,
-  MODELS,
-  RESOLUTIONS,
-} from '../generation/modelResolutionOptions';
+import { MODELS } from '../generation/modelResolutionOptions';
 import { FullscreenEditor, expandCollapsibleMarkers } from './FullscreenEditor';
 import {
   useMobileBackHandlers,
@@ -87,6 +83,7 @@ import { useMobilePreciseReferences } from './generate/useMobilePreciseReference
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
+import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import {
   prepareMobileCharacterPrompts,
   prepareMobileImg2Img,
@@ -171,7 +168,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   // 下拉菜单状态
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showResolutionDropdown, setShowResolutionDropdown] = useState(false);
-  const [resolutionTab, setResolutionTab] = useState<'small' | 'large' | 'wallpaper'>('small');
+  const {
+    resolutionTab,
+    setResolutionTab,
+    currentResLabel,
+    currentOptions: currentResolutionOptions,
+  } = useMobileResolutionPicker(localWidth, localHeight);
 
   // Vibe 管理器弹窗状态
   const [showVibeModal, setShowVibeModal] = useState(false);
@@ -594,10 +596,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     }
   };
 
-  const currentResLabel = [...RESOLUTIONS, ...LARGE_RESOLUTIONS, ...WALLPAPER_RESOLUTIONS].find(
-    (r) => r.width === localWidth && r.height === localHeight
-  )?.label || '自定义';
-
   const handleInspirationSelect = (prompt: string) => {
     // 检测 charN: 模式，自动拆分到角色提示词
     const parsed = parseCharacterPromptContent(prompt);
@@ -843,102 +841,17 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         activeVibes={activeVibes}
       />
 
-      {/* 分辨率选择底部弹窗 */}
-      {showResolutionDropdown && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end animate-fade-in">
-          <div className="absolute inset-0" onClick={() => setShowResolutionDropdown(false)} />
-          <div className="relative w-full bg-nai-panel rounded-t-2xl animate-slide-in-from-bottom safe-area-bottom">
-            {/* 标题栏 */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h3 className="text-lg font-bold text-white">选择比例</h3>
-              <button onClick={() => setShowResolutionDropdown(false)} className="p-2 -mr-2 text-gray-400">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Tab 切换 */}
-            <div className="flex gap-2 p-4 pb-2">
-              <button
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${resolutionTab === 'small'
-                  ? 'bg-nai-accent text-black'
-                  : 'bg-gray-800 text-gray-400'
-                  }`}
-                onClick={() => setResolutionTab('small')}
-              >
-                小图
-              </button>
-              <button
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${resolutionTab === 'large'
-                  ? 'bg-nai-accent text-black'
-                  : 'bg-gray-800 text-gray-400'
-                  }`}
-                onClick={() => setResolutionTab('large')}
-              >
-                大图
-              </button>
-              <button
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors ${resolutionTab === 'wallpaper'
-                  ? 'bg-nai-accent text-black'
-                  : 'bg-gray-800 text-gray-400'
-                  }`}
-                onClick={() => setResolutionTab('wallpaper')}
-              >
-                壁纸
-              </button>
-            </div>
-
-            {/* 比例选项 - 可视化卡片 */}
-            <div className="grid grid-cols-3 gap-3 p-4">
-              {(resolutionTab === 'small' ? RESOLUTIONS : resolutionTab === 'large' ? LARGE_RESOLUTIONS : WALLPAPER_RESOLUTIONS).map((r) => {
-                const isSelected = localWidth === r.width && localHeight === r.height;
-                const aspectRatio = r.width / r.height;
-                // 计算预览框尺寸，最大 48px
-                const previewSize = 40;
-                const previewWidth = aspectRatio >= 1 ? previewSize : previewSize * aspectRatio;
-                const previewHeight = aspectRatio >= 1 ? previewSize / aspectRatio : previewSize;
-
-                return (
-                  <button
-                    key={r.label}
-                    onClick={() => {
-                      setLocalWidth(r.width);
-                      setLocalHeight(r.height);
-                    }}
-                    className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all active:scale-95 ${isSelected
-                      ? 'bg-nai-accent/20 border-nai-accent'
-                      : 'bg-gray-800 border-gray-700'
-                      }`}
-                  >
-                    {/* 比例预览框 */}
-                    <div
-                      className={`rounded border-2 ${isSelected ? 'border-nai-accent bg-nai-accent/30' : 'border-gray-500 bg-gray-700'}`}
-                      style={{ width: previewWidth, height: previewHeight }}
-                    />
-                    {/* 标签 */}
-                    <span className={`text-sm font-medium ${isSelected ? 'text-nai-accent' : 'text-gray-300'}`}>
-                      {r.label}
-                    </span>
-                    {/* 尺寸 */}
-                    <span className="text-xs text-gray-500">
-                      {r.width}×{r.height}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* 确认按钮 */}
-            <div className="p-4 pt-0">
-              <button
-                onClick={() => setShowResolutionDropdown(false)}
-                className="w-full py-3 bg-nai-accent text-black font-bold rounded-xl active:scale-[0.98] transition-all"
-              >
-                确认
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MobileResolutionSheet
+        isOpen={showResolutionDropdown}
+        onClose={() => setShowResolutionDropdown(false)}
+        resolutionTab={resolutionTab}
+        setResolutionTab={setResolutionTab}
+        options={currentResolutionOptions}
+        width={localWidth}
+        height={localHeight}
+        setWidth={setLocalWidth}
+        setHeight={setLocalHeight}
+      />
 
       <MobileAdvancedSettingsSheet
         isOpen={showAdvancedSettings}
