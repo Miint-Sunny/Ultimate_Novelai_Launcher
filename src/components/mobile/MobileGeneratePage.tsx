@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Sparkles,
   Bot,
-  Send,
   RefreshCw,
   X,
   Loader2,
@@ -22,7 +21,6 @@ import {
   Upload,
   Image as ImageIcon,
   User,
-  ImagePlus,
   Brush,
   Settings,
   Lightbulb,
@@ -57,13 +55,13 @@ import { MobileCharacterPromptsCard } from './MobileCharacterPromptsCard';
 import { MobileImageImportModal } from './MobileImageImportModal';
 import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
+import { MobileGenerateToolbar } from './MobileGenerateToolbar';
 import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
 import { MobilePreciseReferenceCard } from './MobilePreciseReferenceCard';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
 import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
-import { calculateCostFromUI } from '../../services/costCalculator';
 import {
   MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
   MOBILE_WALLPAPER_RESOLUTIONS as WALLPAPER_RESOLUTIONS,
@@ -821,104 +819,30 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         </div>
       </div>
 
-      {/* 底部操作栏 */}
-      <div className="flex-shrink-0 bg-nai-panel border-t border-gray-800 safe-area-bottom">
-        <div className="flex items-center gap-2 p-3">
-          {/* 高级设置按钮 */}
-          <button
-            onClick={() => setShowAdvancedSettings(true)}
-            className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-gray-400 active:scale-95 transition-all"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-          </button>
-
-          {/* 分辨率选择 */}
-          <button
-            onClick={() => setShowResolutionDropdown(true)}
-            className="h-10 flex items-center gap-1.5 px-3 bg-gray-800 border border-gray-700 rounded-lg text-sm active:scale-[0.98] transition-all"
-          >
-            <Grid className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-200">{currentResLabel}</span>
-          </button>
-
-          {/* 导入图片按钮 */}
-          <label className="h-10 flex items-center justify-center px-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 active:scale-[0.98] transition-all cursor-pointer">
-            <ImagePlus className="w-4 h-4" />
-            <input
-              type="file"
-              accept="image/*,.vibe"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  openImageFile(file);
-                }
-                e.target.value = '';
-              }}
-            />
-          </label>
-
-          {/* 生成按钮 */}
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || isQueuing || isPreparing}
-            className={`flex-1 h-10 flex items-center justify-center px-4 rounded-lg font-bold text-sm transition-all active:scale-[0.98] relative overflow-hidden ${isGenerating || isQueuing || isPreparing
-              ? 'bg-gray-700 text-gray-300'
-              : 'bg-nai-accent text-black'
-              }`}
-          >
-            {/* 进度条背景 */}
-            {isGenerating && totalSteps > 0 && (
-              <div
-                className="absolute inset-0 bg-nai-accent/30 transition-all duration-200"
-                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-              />
-            )}
-            {isGenerating || isQueuing || isPreparing ? (
-              <div className="flex items-center gap-2 relative z-10">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="shrink-0 whitespace-nowrap">
-                  {isQueuing ? `排队中 #${queuePosition}` : (isGenerating && currentStep > 0) ? `生成中 ${currentStep}/${totalSteps}` : '准备中...'}
-                </span>
-                {isQueuing && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); cancelTask(); }}
-                    className="ml-2 px-2 py-0.5 text-xs bg-black/20 hover:bg-black/40 rounded transition-colors shrink-0 whitespace-nowrap"
-                  >
-                    取消
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-1.5">
-                  <Send className="w-4 h-4" />
-                  <span>生成</span>
-                </div>
-                <div className="flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-xs font-mono font-bold">
-                  <span>{(() => {
-                    // 使用精确的点数计算
-                    // Bot模式默认Opus，Token模式从subscription API判断
-                    const result = calculateCostFromUI({
-                      width: localWidth,
-                      height: localHeight,
-                      steps,
-                      modelId: model,
-                      sampler,
-                      isOpus: anlasInfo?.isOpus ?? false,
-                      img2imgStrength: img2imgImage ? img2imgStrength : undefined,
-                      preciseRefCount: activePreciseRefs.filter(pr => pr.enabled).length,
-                      vibeRefCount: activeVibes.filter(v => v.enabled).length,
-                    });
-                    return result.total;
-                  })()}</span>
-                  <span>💎</span>
-                </div>
-              </div>
-            )}
-          </button>
-        </div>
-      </div>
+      <MobileGenerateToolbar
+        currentResLabel={currentResLabel}
+        openAdvancedSettings={() => setShowAdvancedSettings(true)}
+        openResolutionDropdown={() => setShowResolutionDropdown(true)}
+        openImageFile={openImageFile}
+        onGenerate={handleGenerate}
+        cancelTask={cancelTask}
+        isGenerating={isGenerating}
+        isQueuing={isQueuing}
+        isPreparing={isPreparing}
+        queuePosition={queuePosition}
+        currentStep={currentStep}
+        totalSteps={totalSteps}
+        width={localWidth}
+        height={localHeight}
+        steps={steps}
+        model={model}
+        sampler={sampler}
+        isOpus={anlasInfo?.isOpus ?? false}
+        img2imgImage={img2imgImage}
+        img2imgStrength={img2imgStrength}
+        activePreciseRefs={activePreciseRefs}
+        activeVibes={activeVibes}
+      />
 
       {/* 分辨率选择底部弹窗 */}
       {showResolutionDropdown && (
