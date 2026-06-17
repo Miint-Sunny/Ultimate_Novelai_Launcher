@@ -15,7 +15,7 @@ import type {
 
 type CharacterSnapshot = { positive: string; negative?: string; name?: string };
 
-interface AgentRoleTag {
+export interface AgentRoleTag {
   role_en: string;
   role_zh: string[];
   origin_en: string;

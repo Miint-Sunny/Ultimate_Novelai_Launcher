@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { getBackendUrl } from '../../utils/apiConfig';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
@@ -72,6 +71,7 @@ import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
+import { useMobileRoleTags } from './generate/useMobileRoleTags';
 import { useMobileTaggerImportAction } from './generate/useMobileTaggerImportAction';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
@@ -241,18 +241,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     resetOCSelection,
   } = ocManager;
 
-  // 角色Tag映射（用于AI助手）
-  const [roleTagMap, setRoleTagMap] = useState<
-    Record<
-      string,
-      {
-        role_en: string;
-        role_zh: string[];
-        origin_en: string;
-        origin_zh: string[];
-      }
-    >
-  >({});
+  const roleTagMap = useMobileRoleTags();
 
   const {
     showImageImportModal,
@@ -417,27 +406,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     return total;
   }, [negativePrompt, activePreset, characterPrompts]);
 
-  // 加载角色Tag映射（用于AI助手）
-  const loadRoleTags = async () => {
-    try {
-      const backendUrl = getBackendUrl();
-      const response = await fetch(`${backendUrl}/api/data/role_tag_mapping.json`);
-      if (response.ok) {
-        const data = await response.json();
-        setRoleTagMap(data);
-      }
-    } catch (error) {
-      console.error('加载角色Tag映射失败:', error);
-    }
-  };
-
   useEffect(() => {
     fetchAnlas();
     loadVibes();
     loadCRs();
     loadArtists();
     loadOCs();
-    loadRoleTags();
   }, []);
 
   useEffect(() => {
