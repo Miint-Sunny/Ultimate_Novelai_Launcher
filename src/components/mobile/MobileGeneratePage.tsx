@@ -5,21 +5,17 @@ import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
 import { MobileArtistModal } from './MobileArtistModal';
+import { MobileGenerateCards } from './MobileGenerateCards';
 import { MobileCharacterPromptEditor } from './MobileCharacterPromptEditor';
 import { MobileCharacterPositionSheet } from './MobileCharacterPositionSheet';
-import { MobileCharacterPromptsCard } from './MobileCharacterPromptsCard';
 import { MobileImageImportModal } from './MobileImageImportModal';
-import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
 import { MobileGenerateToolbar } from './MobileGenerateToolbar';
 import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
-import { MobilePreciseReferenceCard } from './MobilePreciseReferenceCard';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
-import { MobilePromptSummaryCard } from './MobilePromptSummaryCard';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
-import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
 import { FullscreenEditor } from './FullscreenEditor';
 import {
@@ -453,44 +449,32 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
       {/* 可滚动内容区 */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className="p-3 space-y-3">
-          <MobilePromptSummaryCard
-            positivePrompt={positivePrompt}
-            setPositivePrompt={setPositivePrompt}
-            negativePrompt={negativePrompt}
-            setNegativePrompt={setNegativePrompt}
-            positiveTokens={positiveTokens}
-            negativeTokens={negativeTokens}
-            openPromptEditor={() => setEditorOpen('prompt')}
-            openNegativeEditor={() => setEditorOpen('undesired')}
-            openAIAssistant={() => setShowAIAssistant(true)}
-            openArtistModal={() => setShowArtistModal(true)}
-            openInspirationModal={() => setIsInspirationModalOpen(true)}
-            openOCModal={() => setShowOCModal(true)}
-            hasChinesePrompt={hasChinesePrompt}
-            isTranslating={isTranslating}
-            onTranslate={handleTranslate}
-          />
-
-          <MobileCharacterPromptsCard manager={characterPromptManager} />
-
-          <MobileVibeReferencesCard
-            library={vibeLibrary}
-            onOpenManager={() => setShowVibeModal(true)}
-          />
-          <MobilePreciseReferenceCard
-            model={model}
-            library={preciseReferenceLibrary}
-            onOpenManager={() => setShowCRModal(true)}
-          />
-
-          <MobileImg2ImgCard
-            imageState={img2imgState}
-            width={localWidth}
-            height={localHeight}
-          />
-
-        </div>
+        <MobileGenerateCards
+          positivePrompt={positivePrompt}
+          setPositivePrompt={setPositivePrompt}
+          negativePrompt={negativePrompt}
+          setNegativePrompt={setNegativePrompt}
+          positiveTokens={positiveTokens}
+          negativeTokens={negativeTokens}
+          openPromptEditor={() => setEditorOpen('prompt')}
+          openNegativeEditor={() => setEditorOpen('undesired')}
+          openAIAssistant={() => setShowAIAssistant(true)}
+          openArtistModal={() => setShowArtistModal(true)}
+          openInspirationModal={() => setIsInspirationModalOpen(true)}
+          openOCModal={() => setShowOCModal(true)}
+          hasChinesePrompt={hasChinesePrompt}
+          isTranslating={isTranslating}
+          onTranslate={handleTranslate}
+          characterPromptManager={characterPromptManager}
+          vibeLibrary={vibeLibrary}
+          preciseReferenceLibrary={preciseReferenceLibrary}
+          model={model}
+          openVibeManager={() => setShowVibeModal(true)}
+          openCRManager={() => setShowCRModal(true)}
+          img2imgState={img2imgState}
+          width={localWidth}
+          height={localHeight}
+        />
       </div>
 
       <MobileGenerateToolbar
