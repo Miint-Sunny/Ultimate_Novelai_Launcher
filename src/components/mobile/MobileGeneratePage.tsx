@@ -3,18 +3,13 @@ import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
-import { MobileArtistModal } from './MobileArtistModal';
 import { MobileGenerateCards } from './MobileGenerateCards';
 import { MobileGenerateEditors } from './MobileGenerateEditors';
+import { MobileGenerateReferenceSheets } from './MobileGenerateReferenceSheets';
 import { MobileImageImportModal } from './MobileImageImportModal';
-import { MobileInspirationSheet } from './MobileInspirationSheet';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
 import { MobileGenerateToolbar } from './MobileGenerateToolbar';
-import { MobileOCEditorSheet } from './MobileOCEditorSheet';
-import { MobileOCSheet } from './MobileOCSheet';
-import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
-import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
 import {
   useMobileBackHandlers,
   useMobileEditorStateBridge,
@@ -558,41 +553,24 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         characterPromptManager={characterPromptManager}
       />
 
-      <MobileVibeManagerSheet
-        isOpen={showVibeModal}
-        onClose={() => setShowVibeModal(false)}
-        library={vibeLibrary}
-      />
-
-      <MobilePreciseReferenceSheet
-        isOpen={showCRModal}
-        onClose={() => setShowCRModal(false)}
-        library={preciseReferenceLibrary}
-      />
-
-      {/* 画师串管理器弹窗（使用独立组件） */}
-      <MobileArtistModal
-        isOpen={showArtistModal}
-        onClose={() => setShowArtistModal(false)}
-        onConfirmSelection={handleArtistSelection}
-      />
-
-      <MobileOCSheet
-        isOpen={showOCModal}
-        onClose={() => setShowOCModal(false)}
+      <MobileGenerateReferenceSheets
+        showVibeModal={showVibeModal}
+        closeVibeModal={() => setShowVibeModal(false)}
+        vibeLibrary={vibeLibrary}
+        showCRModal={showCRModal}
+        closeCRModal={() => setShowCRModal(false)}
+        preciseReferenceLibrary={preciseReferenceLibrary}
+        showArtistModal={showArtistModal}
+        closeArtistModal={() => setShowArtistModal(false)}
+        handleArtistSelection={handleArtistSelection}
+        showOCModal={showOCModal}
+        closeOCModal={() => setShowOCModal(false)}
         characterPromptCount={characterPrompts.length}
-        manager={ocManager}
-      />
-      <MobileOCEditorSheet
-        isOpen={showOCModal}
-        manager={ocManager}
-      />
-
-      <MobileInspirationSheet
-        isOpen={isInspirationModalOpen}
-        onClose={() => setIsInspirationModalOpen(false)}
-        onSelect={handleInspirationSelect}
-        library={codexInspiration}
+        ocManager={ocManager}
+        isInspirationModalOpen={isInspirationModalOpen}
+        closeInspirationModal={() => setIsInspirationModalOpen(false)}
+        handleInspirationSelect={handleInspirationSelect}
+        codexInspiration={codexInspiration}
       />
 
       {/* 图片导入弹窗 */}
