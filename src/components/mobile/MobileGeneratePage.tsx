@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { makeArtistMarker } from '../../utils/promptTags';
 import {
   ChevronDown,
   Sparkles,
@@ -53,6 +52,7 @@ import {
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
+import { useMobileArtistSelection } from './generate/useMobileArtistSelection';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
 import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
@@ -332,6 +332,10 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setPositivePrompt,
     negativePrompt,
     setNegativePrompt,
+  });
+  const { handleArtistSelection } = useMobileArtistSelection({
+    setPositivePrompt,
+    closeArtistModal: () => setShowArtistModal(false),
   });
 
   useMobileEditorStateBridge({
@@ -630,13 +634,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       <MobileArtistModal
         isOpen={showArtistModal}
         onClose={() => setShowArtistModal(false)}
-        onConfirmSelection={(artist) => {
-          if (artist) {
-            const marker = makeArtistMarker(artist.name, artist.prompt);
-            setPositivePrompt((prev: string) => (prev ? `${prev}, ${marker}` : marker));
-          }
-          setShowArtistModal(false);
-        }}
+        onConfirmSelection={handleArtistSelection}
       />
 
       <MobileOCSheet
