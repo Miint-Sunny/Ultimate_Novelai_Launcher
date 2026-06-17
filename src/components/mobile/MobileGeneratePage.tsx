@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Sparkles,
   Bot,
-  Dices,
   Send,
   RefreshCw,
   X,
@@ -34,8 +33,6 @@ import {
   Brush,
   Settings,
   Lightbulb,
-  Filter,
-  Copy,
   SlidersHorizontal,
   ArrowLeft,
   AlignLeft,
@@ -55,26 +52,19 @@ import {
   saveActivePresetId,
   type PromptPresetData,
 } from '../../services/localLibrary';
-import {
-  getArtists,
-} from '../../services/localLibrary';
-import { copyToClipboard } from '../../utils/clipboard';
 import { getBackendUrl } from '../../utils/apiConfig';
 import { parseCharacterPromptContent } from '../../utils/promptParser';
-import {
-  getPublicLibraryOwnerId,
-  getPublicArtists,
-} from '../../services/publicLibrary';
+import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
 import { MobileImageImportModal } from './MobileImageImportModal';
+import { MobileInspirationSheet } from './MobileInspirationSheet';
 import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
-import { loadCodexData, type CodexItem } from '../../services/codexData';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import {
   MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
@@ -90,6 +80,8 @@ import {
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
+import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
+import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
 import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
@@ -108,7 +100,6 @@ import {
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
   ActiveVibe,
-  ArtistFile,
   CharacterPrompt,
   PreciseReferenceMode,
   VibeFile,
@@ -273,23 +264,15 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 
   // 灵感弹窗
   const [isInspirationModalOpen, setIsInspirationModalOpen] = useState(false);
-  const [inspirationTab, setInspirationTab] = useState<'codex' | 'random'>('codex');
-  const [codexData, setCodexData] = useState<CodexItem[]>([]);
-  const [isLoadingCodex, setIsLoadingCodex] = useState(false);
-  const [codexSearchQuery, setCodexSearchQuery] = useState('');
-  const [codexR18Filter, setCodexR18Filter] = useState<'all' | 'safe' | 'r18'>('all');
-  const [codexSelectedCategories, setCodexSelectedCategories] = useState<string[]>([]);
-  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
-  const [randomCodexItem, setRandomCodexItem] = useState<CodexItem | null>(null);
-  const [codexDisplayCount, setCodexDisplayCount] = useState(30); // 懒加载显示数量
+  const codexInspiration = useMobileCodexInspiration(isInspirationModalOpen);
 
   // 画师串状态
   const [showArtistModal, setShowArtistModal] = useState(false);
-  const [artistTab, setArtistTab] = useState<'public' | 'local'>('public');
-  const [artistPublicFiles, setArtistPublicFiles] = useState<ArtistFile[]>([]);
-  const [artistLocalFiles, setArtistLocalFiles] = useState<ArtistFile[]>([]);
-  const [isLoadingArtists, setIsLoadingArtists] = useState(false);
-  const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
+  const {
+    artistPublicFiles,
+    artistLocalFiles,
+    loadArtists,
+  } = useMobileArtistLibrary();
 
   // 预设状态
   const [promptPresets, setPromptPresets] = useState<PromptPresetData[]>([]);
@@ -491,39 +474,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     });
     return total;
   }, [negativePrompt, activePreset, characterPrompts]);
-
-  // 加载画师串
-  const loadArtists = async () => {
-    setIsLoadingArtists(true);
-    try {
-      // 加载本地画师串
-      const localArtists = await getArtists();
-      const localArtistList: ArtistFile[] = localArtists
-        .filter((a) => a.isLocal)
-        .map((a) => ({
-          id: a.id,
-          name: a.name,
-          previews: a.previews || [],
-          prompt: a.prompt,
-        }));
-      setArtistLocalFiles(localArtistList);
-
-      // 加载公共画师串
-      const artists = await getPublicArtists();
-      const backendUrl = getBackendUrl();
-      const artistFiles: ArtistFile[] = artists.map((a) => ({
-        id: a.id,
-        name: a.name,
-        previews: a.preview_url ? [`${backendUrl}${a.preview_url}`] : [],
-        prompt: a.artist_string,
-      }));
-      setArtistPublicFiles(artistFiles);
-    } catch (err) {
-      console.error('Failed to load artists:', err);
-    } finally {
-      setIsLoadingArtists(false);
-    }
-  };
 
   // 加载预设
   const loadPresets = () => {
@@ -805,121 +755,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       setPositivePrompt((prev: string) => (prev ? `${prev}, ${prompt}` : prompt));
     }
     setIsInspirationModalOpen(false);
-  };
-
-  // 加载法典数据
-  const loadCodex = async () => {
-    if (codexData.length > 0) return;
-    setIsLoadingCodex(true);
-    try {
-      const data = await loadCodexData();
-      setCodexData(data);
-    } catch (err) {
-      console.error('Failed to load codex:', err);
-    } finally {
-      setIsLoadingCodex(false);
-    }
-  };
-
-  // 分类按 NSFW/Common 分组
-  const categoriesByType = useMemo(() => {
-    const nsfwCategories = new Set<string>();
-    const commonCategories = new Set<string>();
-
-    codexData.forEach(item => {
-      if (item.isR18) {
-        nsfwCategories.add(item.category);
-      } else {
-        commonCategories.add(item.category);
-      }
-    });
-
-    return {
-      nsfw: Array.from(nsfwCategories).sort(),
-      common: Array.from(commonCategories).sort()
-    };
-  }, [codexData]);
-
-  // 过滤法典数据
-  const filteredCodexData = useMemo(() => {
-    return codexData.filter((item) => {
-      // 搜索过滤
-      if (codexSearchQuery) {
-        const query = codexSearchQuery.toLowerCase();
-        if (!item.title.toLowerCase().includes(query) && !item.content.toLowerCase().includes(query)) {
-          return false;
-        }
-      }
-      // R18 过滤
-      if (codexR18Filter === 'safe' && item.isR18) return false;
-      if (codexR18Filter === 'r18' && !item.isR18) return false;
-      // 分类过滤
-      if (codexSelectedCategories.length > 0) {
-        const itemKey = `${item.isR18 ? 'nsfw' : 'common'}:${item.category}`;
-        if (!codexSelectedCategories.includes(itemKey)) return false;
-      }
-      return true;
-    });
-  }, [codexData, codexSearchQuery, codexR18Filter, codexSelectedCategories]);
-
-  // 切换分类选择
-  const toggleCodexCategory = (cat: string) => {
-    setCodexSelectedCategories(prev =>
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    );
-  };
-
-  // 重置懒加载计数（当筛选条件变化时）
-  useEffect(() => {
-    setCodexDisplayCount(30);
-  }, [codexSearchQuery, codexR18Filter, codexSelectedCategories]);
-
-  // 滚动加载更多
-  const handleCodexScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    if (scrollHeight - scrollTop - clientHeight < 200 && codexDisplayCount < filteredCodexData.length) {
-      setCodexDisplayCount(prev => Math.min(prev + 30, filteredCodexData.length));
-    }
-  };
-
-  // 随机灵感
-  const handleRandomCodex = () => {
-    if (filteredCodexData.length > 0) {
-      const randomItem = filteredCodexData[Math.floor(Math.random() * filteredCodexData.length)];
-      setRandomCodexItem(randomItem);
-      setInspirationTab('random');
-    }
-  };
-
-  // 打开灵感弹窗时加载数据
-  useEffect(() => {
-    if (isInspirationModalOpen) {
-      loadCodex();
-    }
-  }, [isInspirationModalOpen]);
-
-  // 画师串选择处理（单选）
-  const handleSelectArtist = (artist: ArtistFile) => {
-    setSelectedArtistId((prev) => (prev === artist.id ? null : artist.id));
-  };
-
-  // 确认画师串选择
-  const handleConfirmArtists = () => {
-    if (selectedArtistId) {
-      const allArtists = [...artistPublicFiles, ...artistLocalFiles];
-      const selectedArtist = allArtists.find((a) => a.id === selectedArtistId);
-      if (selectedArtist) {
-        const marker = makeArtistMarker(selectedArtist.name, selectedArtist.prompt);
-        setPositivePrompt((prev: string) => (prev ? `${prev}, ${marker}` : marker));
-      }
-    }
-    setSelectedArtistId(null);
-    setShowArtistModal(false);
-  };
-
-  // 清空画师串选择
-  const handleClearArtists = () => {
-    setSelectedArtistId(null);
   };
 
   // 预设应用处理 - 只切换预设，不修改提示词内容
@@ -2302,349 +2137,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         manager={ocManager}
       />
 
-      {/* 移动端灵感空间弹窗 */}
-      {isInspirationModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end animate-fade-in">
-          <div className="absolute inset-0" onClick={() => setIsInspirationModalOpen(false)} />
-          <div className="relative w-full bg-nai-panel rounded-t-2xl h-[85vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
-            {/* 标题栏 */}
-            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-pink-400" />
-                <h3 className="text-lg font-bold text-white">灵感空间</h3>
-              </div>
-              <button onClick={() => setIsInspirationModalOpen(false)} className="p-2 -mr-2 text-gray-400">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* 筛选区域 - 对所有 Tab 生效 */}
-            <div className="flex-shrink-0 p-3 border-b border-gray-700/50 space-y-2">
-              {/* 搜索框 + 分类筛选按钮 */}
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={codexSearchQuery}
-                    onChange={(e) => setCodexSearchQuery(e.target.value)}
-                    placeholder="搜索法典内容..."
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-pink-500"
-                  />
-                  <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                </div>
-                <button
-                  onClick={() => setShowCategoryFilter(true)}
-                  className={`px-3 py-2.5 rounded-xl border flex items-center gap-1.5 transition-colors ${codexSelectedCategories.length > 0
-                    ? 'bg-pink-500/20 border-pink-500/50 text-pink-400'
-                    : 'bg-gray-800 border-gray-700 text-gray-400'
-                    }`}
-                >
-                  <Filter className="w-4 h-4" />
-                  {codexSelectedCategories.length > 0 && (
-                    <span className="text-xs font-bold">{codexSelectedCategories.length}</span>
-                  )}
-                </button>
-              </div>
-              {/* R18 筛选 */}
-              <div className="flex gap-2">
-                {(['all', 'safe', 'r18'] as const).map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setCodexR18Filter(filter)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${codexR18Filter === filter
-                      ? filter === 'r18'
-                        ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50'
-                        : filter === 'safe'
-                          ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-                          : 'bg-gray-700 text-white border border-gray-600'
-                      : 'bg-gray-800/50 text-gray-400 border border-gray-700'
-                      }`}
-                  >
-                    {filter === 'all' ? '全部' : filter === 'safe' ? '全年龄' : 'R18'}
-                  </button>
-                ))}
-              </div>
-              {/* 已选分类标签 */}
-              {codexSelectedCategories.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {codexSelectedCategories.map((cat) => {
-                    const [type, name] = cat.split(':');
-                    return (
-                      <span
-                        key={cat}
-                        onClick={() => toggleCodexCategory(cat)}
-                        className={`px-2 py-1 rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1 ${type === 'nsfw'
-                          ? 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
-                          : 'bg-green-500/20 text-green-400 border border-green-500/30'
-                          }`}
-                      >
-                        {name}
-                        <X className="w-3 h-3" />
-                      </span>
-                    );
-                  })}
-                  <button
-                    onClick={() => setCodexSelectedCategories([])}
-                    className="px-2 py-1 rounded-lg text-xs font-medium bg-gray-700 text-gray-400 hover:text-white"
-                  >
-                    清空
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Tab 切换 */}
-            <div className="flex-shrink-0 flex border-b border-gray-700">
-              <button
-                className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${inspirationTab === 'codex'
-                  ? 'border-pink-500 text-white bg-white/5'
-                  : 'border-transparent text-gray-400'
-                  }`}
-                onClick={() => setInspirationTab('codex')}
-              >
-                全部法典 ({filteredCodexData.length})
-              </button>
-              <button
-                className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${inspirationTab === 'random'
-                  ? 'border-pink-500 text-white bg-white/5'
-                  : 'border-transparent text-gray-400'
-                  }`}
-                onClick={() => {
-                  if (!randomCodexItem && filteredCodexData.length > 0) {
-                    handleRandomCodex();
-                  }
-                  setInspirationTab('random');
-                }}
-              >
-                随机灵感
-              </button>
-            </div>
-
-            {/* 内容区域 */}
-            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-              {inspirationTab === 'codex' ? (
-                /* 法典列表 */
-                <div className="flex-1 overflow-y-auto" onScroll={handleCodexScroll}>
-                  {isLoadingCodex ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                    </div>
-                  ) : filteredCodexData.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                      <Sparkles className="w-12 h-12 mb-3 opacity-50" />
-                      <p>暂无匹配内容</p>
-                    </div>
-                  ) : (
-                    <div className="p-3 space-y-2">
-                      {filteredCodexData.slice(0, codexDisplayCount).map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-3 rounded-xl border bg-gray-800/50 border-gray-700 active:bg-gray-700/50 transition-all"
-                          onClick={() => handleInspirationSelect(item.content)}
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-medium text-white text-sm">{item.title}</span>
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-xs ${item.isR18
-                                ? 'bg-pink-500/20 text-pink-400'
-                                : 'bg-green-500/20 text-green-400'
-                                }`}
-                            >
-                              {item.isR18 ? 'R18' : '全年龄'}
-                            </span>
-                            <span className="px-1.5 py-0.5 bg-gray-700 text-gray-400 rounded text-xs">
-                              {item.category}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-400 line-clamp-2">{item.content}</p>
-                        </div>
-                      ))}
-                      {codexDisplayCount < filteredCodexData.length && (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
-                          <span className="ml-2 text-xs text-gray-500">
-                            加载中... ({codexDisplayCount}/{filteredCodexData.length})
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* 随机灵感 Tab */
-                <div className="flex-1 flex flex-col p-4 min-h-0">
-                  {randomCodexItem ? (
-                    <div className="flex-1 flex flex-col min-h-0">
-                      {/* 标题和标签 */}
-                      <div className="flex-shrink-0 flex items-center gap-2 mb-3 overflow-hidden">
-                        <span className="text-lg font-bold text-white truncate min-w-0 shrink" title={randomCodexItem.title}>{randomCodexItem.title}</span>
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-bold whitespace-nowrap shrink-0 ${randomCodexItem.isR18
-                            ? 'bg-pink-500/20 text-pink-400 border border-pink-500/30'
-                            : 'bg-green-500/20 text-green-400 border border-green-500/30'
-                            }`}
-                        >
-                          {randomCodexItem.isR18 ? 'R18' : '全年龄'}
-                        </span>
-                        <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs border border-indigo-500/30 whitespace-nowrap shrink-0">
-                          {randomCodexItem.category}
-                        </span>
-                      </div>
-
-                      {/* 内容 - 限制最大高度 */}
-                      <div className="flex-1 min-h-0 bg-gray-800/50 rounded-xl p-4 border border-gray-700 overflow-y-auto">
-                        <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                          {randomCodexItem.content}
-                        </p>
-                      </div>
-
-                      {/* 操作按钮 */}
-                      <div className="flex-shrink-0 flex gap-2 mt-4">
-                        <button
-                          onClick={handleRandomCodex}
-                          className="flex-1 py-3 bg-gray-700 text-white font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                        >
-                          <Dices className="w-4 h-4" />
-                          换一个
-                        </button>
-                        <button
-                          onClick={() => {
-                            copyToClipboard(randomCodexItem.content);
-                          }}
-                          className="py-3 px-4 bg-gray-700 text-white font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleInspirationSelect(randomCodexItem.content)}
-                          className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                        >
-                          <Plus className="w-4 h-4" />
-                          添加
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-                      <Dices className="w-16 h-16 mb-4 opacity-50" />
-                      <p className="text-lg font-medium mb-2">随机灵感</p>
-                      <p className="text-sm text-gray-600 mb-6">从法典中随机抽取一条灵感</p>
-                      <button
-                        onClick={handleRandomCodex}
-                        disabled={filteredCodexData.length === 0}
-                        className="px-8 py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        <Dices className="w-5 h-5" />
-                        开始随机
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 分类筛选弹窗 */}
-      {showCategoryFilter && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-end animate-fade-in">
-          <div className="absolute inset-0" onClick={() => setShowCategoryFilter(false)} />
-          <div className="relative w-full bg-nai-panel rounded-t-2xl max-h-[70vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
-            {/* 标题栏 */}
-            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
-              <div className="flex items-center gap-2">
-                <Filter className="w-5 h-5 text-pink-400" />
-                <h3 className="text-lg font-bold text-white">分类筛选</h3>
-                {codexSelectedCategories.length > 0 && (
-                  <span className="px-2 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-xs font-bold">
-                    {codexSelectedCategories.length}
-                  </span>
-                )}
-              </div>
-              <button onClick={() => setShowCategoryFilter(false)} className="p-2 -mr-2 text-gray-400">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* 分类列表 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* R18 分类 */}
-              {categoriesByType.nsfw.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-bold text-pink-400">R18 分类</span>
-                    <span className="text-xs text-gray-500">({categoriesByType.nsfw.length})</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {categoriesByType.nsfw.map((cat) => {
-                      const key = `nsfw:${cat}`;
-                      const isSelected = codexSelectedCategories.includes(key);
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => toggleCodexCategory(key)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${isSelected
-                            ? 'bg-pink-500/30 text-pink-300 border border-pink-500/50'
-                            : 'bg-gray-800 text-gray-400 border border-gray-700'
-                            }`}
-                        >
-                          {cat}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* 全年龄分类 */}
-              {categoriesByType.common.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-bold text-green-400">全年龄分类</span>
-                    <span className="text-xs text-gray-500">({categoriesByType.common.length})</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {categoriesByType.common.map((cat) => {
-                      const key = `common:${cat}`;
-                      const isSelected = codexSelectedCategories.includes(key);
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => toggleCodexCategory(key)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${isSelected
-                            ? 'bg-green-500/30 text-green-300 border border-green-500/50'
-                            : 'bg-gray-800 text-gray-400 border border-gray-700'
-                            }`}
-                        >
-                          {cat}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 底部按钮 */}
-            <div className="flex-shrink-0 p-4 border-t border-gray-700 bg-nai-panel flex gap-3">
-              <button
-                onClick={() => setCodexSelectedCategories([])}
-                disabled={codexSelectedCategories.length === 0}
-                className="flex-1 py-3 bg-gray-700 text-white font-bold rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                清空
-              </button>
-              <button
-                onClick={() => setShowCategoryFilter(false)}
-                className="flex-1 py-3 bg-pink-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all"
-              >
-                确认 ({codexSelectedCategories.length})
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MobileInspirationSheet
+        isOpen={isInspirationModalOpen}
+        onClose={() => setIsInspirationModalOpen(false)}
+        onSelect={handleInspirationSelect}
+        library={codexInspiration}
+      />
 
       {/* 图片导入弹窗 */}
       {showImageImportModal && (
