@@ -16,8 +16,6 @@ import {
   useMobileOCSheetLifecycle,
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
-import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
-import { useMobileArtistSelection } from './generate/useMobileArtistSelection';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
 import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
@@ -31,9 +29,8 @@ import { useMobilePreciseReferences } from './generate/useMobilePreciseReference
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
 import { useMobilePromptTokenCounts } from './generate/useMobilePromptTokenCounts';
-import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
+import { useMobilePromptAssistWorkflow } from './generate/useMobilePromptAssistWorkflow';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
-import { useMobileRoleTags } from './generate/useMobileRoleTags';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
@@ -196,8 +193,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     resetOCSelection,
   } = ocManager;
 
-  const roleTagMap = useMobileRoleTags();
-
   const imageImportWorkflow = useMobileImageImportWorkflow({
     setActiveVibes,
     setImg2imgWithAutoRes,
@@ -247,7 +242,11 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     handleAIGenerate,
     handleAIRegenerate,
     handleRestoreSnapshot,
-  } = useMobileAgentAssistant({
+    hasChinesePrompt,
+    isTranslating,
+    handleTranslate,
+    handleArtistSelection,
+  } = useMobilePromptAssistWorkflow({
     positivePrompt,
     setPositivePrompt,
     negativePrompt,
@@ -262,21 +261,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     artistLocalFiles,
     ocPublicFiles: ocManager.ocPublicFiles,
     ocLocalFiles: ocManager.ocLocalFiles,
-    roleTagMap,
-    clearActiveCR: () => setActiveCR(null),
-  });
-  const {
-    hasChinesePrompt,
-    isTranslating,
-    handleTranslate,
-  } = useMobilePromptTranslation({
-    positivePrompt,
-    setPositivePrompt,
-    negativePrompt,
-    setNegativePrompt,
-  });
-  const { handleArtistSelection } = useMobileArtistSelection({
-    setPositivePrompt,
+    setActiveCR,
     closeArtistModal: () => setShowArtistModal(false),
   });
 
