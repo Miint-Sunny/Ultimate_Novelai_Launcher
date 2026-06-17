@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   makeArtistMarker,
   filterHiddenTags,
@@ -77,6 +77,7 @@ import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
+import { useMobileTaggerImportAction } from './generate/useMobileTaggerImportAction';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
   ActiveVibe,
@@ -308,20 +309,13 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setActiveVibes,
     closeImageImportModal: () => setShowImageImportModal(false),
   });
-  const importTaggerPrompt = useCallback(() => {
-    if (!taggerResult?.tags) return;
-
-    const finalPrompt = includeCharacter && taggerResult.character
-      ? `${taggerResult.character}, ${taggerResult.tags}`
-      : taggerResult.tags;
-
-    if (importOptions.cleanImports) {
-      setPositivePrompt(finalPrompt);
-    } else {
-      setPositivePrompt((prev: string) => prev ? `${prev}, ${finalPrompt}` : finalPrompt);
-    }
-    setShowImageImportModal(false);
-  }, [includeCharacter, importOptions.cleanImports, setPositivePrompt, setShowImageImportModal, taggerResult]);
+  const { importTaggerPrompt } = useMobileTaggerImportAction({
+    taggerResult,
+    includeCharacter,
+    importOptions,
+    setPositivePrompt,
+    closeImageImportModal: () => setShowImageImportModal(false),
+  });
 
   const {
     aiModel,
