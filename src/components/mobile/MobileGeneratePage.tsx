@@ -32,7 +32,6 @@ import {
   type PromptPresetData,
 } from '../../services/localLibrary';
 import { getBackendUrl } from '../../utils/apiConfig';
-import { parseCharacterPromptContent } from '../../utils/promptParser';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
@@ -70,6 +69,7 @@ import { useMobileGenerateRunner } from './generate/useMobileGenerateRunner';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
+import { useMobileInspirationApply } from './generate/useMobileInspirationApply';
 import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
 import { useMobileOCManager } from './generate/useMobileOCManager';
 import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
@@ -541,30 +541,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     clearInpaintParams,
   });
 
-  const handleInspirationSelect = (prompt: string) => {
-    // 检测 charN: 模式，自动拆分到角色提示词
-    const parsed = parseCharacterPromptContent(prompt);
-    if (parsed.characters.length > 0) {
-      const basePrompt = parsed.basePrompt.replace(/,\s*$/, '').trim();
-      if (basePrompt) {
-        setPositivePrompt((prev: string) => (prev ? `${prev}, ${basePrompt}` : basePrompt));
-      }
-      const newChars = parsed.characters.slice(0, 6 - characterPrompts.length).map((c, i) => ({
-        id: `${Date.now()}-codex-${i}`,
-        positive: c.content.replace(/,\s*$/, '').trim(),
-        negative: (c.negative || '').replace(/,\s*$/, '').trim(),
-        activeTab: 'prompt' as const,
-        enabled: true,
-        name: c.label,
-      }));
-      if (newChars.length > 0) {
-        setCharacterPrompts(prev => [...prev, ...newChars].slice(0, 6));
-      }
-    } else {
-      setPositivePrompt((prev: string) => (prev ? `${prev}, ${prompt}` : prompt));
-    }
-    setIsInspirationModalOpen(false);
-  };
+  const { handleInspirationSelect } = useMobileInspirationApply({
+    characterPrompts,
+    setCharacterPrompts,
+    setPositivePrompt,
+    closeInspirationSheet: () => setIsInspirationModalOpen(false),
+  });
 
   // 预设应用处理 - 只切换预设，不修改提示词内容
   const handleApplyPreset = (preset: PromptPresetData) => {
