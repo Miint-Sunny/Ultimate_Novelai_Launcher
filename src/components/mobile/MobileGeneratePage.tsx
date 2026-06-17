@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { makeArtistMarker } from '../../utils/promptTags';
 import {
   ChevronDown,
@@ -47,7 +47,9 @@ import { FullscreenEditor } from './FullscreenEditor';
 import {
   useMobileBackHandlers,
   useMobileEditorStateBridge,
+  useMobileLibraryBootstrap,
   useMobileMetadataImportHandler,
+  useMobileOCSheetLifecycle,
 } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
@@ -364,6 +366,18 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     showCRModal,
     setShowCRModal,
   });
+  useMobileLibraryBootstrap({
+    fetchAnlas,
+    loadVibes,
+    loadCRs,
+    loadArtists,
+    loadOCs,
+  });
+  useMobileOCSheetLifecycle({
+    showOCModal,
+    loadOCs,
+    resetOCSelection,
+  });
 
   const {
     promptPresets,
@@ -385,22 +399,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     activePreset,
     characterPrompts,
   });
-
-  useEffect(() => {
-    fetchAnlas();
-    loadVibes();
-    loadCRs();
-    loadArtists();
-    loadOCs();
-  }, []);
-
-  useEffect(() => {
-    if (!showOCModal) {
-      resetOCSelection();
-      return;
-    }
-    loadOCs();
-  }, [loadOCs, resetOCSelection, showOCModal]);
 
   const { isPreparing, handleGenerate } = useMobileGenerateRunner({
     isGenerating,

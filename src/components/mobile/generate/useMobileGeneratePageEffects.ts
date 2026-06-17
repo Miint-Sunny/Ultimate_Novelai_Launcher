@@ -54,6 +54,20 @@ interface UseMobileBackHandlersOptions {
   setShowCRModal: BooleanSetter;
 }
 
+interface UseMobileLibraryBootstrapOptions {
+  fetchAnlas: () => void | Promise<void>;
+  loadVibes: () => void | Promise<void>;
+  loadCRs: () => void | Promise<void>;
+  loadArtists: () => void | Promise<void>;
+  loadOCs: () => void | Promise<void>;
+}
+
+interface UseMobileOCSheetLifecycleOptions {
+  showOCModal: boolean;
+  loadOCs: () => void | Promise<void>;
+  resetOCSelection: () => void;
+}
+
 export function useMobileEditorStateBridge({
   editorOpen,
   editingCharacterId,
@@ -91,6 +105,36 @@ export function useMobileMetadataImportHandler({
     setHandleMetadataImport(handler);
     return () => setHandleMetadataImport(null);
   }, [setHandleMetadataImport, setPositivePrompt, setNegativePrompt]);
+}
+
+export function useMobileLibraryBootstrap({
+  fetchAnlas,
+  loadVibes,
+  loadCRs,
+  loadArtists,
+  loadOCs,
+}: UseMobileLibraryBootstrapOptions) {
+  useEffect(() => {
+    void fetchAnlas();
+    void loadVibes();
+    void loadCRs();
+    void loadArtists();
+    void loadOCs();
+  }, []);
+}
+
+export function useMobileOCSheetLifecycle({
+  showOCModal,
+  loadOCs,
+  resetOCSelection,
+}: UseMobileOCSheetLifecycleOptions) {
+  useEffect(() => {
+    if (!showOCModal) {
+      resetOCSelection();
+      return;
+    }
+    void loadOCs();
+  }, [loadOCs, resetOCSelection, showOCModal]);
 }
 
 export function useMobileBackHandlers({
