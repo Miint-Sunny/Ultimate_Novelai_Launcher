@@ -24,12 +24,7 @@ import {
   Image as ImageIcon,
   Power,
   User,
-  Users,
   ImagePlus,
-  Ban,
-  ArrowUp,
-  ArrowDown,
-  Trash2,
   Brush,
   Settings,
   Lightbulb,
@@ -58,6 +53,9 @@ import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
+import { MobileCharacterPromptEditor } from './MobileCharacterPromptEditor';
+import { MobileCharacterPositionSheet } from './MobileCharacterPositionSheet';
+import { MobileCharacterPromptsCard } from './MobileCharacterPromptsCard';
 import { MobileImageImportModal } from './MobileImageImportModal';
 import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobileInspirationSheet } from './MobileInspirationSheet';
@@ -82,6 +80,7 @@ import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
+import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
@@ -234,10 +233,16 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setImg2imgWithAutoRes,
   } = img2imgState;
 
-  // Character Prompts 状态
-  const [isCharacterExpanded, setIsCharacterExpanded] = useState(true);
-  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
-  const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
+  const characterPromptManager = useMobileCharacterPrompts({
+    characterPrompts,
+    setCharacterPrompts,
+  });
+  const {
+    editingCharacterId,
+    setEditingCharacterId,
+    editingPositionId,
+    setEditingPositionId,
+  } = characterPromptManager;
 
   // 灵感弹窗
   const [isInspirationModalOpen, setIsInspirationModalOpen] = useState(false);
@@ -547,50 +552,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     clearInpaintParams,
   });
 
-  // Character Prompt 操作
-  const addCharacterPrompt = () => {
-    if (characterPrompts.length >= 6) return;
-    setCharacterPrompts((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        positive: '',
-        negative: '',
-        activeTab: 'prompt',
-        enabled: true,
-      },
-    ]);
-  };
-
-  const removeCharacterPrompt = (id: string) => {
-    setCharacterPrompts((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  const updateCharacterPrompt = (
-    id: string,
-    field: 'positive' | 'negative' | 'activeTab' | 'enabled' | 'name' | 'position',
-    value: any
-  ) => {
-    setCharacterPrompts((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
-  };
-
-  const moveCharacterPrompt = (index: number, direction: -1 | 1) => {
-    setCharacterPrompts((prev) => {
-      const newPrompts = [...prev];
-      if (index + direction >= 0 && index + direction < newPrompts.length) {
-        [newPrompts[index], newPrompts[index + direction]] = [
-          newPrompts[index + direction],
-          newPrompts[index],
-        ];
-      }
-      return newPrompts;
-    });
-  };
-
-  const clearAllCharacterPrompts = () => {
-    setCharacterPrompts([]);
-  };
-
   // 生成图片
   const handleGenerate = async () => {
     if (isGenerating || isQueuing || isPreparing) return;
@@ -839,179 +800,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
             </div>
           </div>
 
-          {/* Character Prompts 区域 - 支持收起/展开 */}
-          <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
-            <div
-              className="flex items-center justify-between p-3 active:bg-gray-800/50 transition-colors cursor-pointer"
-              onClick={() => {
-                if (characterPrompts.length > 0) {
-                  setIsCharacterExpanded(!isCharacterExpanded);
-                }
-              }}
-            >
-              <div className="flex items-center gap-2">
-                {characterPrompts.length > 0 && (
-                  <ChevronDown
-                    className={`w-5 h-5 text-gray-400 transition-transform ${isCharacterExpanded ? '' : '-rotate-90'}`}
-                  />
-                )}
-                <Users className="w-5 h-5 text-green-400" />
-                <span className="text-sm font-bold text-gray-200">角色提示词</span>
-                {characterPrompts.length > 0 && (
-                  <span className="text-xs text-green-400 bg-green-500/20 px-1.5 py-0.5 rounded">
-                    {characterPrompts.length}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {characterPrompts.length > 0 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearAllCharacterPrompts();
-                    }}
-                    className="px-3 py-2 bg-red-500/20 text-red-400 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    清空
-                  </button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (characterPrompts.length < 6) {
-                      addCharacterPrompt();
-                      setIsCharacterExpanded(true);
-                    }
-                  }}
-                  disabled={characterPrompts.length >= 6}
-                  className={`px-3 py-2 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5 ${characterPrompts.length >= 6
-                    ? 'bg-gray-700/50 text-gray-500'
-                    : 'bg-green-500/20 text-green-400'
-                    }`}
-                >
-                  <Plus className="w-4 h-4" />
-                  添加
-                </button>
-              </div>
-            </div>
-            {characterPrompts.length > 0 && isCharacterExpanded && (
-              <div className="border-t border-gray-700/30">
-                {characterPrompts.map((char, index) => (
-                  <div
-                    key={char.id}
-                    className={`p-3 ${index > 0 ? 'border-t border-gray-700/30' : ''} ${!char.enabled ? 'opacity-60' : ''
-                      }`}
-                  >
-                    {/* 角色头部 */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        {/* 启用开关 */}
-                        <button
-                          onClick={() => updateCharacterPrompt(char.id, 'enabled', !char.enabled)}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${char.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-700/50 text-gray-500'
-                            }`}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                        {/* 角色名称 */}
-                        <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-                          <User className="w-4 h-4 text-gray-500 shrink-0" />
-                          <span className="text-sm font-bold text-gray-300 truncate max-w-[6rem]" title={char.name || `角色 ${index + 1}`}>
-                            {char.name || `角色 ${index + 1}`}
-                          </span>
-                        </div>
-                        {/* 正向/负向切换 */}
-                        <div
-                          className="flex items-center bg-black/40 rounded-full p-1 border border-gray-700/50 cursor-pointer"
-                          onClick={() =>
-                            updateCharacterPrompt(
-                              char.id,
-                              'activeTab',
-                              char.activeTab === 'prompt' ? 'undesired' : 'prompt'
-                            )
-                          }
-                        >
-                          <div
-                            className={`px-2.5 py-1 rounded-full transition-colors ${char.activeTab === 'prompt'
-                              ? 'bg-nai-accent text-black'
-                              : 'text-gray-500'
-                              }`}
-                          >
-                            <Sparkles className="w-4 h-4" />
-                          </div>
-                          <div
-                            className={`px-2.5 py-1 rounded-full transition-colors ${char.activeTab === 'undesired'
-                              ? 'bg-red-500 text-white'
-                              : 'text-gray-500'
-                              }`}
-                          >
-                            <Ban className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-                      {/* 操作按钮 */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => moveCharacterPrompt(index, -1)}
-                          disabled={index === 0}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 disabled:opacity-30 active:scale-95 bg-gray-700/30"
-                        >
-                          <ArrowUp className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => moveCharacterPrompt(index, 1)}
-                          disabled={index === characterPrompts.length - 1}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 disabled:opacity-30 active:scale-95 bg-gray-700/30"
-                        >
-                          <ArrowDown className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => removeCharacterPrompt(char.id)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-red-400 active:scale-95 bg-gray-700/30"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    {/* 输入框 - 点击进入全屏编辑 */}
-                    <div
-                      onClick={() => setEditingCharacterId(char.id)}
-                      className={`relative w-full min-h-[84px] p-3 pb-11 rounded-lg border text-sm cursor-pointer transition-colors ${char.activeTab === 'prompt'
-                        ? 'bg-nai-accent/5 border-nai-accent/30'
-                        : 'bg-red-500/5 border-red-500/30'
-                        } ${!char.enabled ? 'opacity-50' : ''}`}
-                    >
-                      <div className="text-gray-300 line-clamp-2 whitespace-pre-wrap">
-                        {(char.activeTab === 'prompt' ? char.positive : char.negative) || (
-                          <span className="text-gray-600">
-                            {char.activeTab === 'prompt' ? '点击输入角色提示词...' : '点击输入角色排除内容...'}
-                          </span>
-                        )}
-                      </div>
-                      {/* 底部操作栏：位置按钮 + Token 计数 */}
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingPositionId(char.id);
-                          }}
-                          className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-mono border bg-black/30 border-gray-600/40 text-gray-300 active:bg-black/50 active:text-white transition-colors"
-                          title="设置位置"
-                        >
-                          <Grid className="w-4 h-4" />
-                          {char.position || 'AUTO'}
-                        </button>
-                        <span className="text-sm text-gray-400 font-mono">
-                          {countTokens(char.activeTab === 'prompt' ? char.positive : char.negative)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <MobileCharacterPromptsCard manager={characterPromptManager} />
 
           {/* Vibes 区域 - 支持收起/展开 */}
           <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
@@ -1778,128 +1567,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         onRestoreSnapshot={handleRestoreSnapshot}
       />
 
-      {/* 角色提示词全屏编辑器 */}
-      {editingCharacterId && (() => {
-        const char = characterPrompts.find((c) => c.id === editingCharacterId);
-        if (!char) return null;
-        const charIndex = characterPrompts.findIndex((c) => c.id === editingCharacterId);
-        return (
-          <FullscreenEditor
-            isOpen={true}
-            onClose={() => setEditingCharacterId(null)}
-            type={char.activeTab === 'prompt' ? 'prompt' : 'undesired'}
-            value={char.activeTab === 'prompt' ? char.positive : char.negative}
-            onChange={(value) =>
-              updateCharacterPrompt(
-                char.id,
-                char.activeTab === 'prompt' ? 'positive' : 'negative',
-                value
-              )
-            }
-            totalTokens={char.activeTab === 'prompt' ? positiveTokens : negativeTokens}
-          />
-        );
-      })()}
-
-      {/* 角色位置选择弹窗 */}
-      {editingPositionId && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setEditingPositionId(null)}
-        >
-          <div
-            className="bg-nai-panel border border-gray-700 rounded-2xl shadow-2xl p-4 w-full max-w-sm animate-slide-in-from-bottom"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-white flex items-center gap-2">
-                <Grid className="w-4 h-4 text-nai-accent" />
-                设置角色位置
-              </h3>
-              <button
-                onClick={() => setEditingPositionId(null)}
-                className="p-1 text-gray-400 active:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-6 gap-1 mb-3">
-              <div className="col-span-1"></div>
-              {['A', 'B', 'C', 'D', 'E'].map((col) => (
-                <div key={col} className="text-center text-xs font-bold text-gray-500">
-                  {col}
-                </div>
-              ))}
-              {[1, 2, 3, 4, 5].map((row) => (
-                <React.Fragment key={row}>
-                  <div className="flex items-center justify-center text-xs font-bold text-gray-500">
-                    {row}
-                  </div>
-                  {['A', 'B', 'C', 'D', 'E'].map((col) => {
-                    const cellId = `${col}${row}`;
-                    const isActive =
-                      characterPrompts.find((p) => p.id === editingPositionId)?.position === cellId;
-                    const charsInCell = characterPrompts.filter((p) => p.position === cellId);
-                    return (
-                      <button
-                        key={cellId}
-                        onClick={() => {
-                          updateCharacterPrompt(editingPositionId, 'position', cellId);
-                          setEditingPositionId(null);
-                        }}
-                        className={`aspect-square rounded border flex items-center justify-center relative transition-all duration-200 ${
-                          isActive
-                            ? 'bg-nai-accent/20 border-nai-accent shadow-[0_0_10px_rgba(235,213,118,0.2)]'
-                            : 'bg-black/20 border-gray-700 active:border-gray-500 active:bg-white/5'
-                        }`}
-                      >
-                        {isActive && (
-                          <div className="absolute inset-0 bg-nai-accent/10 animate-pulse rounded" />
-                        )}
-                        <div className="flex flex-wrap items-center justify-center gap-0.5 p-0.5">
-                          {charsInCell.map((c) => (
-                            <div
-                              key={c.id}
-                              className={`w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold shadow-sm ${
-                                c.id === editingPositionId
-                                  ? 'bg-nai-accent text-black ring-1 ring-white'
-                                  : 'bg-gray-600 text-white'
-                              }`}
-                            >
-                              {characterPrompts.findIndex((p) => p.id === c.id) + 1}
-                            </div>
-                          ))}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
-            </div>
-
-            <button
-              onClick={() => {
-                updateCharacterPrompt(editingPositionId, 'position', '');
-                setEditingPositionId(null);
-              }}
-              className={`w-full py-2.5 mb-2 rounded-lg text-sm font-bold border transition-all flex items-center justify-center gap-2 ${
-                !characterPrompts.find((p) => p.id === editingPositionId)?.position
-                  ? 'bg-nai-accent text-black border-nai-accent'
-                  : 'bg-black/20 text-gray-400 border-gray-700 active:text-white active:border-gray-500'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              自动 (Auto)
-            </button>
-
-            <div className="text-xs text-gray-500 text-center mt-1">
-              当前正在设置 Char{' '}
-              {characterPrompts.findIndex((p) => p.id === editingPositionId) + 1} 的位置
-            </div>
-          </div>
-        </div>
-      )}
+      <MobileCharacterPromptEditor
+        manager={characterPromptManager}
+        positiveTokens={positiveTokens}
+        negativeTokens={negativeTokens}
+      />
+      <MobileCharacterPositionSheet manager={characterPromptManager} />
 
       <MobileVibeManagerSheet
         isOpen={showVibeModal}
