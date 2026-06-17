@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback, startTransition } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   NEWLINE_SENTINEL, splitPromptToTags, makeArtistMarker,
   parseCollapsibleMarker, filterHiddenTags,
@@ -23,7 +23,6 @@ import {
   Grid,
   Upload,
   Image as ImageIcon,
-  FileUp,
   Power,
   User,
   Users,
@@ -38,20 +37,12 @@ import {
   Filter,
   Copy,
   SlidersHorizontal,
-  Download,
   ArrowLeft,
   AlignLeft,
   Edit2,
-  Tag,
   Eye,
   EyeOff,
   Search,
-  Heart,
-  Cloud,
-  CloudOff,
-  MoreVertical,
-  Globe,
-  HardDrive,
   Clock,
   Undo2,
   ExternalLink,
@@ -60,54 +51,21 @@ import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getPromptPresets,
-  savePromptPresets,
   getActivePresetId,
   saveActivePresetId,
   type PromptPresetData,
-  DEFAULT_PROMPT_PRESETS,
 } from '../../services/localLibrary';
 import {
   getArtists,
-  saveArtist,
-  deleteArtist,
-  type ArtistData,
   getCRs,
   saveCR,
   deleteCR,
-  type CRData,
-  getVibes,
-  type VibeData,
-  saveVibe,
-  createVibeFromImage,
-  importVibeFromFile,
-  importVibeBundleFromFile,
-  deleteVibe,
-  recordVibeUsageBatch,
-  exportVibeToFile,
-  exportVibesToBundle,
-  getVibeTagPool,
-  saveVibeTagPool,
-  getRecentVibeEntries,
-  clearRecentVibeEntries,
-  removeRecentVibeEntry,
-  type RecentVibeEntry,
-  setVibeTags as setVibeTagsStorage,
-  syncVibesFromCloud,
-  SyncProtocolMismatchError,
-  pushAllToCloud,
 } from '../../services/localLibrary';
 import { copyToClipboard } from '../../utils/clipboard';
 import { getBackendUrl } from '../../utils/apiConfig';
 import { parseCharacterPromptContent } from '../../utils/promptParser';
 import {
-  addCloudTombstone,
-  deleteCloudVibe,
-  putCloudTagPool,
-} from '../../services/botService';
-import {
   getPublicLibraryOwnerId,
-  getPublicVibes,
-  getPublicVibeFile,
   getPublicCRs,
   getPublicCRPreviewUrl,
   getPublicArtists,
@@ -116,27 +74,19 @@ import {
   createPublicOC,
   updatePublicOC,
   deletePublicOC,
-  type PublicCRData,
-  type PublicArtistData,
 } from '../../services/publicLibrary';
-import { CloudManageModal } from '../vibe/CloudManageModal';
-import { cloudSyncQueue, type CloudSyncQueueStatus } from '../../services/cloudSyncQueue';
-import { shouldShowOnboarding, setOnboardingState } from '../../services/syncOnboarding';
 import { generateImageStream } from '../../services/novelai';
 import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
 import { MobileImageImportModal } from './MobileImageImportModal';
-import { InspirationModal } from '../InspirationModal';
+import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
 import { loadCodexData, type CodexItem } from '../../services/codexData';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import {
-  MAX_TOTAL_PIXELS,
   MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
   MOBILE_WALLPAPER_RESOLUTIONS as WALLPAPER_RESOLUTIONS,
-  MODEL_MAP,
-  MODEL_TO_ENCODING_KEY,
   MODELS,
   RESOLUTIONS,
 } from '../generation/modelResolutionOptions';
@@ -152,6 +102,7 @@ import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
 import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
+import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import {
@@ -246,59 +197,8 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   const [showResolutionDropdown, setShowResolutionDropdown] = useState(false);
   const [resolutionTab, setResolutionTab] = useState<'small' | 'large' | 'wallpaper'>('small');
 
-  // Vibe 状态
+  // Vibe 管理器弹窗状态
   const [showVibeModal, setShowVibeModal] = useState(false);
-  const [vibeTab, setVibeTab] = useState<'public' | 'local'>('public');
-  const [vibeFiles, setVibeFiles] = useState<VibeFile[]>([]);
-  const [localVibeFiles, setLocalVibeFiles] = useState<VibeFile[]>([]);
-  const [activeVibes, setActiveVibes] = useState<ActiveVibe[]>([]);
-
-  // 自动记录"最近使用"：activeVibes 任何变更都会被捕获
-  useEffect(() => {
-    if (activeVibes.length === 0) return;
-    recordVibeUsageBatch(activeVibes.map(v => ({
-      id: v.id,
-      name: v.name,
-      preview: v.preview,
-    })));
-  }, [activeVibes]);
-
-  const [isLoadingVibes, setIsLoadingVibes] = useState(false);
-  const [isVibeExpanded, setIsVibeExpanded] = useState(true);
-  const [loadingVibeIds, setLoadingVibeIds] = useState<Set<string>>(new Set());
-  const [collectingVibeIds, setCollectingVibeIds] = useState<Set<string>>(new Set());
-  const [vibeSearchQuery, setVibeSearchQuery] = useState('');
-  const [vibeModelFilter] = useState<string>('all');
-
-  // ── Vibe 管理器扩展状态（对齐桌面端）──────────────────────────────────────
-  // 云同步
-  const vibeIsSyncingRef = useRef(false);
-  const [vibeIsSyncing, setVibeIsSyncing] = useState(false);
-  const [vibeProtocolMismatch, setVibeProtocolMismatch] = useState<{ server: number; required: number } | null>(null);
-  // 标签
-  const [vibeTagPool, setVibeTagPool] = useState<string[]>([]);
-  const [vibeSelectedTagFilter, setVibeSelectedTagFilter] = useState<Set<string>>(new Set());
-  // 最近使用
-  const [vibeRecentEntries, setVibeRecentEntries] = useState<RecentVibeEntry[]>([]);
-  // 三点菜单
-  const [vibeMenuOpenId, setVibeMenuOpenId] = useState<string | null>(null);
-  // 标签管理面板
-  const [vibeTagSettingsOpen, setVibeTagSettingsOpen] = useState(false);
-  const [vibeTagSettingsCreating, setVibeTagSettingsCreating] = useState(false);
-  const [vibeTagSettingsNewName, setVibeTagSettingsNewName] = useState('');
-  const [vibeTagSettingsEditing, setVibeTagSettingsEditing] = useState<string | null>(null);
-  const [vibeTagSettingsEditDraft, setVibeTagSettingsEditDraft] = useState('');
-  // 首次引导
-  // 批量标签
-  const [vibeBatchTagOpen, setVibeBatchTagOpen] = useState(false);
-  const [vibeBatchTagsToAdd, setVibeBatchTagsToAdd] = useState<Set<string>>(new Set());
-  // 单个 vibe 标签编辑
-  const [vibeTagEditorTarget, setVibeTagEditorTarget] = useState<{ vibeId: string; current: Set<string> } | null>(null);
-  // FAB 悬浮导入按钮
-  const [vibeFabOpen, setVibeFabOpen] = useState(false);
-  // 云端菜单
-  const [vibeCloudMenuOpen, setVibeCloudMenuOpen] = useState(false);
-  // 最近使用折叠
 
   // Precise Reference 状态 (原 CR)
   const [showCRModal, setShowCRModal] = useState(false);
@@ -331,6 +231,26 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       setActivePreciseRefs([]);
     }
   }, []);
+
+  const vibeLibrary = useMobileVibeLibrary({
+    model,
+    clearActiveCR: () => setActiveCR(null),
+    showVibeModal,
+  });
+  const {
+    activeVibes,
+    setActiveVibes,
+    localVibeFiles,
+    setLocalVibeFiles,
+    vibeFiles,
+    isVibeExpanded,
+    setIsVibeExpanded,
+    loadingVibeIds,
+    isVibeCompatibleWithModel,
+    removeActiveVibe,
+    updateActiveVibe,
+    loadVibes,
+  } = vibeLibrary;
 
   // Image2Image 状态
   const [img2imgImage, setImg2imgImage] = useState<string | null>(null);
@@ -571,46 +491,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     [promptPresets, activePresetId]
   );
 
-  const currentModelApi = useMemo(
-    () => MODEL_MAP[model] || 'nai-diffusion-4-5-full',
-    [model]
-  );
-
-  const isVibeCompatibleWithModel = useCallback((vibe: VibeFile & { image?: string; hasImage?: boolean }) => {
-    // 有原图数据时可以为任意模型重新编码，视为始终兼容
-    if (vibe.image || vibe.hasImage) return true;
-    if (!vibe.supportedModels || vibe.supportedModels.length === 0) return true;
-    const currentEncodingKey = MODEL_TO_ENCODING_KEY[currentModelApi];
-    if (!currentEncodingKey) return true;
-    return vibe.supportedModels.some((supportedModel) =>
-      supportedModel === currentEncodingKey ||
-      (currentModelApi === 'nai-diffusion-4-5-full' && supportedModel === 'v4full') ||
-      (currentModelApi === 'nai-diffusion-4-5-curated' && supportedModel === 'v4curated')
-    );
-  }, [currentModelApi]);
-
-  const availableVibeModels = useMemo(() => {
-    const models = new Set<string>();
-    const source = vibeTab === 'public' ? vibeFiles : localVibeFiles;
-    source.forEach((vibe) => vibe.supportedModels?.forEach((modelKey) => models.add(modelKey)));
-    return [...models].sort();
-  }, [vibeFiles, localVibeFiles, vibeTab]);
-
-  const filterVibeList = useCallback((files: VibeFile[]) => {
-    let filtered = files;
-    const q = vibeSearchQuery.trim().toLowerCase();
-    if (q) {
-      filtered = filtered.filter((file) => file.name.toLowerCase().includes(q));
-    }
-    if (vibeModelFilter !== 'all') {
-      filtered = filtered.filter((file) => file.supportedModels?.includes(vibeModelFilter));
-    }
-    return filtered;
-  }, [vibeModelFilter, vibeSearchQuery]);
-
-  const filteredPublicVibes = useMemo(() => filterVibeList(vibeFiles), [filterVibeList, vibeFiles]);
-  const filteredLocalVibes = useMemo(() => filterVibeList(localVibeFiles), [filterVibeList, localVibeFiles]);
-
   // Token 计数 - 包含预设和角色提示词的 token（剔除 ~ 禁用标签，与生成保持一致）
   const positiveTokens = useMemo(() => {
     let total = countTokens(expandCollapsibleMarkers(filterHiddenTags(positivePrompt)));
@@ -639,81 +519,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     });
     return total;
   }, [negativePrompt, activePreset, characterPrompts]);
-
-  // 加载 Vibes
-  const loadVibes = async () => {
-    setIsLoadingVibes(true);
-    try {
-      // 加载本地 Vibes
-      const localVibes = await getVibes();
-      const localVibeList: VibeFile[] = localVibes.map((v) => ({
-        id: v.id, name: v.name, preview: v.preview, image: v.image,
-        encodings: v.encodings, defaultStrength: v.defaultStrength,
-        defaultInfoExtracted: v.defaultInfoExtracted, supportedModels: v.supportedModels,
-      }));
-      startTransition(() => setLocalVibeFiles(localVibeList));
-
-      // 加载公共 Vibes（强制刷新）
-      const publicVibes = await getPublicVibes(true);
-      const backendUrl = getBackendUrl();
-      const publicVibeList: VibeFile[] = publicVibes.map((v) => ({
-        id: v.id || v.filename || `vibe-${Date.now()}`,
-        name: v.name,
-        preview: v.thumbnail ? (v.thumbnail.startsWith('/') ? `${backendUrl}${v.thumbnail}` : v.thumbnail) : '',
-        supportedModels: v.supportedModels,
-        defaultStrength: v.defaultStrength,
-        defaultInfoExtracted: v.defaultInfoExtracted,
-        fileName: v.filename,  // 保存文件名用于后续获取完整数据
-      }));
-      startTransition(() => setVibeFiles(publicVibeList));
-    } catch (err) {
-      console.error('Failed to load vibes:', err);
-    } finally {
-      setIsLoadingVibes(false);
-    }
-  };
-
-  // ── Vibe 管理器辅助函数（对齐桌面端）──────────────────────────────────────
-
-  const reloadVibeTagPool = useCallback(async () => {
-    const pool = await getVibeTagPool();
-    setVibeTagPool(pool);
-  }, []);
-
-  // Vibe 管理器打开时加载
-  useEffect(() => {
-    if (!showVibeModal) return;
-    reloadVibeTagPool();
-    setVibeRecentEntries(getRecentVibeEntries());
-  }, [showVibeModal]);
-
-  // 标签筛选后的本地 vibe 列表
-  const vibeTagFilteredLocalFiles = useMemo(() => {
-    let files = localVibeFiles;
-    if (vibeSearchQuery.trim()) {
-      const q = vibeSearchQuery.trim().toLowerCase();
-      files = files.filter(f => f.name.toLowerCase().includes(q));
-    }
-    if (vibeSelectedTagFilter.size > 0) {
-      files = files.filter(f => {
-        const tags = (f as any).tags || [];
-        return tags.some((t: string) => vibeSelectedTagFilter.has(t));
-      });
-    }
-    return files;
-  }, [localVibeFiles, vibeSearchQuery, vibeSelectedTagFilter]);
-
-  // 标签使用计数
-  const vibeTagUsageCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const f of localVibeFiles) {
-      const tags = (f as any).tags || [];
-      for (const t of tags) {
-        counts.set(t, (counts.get(t) || 0) + 1);
-      }
-    }
-    return counts;
-  }, [localVibeFiles]);
 
   // 加载 CRs
   const loadCRs = async () => {
@@ -963,175 +768,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     window.addEventListener('inpaint-panel-strength-change', handler);
     return () => window.removeEventListener('inpaint-panel-strength-change', handler);
   }, []);
-
-  const handleAddVibe = async (vibe: VibeFile) => {
-    if (activeVibes.some((v) => v.id === vibe.id)) return;
-
-    // 判断是否是公共vibe（没有image字段但有fileName）
-    const isPublicVibe = !vibe.image && vibeFiles.some(v => v.id === vibe.id);
-    const publicVibeFile = isPublicVibe ? vibeFiles.find(v => v.id === vibe.id) : null;
-
-    // 先添加到列表（可能没有完整数据）
-    setActiveVibes((prev) => [
-      ...prev,
-      {
-        ...vibe,
-        referenceStrength: vibe.defaultStrength ?? 0.6,
-        informationExtracted: vibe.defaultInfoExtracted ?? 1,
-        enabled: true,
-        isPublic: isPublicVibe,
-      },
-    ]);
-    // CR 和 Vibe 互斥：启用 Vibe 时清空 CR
-    setActiveCR(null);
-
-    // 如果是公共vibe，异步加载完整数据
-    if (isPublicVibe && publicVibeFile?.fileName) {
-      setLoadingVibeIds(prev => new Set(prev).add(vibe.id));
-      try {
-        const fullData = await getPublicVibeFile(publicVibeFile.fileName);
-        if (fullData) {
-          // 加载完成后更新对应的 vibe
-          setActiveVibes(prev => prev.map(v =>
-            v.id === vibe.id ? {
-              ...v,
-              image: fullData.image as string,
-              encodings: fullData.encodings as VibeData['encodings'],
-            } : v
-          ));
-        }
-      } catch (err) {
-        console.error('Failed to load public vibe file:', err);
-      } finally {
-        setLoadingVibeIds(prev => {
-          const next = new Set(prev);
-          next.delete(vibe.id);
-          return next;
-        });
-      }
-    }
-  };
-
-  const handleRemoveVibe = (id: string) => {
-    setActiveVibes((prev) => prev.filter((v) => v.id !== id));
-  };
-
-  const handleCollectPublicVibe = async (vibe: VibeFile) => {
-    if (localVibeFiles.some((localVibe) => localVibe.id === vibe.id)) {
-      alert('该 Vibe 已在本地');
-      return;
-    }
-    if (!vibe.fileName) {
-      alert('该公共 Vibe 缺少文件信息');
-      return;
-    }
-
-    setCollectingVibeIds((prev) => new Set(prev).add(vibe.id));
-    try {
-      const fullData = await getPublicVibeFile(vibe.fileName);
-      if (!fullData) {
-        throw new Error('获取公共 Vibe 失败');
-      }
-
-      const importInfo = typeof fullData.importInfo === 'object' && fullData.importInfo
-        ? fullData.importInfo as Record<string, unknown>
-        : null;
-
-      const saved = await saveVibe({
-        id: String(fullData.id || vibe.id),
-        name: String(fullData.name || vibe.name),
-        size: String(fullData.size || '0.00 MB'),
-        preview: String(fullData.thumbnail || vibe.preview || ''),
-        image: typeof fullData.image === 'string' ? fullData.image : '',
-        encodings: (fullData.encodings as VibeData['encodings']) || {},
-        createdAt: typeof fullData.createdAt === 'number' ? fullData.createdAt : Date.now(),
-        defaultStrength: typeof fullData.defaultStrength === 'number'
-          ? fullData.defaultStrength
-          : (typeof importInfo?.strength === 'number' ? importInfo.strength : vibe.defaultStrength),
-        defaultInfoExtracted: typeof fullData.defaultInfoExtracted === 'number'
-          ? fullData.defaultInfoExtracted
-          : (typeof importInfo?.information_extracted === 'number' ? importInfo.information_extracted : vibe.defaultInfoExtracted),
-        supportedModels: Array.isArray(fullData.supportedModels)
-          ? fullData.supportedModels as string[]
-          : (fullData.encodings ? Object.keys(fullData.encodings as Record<string, unknown>) : vibe.supportedModels),
-      });
-
-      setLocalVibeFiles((prev) => {
-        if (prev.some((item) => item.id === saved.id)) return prev;
-        return [{
-          id: saved.id,
-          name: saved.name,
-          preview: saved.preview,
-          image: saved.image,
-          encodings: saved.encodings,
-          defaultStrength: saved.defaultStrength,
-          defaultInfoExtracted: saved.defaultInfoExtracted,
-          supportedModels: saved.supportedModels,
-        }, ...prev];
-      });
-    } catch (err) {
-      console.error('Collect public vibe failed:', err);
-      alert('收藏失败: ' + (err as Error).message);
-    } finally {
-      setCollectingVibeIds((prev) => {
-        const next = new Set(prev);
-        next.delete(vibe.id);
-        return next;
-      });
-    }
-  };
-
-  const handleUnifiedVibeImport = async (file: File) => {
-    try {
-      setIsLoadingVibes(true);
-      const isImage = file.type.startsWith('image/');
-      const isVibeBundle = file.name.endsWith('.naiv4vibebundle');
-      const isVibeFile = file.name.endsWith('.naiv4vibe');
-
-      if (isImage) {
-        const newVibe = await createVibeFromImage(file);
-        setLocalVibeFiles((prev) => [{
-          id: newVibe.id,
-          name: newVibe.name,
-          preview: newVibe.preview,
-          image: newVibe.image,
-          encodings: newVibe.encodings,
-          defaultStrength: newVibe.defaultStrength,
-          defaultInfoExtracted: newVibe.defaultInfoExtracted,
-          supportedModels: newVibe.supportedModels,
-        }, ...prev]);
-        return;
-      }
-
-      if (isVibeBundle || isVibeFile) {
-        const newVibes = isVibeBundle
-          ? await importVibeBundleFromFile(file)
-          : [await importVibeFromFile(file)];
-
-        setLocalVibeFiles((prev) => [
-          ...newVibes.map((v) => ({
-            id: v.id,
-            name: v.name,
-            preview: v.preview,
-            image: v.image,
-            encodings: v.encodings,
-            defaultStrength: v.defaultStrength,
-            defaultInfoExtracted: v.defaultInfoExtracted,
-            supportedModels: v.supportedModels,
-          })),
-          ...prev,
-        ]);
-        return;
-      }
-
-      throw new Error('仅支持图片、.naiv4vibe 或 .naiv4vibebundle 文件');
-    } catch (err) {
-      console.error('Unified vibe import failed:', err);
-      alert('导入失败: ' + (err as Error).message);
-    } finally {
-      setIsLoadingVibes(false);
-    }
-  };
 
   // Precise Reference 操作
   const handleSelectCR = (cr: CRFile) => {
@@ -2124,7 +1760,7 @@ const result = await deletePublicOC(oc.id);
                         </button>
                         {/* 删除按钮 */}
                         <button
-                          onClick={() => handleRemoveVibe(vibe.id)}
+                          onClick={() => removeActiveVibe(vibe.id)}
                           className="w-9 h-9 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-500 hover:text-red-400 active:scale-95 transition-all"
                         >
                           <X className="w-4 h-4" />
@@ -2989,431 +2625,10 @@ const result = await deletePublicOC(oc.id);
         </div>
       )}
 
-      {/* Vibe 选择弹窗 */}
-      {/* ════════════════════ Vibe 管理器（对齐桌面端）════════════════════ */}
-      {showVibeModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end animate-fade-in">
-          <div className="absolute inset-0" onClick={() => { setShowVibeModal(false); setVibeMenuOpenId(null); }} />
-          <div className="relative w-full bg-nai-panel rounded-t-2xl h-[85vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
-            {/* 同步遮罩 */}
-            {/* Header */}
-            <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <div className="flex items-center gap-2">
-                <Settings className="w-5 h-5 text-nai-accent" />
-                <h3 className="text-lg font-bold text-white">Vibe管理器</h3>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {/* 上传备份 */}
-                {/* 云端数据管理 */}
-                <button
-                  onClick={() => setVibeCloudMenuOpen(true)}
-                  className="w-9 h-9 rounded-lg flex items-center justify-center border border-gray-700 bg-gray-800 text-gray-400 active:text-nai-accent transition-colors"
-                >
-                  <Cloud className="w-4 h-4" />
-                </button>
-                <button onClick={() => { setShowVibeModal(false); setVibeMenuOpenId(null); }} className="p-1.5 text-gray-400">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* 搜索栏 */}
-            <div className="flex-shrink-0 px-3 py-2 border-b border-gray-700/50">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                <input type="text" value={vibeSearchQuery} onChange={(e) => setVibeSearchQuery(e.target.value)}
-                  placeholder="搜索..." className="w-full h-10 bg-gray-800/70 text-sm text-gray-200 rounded-lg pl-9 pr-9 border border-gray-700 focus:border-nai-accent focus:outline-none" />
-                {vibeSearchQuery && (
-                  <button onClick={() => setVibeSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"><X className="w-4 h-4" /></button>
-                )}
-              </div>
-            </div>
-            {/* Tab 栏 */}
-            <div className="flex-shrink-0 flex border-b border-gray-700">
-              <button className={`flex-1 py-3 text-sm font-bold transition-colors border-b-2 ${vibeTab === 'public' ? 'border-nai-accent text-white bg-white/5' : 'border-transparent text-gray-400'}`}
-                onClick={() => setVibeTab('public')}>
-                <div className="flex items-center justify-center gap-1.5"><Globe className="w-4 h-4" />公共 Vibe</div>
-              </button>
-              <button className={`flex-1 py-3 text-sm font-bold transition-colors border-b-2 ${vibeTab === 'local' ? 'border-nai-accent text-white bg-white/5' : 'border-transparent text-gray-400'}`}
-                onClick={() => setVibeTab('local')}>
-                <div className="flex items-center justify-center gap-1.5"><HardDrive className="w-4 h-4" />我的Vibe</div>
-              </button>
-            </div>
-
-            {/* 滑动切换 + 内容 */}
-            <div
-              className="flex-1 overflow-hidden relative flex flex-col min-h-0"
-              onTouchStart={(e) => {
-                const t = e.touches[0];
-                (e.currentTarget as any)._tsx = t.clientX;
-                (e.currentTarget as any)._tsy = t.clientY;
-              }}
-              onTouchEnd={(e) => {
-                const sx = (e.currentTarget as any)._tsx;
-                const sy = (e.currentTarget as any)._tsy;
-                if (sx === undefined) return;
-                const t = e.changedTouches[0];
-                const dx = t.clientX - sx, dy = t.clientY - sy;
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
-                  if (dx > 0 && vibeTab === 'local') setVibeTab('public');
-                  else if (dx < 0 && vibeTab === 'public') setVibeTab('local');
-                }
-              }}
-            >
-              <div className="h-full overflow-y-auto">
-              {isLoadingVibes ? (
-                <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
-              ) : vibeTab === 'public' ? (
-                /* ════ 公共 Tab ════ */
-                <div className="p-3 space-y-2">
-                  <div className="flex items-center gap-1.5 text-sm text-gray-400 mb-1.5">
-                    <Globe className="w-4 h-4" />
-                    <span className="font-bold">公共库</span>
-                    <span className="text-gray-500">({filteredPublicVibes.length})</span>
-                  </div>
-                  {filteredPublicVibes.length === 0 ? (
-                    <div className="flex flex-col items-center py-12 text-gray-500"><Palette className="w-12 h-12 mb-3 opacity-50" /><p className="text-sm">暂无公共Vibe</p></div>
-                  ) : filteredPublicVibes.map(vibe => {
-                    const isAdded = activeVibes.some(v => v.id === vibe.id);
-                    const isCompatible = isVibeCompatibleWithModel(vibe);
-                    const isCollected = localVibeFiles.some(v => v.id === vibe.id);
-                    const isCollecting = collectingVibeIds.has(vibe.id);
-                    return (
-                      <div key={vibe.id}
-                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${!isCompatible ? 'bg-gray-900/50 border-gray-800 opacity-60' : isAdded ? 'bg-nai-accent/10 border-nai-accent/50' : 'bg-gray-800/50 border-gray-700 active:bg-gray-700/50'}`}
-                        onClick={() => { if (isAdded) setActiveVibes(p => p.filter(v => v.id !== vibe.id)); else handleAddVibe(vibe); }}>
-                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${isAdded ? 'bg-nai-accent border-nai-accent' : 'border-gray-500'}`}>
-                          {isAdded && <Check className="w-3 h-3 text-black" />}
-                        </div>
-                        {vibe.preview ? <img src={vibe.preview} alt={vibe.name} className="w-12 h-12 rounded-lg object-cover shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; const fb = e.currentTarget.nextElementSibling; if (fb) (fb as HTMLElement).style.display = 'flex'; }} /> : null}<div className={`w-12 h-12 rounded-lg bg-gray-700 items-center justify-center shrink-0 ${vibe.preview ? 'hidden' : 'flex'}`}><Palette className="w-4 h-4 text-gray-500" /></div>
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-sm font-medium truncate ${isAdded ? 'text-nai-accent' : 'text-white'}`}>{vibe.name}</div>
-                          {vibe.supportedModels && vibe.supportedModels.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-0.5">{vibe.supportedModels.slice(0, 2).map(m => <span key={m} className="text-[11px] px-1.5 py-0.5 bg-gray-700 text-gray-400 rounded">{m.includes('full') ? 'Full' : m.includes('curated') ? 'Curated' : m.split('-').pop()}</span>)}</div>
-                          )}
-                          {!isCompatible && <div className="mt-0.5 text-xs text-red-400">不兼容</div>}
-                        </div>
-                        <button onClick={async (e) => { e.stopPropagation(); await handleCollectPublicVibe(vibe); }} disabled={isCollected || isCollecting}
-                          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isCollected ? 'text-pink-400' : 'text-gray-400'} disabled:opacity-50`}>
-                          {isCollecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className={`w-5 h-5 ${isCollected ? 'fill-current' : ''}`} />}
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); if (vibe.fileName) { const a = document.createElement('a'); a.href = `${getBackendUrl()}/api/vibes/download/${encodeURIComponent(vibe.fileName)}`; a.download = vibe.fileName; a.click(); } }}
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 shrink-0"><Download className="w-5 h-5" /></button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                /* ════ 我的 Vibe Tab ════ */
-                <div className="p-3 space-y-2">
-                  {/* 最近使用 — 移动端空间不足,暂不显示 */}
-
-                  {/* 列表标题 + 标签管理 */}
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5 text-sm text-gray-400">
-                      <span className="font-bold">{vibeSelectedTagFilter.size > 0 ? '已筛选' : '全部 Vibe'}</span>
-                      <span className="text-gray-500">({vibeTagFilteredLocalFiles.length})</span>
-                    </div>
-                    <button onClick={() => setVibeTagSettingsOpen(true)} className="p-1.5 text-gray-500 active:text-nai-accent rounded active:bg-white/5 transition-colors" title="标签管理"><Settings className="w-4 h-4" /></button>
-                  </div>
-
-                  {/* 标签筛选 chips */}
-                  {vibeTagPool.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-hide mb-1.5">
-                      <button onClick={() => setVibeSelectedTagFilter(new Set())}
-                        className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-full ${vibeSelectedTagFilter.size === 0 ? 'bg-nai-accent text-black' : 'bg-gray-800 text-gray-400'}`}>全部</button>
-                      {vibeTagPool.map(tag => (
-                        <button key={tag} onClick={() => setVibeSelectedTagFilter(prev => { const n = new Set(prev); if (n.has(tag)) n.delete(tag); else n.add(tag); return n; })}
-                          className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-full flex items-center gap-1 ${vibeSelectedTagFilter.has(tag) ? 'bg-nai-accent text-black' : 'bg-gray-800 text-gray-400'}`}>
-                          <Tag className="w-3 h-3" />{tag}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 本地 Vibe 列表 */}
-                  {vibeTagFilteredLocalFiles.length === 0 ? (
-                    <div className="flex flex-col items-center py-10 text-gray-500"><Palette className="w-10 h-10 mb-2 opacity-30" /><p className="text-sm">暂无我的Vibe</p><p className="text-xs mt-1 text-gray-600">点击上方按钮导入</p></div>
-                  ) : vibeTagFilteredLocalFiles.map(vibe => {
-                    const isAdded = activeVibes.some(v => v.id === vibe.id);
-                    const isCompatible = isVibeCompatibleWithModel(vibe);
-                    return (
-                      <div key={vibe.id}
-                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${!isCompatible ? 'bg-gray-900/50 border-gray-800 opacity-60' : isAdded ? 'bg-nai-accent/10 border-nai-accent/50' : 'bg-gray-800/50 border-gray-700 active:bg-gray-700/50'}`}
-                        onClick={() => { if (isAdded) setActiveVibes(p => p.filter(v => v.id !== vibe.id)); else handleAddVibe(vibe); }}>
-                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${isAdded ? 'bg-nai-accent border-nai-accent' : 'border-gray-500'}`}>
-                          {isAdded && <Check className="w-3 h-3 text-black" />}
-                        </div>
-                        {vibe.preview ? <img src={vibe.preview} alt={vibe.name} className="w-12 h-12 rounded-lg object-cover shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; const fb = e.currentTarget.nextElementSibling; if (fb) (fb as HTMLElement).style.display = 'flex'; }} /> : null}<div className={`w-12 h-12 rounded-lg bg-gray-700 items-center justify-center shrink-0 ${vibe.preview ? 'hidden' : 'flex'}`}><Palette className="w-4 h-4 text-gray-500" /></div>
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-sm font-medium truncate ${isAdded ? 'text-nai-accent' : 'text-white'}`}>{vibe.name}</div>
-                          {vibe.supportedModels && vibe.supportedModels.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-0.5">{vibe.supportedModels.slice(0, 2).map(m => <span key={m} className="text-[11px] px-1.5 py-0.5 bg-gray-700 text-gray-400 rounded">{m.includes('full') ? 'Full' : m.includes('curated') ? 'Curated' : m.split('-').pop()}</span>)}</div>
-                          )}
-                          {!isCompatible && <div className="mt-0.5 text-xs text-red-400">不兼容</div>}
-                        </div>
-                        {/* 三点菜单 */}
-                        <div className="relative shrink-0">
-                          <button onClick={(e) => { e.stopPropagation(); setVibeMenuOpenId(prev => prev === vibe.id ? null : vibe.id); }}
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 active:bg-white/10"><MoreVertical className="w-5 h-5" /></button>
-                          {vibeMenuOpenId === vibe.id && (<>
-                            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setVibeMenuOpenId(null); }} />
-                            <div className="absolute right-0 top-full mt-1 w-44 bg-nai-panel border border-gray-700 rounded-xl shadow-xl z-50 py-1 text-sm">
-                              <button onClick={(e) => { e.stopPropagation(); setVibeMenuOpenId(null); setVibeTagEditorTarget({ vibeId: vibe.id, current: new Set((vibe as any).tags || []) }); }}
-                                className="w-full text-left px-4 py-3 text-gray-300 active:bg-white/10 flex items-center gap-2.5"><Tag className="w-4 h-4" /> 编辑标签</button>
-                              <button onClick={async (e) => { e.stopPropagation(); setVibeMenuOpenId(null); const cf = (vibe as any).cloudFilename; void cf; removeRecentVibeEntry(vibe.id); await deleteVibe(vibe.id); setLocalVibeFiles(p => p.filter(v => v.id !== vibe.id)); setActiveVibes(p => p.filter(v => v.id !== vibe.id)); setVibeRecentEntries(getRecentVibeEntries()); }}
-                                className="w-full text-left px-4 py-3 text-red-400 active:bg-red-900/20 flex items-center gap-2.5"><Trash2 className="w-4 h-4" /> 删除</button>
-                            </div>
-                          </>)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              </div>
-            </div>
-
-            {/* 底部操作 + FAB */}
-            <div className="flex-shrink-0 relative border-t border-gray-700 bg-nai-panel">
-              {/* FAB 悬浮导入按钮 — 锚定在底部栏上方 */}
-              {vibeTab === 'local' && (<>
-                {vibeFabOpen && (
-                  <div className="fixed inset-0 z-[8]" onClick={() => setVibeFabOpen(false)} />
-                )}
-                <button
-                  onClick={() => setVibeFabOpen(prev => !prev)}
-                  className={`absolute -top-16 right-4 z-10 w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-colors ${
-                    vibeFabOpen ? 'bg-gray-700 border border-gray-600' : 'bg-nai-accent border border-nai-accent'
-                  }`}
-                >
-                  <Plus className={`w-6 h-6 transition-transform duration-200 ${vibeFabOpen ? 'text-white rotate-45' : 'text-black rotate-0'}`} />
-                </button>
-                {vibeFabOpen && (
-                  <div className="absolute -top-40 right-4 z-10 flex flex-col items-end gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                    <label className="flex items-center gap-2 pl-4 pr-5 py-2.5 bg-gray-800 border border-gray-600 rounded-full shadow-lg cursor-pointer active:bg-gray-700 transition-colors">
-                      <ImageIcon className="w-4 h-4 text-nai-accent" />
-                      <span className="text-sm font-bold text-white">导入图片</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await handleUnifiedVibeImport(f); e.target.value = ''; setVibeFabOpen(false); }} />
-                    </label>
-                    <label className="flex items-center gap-2 pl-4 pr-5 py-2.5 bg-gray-800 border border-gray-600 rounded-full shadow-lg cursor-pointer active:bg-gray-700 transition-colors">
-                      <FileUp className="w-4 h-4 text-nai-accent" />
-                      <span className="text-sm font-bold text-white">导入文件</span>
-                      <input type="file" accept=".naiv4vibe,.naiv4vibebundle" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await handleUnifiedVibeImport(f); e.target.value = ''; setVibeFabOpen(false); }} />
-                    </label>
-                  </div>
-                )}
-              </>)}
-              <div className="p-3">
-                <div className="flex items-center gap-2">
-                  {/* 左侧：批量操作（有选中时显示） */}
-                  {vibeTab === 'local' && activeVibes.length > 0 && (<>
-                    <button
-                      onClick={async () => {
-                        if (!confirm(`确定要删除选中的 ${activeVibes.length} 个 Vibe 吗？`)) return;
-                        for (const v of activeVibes) {
-                          removeRecentVibeEntry(v.id);
-                          await deleteVibe(v.id);
-                        }
-                        setActiveVibes([]);
-                        const allVibes = await getVibes();
-                        setLocalVibeFiles(allVibes.map(v => ({ id: v.id, name: v.name, preview: v.preview, image: v.image, encodings: v.encodings, defaultStrength: v.defaultStrength, defaultInfoExtracted: v.defaultInfoExtracted, supportedModels: v.supportedModels, tags: v.tags, cloudFilename: v.cloudFilename } as VibeFile)));
-                        setVibeRecentEntries(getRecentVibeEntries());
-                      }}
-                      className="h-10 w-10 rounded-lg border border-red-800/50 bg-gray-800 flex items-center justify-center text-red-400 active:bg-red-900/30 transition-colors shrink-0"
-                      title="删除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const allVibes = await getVibes();
-                          const selected = allVibes.filter(v => activeVibes.some(a => a.id === v.id));
-                          if (selected.length === 0) return;
-                          if (selected.length === 1) {
-                            const blob = await exportVibeToFile(selected[0], selected[0].defaultStrength, selected[0].defaultInfoExtracted, undefined, true);
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a'); a.href = url; a.download = `${selected[0].name}.naiv4vibe`; a.click();
-                            URL.revokeObjectURL(url);
-                          } else {
-                            const blob = await exportVibesToBundle(selected.map(v => v.id));
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a'); a.href = url; a.download = `vibes_${selected.length}.naiv4vibebundle`; a.click();
-                            URL.revokeObjectURL(url);
-                          }
-                        } catch (err) { console.error('打包下载失败:', err); }
-                      }}
-                      className="h-10 w-10 rounded-lg border border-gray-700 bg-gray-800 flex items-center justify-center text-gray-400 active:text-nai-accent active:border-nai-accent/50 transition-colors shrink-0"
-                      title="打包下载"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => { setVibeBatchTagOpen(true); setVibeBatchTagsToAdd(new Set()); }}
-                      className="h-10 w-10 rounded-lg border border-gray-700 bg-gray-800 flex items-center justify-center text-gray-400 active:text-nai-accent active:border-nai-accent/50 transition-colors shrink-0"
-                      title="添加标签"
-                    >
-                      <Tag className="w-4 h-4" />
-                    </button>
-                  </>)}
-                  {/* 弹簧 — 把右侧按钮推到最右 */}
-                  <div className="flex-1" />
-                  {/* 右侧：清空 + 确认 */}
-                  <button onClick={() => setActiveVibes([])} disabled={activeVibes.length === 0}
-                    className="h-10 px-4 bg-gray-800 border border-gray-700 text-gray-300 font-bold rounded-lg text-sm active:scale-[0.98] transition-all disabled:opacity-50 shrink-0">清空</button>
-                  <button onClick={() => { setShowVibeModal(false); setVibeMenuOpenId(null); setVibeFabOpen(false); }}
-                    className="h-10 px-5 bg-nai-accent text-black font-bold rounded-lg text-sm active:scale-[0.98] transition-all shrink-0">确认 {activeVibes.length > 0 && `(${activeVibes.length})`}</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Vibe 标签编辑弹窗（二级 sheet） */}
-      {vibeTagEditorTarget && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setVibeTagEditorTarget(null)}>
-          <div className="relative w-full bg-nai-panel rounded-t-2xl max-h-[60vh] flex flex-col animate-slide-in-from-bottom" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-              <span className="font-bold text-white text-base">编辑标签</span>
-              <button onClick={() => setVibeTagEditorTarget(null)} className="text-gray-400"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-4 space-y-2 overflow-y-auto">
-              {vibeTagPool.map(tag => {
-                const checked = vibeTagEditorTarget.current.has(tag);
-                return (
-                  <label key={tag} className="flex items-center gap-2 cursor-pointer text-sm text-gray-200">
-                    <input type="checkbox" checked={checked} onChange={() => {
-                      setVibeTagEditorTarget(prev => { if (!prev) return prev; const n = new Set(prev.current); if (n.has(tag)) n.delete(tag); else n.add(tag); return { ...prev, current: n }; });
-                    }} className="accent-nai-accent" />
-                    <Tag className="w-3 h-3 text-gray-500" />{tag}
-                  </label>
-                );
-              })}
-              {vibeTagPool.length === 0 && <p className="text-xs text-gray-500 text-center py-4">暂无标签，请在标签管理中新建</p>}
-            </div>
-            <div className="p-4 border-t border-gray-700 flex gap-3">
-              <button onClick={() => setVibeTagEditorTarget(null)} className="flex-1 py-3 bg-gray-700 text-gray-300 font-bold rounded-xl text-sm">取消</button>
-              <button onClick={async () => {
-                if (!vibeTagEditorTarget) return;
-                await setVibeTagsStorage(vibeTagEditorTarget.vibeId, Array.from(vibeTagEditorTarget.current));
-                const allVibes = await getVibes();
-                setLocalVibeFiles(allVibes.map(v => ({ id: v.id, name: v.name, preview: v.preview, image: v.image, encodings: v.encodings, defaultStrength: v.defaultStrength, defaultInfoExtracted: v.defaultInfoExtracted, supportedModels: v.supportedModels, tags: v.tags, cloudFilename: v.cloudFilename } as VibeFile)));
-                await reloadVibeTagPool();
-                setVibeTagEditorTarget(null);
-              }} className="flex-1 py-3 bg-nai-accent text-black font-bold rounded-xl text-sm">保存</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Vibe 标签管理弹窗（二级 sheet） */}
-      {vibeTagSettingsOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => { setVibeTagSettingsOpen(false); setVibeTagSettingsEditing(null); setVibeTagSettingsCreating(false); }}>
-          <div className="relative w-full bg-nai-panel rounded-t-2xl max-h-[70vh] flex flex-col animate-slide-in-from-bottom" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-              <div className="flex items-center gap-2"><Settings className="w-4 h-4 text-nai-accent" /><span className="font-bold text-white text-base">标签管理</span><span className="text-xs text-gray-500">{vibeTagPool.length} 个</span></div>
-              <button onClick={() => { setVibeTagSettingsOpen(false); setVibeTagSettingsEditing(null); setVibeTagSettingsCreating(false); }} className="text-gray-400"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="px-4 pt-3 pb-2">
-              {!vibeTagSettingsCreating ? (
-                <button onClick={() => { setVibeTagSettingsCreating(true); setVibeTagSettingsNewName(''); }}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border-2 border-dashed border-gray-700 text-gray-400 text-xs font-bold"><Plus className="w-3.5 h-3.5" /> 新建标签</button>
-              ) : (() => {
-                const t = vibeTagSettingsNewName.trim(); const dup = t.length > 0 && vibeTagPool.includes(t); const ok = t.length > 0 && !dup;
-                return (
-                  <div className="rounded-lg border border-nai-accent/40 bg-nai-dark/60 p-2.5 space-y-2">
-                    <input type="text" autoFocus value={vibeTagSettingsNewName} onChange={e => setVibeTagSettingsNewName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && ok) { const m = [...vibeTagPool, t].sort((a, b) => a.localeCompare(b, 'zh-CN')); setVibeTagPool(m); saveVibeTagPool(m); setVibeTagSettingsNewName(''); setVibeTagSettingsCreating(false); } if (e.key === 'Escape') { setVibeTagSettingsCreating(false); setVibeTagSettingsNewName(''); } }}
-                      placeholder="输入新标签名" className="w-full bg-nai-dark text-white text-sm rounded-md px-3 py-2 border border-gray-700 focus:border-nai-accent focus:outline-none" />
-                    {dup && <p className="text-[11px] text-red-400">标签 "{t}" 已存在</p>}
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => { setVibeTagSettingsCreating(false); setVibeTagSettingsNewName(''); }} className="px-3 py-1 text-xs text-gray-400">取消</button>
-                      <button disabled={!ok} onClick={() => { const m = [...vibeTagPool, t].sort((a, b) => a.localeCompare(b, 'zh-CN')); setVibeTagPool(m); saveVibeTagPool(m); setVibeTagSettingsNewName(''); setVibeTagSettingsCreating(false); }}
-                        className="px-3 py-1 bg-nai-accent text-black text-xs font-bold rounded-md disabled:opacity-30 flex items-center gap-1"><Check className="w-3 h-3" /> 创建</button>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-4">
-              {vibeTagPool.length === 0 ? (
-                <div className="flex flex-col items-center py-10 text-gray-500"><Tag className="w-8 h-8 mb-2 opacity-30" /><p className="text-xs">还没有标签</p></div>
-              ) : vibeTagPool.map(tag => {
-                const usage = vibeTagUsageCounts.get(tag) || 0;
-                const isProtected = tag === '收藏';
-                return (
-                  <div key={tag} className="flex items-center gap-2 px-3 py-2.5 rounded-md">
-                    <Tag className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                    <span className="flex-1 text-sm text-gray-200 truncate">{tag}</span>
-                    <span className="text-xs text-gray-500">{usage > 0 ? `${usage} 个` : '未使用'}</span>
-                    {!isProtected && <button onClick={async () => {
-const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeTagPool(pool); }}
-                      className="p-1 text-gray-400 active:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 批量添加标签弹窗（二级 sheet） */}
-      {vibeBatchTagOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => { setVibeBatchTagOpen(false); setVibeBatchTagsToAdd(new Set()); }}>
-          <div className="relative w-full bg-nai-panel rounded-t-2xl max-h-[60vh] flex flex-col animate-slide-in-from-bottom" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-              <span className="font-bold text-white text-base">批量添加标签 ({activeVibes.length})</span>
-              <button onClick={() => { setVibeBatchTagOpen(false); setVibeBatchTagsToAdd(new Set()); }} className="text-gray-400"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-4 space-y-2 overflow-y-auto">
-              {vibeTagPool.map(tag => {
-                const checked = vibeBatchTagsToAdd.has(tag);
-                return (
-                  <label key={tag} className="flex items-center gap-2 cursor-pointer text-sm text-gray-200">
-                    <input type="checkbox" checked={checked} onChange={() => {
-                      setVibeBatchTagsToAdd(prev => { const n = new Set(prev); if (n.has(tag)) n.delete(tag); else n.add(tag); return n; });
-                    }} className="accent-nai-accent" />
-                    <Tag className="w-3 h-3 text-gray-500" />{tag}
-                  </label>
-                );
-              })}
-              {vibeTagPool.length === 0 && <p className="text-xs text-gray-500 text-center py-4">暂无标签，请在标签管理中新建</p>}
-            </div>
-            <div className="p-4 border-t border-gray-700 flex gap-3">
-              <button onClick={() => { setVibeBatchTagOpen(false); setVibeBatchTagsToAdd(new Set()); }}
-                className="flex-1 py-3 bg-gray-700 text-gray-300 font-bold rounded-xl text-sm">取消</button>
-              <button onClick={async () => {
-                const tagsToAdd = Array.from(vibeBatchTagsToAdd);
-                if (tagsToAdd.length === 0) { setVibeBatchTagOpen(false); return; }
-                for (const v of activeVibes) {
-                  const allVibes = await getVibes();
-                  const local = allVibes.find(lv => lv.id === v.id);
-                  if (!local) continue;
-                  const merged = Array.from(new Set([...(local.tags || []), ...tagsToAdd]));
-                  await setVibeTagsStorage(v.id, merged);
-                }
-                const allVibes = await getVibes();
-                setLocalVibeFiles(allVibes.map(v => ({ id: v.id, name: v.name, preview: v.preview, image: v.image, encodings: v.encodings, defaultStrength: v.defaultStrength, defaultInfoExtracted: v.defaultInfoExtracted, supportedModels: v.supportedModels, tags: v.tags, cloudFilename: v.cloudFilename } as VibeFile)));
-                await reloadVibeTagPool();
-                setVibeBatchTagOpen(false);
-                setVibeBatchTagsToAdd(new Set());
-              }} className="flex-1 py-3 bg-nai-accent text-black font-bold rounded-xl text-sm">应用</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 云端数据管理弹窗 */}
-      <CloudManageModal
-        isOpen={vibeCloudMenuOpen}
-        onClose={() => setVibeCloudMenuOpen(false)}
-        onDataChanged={async () => {
-          const allVibes = await getVibes();
-          setLocalVibeFiles(allVibes.map(v => ({ id: v.id, name: v.name, preview: v.preview, image: v.image, encodings: v.encodings, defaultStrength: v.defaultStrength, defaultInfoExtracted: v.defaultInfoExtracted, supportedModels: v.supportedModels, tags: v.tags, cloudFilename: v.cloudFilename } as VibeFile)));
-          await reloadVibeTagPool();
-        }}
+      <MobileVibeManagerSheet
+        isOpen={showVibeModal}
+        onClose={() => setShowVibeModal(false)}
+        library={vibeLibrary}
       />
 
       {/* Precise Reference 选择弹窗 */}
