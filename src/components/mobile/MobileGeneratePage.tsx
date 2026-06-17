@@ -1,17 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
-  NEWLINE_SENTINEL, splitPromptToTags, makeArtistMarker,
-  parseCollapsibleMarker, filterHiddenTags,
+  makeArtistMarker,
+  filterHiddenTags,
 } from '../../utils/promptTags';
-import { getMarkerVisual } from '../tag-manager/markerVisual';
 import {
   ChevronDown,
-  ChevronRight,
   Sparkles,
-  Bot,
   X,
-  Loader2,
-  Languages,
   Wrench,
   RotateCcw,
   Check,
@@ -19,9 +14,6 @@ import {
   Grid,
   Upload,
   Image as ImageIcon,
-  User,
-  Brush,
-  Lightbulb,
   ArrowLeft,
   AlignLeft,
   Eye,
@@ -59,6 +51,7 @@ import { MobileOCEditorSheet } from './MobileOCEditorSheet';
 import { MobileOCSheet } from './MobileOCSheet';
 import { MobilePreciseReferenceCard } from './MobilePreciseReferenceCard';
 import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
+import { MobilePromptSummaryCard } from './MobilePromptSummaryCard';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
 import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
@@ -641,121 +634,23 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       {/* 可滚动内容区 */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         <div className="p-3 space-y-3">
-          {/* 提示词展示卡片 - 点击进入编辑 */}
-          <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
-            {/* 正向提示词 */}
-            <div className="w-full text-left p-3 border-b border-gray-700/30">
-              <div className="flex items-center justify-between mb-2">
-                <div
-                  className="flex items-center gap-2 flex-1 cursor-pointer"
-                  onClick={() => setEditorOpen('prompt')}
-                >
-                  <div className="w-2 h-2 rounded-full bg-nai-accent shadow-[0_0_8px_rgba(235,213,118,0.5)]" />
-                  <span className="text-sm font-bold text-nai-accent">提示词</span>
-                  <span className={`text-xs font-mono ${positiveTokens > 512 ? 'text-red-400' : 'text-gray-500'}`}>{positiveTokens}/512</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {positivePrompt && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPositivePrompt('');
-                      }}
-                      className="p-1.5 text-gray-500 hover:text-red-400 active:scale-95 transition-all rounded-lg"
-                      title="清空"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                  <ChevronRight
-                    className="w-5 h-5 text-gray-500 cursor-pointer"
-                    onClick={() => setEditorOpen('prompt')}
-                  />
-                </div>
-              </div>
-              <div
-                className={`text-sm leading-relaxed line-clamp-3 cursor-pointer active:bg-gray-800/50 -mx-3 -mb-3 px-3 pb-3 pt-1 transition-colors ${positivePrompt ? 'text-gray-300' : 'text-gray-600'}`}
-                onClick={() => setEditorOpen('prompt')}
-              >
-                {positivePrompt
-                  ? splitPromptToTags(positivePrompt).filter(t => t !== NEWLINE_SENTINEL).map(t => {
-                    const m = parseCollapsibleMarker(t);
-                    return m ? `[${getMarkerVisual(m.type).label}·${m.name}]` : t;
-                  }).join(', ')
-                  : '点击输入提示词...'}
-              </div>
-            </div>
-
-            {/* 负向提示词 */}
-            <div className="w-full text-left p-3 border-b border-gray-700/30">
-              <div className="flex items-center justify-between mb-2">
-                <div
-                  className="flex items-center gap-2 flex-1 cursor-pointer"
-                  onClick={() => setEditorOpen('undesired')}
-                >
-                  <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-                  <span className="text-sm font-bold text-red-400">排除内容</span>
-                  <span className={`text-xs font-mono ${negativeTokens > 512 ? 'text-red-400' : 'text-gray-500'}`}>{negativeTokens}/512</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {negativePrompt && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setNegativePrompt('');
-                      }}
-                      className="p-1.5 text-gray-500 hover:text-red-400 active:scale-95 transition-all rounded-lg"
-                      title="清空"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                  <ChevronRight
-                    className="w-5 h-5 text-gray-500 cursor-pointer"
-                    onClick={() => setEditorOpen('undesired')}
-                  />
-                </div>
-              </div>
-              <div
-                className={`text-sm leading-relaxed line-clamp-2 cursor-pointer active:bg-gray-800/50 -mx-3 -mb-3 px-3 pb-3 pt-1 transition-colors ${negativePrompt ? 'text-gray-300' : 'text-gray-600'}`}
-                onClick={() => setEditorOpen('undesired')}
-              >
-                {negativePrompt || '点击输入排除内容...'}
-              </div>
-            </div>
-
-            {/* 工具栏 */}
-            <div className="flex items-center gap-2 px-3 py-2">
-              <button
-                onClick={() => setShowAIAssistant(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-purple-500/15 text-purple-400 active:bg-purple-500/25 transition-colors"
-              >
-                <Bot className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium">AI助手</span>
-              </button>
-              <button
-                onClick={() => setShowArtistModal(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-400 active:bg-amber-500/25 transition-colors"
-              >
-                <Brush className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium">画师串</span>
-              </button>
-              <button
-                onClick={() => setIsInspirationModalOpen(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-pink-500/15 text-pink-400 active:bg-pink-500/25 transition-colors"
-              >
-                <Lightbulb className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium">灵感</span>
-              </button>
-              <button
-                onClick={() => setShowOCModal(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-400 active:bg-cyan-500/25 transition-colors"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium">OC</span>
-              </button>
-            </div>
-          </div>
+          <MobilePromptSummaryCard
+            positivePrompt={positivePrompt}
+            setPositivePrompt={setPositivePrompt}
+            negativePrompt={negativePrompt}
+            setNegativePrompt={setNegativePrompt}
+            positiveTokens={positiveTokens}
+            negativeTokens={negativeTokens}
+            openPromptEditor={() => setEditorOpen('prompt')}
+            openNegativeEditor={() => setEditorOpen('undesired')}
+            openAIAssistant={() => setShowAIAssistant(true)}
+            openArtistModal={() => setShowArtistModal(true)}
+            openInspirationModal={() => setIsInspirationModalOpen(true)}
+            openOCModal={() => setShowOCModal(true)}
+            hasChinesePrompt={hasChinesePrompt}
+            isTranslating={isTranslating}
+            onTranslate={handleTranslate}
+          />
 
           <MobileCharacterPromptsCard manager={characterPromptManager} />
 
@@ -775,17 +670,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
             height={localHeight}
           />
 
-          {/* 翻译按钮 */}
-          {hasChinesePrompt && (
-            <button
-              onClick={handleTranslate}
-              disabled={isTranslating}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500/20 text-blue-400 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
-            >
-              {isTranslating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
-              <span className="text-sm font-medium">{isTranslating ? '翻译中...' : '翻译中文'}</span>
-            </button>
-          )}
         </div>
       </div>
 
