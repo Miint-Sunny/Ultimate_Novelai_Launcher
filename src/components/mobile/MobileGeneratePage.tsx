@@ -66,6 +66,7 @@ import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
 import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration';
 import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
+import { useMobileGenerateRunner } from './generate/useMobileGenerateRunner';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
@@ -76,13 +77,6 @@ import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
-import {
-  prepareMobileCharacterPrompts,
-  prepareMobileImg2Img,
-  prepareMobilePreciseReferences,
-  prepareMobilePrompts,
-  prepareMobileVibeReferences,
-} from './generate/mobileGenerationPreparation';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
   ActiveVibe,
@@ -266,9 +260,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       }
     >
   >({});
-
-  // 准备状态
-  const [isPreparing, setIsPreparing] = useState(false);
 
   const {
     showImageImportModal,
@@ -496,16 +487,34 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     };
   }, []);
 
-  // 监听重新生成事件
-  useEffect(() => {
-    const handleRegenerate = () => {
-      if (!isGenerating && !isQueuing && !isPreparing) {
-        handleGenerate();
-      }
-    };
-    window.addEventListener('regenerate-image', handleRegenerate);
-    return () => window.removeEventListener('regenerate-image', handleRegenerate);
-  }, [isGenerating, isQueuing, isPreparing]);
+  const { isPreparing, handleGenerate } = useMobileGenerateRunner({
+    isGenerating,
+    isQueuing,
+    isAuthenticated,
+    requireAuth,
+    positivePrompt,
+    negativePrompt,
+    promptPresets,
+    activePresetId,
+    activeVibes,
+    activePreciseRefs,
+    characterPrompts,
+    savedInpaintRef,
+    img2imgImage,
+    img2imgStrength,
+    img2imgNoise,
+    localWidth,
+    localHeight,
+    model,
+    seed,
+    steps,
+    scale,
+    sampler,
+    cfgRescale,
+    noiseSchedule,
+    varietyPlus,
+    generate,
+  });
 
   useMobileInpaintGenerate({
     isGenerating,
@@ -531,62 +540,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     addInpaintedImage,
     clearInpaintParams,
   });
-
-  // 生成图片
-  const handleGenerate = async () => {
-    if (isGenerating || isQueuing || isPreparing) return;
-
-    // 检查登录状态
-    if (!isAuthenticated) {
-      requireAuth(() => handleGenerate());
-      return;
-    }
-
-    setIsPreparing(true);
-    try {
-      const { finalPrompt, finalNegative } = await prepareMobilePrompts({
-        positivePrompt,
-        negativePrompt,
-        promptPresets,
-        activePresetId,
-      });
-      const vibeReferences = await prepareMobileVibeReferences({ activeVibes, model });
-      const preciseReferences = await prepareMobilePreciseReferences(activePreciseRefs);
-
-      // 如果有保存的重绘参数，注入 inpaint 参数（优先于 img2img）
-      const savedInpaint = savedInpaintRef.current;
-      const img2img = savedInpaint ? undefined : await prepareMobileImg2Img({
-        img2imgImage,
-        localWidth,
-        localHeight,
-        img2imgStrength,
-        img2imgNoise,
-      });
-      const inpaintParams = savedInpaint ? {
-        inpaint: {
-          imageBase64: savedInpaint.imageBase64,
-          maskBase64: savedInpaint.maskBase64,
-          strength: savedInpaint.strength,
-        },
-      } : {};
-
-      await generate({
-        model, positivePrompt: finalPrompt, negativePrompt: finalNegative,
-        width: savedInpaint ? savedInpaint.width : localWidth,
-        height: savedInpaint ? savedInpaint.height : localHeight,
-        seed: seed ? parseInt(seed) : Math.floor(Math.random() * 4294967295),
-        steps, scale, sampler, cfgRescale,
-        noiseSchedule, ucPreset: 'heavy', qualityToggle: true, varietyPlus,
-        vibeReferences,
-        characterPrompts: prepareMobileCharacterPrompts(characterPrompts),
-        preciseReferences,
-        img2img,
-        ...inpaintParams,
-      });
-    } finally {
-      setIsPreparing(false);
-    }
-  };
 
   const handleInspirationSelect = (prompt: string) => {
     // 检测 charN: 模式，自动拆分到角色提示词
