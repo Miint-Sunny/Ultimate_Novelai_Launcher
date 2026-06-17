@@ -57,17 +57,12 @@ import {
 } from '../../services/localLibrary';
 import {
   getArtists,
-  getCRs,
-  saveCR,
-  deleteCR,
 } from '../../services/localLibrary';
 import { copyToClipboard } from '../../utils/clipboard';
 import { getBackendUrl } from '../../utils/apiConfig';
 import { parseCharacterPromptContent } from '../../utils/promptParser';
 import {
   getPublicLibraryOwnerId,
-  getPublicCRs,
-  getPublicCRPreviewUrl,
   getPublicArtists,
   getPublicOCs,
   getOCPreviewUrl,
@@ -81,6 +76,7 @@ import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
 import { MobileImageImportModal } from './MobileImageImportModal';
+import { MobilePreciseReferenceSheet } from './MobilePreciseReferenceSheet';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
 import { loadCodexData, type CodexItem } from '../../services/codexData';
 import { calculateCostFromUI } from '../../services/costCalculator';
@@ -102,6 +98,7 @@ import { useMobileAgentAssistant } from './generate/useMobileAgentAssistant';
 import { useMobileImageImport } from './generate/useMobileImageImport';
 import { useMobileImportedImageActions } from './generate/useMobileImportedImageActions';
 import { useMobileMetadataImportActions } from './generate/useMobileMetadataImportActions';
+import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { pasteBackInpaintResult } from './generate/mobileInpaintPasteback';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
@@ -114,12 +111,9 @@ import {
 } from './generate/mobileGenerationPreparation';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import type {
-  ActiveCR,
-  ActivePreciseRef,
   ActiveVibe,
   ArtistFile,
   CharacterPrompt,
-  CRFile,
   OCFile,
   PreciseReferenceMode,
   VibeFile,
@@ -200,41 +194,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   // Vibe 管理器弹窗状态
   const [showVibeModal, setShowVibeModal] = useState(false);
 
-  // Precise Reference 状态 (原 CR)
+  // Precise Reference 管理器弹窗状态
   const [showCRModal, setShowCRModal] = useState(false);
-  const [crTab, setCrTab] = useState<'public' | 'local'>('public');
-  const [crPublicFiles, setCrPublicFiles] = useState<CRFile[]>([]);
-  const [crLocalFiles, setCrLocalFiles] = useState<CRFile[]>([]);
-  const [activePreciseRefs, setActivePreciseRefs] = useState<ActivePreciseRef[]>([]);
-  const [isLoadingCRs, setIsLoadingCRs] = useState(false);
-  const [isCRExpanded, setIsCRExpanded] = useState(true);
-
-  // 兼容旧代码的 activeCR
-  const activeCR = activePreciseRefs.length > 0 ? {
-    ...activePreciseRefs[0],
-    fidelity: activePreciseRefs[0].strength,
-    styleAware: activePreciseRefs[0].mode === 'character&style',
-  } : null;
-
-  const setActiveCR = useCallback((cr: ActiveCR | null) => {
-    if (cr) {
-      setActivePreciseRefs([{
-        id: cr.id,
-        name: cr.name,
-        preview: cr.preview,
-        mode: cr.styleAware ? 'character&style' : 'character',
-        informationExtracted: 1,
-        strength: cr.fidelity,
-        enabled: true,
-      }]);
-    } else {
-      setActivePreciseRefs([]);
-    }
-  }, []);
 
   const vibeLibrary = useMobileVibeLibrary({
     model,
-    clearActiveCR: () => setActiveCR(null),
+    clearActiveCR: () => preciseReferenceLibrary.setActiveCR(null),
     showVibeModal,
   });
   const {
@@ -251,6 +216,21 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     updateActiveVibe,
     loadVibes,
   } = vibeLibrary;
+
+  const preciseReferenceLibrary = useMobilePreciseReferences({
+    clearActiveVibes: () => setActiveVibes([]),
+    closeSheet: () => setShowCRModal(false),
+  });
+  const {
+    activePreciseRefs,
+    activeCR,
+    setActiveCR,
+    isCRExpanded,
+    setIsCRExpanded,
+    loadCRs,
+    removePreciseRef,
+    updatePreciseRefParam,
+  } = preciseReferenceLibrary;
 
   // Image2Image 状态
   const [img2imgImage, setImg2imgImage] = useState<string | null>(null);
@@ -520,34 +500,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     return total;
   }, [negativePrompt, activePreset, characterPrompts]);
 
-  // 加载 CRs
-  const loadCRs = async () => {
-    setIsLoadingCRs(true);
-    try {
-      // 加载本地 CRs
-      const localCRs = await getCRs();
-      const localCRList: CRFile[] = localCRs.map((cr) => ({
-        id: cr.id,
-        name: cr.name,
-        preview: cr.preview,
-      }));
-      setCrLocalFiles(localCRList);
-
-      // 加载公共 CRs
-      const publicCRs = await getPublicCRs();
-      const publicCRList: CRFile[] = publicCRs.map((cr) => ({
-        id: cr.id,
-        name: cr.name,
-        preview: cr.preview_url ? getPublicCRPreviewUrl(cr.id) : '',
-      }));
-      setCrPublicFiles(publicCRList);
-    } catch (err) {
-      console.error('Failed to load CRs:', err);
-    } finally {
-      setIsLoadingCRs(false);
-    }
-  };
-
   // 加载画师串
   const loadArtists = async () => {
     setIsLoadingArtists(true);
@@ -639,12 +591,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     loadPresets();
     loadRoleTags();
   }, []);
-
-  useEffect(() => {
-    if (showVibeModal) {
-      loadVibes();
-    }
-  }, [showVibeModal]);
 
   useEffect(() => {
     if (!showOCModal) {
@@ -768,42 +714,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     window.addEventListener('inpaint-panel-strength-change', handler);
     return () => window.removeEventListener('inpaint-panel-strength-change', handler);
   }, []);
-
-  // Precise Reference 操作
-  const handleSelectCR = (cr: CRFile) => {
-    const existingIndex = activePreciseRefs.findIndex(pr => pr.id === cr.id);
-    if (existingIndex >= 0) {
-      // 取消选中
-      setActivePreciseRefs(prev => prev.filter(pr => pr.id !== cr.id));
-    } else {
-      // 添加选中
-      setActivePreciseRefs(prev => [...prev, {
-        id: cr.id,
-        name: cr.name,
-        preview: cr.preview,
-        mode: 'character&style',
-        informationExtracted: 1,
-        strength: 1,
-        enabled: true,
-      }]);
-      // Precise Reference 和 Vibe 互斥
-      setActiveVibes([]);
-    }
-  };
-
-  const handleRemoveCR = () => {
-    setActivePreciseRefs([]);
-  };
-
-  const removePreciseRef = (id: string) => {
-    setActivePreciseRefs(prev => prev.filter(pr => pr.id !== id));
-  };
-
-  const updatePreciseRefParam = (id: string, updates: Partial<ActivePreciseRef>) => {
-    setActivePreciseRefs(prev => prev.map(pr =>
-      pr.id === id ? { ...pr, ...updates } : pr
-    ));
-  };
 
   // Character Prompt 操作
   const addCharacterPrompt = () => {
@@ -2631,200 +2541,11 @@ const result = await deletePublicOC(oc.id);
         library={vibeLibrary}
       />
 
-      {/* Precise Reference 选择弹窗 */}
-      {showCRModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-end animate-fade-in">
-          <div className="absolute inset-0" onClick={() => setShowCRModal(false)} />
-          <div className="relative w-full bg-nai-panel rounded-t-2xl h-[85vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
-            {/* 标题栏 */}
-            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
-              <h3 className="text-lg font-bold text-white">角色管理器</h3>
-              <button onClick={() => setShowCRModal(false)} className="p-2 -mr-2 text-gray-400">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Tab 切换 */}
-            <div className="flex-shrink-0 flex border-b border-gray-700">
-              <button
-                className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${crTab === 'public' ? 'border-cyan-500 text-white bg-white/5' : 'border-transparent text-gray-400'
-                  }`}
-                onClick={() => setCrTab('public')}
-              >
-                公共 ({crPublicFiles.length})
-              </button>
-              <button
-                className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${crTab === 'local' ? 'border-cyan-500 text-white bg-white/5' : 'border-transparent text-gray-400'
-                  }`}
-                onClick={() => setCrTab('local')}
-              >
-                我的 ({crLocalFiles.length})
-              </button>
-            </div>
-
-            {/* 可滑动内容区域 */}
-            <div
-              className="flex-1 overflow-hidden relative flex flex-col min-h-0"
-              onTouchStart={(e) => {
-                const touch = e.touches[0];
-                (e.currentTarget as any)._touchStartX = touch.clientX;
-                (e.currentTarget as any)._touchStartY = touch.clientY;
-              }}
-              onTouchEnd={(e) => {
-                const startX = (e.currentTarget as any)._touchStartX;
-                const startY = (e.currentTarget as any)._touchStartY;
-                if (startX === undefined) return;
-                const touch = e.changedTouches[0];
-                const deltaX = touch.clientX - startX;
-                const deltaY = touch.clientY - startY;
-                // 只有水平滑动距离大于垂直滑动距离且超过50px才切换
-                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-                  if (deltaX > 0 && crTab === 'local') {
-                    setCrTab('public');
-                  } else if (deltaX < 0 && crTab === 'public') {
-                    setCrTab('local');
-                  }
-                }
-              }}
-            >
-              {/* 本地上传按钮区域 */}
-              {crTab === 'local' && (
-                <div className="flex-shrink-0 p-3 border-b border-gray-700/50">
-                  <label className="flex items-center justify-center gap-2 py-2.5 bg-gray-700/50 text-gray-300 rounded-xl active:scale-[0.98] active:bg-gray-600/50 transition-all cursor-pointer">
-                    <ImageIcon className="w-4 h-4" />
-                    <span className="text-sm font-medium">导入图片</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file || !file.type.startsWith('image/')) return;
-                        try {
-                          setIsLoadingCRs(true);
-                          const reader = new FileReader();
-                          reader.onload = async (event) => {
-                            const base64 = event.target?.result as string;
-                            const id = `cr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                            const name = file.name.replace(/\.[^/.]+$/, '');
-                            const newCR: CRFile = { id, name, preview: base64 };
-                            await saveCR({ ...newCR, isLocal: true });
-                            setCrLocalFiles((prev) => [newCR, ...prev]);
-                            // 添加到 activePreciseRefs
-                            setActivePreciseRefs(prev => [...prev, {
-                              id: newCR.id,
-                              name: newCR.name,
-                              preview: newCR.preview,
-                              mode: 'character&style',
-                              informationExtracted: 1,
-                              strength: 1,
-                              enabled: true,
-                            }]);
-                            setActiveVibes([]);
-                            setShowCRModal(false);
-                            setIsLoadingCRs(false);
-                          };
-                          reader.readAsDataURL(file);
-                        } catch (err) {
-                          console.error('Failed to import Precise Reference image:', err);
-                          alert('导入图片失败: ' + (err as Error).message);
-                          setIsLoadingCRs(false);
-                        }
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                </div>
-              )}
-
-              {/* 内容列表 */}
-              <div className="h-full overflow-y-auto">
-                {isLoadingCRs ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                  </div>
-                ) : (crTab === 'public' ? crPublicFiles : crLocalFiles).length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                    <User className="w-12 h-12 mb-3 opacity-50" />
-                    <p>{crTab === 'public' ? '暂无公共角色' : '暂无我的角色'}</p>
-                    {crTab === 'local' && <p className="text-xs mt-2 text-gray-600">点击上方按钮添加</p>}
-                    <p className="text-xs mt-4 text-gray-600">← 左右滑动切换 →</p>
-                  </div>
-                ) : (
-                  <div className="p-3 space-y-2">
-                    {(crTab === 'public' ? crPublicFiles : crLocalFiles).map((cr) => {
-                      const isSelected = activePreciseRefs.some(pr => pr.id === cr.id);
-                      return (
-                        <div
-                          key={cr.id}
-                          className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isSelected
-                            ? 'bg-cyan-500/10 border-cyan-500/50'
-                            : 'bg-gray-800/50 border-gray-700 active:bg-gray-700/50'
-                            }`}
-                          onClick={() => handleSelectCR(cr)}
-                        >
-                          <div
-                            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-gray-500 bg-transparent'
-                              }`}
-                          >
-                            {isSelected && <Check className="w-4 h-4 text-white" />}
-                          </div>
-                          {cr.preview ? (
-                            <img src={cr.preview} alt={cr.name} className="w-12 h-12 rounded-lg object-cover" />
-                          ) : (
-                            <div className="w-12 h-12 rounded-lg bg-gray-700 flex items-center justify-center">
-                              <User className="w-5 h-5 text-gray-500" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className={`font-medium truncate ${isSelected ? 'text-cyan-300' : 'text-white'}`}>
-                              {cr.name}
-                            </div>
-                          </div>
-                          {crTab === 'local' && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                {
-                                  await deleteCR(cr.id);
-                                  setCrLocalFiles((prev) => prev.filter((c) => c.id !== cr.id));
-                                  setActivePreciseRefs(prev => prev.filter(pr => pr.id !== cr.id));
-                                }
-                              }}
-                              className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center text-gray-500 hover:text-red-400 active:scale-95 transition-all"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 底部操作 */}
-            <div className="flex-shrink-0 p-4 border-t border-gray-700 bg-nai-panel">
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setActivePreciseRefs([])}
-                  disabled={activePreciseRefs.length === 0}
-                  className="flex-1 py-3 bg-gray-700 text-gray-300 font-bold rounded-xl active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100"
-                >
-                  清空
-                </button>
-                <button
-                  onClick={() => setShowCRModal(false)}
-                  className="flex-1 py-3 bg-cyan-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all"
-                >
-                  确认 {activePreciseRefs.length > 0 && `(${activePreciseRefs.length})`}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MobilePreciseReferenceSheet
+        isOpen={showCRModal}
+        onClose={() => setShowCRModal(false)}
+        library={preciseReferenceLibrary}
+      />
 
       {/* 画师串管理器弹窗（使用独立组件） */}
       <MobileArtistModal
