@@ -25,12 +25,6 @@ import {
 } from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
-import {
-  getPromptPresets,
-  getActivePresetId,
-  saveActivePresetId,
-  type PromptPresetData,
-} from '../../services/localLibrary';
 import { getBackendUrl } from '../../utils/apiConfig';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
 import { countTokens } from '../../services/tokenizer';
@@ -75,6 +69,7 @@ import { useMobileOCManager } from './generate/useMobileOCManager';
 import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
+import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import { useMobileTaggerImportAction } from './generate/useMobileTaggerImportAction';
@@ -231,9 +226,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     loadArtists,
   } = useMobileArtistLibrary();
 
-  // 预设状态
-  const [promptPresets, setPromptPresets] = useState<PromptPresetData[]>([]);
-
   // OC 管理器弹窗状态
   const [showOCModal, setShowOCModal] = useState(false);
   const ocManager = useMobileOCManager({
@@ -387,11 +379,14 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setShowCRModal,
   });
 
-  // 获取当前激活的预设
-  const activePreset = useMemo(
-    () => promptPresets.find((p) => p.id === activePresetId),
-    [promptPresets, activePresetId]
-  );
+  const {
+    promptPresets,
+    activePreset,
+    handleApplyPreset,
+  } = useMobilePromptPresets({
+    activePresetId,
+    setActivePresetId,
+  });
 
   // Token 计数 - 包含预设和角色提示词的 token（剔除 ~ 禁用标签，与生成保持一致）
   const positiveTokens = useMemo(() => {
@@ -422,14 +417,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     return total;
   }, [negativePrompt, activePreset, characterPrompts]);
 
-  // 加载预设
-  const loadPresets = () => {
-    const presets = getPromptPresets();
-    setPromptPresets(presets);
-    const activeId = getActivePresetId();
-    setActivePresetId(activeId);
-  };
-
   // 加载角色Tag映射（用于AI助手）
   const loadRoleTags = async () => {
     try {
@@ -450,7 +437,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     loadCRs();
     loadArtists();
     loadOCs();
-    loadPresets();
     loadRoleTags();
   }, []);
 
@@ -461,25 +447,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     }
     loadOCs();
   }, [loadOCs, resetOCSelection, showOCModal]);
-
-  // 监听预设变化（从设置页面保存后刷新）
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'prompt_presets') {
-        loadPresets();
-      }
-    };
-    // 监听自定义事件（同一页面内的变化）
-    const handlePresetsUpdate = () => {
-      loadPresets();
-    };
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('presets-updated', handlePresetsUpdate);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('presets-updated', handlePresetsUpdate);
-    };
-  }, []);
 
   const { isPreparing, handleGenerate } = useMobileGenerateRunner({
     isGenerating,
@@ -541,12 +508,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setPositivePrompt,
     closeInspirationSheet: () => setIsInspirationModalOpen(false),
   });
-
-  // 预设应用处理 - 只切换预设，不修改提示词内容
-  const handleApplyPreset = (preset: PromptPresetData) => {
-    setActivePresetId(preset.id);
-    saveActivePresetId(preset.id);
-  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-nai-bg">
