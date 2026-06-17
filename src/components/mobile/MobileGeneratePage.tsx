@@ -2,14 +2,12 @@ import React from 'react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
-import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
 import { MobileGenerateCards } from './MobileGenerateCards';
+import { MobileGenerateControls } from './MobileGenerateControls';
 import { MobileGenerateEditors } from './MobileGenerateEditors';
 import { MobileGenerateImageImportSheet } from './MobileGenerateImageImportSheet';
 import { MobileGenerateReferenceSheets } from './MobileGenerateReferenceSheets';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
-import { MobileGenerateToolbar } from './MobileGenerateToolbar';
-import { MobileResolutionSheet } from './MobileResolutionSheet';
 import {
   useMobileBackHandlers,
   useMobileEditorStateBridge,
@@ -469,65 +467,65 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         />
       </div>
 
-      <MobileGenerateToolbar
-        currentResLabel={currentResLabel}
-        openAdvancedSettings={() => setShowAdvancedSettings(true)}
-        openResolutionDropdown={() => setShowResolutionDropdown(true)}
-        openImageFile={openImageFile}
-        onGenerate={handleGenerate}
-        cancelTask={cancelTask}
-        isGenerating={isGenerating}
-        isQueuing={isQueuing}
-        isPreparing={isPreparing}
-        queuePosition={queuePosition}
-        currentStep={currentStep}
-        totalSteps={totalSteps}
-        width={localWidth}
-        height={localHeight}
-        steps={steps}
-        model={model}
-        sampler={sampler}
-        isOpus={anlasInfo?.isOpus ?? false}
-        img2imgImage={img2imgImage}
-        img2imgStrength={img2imgStrength}
-        activePreciseRefs={activePreciseRefs}
-        activeVibes={activeVibes}
-      />
-
-      <MobileResolutionSheet
-        isOpen={showResolutionDropdown}
-        onClose={() => setShowResolutionDropdown(false)}
-        resolutionTab={resolutionTab}
-        setResolutionTab={setResolutionTab}
-        options={currentResolutionOptions}
-        width={localWidth}
-        height={localHeight}
-        setWidth={setLocalWidth}
-        setHeight={setLocalHeight}
-      />
-
-      <MobileAdvancedSettingsSheet
-        isOpen={showAdvancedSettings}
-        onClose={() => setShowAdvancedSettings(false)}
-        promptPresets={promptPresets}
-        activePresetId={activePresetId}
-        onApplyPreset={handleApplyPreset}
-        isPresetExpanded={isPresetExpanded}
-        setIsPresetExpanded={setIsPresetExpanded}
-        steps={steps}
-        setSteps={setSteps}
-        scale={scale}
-        setScale={setScale}
-        seed={seed}
-        setSeed={setSeed}
-        sampler={sampler}
-        setSampler={setSampler}
-        cfgRescale={cfgRescale}
-        setCfgRescale={setCfgRescale}
-        noiseSchedule={noiseSchedule}
-        setNoiseSchedule={setNoiseSchedule}
-        varietyPlus={varietyPlus}
-        setVarietyPlus={setVarietyPlus}
+      <MobileGenerateControls
+        toolbar={{
+          currentResLabel,
+          openAdvancedSettings: () => setShowAdvancedSettings(true),
+          openResolutionDropdown: () => setShowResolutionDropdown(true),
+          openImageFile,
+          onGenerate: handleGenerate,
+          cancelTask,
+          isGenerating,
+          isQueuing,
+          isPreparing,
+          queuePosition,
+          currentStep,
+          totalSteps,
+          width: localWidth,
+          height: localHeight,
+          steps,
+          model,
+          sampler,
+          isOpus: anlasInfo?.isOpus ?? false,
+          img2imgImage,
+          img2imgStrength,
+          activePreciseRefs,
+          activeVibes,
+        }}
+        resolutionSheet={{
+          isOpen: showResolutionDropdown,
+          onClose: () => setShowResolutionDropdown(false),
+          resolutionTab,
+          setResolutionTab,
+          options: currentResolutionOptions,
+          width: localWidth,
+          height: localHeight,
+          setWidth: setLocalWidth,
+          setHeight: setLocalHeight,
+        }}
+        advancedSettingsSheet={{
+          isOpen: showAdvancedSettings,
+          onClose: () => setShowAdvancedSettings(false),
+          promptPresets,
+          activePresetId,
+          onApplyPreset: handleApplyPreset,
+          isPresetExpanded,
+          setIsPresetExpanded,
+          steps,
+          setSteps,
+          scale,
+          setScale,
+          seed,
+          setSeed,
+          sampler,
+          setSampler,
+          cfgRescale,
+          setCfgRescale,
+          noiseSchedule,
+          setNoiseSchedule,
+          varietyPlus,
+          setVarietyPlus,
+        }}
       />
 
       <MobileGenerateEditors
