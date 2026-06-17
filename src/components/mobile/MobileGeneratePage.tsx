@@ -127,12 +127,10 @@ import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileArtistModal } from './MobileArtistModal';
-import { MetadataDetailPanel, type MetadataFile } from '../ToolsModal';
+import { MobileImageImportModal } from './MobileImageImportModal';
 import { InspirationModal } from '../InspirationModal';
 import { loadCodexData, type CodexItem } from '../../services/codexData';
 import { calculateCostFromUI } from '../../services/costCalculator';
-import { getPictureSizeType } from '../../utils/imageMetadata';
-import { getUnsupportedImportSettings, formatUnsupportedSettings } from '../../utils/generationOptions';
 import {
   MAX_TOTAL_PIXELS,
   MOBILE_LARGE_RESOLUTIONS as LARGE_RESOLUTIONS,
@@ -482,6 +480,20 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setActiveVibes,
     closeImageImportModal: () => setShowImageImportModal(false),
   });
+  const importTaggerPrompt = useCallback(() => {
+    if (!taggerResult?.tags) return;
+
+    const finalPrompt = includeCharacter && taggerResult.character
+      ? `${taggerResult.character}, ${taggerResult.tags}`
+      : taggerResult.tags;
+
+    if (importOptions.cleanImports) {
+      setPositivePrompt(finalPrompt);
+    } else {
+      setPositivePrompt((prev: string) => prev ? `${prev}, ${finalPrompt}` : finalPrompt);
+    }
+    setShowImageImportModal(false);
+  }, [includeCharacter, importOptions.cleanImports, setPositivePrompt, setShowImageImportModal, taggerResult]);
 
   const {
     aiModel,
@@ -4265,497 +4277,29 @@ const pool = vibeTagPool.filter(t => t !== tag); setVibeTagPool(pool); saveVibeT
       )}
 
       {/* 图片导入弹窗 */}
-      {showImageImportModal && importImageDataUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in"
-          onClick={() => setShowImageImportModal(false)}
-        >
-          {/* 下半部分背景遮罩 */}
-          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-nai-panel pointer-events-none" />
-          <div
-            className="relative w-full bg-nai-panel rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-in-from-bottom mb-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* 反推结果页面 */}
-            {showTaggerResult && taggerResult ? (
-              <>
-                {/* 头部 */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowTaggerResult(false)}
-                      className="p-1.5 text-gray-400 active:text-white"
-                    >
-                      <ArrowLeft className="w-5 h-5" />
-                    </button>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-nai-accent" />
-                      反推结果
-                    </h3>
-                  </div>
-                  <button
-                    onClick={() => setShowImageImportModal(false)}
-                    className="p-1.5 text-gray-400 active:text-white"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* 图片预览 + 基本信息 */}
-                <div className="flex gap-3 p-4 border-b border-gray-700">
-                  <div className="w-20 shrink-0">
-                    <div className="rounded-lg overflow-hidden border border-gray-600 bg-gray-900">
-                      <img src={importImageDataUrl} alt="" className="w-full h-auto" />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-gray-500 mb-1">解析模型</div>
-                    <div className="text-sm text-white">wd-swinv2-tagger-v3</div>
-
-                    {taggerResult.confidence && Object.keys(taggerResult.confidence).length > 0 && (
-                      <div className="mt-2">
-                        <div className="text-xs text-gray-500 mb-1">识别角色</div>
-                        <div className="flex flex-wrap gap-1">
-                          {Object.entries(taggerResult.confidence)
-                            .sort(([, a], [, b]) => b - a)
-                            .slice(0, 3)
-                            .map(([name, conf]) => (
-                              <span
-                                key={name}
-                                className="px-2 py-0.5 bg-nai-accent/20 text-nai-accent rounded text-xs"
-                              >
-                                {name} ({(conf * 100).toFixed(0)}%)
-                              </span>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {taggerResult.rating && (
-                      <div className="mt-2">
-                        <div className="text-xs text-gray-500 mb-1">评级</div>
-                        <span className={`px-2 py-0.5 rounded text-xs ${taggerResult.rating === 'general' ? 'bg-green-500/20 text-green-400' :
-                          taggerResult.rating === 'sensitive' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-red-500/20 text-red-400'
-                          }`}>
-                          {taggerResult.rating}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 标签内容 */}
-                <div className="p-4 flex-1 overflow-y-auto">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-gray-500">反推标签</span>
-                    <button
-                      onClick={() => {
-                        if (taggerResult.tags) {
-                          copyToClipboard(taggerResult.tags);
-                        }
-                      }}
-                      className="flex items-center gap-1 text-xs text-gray-400 active:text-white px-2 py-1 rounded"
-                    >
-                      <Copy className="w-3 h-3" />
-                      复制
-                    </button>
-                  </div>
-                  <div className="text-xs text-gray-300 bg-gray-800/50 rounded-lg p-3 leading-relaxed max-h-32 overflow-y-auto">
-                    {taggerResult.tags}
-                  </div>
-                </div>
-
-                {/* 底部操作 */}
-                <div className="p-4 border-t border-gray-700 space-y-3 safe-area-bottom">
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={importOptions.cleanImports}
-                        onChange={() => setImportOptions(prev => ({ ...prev, cleanImports: !prev.cleanImports }))}
-                        className="w-4 h-4 rounded"
-                      />
-                      清空现有提示词
-                    </label>
-                    {taggerResult.character && (
-                      <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={includeCharacter}
-                          onChange={() => setIncludeCharacter(!includeCharacter)}
-                          className="w-4 h-4 rounded"
-                        />
-                        包含识别角色
-                      </label>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      if (taggerResult.tags) {
-                        let finalPrompt = taggerResult.tags;
-                        if (includeCharacter && taggerResult.character) {
-                          finalPrompt = `${taggerResult.character}, ${taggerResult.tags}`;
-                        }
-                        if (importOptions.cleanImports) {
-                          setPositivePrompt(finalPrompt);
-                        } else {
-                          setPositivePrompt((prev: string) => prev ? `${prev}, ${finalPrompt}` : finalPrompt);
-                        }
-                        setShowImageImportModal(false);
-                      }
-                    }}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-nai-accent text-black font-bold rounded-xl"
-                  >
-                    <Download className="w-4 h-4" />
-                    导入为正向提示词
-                  </button>
-
-                  <div className="text-xs text-gray-500 mb-2">或用作</div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={useImportedImageAsVibe}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
-                    >
-                      <Palette className="w-4 h-4 text-nai-accent" />
-                      <span className="text-xs text-gray-300">Vibe</span>
-                    </button>
-                    <button
-                      onClick={useImportedImageAsImg2Img}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
-                    >
-                      <ImageIcon className="w-4 h-4 text-nai-accent" />
-                      <span className="text-xs text-gray-300">Img2Img</span>
-                    </button>
-                    <button
-                      onClick={useImportedImageAsCR}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
-                    >
-                      <User className="w-4 h-4 text-nai-accent" />
-                      <span className="text-xs text-gray-300">CR</span>
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : showFullMetadata && importImageMetadata ? (
-              /* 查看完整元数据二级面板 */
-              <>
-                {/* 头部 */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowFullMetadata(false)}
-                      className="p-1.5 text-gray-400 active:text-white"
-                    >
-                      <ArrowLeft className="w-5 h-5" />
-                    </button>
-                    <h3 className="text-base font-bold text-white">完整元数据</h3>
-                  </div>
-                  <button
-                    onClick={() => setShowImageImportModal(false)}
-                    className="p-1.5 text-gray-400 active:text-white"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                {/* 详情面板 */}
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                  <MetadataDetailPanel
-                    file={{
-                      name: '历史图片',
-                      dataUrl: importImageDataUrl || '',
-                      metadata: importImageMetadata,
-                      isSelected: false,
-                      fileSize: 0,
-                    }}
-                  />
-                </div>
-              </>
-            ) : importImageMetadata ? (
-              /* 有元数据的页面 */
-              <>
-                {/* 头部：图片预览 + 基本信息 */}
-                <div className="flex gap-3 p-4 border-b border-gray-700">
-                  <div className="w-24 shrink-0">
-                    <div className="rounded-lg overflow-hidden border border-gray-600 bg-gray-900">
-                      <img src={importImageDataUrl} alt="" className="w-full h-auto" />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="text-sm font-medium text-white truncate">{importImageMetadata.source}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {importImageMetadata.width}×{importImageMetadata.height} · {getPictureSizeType(importImageMetadata.width, importImageMetadata.height)}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setShowImageImportModal(false)}
-                        className="p-1 text-gray-400 active:text-white -mr-1 -mt-1"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    {/* 参数标签 */}
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {importImageMetadata.seed && (
-                        <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300">
-                          Seed: {importImageMetadata.seed}
-                        </span>
-                      )}
-                      {importImageMetadata.steps && (
-                        <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300">
-                          Steps: {importImageMetadata.steps}
-                        </span>
-                      )}
-                      {importImageMetadata.scale && (
-                        <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300">
-                          CFG: {importImageMetadata.scale}
-                        </span>
-                      )}
-                      {importImageMetadata.characterPrompts && importImageMetadata.characterPrompts.length > 0 && (
-                        <span className="px-2 py-1 bg-nai-accent/20 rounded text-xs text-nai-accent">
-                          {importImageMetadata.characterPrompts.length} 角色
-                        </span>
-                      )}
-                      {importImageMetadata.vibes && importImageMetadata.vibes.length > 0 && (
-                        <span className="px-2 py-1 bg-purple-500/20 rounded text-xs text-purple-400">
-                          {importImageMetadata.vibes.length} Vibe
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 提示词预览 */}
-                    {importImageMetadata.prompt && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-500">提示词</span>
-                          <button
-                            onClick={() => copyToClipboard(importImageMetadata.prompt || '')}
-                            className="p-1 text-gray-500 hover:text-nai-accent active:scale-95 transition-all"
-                            title="复制提示词"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <div className="text-xs text-gray-300 leading-relaxed break-all bg-gray-800/50 rounded-lg p-2 max-h-24 overflow-y-auto">
-                          {importImageMetadata.prompt}
-                        </div>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => setShowFullMetadata(true)}
-                      className="text-xs text-nai-accent active:opacity-70 mt-2"
-                    >
-                      查看完整元数据
-                    </button>
-                  </div>
-                </div>
-
-                {/* 导入区域 */}
-                <div className="p-4 border-b border-gray-700">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm text-gray-300 font-medium">导入选项</span>
-                    <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={importOptions.cleanImports}
-                        onChange={() => setImportOptions(prev => ({ ...prev, cleanImports: !prev.cleanImports }))}
-                        className="w-4 h-4 rounded"
-                      />
-                      清空现有内容
-                    </label>
-                  </div>
-
-                  <div className="flex flex-wrap gap-x-5 gap-y-2">
-                    {importImageMetadata.prompt && (
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={importOptions.prompt}
-                          onChange={() => setImportOptions(prev => ({ ...prev, prompt: !prev.prompt }))}
-                          className="w-4 h-4 rounded"
-                        />
-                        正向提示词
-                      </label>
-                    )}
-                    {importImageMetadata.negativePrompt && (
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={importOptions.negativePrompt}
-                          onChange={() => setImportOptions(prev => ({ ...prev, negativePrompt: !prev.negativePrompt }))}
-                          className="w-4 h-4 rounded"
-                        />
-                        负向提示词
-                      </label>
-                    )}
-                    {importImageMetadata.sourceType === 'novelai' && importImageMetadata.characterPrompts && importImageMetadata.characterPrompts.length > 0 && (
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={importOptions.characters}
-                          onChange={() => setImportOptions(prev => ({ ...prev, characters: !prev.characters }))}
-                          className="w-4 h-4 rounded"
-                        />
-                        角色提示词
-                      </label>
-                    )}
-                    {importImageMetadata.sourceType === 'novelai' && (importImageMetadata.steps || importImageMetadata.scale) && (() => {
-                      const settingsIssues = getUnsupportedImportSettings(importImageMetadata);
-                      const settingsDisabled = settingsIssues.length > 0;
-                      return (
-                        <label className={`flex items-center gap-2 text-sm ${settingsDisabled ? 'cursor-not-allowed text-gray-500' : 'cursor-pointer text-gray-300'}`}>
-                          <input
-                            type="checkbox"
-                            disabled={settingsDisabled}
-                            checked={!settingsDisabled && importOptions.settings}
-                            onChange={() => { if (!settingsDisabled) setImportOptions(prev => ({ ...prev, settings: !prev.settings })); }}
-                            className="w-4 h-4 rounded disabled:opacity-50"
-                          />
-                          生成设置
-                          {settingsDisabled && (
-                            <span className="text-[10px] text-amber-500/80">不支持: {formatUnsupportedSettings(settingsIssues)}</span>
-                          )}
-                        </label>
-                      );
-                    })()}
-                    {importImageMetadata.sourceType === 'novelai' && importImageMetadata.seed && (
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={importOptions.seed}
-                          onChange={() => setImportOptions(prev => ({ ...prev, seed: !prev.seed }))}
-                          className="w-4 h-4 rounded"
-                        />
-                        种子
-                      </label>
-                    )}
-                    {importImageMetadata.sourceType === 'novelai' && importImageMetadata.vibes && importImageMetadata.vibes.length > 0 && (
-                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={importOptions.vibes}
-                          onChange={() => setImportOptions(prev => ({ ...prev, vibes: !prev.vibes }))}
-                          className="w-4 h-4 rounded"
-                        />
-                        Vibe ({importImageMetadata.vibes.length})
-                      </label>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={importMetadata}
-                    className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 bg-nai-accent text-black font-bold rounded-xl"
-                  >
-                    <Download className="w-4 h-4" />
-                    导入元数据
-                  </button>
-                </div>
-
-                {/* 其他用途 */}
-                <div className="p-4 safe-area-bottom">
-                  <div className="text-xs text-gray-500 mb-2">或用作</div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={useImportedImageAsVibe}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
-                    >
-                      <Palette className="w-4 h-4 text-nai-accent" />
-                      <span className="text-xs text-gray-300">Vibe</span>
-                    </button>
-                    <button
-                      onClick={useImportedImageAsImg2Img}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
-                    >
-                      <ImageIcon className="w-4 h-4 text-nai-accent" />
-                      <span className="text-xs text-gray-300">Img2Img</span>
-                    </button>
-                    <button
-                      onClick={useImportedImageAsCR}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl"
-                    >
-                      <User className="w-4 h-4 text-nai-accent" />
-                      <span className="text-xs text-gray-300">CR</span>
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* 无元数据的简单模式 */
-              <>
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                  <h3 className="text-base font-bold text-white">选择用途</h3>
-                  <button
-                    onClick={() => setShowImageImportModal(false)}
-                    className="p-1.5 text-gray-400 active:text-white"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {isParsingMetadata ? (
-                  <div className="flex items-center justify-center gap-2 text-gray-400 text-sm py-8">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>解析中...</span>
-                  </div>
-                ) : (
-                  <div className="p-4 pb-8 space-y-3 safe-area-bottom">
-                    {/* 无元数据提示 + 反推按钮 */}
-                    <div className="p-3 bg-gray-800/50 rounded-xl border border-gray-700">
-                      <div className="text-xs text-gray-400 mb-2">未检测到元数据</div>
-                      <button
-                        onClick={analyzeWithTagger}
-                        disabled={isAnalyzingTagger}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-nai-accent/20 text-nai-accent border border-nai-accent/30 rounded-xl text-sm disabled:opacity-50"
-                      >
-                        {isAnalyzingTagger ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            反推中...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-4 h-4" />
-                            AI 反推标签
-                          </>
-                        )}
-                      </button>
-                      <div className="text-[10px] text-gray-500 mt-1.5 text-center">
-                        使用 WD Tagger 模型反推图片标签
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={useImportedImageAsVibe}
-                      className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl"
-                    >
-                      <Palette className="w-5 h-5 text-nai-accent" />
-                      <span className="text-sm text-white">Vibe Transfer</span>
-                    </button>
-                    <button
-                      onClick={useImportedImageAsImg2Img}
-                      className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl"
-                    >
-                      <ImageIcon className="w-5 h-5 text-nai-accent" />
-                      <span className="text-sm text-white">Image2Image</span>
-                    </button>
-                    <button
-                      onClick={useImportedImageAsCR}
-                      className="w-full flex items-center gap-3 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl"
-                    >
-                      <User className="w-5 h-5 text-nai-accent" />
-                      <span className="text-sm text-white">Character Reference</span>
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+      {showImageImportModal && (
+        <MobileImageImportModal
+          dataUrl={importImageDataUrl}
+          metadata={importImageMetadata}
+          isParsingMetadata={isParsingMetadata}
+          isAnalyzingTagger={isAnalyzingTagger}
+          taggerResult={taggerResult}
+          showTaggerResult={showTaggerResult}
+          setShowTaggerResult={setShowTaggerResult}
+          showFullMetadata={showFullMetadata}
+          setShowFullMetadata={setShowFullMetadata}
+          importOptions={importOptions}
+          setImportOptions={setImportOptions}
+          includeCharacter={includeCharacter}
+          setIncludeCharacter={setIncludeCharacter}
+          onClose={() => setShowImageImportModal(false)}
+          onAnalyzeWithTagger={analyzeWithTagger}
+          onImportTaggerPrompt={importTaggerPrompt}
+          onImportMetadata={importMetadata}
+          onUseAsVibe={useImportedImageAsVibe}
+          onUseAsImg2Img={useImportedImageAsImg2Img}
+          onUseAsCR={useImportedImageAsCR}
+        />
       )}
     </div>
   );
