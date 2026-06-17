@@ -1,8 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  makeArtistMarker,
-  filterHiddenTags,
-} from '../../utils/promptTags';
+import React, { useState, useEffect } from 'react';
+import { makeArtistMarker } from '../../utils/promptTags';
 import {
   ChevronDown,
   Sparkles,
@@ -26,7 +23,6 @@ import {
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
-import { countTokens } from '../../services/tokenizer';
 import { KNOWLEDGE_SOURCES } from '../../services/agentService';
 import { MobileAIAssistantSheet } from './MobileAIAssistantSheet';
 import { MobileAdvancedSettingsSheet } from './MobileAdvancedSettingsSheet';
@@ -47,7 +43,7 @@ import { MobilePromptSummaryCard } from './MobilePromptSummaryCard';
 import { MobileResolutionSheet } from './MobileResolutionSheet';
 import { MobileVibeReferencesCard } from './MobileVibeReferencesCard';
 import { MobileVibeManagerSheet } from './MobileVibeManagerSheet';
-import { FullscreenEditor, expandCollapsibleMarkers } from './FullscreenEditor';
+import { FullscreenEditor } from './FullscreenEditor';
 import {
   useMobileBackHandlers,
   useMobileEditorStateBridge,
@@ -69,6 +65,7 @@ import { useMobilePreciseReferences } from './generate/useMobilePreciseReference
 import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobileInpaintGenerate } from './generate/useMobileInpaintGenerate';
 import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
+import { useMobilePromptTokenCounts } from './generate/useMobilePromptTokenCounts';
 import { useMobilePromptTranslation } from './generate/useMobilePromptTranslation';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import { useMobileRoleTags } from './generate/useMobileRoleTags';
@@ -377,34 +374,17 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setActivePresetId,
   });
 
-  // Token 计数 - 包含预设和角色提示词的 token（剔除 ~ 禁用标签，与生成保持一致）
-  const positiveTokens = useMemo(() => {
-    let total = countTokens(expandCollapsibleMarkers(filterHiddenTags(positivePrompt)));
-    if (activePreset?.positive) {
-      total += countTokens(activePreset.positive);
-    }
-    // 计入启用的角色提示词
-    characterPrompts.forEach((char) => {
-      if (char.enabled && char.positive) {
-        total += countTokens(filterHiddenTags(char.positive));
-      }
-    });
-    return total;
-  }, [positivePrompt, activePreset, characterPrompts]);
-
-  const negativeTokens = useMemo(() => {
-    let total = countTokens(filterHiddenTags(negativePrompt));
-    if (activePreset?.negative) {
-      total += countTokens(activePreset.negative);
-    }
-    // 计入启用的角色提示词
-    characterPrompts.forEach((char) => {
-      if (char.enabled && char.negative) {
-        total += countTokens(filterHiddenTags(char.negative));
-      }
-    });
-    return total;
-  }, [negativePrompt, activePreset, characterPrompts]);
+  const {
+    positiveTokens,
+    negativeTokens,
+    positivePresetTokens,
+    negativePresetTokens,
+  } = useMobilePromptTokenCounts({
+    positivePrompt,
+    negativePrompt,
+    activePreset,
+    characterPrompts,
+  });
 
   useEffect(() => {
     fetchAnlas();
@@ -605,7 +585,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         type="prompt"
         value={positivePrompt}
         onChange={setPositivePrompt}
-        presetTokens={activePreset?.positive ? countTokens(activePreset.positive) : 0}
+        presetTokens={positivePresetTokens}
         totalTokens={positiveTokens}
       />
       <FullscreenEditor
@@ -614,7 +594,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         type="undesired"
         value={negativePrompt}
         onChange={setNegativePrompt}
-        presetTokens={activePreset?.negative ? countTokens(activePreset.negative) : 0}
+        presetTokens={negativePresetTokens}
         totalTokens={negativeTokens}
       />
       <MobileAIAssistantSheet
