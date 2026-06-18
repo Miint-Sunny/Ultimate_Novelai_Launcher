@@ -15,9 +15,6 @@ import {
   LogOut,
   LogIn,
   Settings,
-  Plus,
-  Trash2,
-  Edit3,
   User,
   HardDrive,
 } from 'lucide-react';
@@ -29,9 +26,6 @@ import {
   THEME_OPTIONS,
   getApiToken,
   saveApiToken,
-  getPromptPresets,
-  savePromptPresets,
-  type PromptPresetData,
 } from '../../services/localLibrary';
 import { copyToClipboard } from '../../utils/clipboard';
 import { botService, onlineService, type BotAuthState, type BotTaskState } from '../../services/botService';
@@ -40,6 +34,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { sidecarApi } from '../../api/sidecar';
 import { MobileBackupSettingsSection } from './settings/MobileBackupSettingsSection';
 import { MobileProfileSettingsSection } from './settings/MobileProfileSettingsSection';
+import { MobilePresetSettingsSection } from './settings/MobilePresetSettingsSection';
 
 type SettingsSection = 'profile' | 'theme' | 'ai' | 'autocomplete' | 'login' | 'presets' | 'backup' | null;
 
@@ -76,81 +71,6 @@ const Toggle: React.FC<{ enabled: boolean; onChange: () => void; disabled?: bool
   </button>
 );
 
-// 预设编辑器组件
-const PresetEditor: React.FC<{
-  preset?: PromptPresetData;
-  onSave: (preset: PromptPresetData) => void;
-  onCancel: () => void;
-}> = ({ preset, onSave, onCancel }) => {
-  const [name, setName] = useState(preset?.name || '');
-  const [positive, setPositive] = useState(preset?.positive || '');
-  const [negative, setNegative] = useState(preset?.negative || '');
-
-  const handleSave = () => {
-    if (!name.trim()) {
-      alert('请输入预设名称');
-      return;
-    }
-    onSave({
-      id: preset?.id || `custom-${Date.now()}`,
-      name: name.trim(),
-      positive: positive.trim(),
-      negative: negative.trim(),
-      isDefault: preset?.isDefault || false,
-      createdAt: preset?.createdAt || Date.now(),
-    });
-  };
-
-  return (
-    <div className="p-4 space-y-4">
-      <div>
-        <label className="text-xs text-gray-500 uppercase tracking-wider block mb-2">预设名称</label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="例如: 高质量动漫"
-          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-nai-accent/50 focus:outline-none"
-        />
-      </div>
-      <div>
-        <label className="text-xs text-gray-500 uppercase tracking-wider block mb-2">正向提示词</label>
-        <textarea
-          value={positive}
-          onChange={(e) => setPositive(e.target.value)}
-          placeholder="会附加到正向提示词后面..."
-          rows={4}
-          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-nai-accent/50 focus:outline-none resize-none"
-        />
-      </div>
-      <div>
-        <label className="text-xs text-gray-500 uppercase tracking-wider block mb-2">反向提示词</label>
-        <textarea
-          value={negative}
-          onChange={(e) => setNegative(e.target.value)}
-          placeholder="会附加到反向提示词后面..."
-          rows={4}
-          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-nai-accent/50 focus:outline-none resize-none"
-        />
-      </div>
-      <div className="flex gap-3 pt-2">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-3 bg-gray-700 text-gray-300 font-medium rounded-xl active:bg-gray-600"
-        >
-          取消
-        </button>
-        <button
-          onClick={handleSave}
-          className="flex-1 py-3 bg-nai-accent text-black font-bold rounded-xl active:bg-nai-accent/80"
-        >
-          保存
-        </button>
-      </div>
-    </div>
-  );
-};
-
 export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout }) => {
   const { isAuthenticated, isBotAuthorized, openLoginModal } = useAuth();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
@@ -172,11 +92,6 @@ export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // 预设状态
-  const [promptPresets, setPromptPresets] = useState<PromptPresetData[]>([]);
-  const [editingPreset, setEditingPreset] = useState<PromptPresetData | null>(null);
-  const [isCreatingPreset, setIsCreatingPreset] = useState(false);
-
   // 加载设置
   useEffect(() => {
     const saved = getAppSettings();
@@ -186,10 +101,6 @@ export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout
     const savedToken = getApiToken();
     setToken(savedToken || '');
     setTokenError('');
-
-    // 加载预设
-    const presets = getPromptPresets();
-    setPromptPresets(presets);
 
     botService.restoreSession().then(() => {
       setBotAuthState(botService.getAuthState());
@@ -297,48 +208,6 @@ export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout
       setTokenError(error instanceof Error ? error.message : 'Token 保存失败');
     }
   }, [token]);
-
-  // 预设管理函数
-  const handleSavePreset = useCallback((preset: PromptPresetData) => {
-    const updatedPresets = promptPresets.map((p) => (p.id === preset.id ? preset : p));
-    savePromptPresets(updatedPresets);
-    setPromptPresets(updatedPresets);
-    setEditingPreset(null);
-    setShowSaveToast(true);
-    setTimeout(() => setShowSaveToast(false), 1500);
-    // 通知生成页面刷新预设列表
-    window.dispatchEvent(new Event('presets-updated'));
-  }, [promptPresets]);
-
-  const handleCreatePreset = useCallback((name: string, positive: string, negative: string) => {
-    const newPreset: PromptPresetData = {
-      id: `custom-${Date.now()}`,
-      name,
-      positive,
-      negative,
-      isDefault: false,
-      createdAt: Date.now(),
-    };
-    const updatedPresets = [...promptPresets, newPreset];
-    savePromptPresets(updatedPresets);
-    setPromptPresets(updatedPresets);
-    setIsCreatingPreset(false);
-    setShowSaveToast(true);
-    setTimeout(() => setShowSaveToast(false), 1500);
-    // 通知生成页面刷新预设列表
-    window.dispatchEvent(new Event('presets-updated'));
-  }, [promptPresets]);
-
-  const handleDeletePreset = useCallback((presetId: string) => {
-    const preset = promptPresets.find((p) => p.id === presetId);
-    if (preset?.isDefault) return;
-    if (!confirm(`确定删除预设 "${preset?.name}" 吗？`)) return;
-    const updatedPresets = promptPresets.filter((p) => p.id !== presetId);
-    savePromptPresets(updatedPresets);
-    setPromptPresets(updatedPresets);
-    // 通知生成页面刷新预设列表
-    window.dispatchEvent(new Event('presets-updated'));
-  }, [promptPresets]);
 
   const currentSectionInfo = SECTIONS.find((s) => s.id === activeSection);
 
@@ -546,82 +415,13 @@ export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout
         );
 
       case 'presets':
-        // 编辑预设页面
-        if (editingPreset) {
-          return (
-            <PresetEditor
-              preset={editingPreset}
-              onSave={handleSavePreset}
-              onCancel={() => setEditingPreset(null)}
-            />
-          );
-        }
-        // 创建预设页面
-        if (isCreatingPreset) {
-          return (
-            <PresetEditor
-              onSave={(preset) => handleCreatePreset(preset.name, preset.positive, preset.negative)}
-              onCancel={() => setIsCreatingPreset(false)}
-            />
-          );
-        }
-        // 预设列表
         return (
-          <div className="p-4 space-y-3">
-            <p className="text-xs text-gray-500 mb-4">
-              预设会自动附加到你的提示词后面，用于统一画风和质量标签
-            </p>
-            {promptPresets.map((preset) => (
-              <div
-                key={preset.id}
-                className="p-4 bg-gray-800 rounded-xl space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-white">{preset.name}</span>
-                    {preset.isDefault && (
-                      <span className="text-xs px-2 py-0.5 bg-gray-700 text-gray-400 rounded">默认</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setEditingPreset(preset)}
-                      className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    {!preset.isDefault && (
-                      <button
-                        onClick={() => handleDeletePreset(preset.id)}
-                        className="p-2 text-gray-400 hover:text-red-400 rounded-lg hover:bg-gray-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {preset.positive && (
-                  <div className="text-xs text-gray-500">
-                    <span className="text-green-400">正向:</span> {preset.positive.slice(0, 50)}
-                    {preset.positive.length > 50 && '...'}
-                  </div>
-                )}
-                {preset.negative && (
-                  <div className="text-xs text-gray-500">
-                    <span className="text-red-400">反向:</span> {preset.negative.slice(0, 50)}
-                    {preset.negative.length > 50 && '...'}
-                  </div>
-                )}
-              </div>
-            ))}
-            <button
-              onClick={() => setIsCreatingPreset(true)}
-              className="w-full p-4 bg-gray-800 rounded-xl border-2 border-dashed border-gray-700 text-gray-400 flex items-center justify-center gap-2 active:bg-gray-700"
-            >
-              <Plus className="w-5 h-5" />
-              <span>新建预设</span>
-            </button>
-          </div>
+          <MobilePresetSettingsSection
+            onSaved={() => {
+              setShowSaveToast(true);
+              setTimeout(() => setShowSaveToast(false), 1500);
+            }}
+          />
         );
 
       case 'login':
