@@ -155,20 +155,30 @@ Next good cuts:
 
 ### Mobile Tools Page
 
-`src/components/mobile/MobileToolsPage.tsx` is still about 875 lines and is now the next largest mobile page after inpaint.
+`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 769 lines.
 
-Suggested approach:
+Extracted files:
 
-- First identify tab/section boundaries and extract pure UI sections.
-- Keep tool actions and service calls as-is until section components are stable.
-- Do not add new tool entries while this page is still being split.
+- `src/components/mobile/tools/weightConvert.tsx` (`mobileWeightConvert` namespace: `convertSDToNAI`/`convertNAIToSD`/`renderNAIHighlighted`/`renderSDHighlighted`; intentionally distinct from `utils/promptTags.ts` single-tag version and duplicated in desktop `ToolsModal.tsx` — merging needs a dedicated behavior-alignment task).
+
+Remaining reasonable cuts:
+
+- Extract the character-recognition helpers (`fetchRoleTagMapping`/`fetchOCData`/`cleanToken`/`tokenize*`/`lcsRatio`/`matchCharacters`/`matchOCs` + `useCharacterRecognition`) into `src/components/mobile/tools/characterRecognition.ts`.
+- Extract `MobileMetadataDetail` (full-screen metadata detail panel) into its own file under `src/components/mobile/tools/`.
+- Extract `cleanImageMetadataProper` + `formatFileSize` into a small helper.
+- After helpers are stable, extract the weight-convert UI section and the metadata tool UI section into section components.
+
+Important preserved behavior:
+
+- Weight conversion output (including the `1.05`/`0.952381` special-weight mapping and `\(` escaping) must remain byte-identical.
+- `switch-to-generate` event name and metadata import payload shape must remain unchanged.
 
 ## Current Large File Map
 
 Approximate sizes at this handoff:
 
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
-- `src/components/mobile/MobileToolsPage.tsx`: 875 lines
+- `src/components/mobile/MobileToolsPage.tsx`: 769 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
 - `src/components/mobile/MobileImagePage.tsx`: 452 lines
