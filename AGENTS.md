@@ -125,7 +125,7 @@ Do not change token storage semantics while doing UI cleanup. Token handling mus
 
 ### Mobile Inpaint Overlay
 
-`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 980 lines.
+`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 838 lines.
 
 Extracted files:
 
@@ -135,6 +135,7 @@ Extracted files:
 - `src/components/mobile/inpaint/MobileInpaintExpandOverlay.tsx`
 - `src/components/mobile/inpaint/MobileInpaintCropPreview.tsx`
 - `src/components/mobile/inpaint/MobileInpaintCompareOverlay.tsx`
+- `src/components/mobile/inpaint/maskUtils.ts` (mobile-specific `expandMaskRegions` + `getMaskBase64FromCanvas`; intentionally distinct from desktop `src/components/inpaint/maskUtils.ts`)
 
 Important preserved behavior:
 
@@ -148,7 +149,7 @@ Next good cuts:
 
 - Extract canvas image lifecycle/loading into a hook only if the boundary is very clear.
 - Extract touch/pinch/draw event handling into a hook after UI extraction is complete.
-- Extract mask expansion (`expandMaskRegions`) and `getMaskBase64` / generate-payload building into helpers with no behavior changes.
+- Extract the expand/crop payload construction inside `handleGenerate` (the `isExpandMode` branch building `ExpandPayload`) into a helper with no behavior changes.
 
 ### Mobile Tools Page
 
@@ -164,7 +165,7 @@ Suggested approach:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/MobileInpaintOverlay.tsx`: 980 lines
+- `src/components/mobile/MobileInpaintOverlay.tsx`: 838 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 875 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
