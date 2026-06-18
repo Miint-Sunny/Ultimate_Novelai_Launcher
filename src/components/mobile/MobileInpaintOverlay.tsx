@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Eraser, Undo2, RotateCcw, Play, Square, Circle, Brush, Eye, X, Expand, Crop, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Play, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import { getCachedIsOpus } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
 import { calculateCropRect, alignSendRect, type CropRect } from '../../utils/maskCrop';
+import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
 
 type BrushShape = 'square' | 'circle';
 
@@ -804,6 +805,35 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
     });
   }, [genDimensions, strength]);
 
+  const handleClearAll = () => {
+    handleClear();
+    if (isExpandMode) resetExpand();
+  };
+
+  const handleToggleCrop = () => {
+    const next = !isCropMode;
+    setIsCropMode(next);
+    if (next) {
+      setIsExpandMode(false);
+      resetExpand();
+      updateCropPreview();
+    } else {
+      setCropPreview(null);
+    }
+  };
+
+  const handleToggleExpand = () => {
+    const entering = !isExpandMode;
+    setIsExpandMode(entering);
+    if (entering) {
+      resetExpand();
+      setIsCropMode(false);
+      setCropPreview(null);
+    } else {
+      resetExpand();
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 bg-[#0a0a0f] flex flex-col"
@@ -1050,152 +1080,27 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
         )}
       </div>
 
-      {/* 底部工具栏 - 生成时隐藏 */}
-      {!isGenerating && (
-        <div className="flex-shrink-0 bg-gray-900/95 border-t border-white/10 px-3 pt-2.5 pb-2.5">
-          {/* 第一行：笔刷工具 */}
-          <div className="flex items-center justify-center gap-1.5 mb-2.5">
-            {/* 笔刷/橡皮擦 */}
-            <div className="flex items-center bg-gray-800 rounded-xl p-0.5">
-              <button
-                className={`p-2.5 rounded-lg transition-all ${!isEraser ? 'bg-nai-accent text-black' : 'text-gray-400'}`}
-                onClick={() => setIsEraser(false)}
-              >
-                <Brush className="w-[18px] h-[18px]" />
-              </button>
-              <button
-                className={`p-2.5 rounded-lg transition-all ${isEraser ? 'bg-nai-accent text-black' : 'text-gray-400'}`}
-                onClick={() => setIsEraser(true)}
-              >
-                <Eraser className="w-[18px] h-[18px]" />
-              </button>
-            </div>
-
-            {/* 笔刷形状 */}
-            <div className="flex items-center bg-gray-800 rounded-xl p-0.5">
-              <button
-                className={`p-2.5 rounded-lg transition-all ${brushShape === 'square' ? 'bg-white/20 text-white' : 'text-gray-400'}`}
-                onClick={() => setBrushShape('square')}
-              >
-                <Square className="w-[18px] h-[18px]" />
-              </button>
-              <button
-                className={`p-2.5 rounded-lg transition-all ${brushShape === 'circle' ? 'bg-white/20 text-white' : 'text-gray-400'}`}
-                onClick={() => setBrushShape('circle')}
-              >
-                <Circle className="w-[18px] h-[18px]" />
-              </button>
-            </div>
-
-            {/* 撤销/清空 */}
-            <div className="flex items-center bg-gray-800 rounded-xl p-0.5">
-              <button
-                onClick={handleUndo}
-                disabled={history.length === 0}
-                className="p-2.5 rounded-lg text-red-400 disabled:opacity-30"
-              >
-                <Undo2 className="w-[18px] h-[18px]" />
-              </button>
-              <button onClick={() => { handleClear(); if (isExpandMode) resetExpand(); }} className="p-2.5 rounded-lg text-red-400">
-                <RotateCcw className="w-[18px] h-[18px]" />
-              </button>
-            </div>
-
-            {/* 裁切按钮 */}
-            <button
-              onClick={() => {
-                const next = !isCropMode;
-                setIsCropMode(next);
-                if (next) {
-                  setIsExpandMode(false);
-                  resetExpand();
-                  updateCropPreview();
-                } else {
-                  setCropPreview(null);
-                }
-              }}
-              disabled={isExpandMode}
-              className={`p-2.5 rounded-lg transition-all ${isCropMode
-                ? 'bg-teal-400 text-black'
-                : isExpandMode
-                  ? 'text-gray-600'
-                  : 'text-gray-400'
-                }`}
-            >
-              <Crop className="w-[18px] h-[18px]" />
-            </button>
-
-            {/* 扩图按钮 */}
-            <div className="flex items-center bg-gray-800 rounded-xl p-0.5">
-              <button
-                onClick={() => {
-                  const entering = !isExpandMode;
-                  setIsExpandMode(entering);
-                  if (entering) {
-                    resetExpand();
-                    setIsCropMode(false);
-                    setCropPreview(null);
-                  } else {
-                    resetExpand();
-                  }
-                }}
-                className={`p-2.5 rounded-lg transition-all ${isExpandMode
-                  ? 'bg-nai-accent text-black'
-                  : 'text-gray-400'
-                  }`}
-              >
-                <Expand className="w-[18px] h-[18px]" />
-              </button>
-            </div>
-            {/* 按住对比 */}
-            {hasSnapshot && !isGenerating && (
-              <button
-                onTouchStart={() => setShowOriginal(true)}
-                onTouchEnd={() => setShowOriginal(false)}
-                onTouchCancel={() => setShowOriginal(false)}
-                onMouseDown={() => setShowOriginal(true)}
-                onMouseUp={() => setShowOriginal(false)}
-                onMouseLeave={() => setShowOriginal(false)}
-                className={`p-2.5 rounded-lg ${showOriginal ? 'bg-nai-accent text-black' : 'text-gray-400'}`}
-              >
-                <Eye className="w-[18px] h-[18px]" />
-              </button>
-            )}
-          </div>
-
-          {/* 第二行：笔刷大小和重绘强度并排 */}
-          <div className="flex items-center gap-2 overflow-hidden">
-            {/* 笔刷大小 */}
-            <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-3 py-2 flex-1 min-w-0 overflow-hidden">
-              <span className="text-xs text-gray-400 flex-shrink-0">大小</span>
-              <input
-                type="range"
-                min="20"
-                max="200"
-                value={brushSize}
-                onChange={(e) => setBrushSize(Number(e.target.value))}
-                className="flex-1 accent-nai-accent h-1.5 bg-gray-700 rounded-full appearance-none min-w-0"
-              />
-              <span className="text-xs text-white font-mono w-6 text-right flex-shrink-0">{brushSize}</span>
-            </div>
-
-            {/* 重绘强度 */}
-            <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-3 py-2 flex-1 min-w-0 overflow-hidden">
-              <span className="text-xs text-gray-400 flex-shrink-0">强度</span>
-              <input
-                type="range"
-                min="0.1"
-                max="1"
-                step="0.05"
-                value={strength}
-                onChange={(e) => handleStrengthChange(Number(e.target.value))}
-                className="flex-1 accent-nai-accent h-1.5 bg-gray-700 rounded-full appearance-none min-w-0"
-              />
-              <span className="text-xs text-white font-mono w-9 text-right flex-shrink-0">{strength.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-      )}
+      <MobileInpaintBottomToolbar
+        isEraser={isEraser}
+        setIsEraser={setIsEraser}
+        brushShape={brushShape}
+        setBrushShape={setBrushShape}
+        historyLength={history.length}
+        onUndo={handleUndo}
+        onClear={handleClearAll}
+        isCropMode={isCropMode}
+        isExpandMode={isExpandMode}
+        onToggleCrop={handleToggleCrop}
+        onToggleExpand={handleToggleExpand}
+        hasSnapshot={hasSnapshot}
+        isGenerating={isGenerating}
+        showOriginal={showOriginal}
+        setShowOriginal={setShowOriginal}
+        brushSize={brushSize}
+        setBrushSize={setBrushSize}
+        strength={strength}
+        onStrengthChange={handleStrengthChange}
+      />
     </div>
   );
 };
