@@ -8,13 +8,7 @@ import {
   User,
   X,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
-import {
-  NEWLINE_SENTINEL,
-  parseCollapsibleMarker,
-  splitPromptToTags,
-} from '../../utils/promptTags';
-import { getMarkerVisual } from '../tag-manager/markerVisual';
+import { renderPromptSummary, PromptToolButton } from './prompt-summary/PromptSummaryParts';
 
 interface MobilePromptSummaryCardProps {
   positivePrompt: string;
@@ -151,41 +145,5 @@ export function MobilePromptSummaryCard({
         </button>
       )}
     </>
-  );
-}
-
-function renderPromptSummary(prompt: string) {
-  return splitPromptToTags(prompt)
-    .filter((tag) => tag !== NEWLINE_SENTINEL)
-    .map((tag) => {
-      const marker = parseCollapsibleMarker(tag);
-      return marker ? `[${getMarkerVisual(marker.type).label}·${marker.name}]` : tag;
-    })
-    .join(', ');
-}
-
-interface PromptToolButtonProps {
-  label: string;
-  tone: 'purple' | 'amber' | 'pink' | 'cyan';
-  icon: ReactNode;
-  onClick: () => void;
-}
-
-function PromptToolButton({ label, tone, icon, onClick }: PromptToolButtonProps) {
-  const toneClass = {
-    purple: 'bg-purple-500/15 text-purple-400 active:bg-purple-500/25',
-    amber: 'bg-amber-500/15 text-amber-400 active:bg-amber-500/25',
-    pink: 'bg-pink-500/15 text-pink-400 active:bg-pink-500/25',
-    cyan: 'bg-cyan-500/15 text-cyan-400 active:bg-cyan-500/25',
-  }[tone];
-
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${toneClass}`}
-    >
-      {icon}
-      <span className="text-xs font-medium">{label}</span>
-    </button>
   );
 }
