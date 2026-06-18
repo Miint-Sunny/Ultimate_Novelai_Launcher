@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Play, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import { getCachedIsOpus } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
 import { calculateCropRect, alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
+import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
+import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
 
 type BrushShape = 'square' | 'circle';
 
@@ -843,31 +845,14 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
         pointerEvents: isCanvasReady ? 'auto' : 'none',
       }}
     >
-      {/* 顶部工具栏 */}
-      <div className="flex-shrink-0 bg-gray-900/95 border-b border-white/10 px-3 py-2 safe-area-top">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white rounded-lg"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <span className="text-sm text-white font-medium">重绘</span>
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || (isExpandMode && !hasExpand)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-nai-accent text-black rounded-lg text-sm font-medium disabled:opacity-50"
-          >
-            <Play className="w-4 h-4" />
-            {isGenerating ? '生成中' : isExpandMode ? '扩图' : '重绘'}
-            {!isGenerating && (
-              <span className="flex items-center gap-0.5 bg-black/15 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold">
-                {costInfo.total}<span>💎</span>
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
+      <MobileInpaintHeader
+        onClose={onClose}
+        onGenerate={handleGenerate}
+        isGenerating={isGenerating}
+        isExpandMode={isExpandMode}
+        hasExpand={hasExpand}
+        cost={costInfo.total}
+      />
 
       {/* 画布区域 */}
       <div
@@ -1064,20 +1049,11 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
           </div>
         </div>
 
-        {/* 生成进度条 */}
-        {isGenerating && totalSteps > 0 && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-            <div className="bg-gray-900/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-xl border border-gray-600/50 flex items-center gap-3">
-              <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-nai-accent rounded-full transition-all"
-                  style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-                />
-              </div>
-              <span className="text-gray-200 text-xs font-mono">{currentStep}/{totalSteps}</span>
-            </div>
-          </div>
-        )}
+        <MobileInpaintProgressPill
+          isGenerating={isGenerating}
+          currentStep={currentStep}
+          totalSteps={totalSteps}
+        />
       </div>
 
       <MobileInpaintBottomToolbar
