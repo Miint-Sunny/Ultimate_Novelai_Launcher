@@ -58,14 +58,9 @@ async function cleanImageMetadataProper(dataUrl: string): Promise<Blob> {
 // 已抽到 ./tools/weightConvert.tsx（整段 prompt 递归转换，与 utils/promptTags.ts 的单标签版本不同）。
 
 /* ─── 类型 ─── */
-
-export interface MetadataFile {
-  name: string;
-  dataUrl: string;
-  metadata: ImageMetadata | null;
-  isSelected: boolean;
-  fileSize: number;
-}
+// MetadataFile 真相源在 ./tools/types.ts，此处 re-export 保持对外 API 稳定。
+export type { MetadataFile } from './tools/types';
+import type { MetadataFile } from './tools/types';
 
 type ToolType = 'metadata' | 'weight';
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Check, Copy, Users, Download } from 'lucide-react';
 import type { ImageMetadata } from '../../../utils/imageMetadata';
-import type { MetadataFile } from '../MobileToolsPage';
+import type { MetadataFile } from './types';
 import { useCharacterRecognition } from './characterRecognition';
 
 function formatFileSize(bytes: number): string {
