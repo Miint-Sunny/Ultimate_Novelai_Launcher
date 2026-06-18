@@ -155,17 +155,17 @@ Next good cuts:
 
 ### Mobile Tools Page
 
-`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 626 lines.
+`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 436 lines.
 
 Extracted files:
 
 - `src/components/mobile/tools/weightConvert.tsx` (`mobileWeightConvert` namespace: `convertSDToNAI`/`convertNAIToSD`/`renderNAIHighlighted`/`renderSDHighlighted`; intentionally distinct from `utils/promptTags.ts` single-tag version and duplicated in desktop `ToolsModal.tsx` — merging needs a dedicated behavior-alignment task).
 - `src/components/mobile/tools/characterRecognition.ts` (`useCharacterRecognition` hook + `CharacterMatch` type + matchers/fetchers; duplicated verbatim in desktop `ToolsModal.tsx` — same merging caveat).
+- `src/components/mobile/tools/MobileMetadataDetail.tsx` (full-screen metadata detail panel; imports `MetadataFile` type from main file which now `export`s it).
 
 Remaining reasonable cuts:
 
-- Extract `MobileMetadataDetail` (full-screen metadata detail panel, ~180 lines) into its own file under `src/components/mobile/tools/`.
-- Extract `cleanImageMetadataProper` + `formatFileSize` into a small helper.
+- Extract `cleanImageMetadataProper` into a small helper (`formatFileSize` already moved into `MobileMetadataDetail`).
 - After helpers are stable, extract the weight-convert UI section and the metadata tool UI section into section components.
 
 Important preserved behavior:
@@ -179,10 +179,10 @@ Important preserved behavior:
 Approximate sizes at this handoff:
 
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
-- `src/components/mobile/MobileToolsPage.tsx`: 626 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
 - `src/components/mobile/MobileImagePage.tsx`: 452 lines
+- `src/components/mobile/MobileToolsPage.tsx`: 436 lines
 
 These numbers will drift. Update this section when a future cleanup phase significantly changes them.
 
