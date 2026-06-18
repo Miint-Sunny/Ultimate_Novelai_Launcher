@@ -84,7 +84,7 @@ Do not add new business logic directly to `MobileGeneratePage.tsx`. Put new beha
 
 ### Mobile Image/Gallery Page
 
-`src/components/mobile/MobileImagePage.tsx` has already been reduced to about 452 lines.
+`src/components/mobile/MobileImagePage.tsx` has already been reduced to about 415 lines.
 
 Extracted files:
 
@@ -92,6 +92,7 @@ Extracted files:
 - `src/components/mobile/gallery/useMobileInpaintBridge.ts`
 - `src/components/mobile/gallery/MobileCompactGalleryStrip.tsx`
 - `src/components/mobile/gallery/MobileCurrentImageToolbar.tsx`
+- `src/components/mobile/gallery/MobileImageStatusPill.tsx`
 - `src/components/mobile/MobileExpandedGallerySheet.tsx`
 - `src/components/mobile/MobileSaveSettingsSheet.tsx`
 - `src/components/mobile/MobileFullscreenImageViewer.tsx`
@@ -181,7 +182,7 @@ Approximate sizes at this handoff:
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 473 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
-- `src/components/mobile/MobileImagePage.tsx`: 452 lines
+- `src/components/mobile/MobileImagePage.tsx`: 415 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 436 lines
 
 These numbers will drift. Update this section when a future cleanup phase significantly changes them.
