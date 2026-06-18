@@ -155,22 +155,23 @@ Next good cuts:
 
 ### Mobile Tools Page
 
-`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 769 lines.
+`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 626 lines.
 
 Extracted files:
 
 - `src/components/mobile/tools/weightConvert.tsx` (`mobileWeightConvert` namespace: `convertSDToNAI`/`convertNAIToSD`/`renderNAIHighlighted`/`renderSDHighlighted`; intentionally distinct from `utils/promptTags.ts` single-tag version and duplicated in desktop `ToolsModal.tsx` — merging needs a dedicated behavior-alignment task).
+- `src/components/mobile/tools/characterRecognition.ts` (`useCharacterRecognition` hook + `CharacterMatch` type + matchers/fetchers; duplicated verbatim in desktop `ToolsModal.tsx` — same merging caveat).
 
 Remaining reasonable cuts:
 
-- Extract the character-recognition helpers (`fetchRoleTagMapping`/`fetchOCData`/`cleanToken`/`tokenize*`/`lcsRatio`/`matchCharacters`/`matchOCs` + `useCharacterRecognition`) into `src/components/mobile/tools/characterRecognition.ts`.
-- Extract `MobileMetadataDetail` (full-screen metadata detail panel) into its own file under `src/components/mobile/tools/`.
+- Extract `MobileMetadataDetail` (full-screen metadata detail panel, ~180 lines) into its own file under `src/components/mobile/tools/`.
 - Extract `cleanImageMetadataProper` + `formatFileSize` into a small helper.
 - After helpers are stable, extract the weight-convert UI section and the metadata tool UI section into section components.
 
 Important preserved behavior:
 
 - Weight conversion output (including the `1.05`/`0.952381` special-weight mapping and `\(` escaping) must remain byte-identical.
+- Character recognition LCS threshold (`0.90`) and the 5-match cap must remain unchanged.
 - `switch-to-generate` event name and metadata import payload shape must remain unchanged.
 
 ## Current Large File Map
@@ -178,7 +179,7 @@ Important preserved behavior:
 Approximate sizes at this handoff:
 
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
-- `src/components/mobile/MobileToolsPage.tsx`: 769 lines
+- `src/components/mobile/MobileToolsPage.tsx`: 626 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
 - `src/components/mobile/MobileImagePage.tsx`: 452 lines
