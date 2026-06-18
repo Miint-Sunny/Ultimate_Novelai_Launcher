@@ -180,12 +180,24 @@ Important preserved behavior:
 Approximate sizes at this handoff:
 
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
-- `src/components/mobile/MobileSettingsPage.tsx`: 473 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
-- `src/components/mobile/MobileImagePage.tsx`: 415 lines
+- `src/components/mobile/MobileUpscaleSheet.tsx`: 478 lines
+- `src/components/mobile/MobileSettingsPage.tsx`: 473 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 436 lines
+- `src/components/mobile/MobileImagePage.tsx`: 415 lines
+- `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
+- `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
 
 These numbers will drift. Update this section when a future cleanup phase significantly changes them.
+
+### Additional extracted files (beyond the per-page sections above)
+
+These were extracted during a broader sweep of mobile sheets/components:
+
+- `src/components/mobile/ai-assistant/AssistantMessageParts.tsx` (`TypewriterText` + `TagButton` + `renderMessageContent` from `MobileAIAssistantSheet`)
+- `src/components/mobile/inspiration/MobileInspirationCategoryGroup.tsx` (`CategoryGroup` from `MobileInspirationSheet`)
+- `src/components/mobile/upscale/loadImageToCanvas.ts` (`loadImageToCanvas` from `MobileUpscaleSheet`)
+- `src/components/mobile/tools/types.ts` (shared `MetadataFile` type, moved out of `MobileToolsPage` to avoid child→parent dependency)
 
 ## Refactor Rules For Future Agents
 
@@ -194,6 +206,10 @@ These numbers will drift. Update this section when a future cleanup phase signif
   - mobile gallery/image logic: `src/components/mobile/gallery/`
   - mobile settings sections: `src/components/mobile/settings/`
   - mobile inpaint pieces: `src/components/mobile/inpaint/`
+  - mobile tools helpers: `src/components/mobile/tools/`
+  - mobile AI assistant parts: `src/components/mobile/ai-assistant/`
+  - mobile inspiration parts: `src/components/mobile/inspiration/`
+  - mobile upscale helpers: `src/components/mobile/upscale/`
 - New components should generally be under 300 lines.
 - Avoid creating a large "misc" helper file.
 - If a new component grows beyond about 300-350 lines, split it immediately by UI subpart or hook.
