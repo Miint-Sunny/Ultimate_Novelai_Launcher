@@ -13,8 +13,6 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
-import { processImageForSave, getSaveExt, estimateSavedSize, type SaveFormat } from '../../utils/imageMetadata';
-import { generateImageFileName } from '../../utils/fileSystem';
 import { MobileInpaintOverlay, type ExpandPayload } from './MobileInpaintOverlay';
 import { MobileUpscaleSheet } from './MobileUpscaleSheet';
 import { MobileFullscreenImageViewer } from './MobileFullscreenImageViewer';
@@ -22,13 +20,7 @@ import { MobileExpandedGallerySheet } from './MobileExpandedGallerySheet';
 import { MobileSaveSettingsSheet } from './MobileSaveSettingsSheet';
 import { alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { registerBackHandler } from './MobileLayout';
-import JSZip from 'jszip';
-
-const STORAGE_KEY_SAVE_MODE = 'nai_save_mode';
-const STORAGE_KEY_CUSTOM_PROMPT = 'nai_save_custom_prompt';
-const STORAGE_KEY_SAVE_FORMAT = 'nai_save_format';
-const STORAGE_KEY_SAVE_QUALITY = 'nai_save_quality';
-const DEFAULT_QUALITY = 0.92;
+import { useMobileSaveDownloadWorkflow } from './gallery/useMobileSaveDownloadWorkflow';
 
 export const MobileGalleryPage: React.FC = () => {
   const {
@@ -55,14 +47,6 @@ export const MobileGalleryPage: React.FC = () => {
   } = useGeneration();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showSaveSettings, setShowSaveSettings] = useState(false);
-  const [saveMode, setSaveMode] = useState<'original' | 'clean' | 'custom'>('original');
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [saveFormat, setSaveFormat] = useState<SaveFormat>('png');
-  const [saveQuality, setSaveQuality] = useState<number>(DEFAULT_QUALITY);
-  const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
-  const [isEstimating, setIsEstimating] = useState(false);
-  const estimateSeqRef = useRef(0);
   const [showError, setShowError] = useState(true);
 
   // 工具栏相关状态
@@ -74,7 +58,34 @@ export const MobileGalleryPage: React.FC = () => {
   const [isGalleryExpanded, setIsGalleryExpanded] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const {
+    showSaveSettings,
+    setShowSaveSettings,
+    saveMode,
+    setSaveMode,
+    customPrompt,
+    setCustomPrompt,
+    saveFormat,
+    setSaveFormat,
+    saveQuality,
+    setSaveQuality,
+    estimatedSize,
+    isEstimating,
+    isDownloading,
+    handleApplySaveSettings,
+    handleDownload,
+    downloadAndSaveImage,
+    handleDownloadSelected,
+    handleDownloadAll,
+    handleDeleteSelected: deleteSelectedDownloads,
+  } = useMobileSaveDownloadWorkflow({
+    imageUrl,
+    currentSeed,
+    history,
+    selectedItems,
+    setSelectedItems,
+    setIsSelectionMode,
+  });
 
   const displayUrl = (isGenerating || isQueuing)
     ? (viewingHistory ? imageUrl : previewUrl)
@@ -136,104 +147,6 @@ export const MobileGalleryPage: React.FC = () => {
       setShowError(true);
     }
   }, [result]);
-
-  // 加载保存设置
-  useEffect(() => {
-    const savedMode = localStorage.getItem(STORAGE_KEY_SAVE_MODE) as 'original' | 'clean' | 'custom' | null;
-    const savedPrompt = localStorage.getItem(STORAGE_KEY_CUSTOM_PROMPT);
-    const savedFormat = localStorage.getItem(STORAGE_KEY_SAVE_FORMAT) as SaveFormat | null;
-    const savedQuality = localStorage.getItem(STORAGE_KEY_SAVE_QUALITY);
-    if (savedMode) setSaveMode(savedMode);
-    if (savedPrompt) setCustomPrompt(savedPrompt);
-    if (savedFormat === 'png' || savedFormat === 'jpg') setSaveFormat(savedFormat);
-    if (savedQuality) {
-      const q = Number(savedQuality);
-      if (Number.isFinite(q) && q > 0 && q <= 1) setSaveQuality(q);
-    }
-  }, []);
-
-  // 保存设置弹窗打开时估算大小（debounced）
-  useEffect(() => {
-    if (!showSaveSettings || !imageUrl) {
-      setEstimatedSize(null);
-      return;
-    }
-    const seq = ++estimateSeqRef.current;
-    setIsEstimating(true);
-    const timer = window.setTimeout(async () => {
-      try {
-        const size = await estimateSavedSize(imageUrl, {
-          mode: saveMode,
-          customPrompt,
-          format: saveFormat,
-          quality: saveQuality,
-        });
-        if (seq === estimateSeqRef.current) setEstimatedSize(size);
-      } catch {
-        if (seq === estimateSeqRef.current) setEstimatedSize(null);
-      } finally {
-        if (seq === estimateSeqRef.current) setIsEstimating(false);
-      }
-    }, saveFormat === 'jpg' ? 220 : 60);
-    return () => window.clearTimeout(timer);
-  }, [showSaveSettings, imageUrl, saveMode, customPrompt, saveFormat, saveQuality]);
-
-  // 保存设置到 localStorage
-  const handleApplySaveSettings = () => {
-    localStorage.setItem(STORAGE_KEY_SAVE_MODE, saveMode);
-    if (saveMode === 'custom') {
-      localStorage.setItem(STORAGE_KEY_CUSTOM_PROMPT, customPrompt);
-    }
-    localStorage.setItem(STORAGE_KEY_SAVE_FORMAT, saveFormat);
-    localStorage.setItem(STORAGE_KEY_SAVE_QUALITY, String(saveQuality));
-    window.dispatchEvent(new Event('saveSettingsUpdated'));
-    setShowSaveSettings(false);
-  };
-
-  // 通用下载单张图片函数（根据保存设置）
-  const downloadSingleImage = async (url: string, _seed: number | string): Promise<Blob | null> => {
-    try {
-      return await processImageForSave(url, {
-        mode: saveMode,
-        customPrompt,
-        format: saveFormat,
-        quality: saveQuality,
-      });
-    } catch (error) {
-      console.error('处理图片失败:', error);
-      return null;
-    }
-  };
-
-  // 文件名后缀（jpg 模式不附加 _clean/_custom，因 jpg 等价无元数据）
-  const getModeSuffix = () => {
-    if (saveFormat !== 'png') return '';
-    if (saveMode === 'clean') return '_clean';
-    if (saveMode === 'custom') return '_custom';
-    return '';
-  };
-
-  // 下载并保存单张图片
-  const downloadAndSaveImage = async (url: string, seed: number | string, timestamp?: number) => {
-    const blob = await downloadSingleImage(url, seed);
-    if (blob) {
-      const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = generateImageFileName(getModeSuffix(), timestamp, getSaveExt(saveFormat));
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(downloadUrl);
-    }
-  };
-
-  // 下载图片（根据保存设置）
-  const handleDownload = async () => {
-    if (!imageUrl) return;
-    const currentTimestamp = history.find(h => h.imageUrl === imageUrl)?.timestamp;
-    await downloadAndSaveImage(imageUrl, currentSeed || Date.now(), currentTimestamp);
-  };
 
   // 使用种子
   const handleUseSeed = () => {
@@ -446,87 +359,7 @@ export const MobileGalleryPage: React.FC = () => {
     setSelectedItems(new Set());
   };
 
-  const handleDeleteSelected = () => {
-    if (selectedItems.size === 0) return;
-    deleteHistoryItems(Array.from(selectedItems));
-    setSelectedItems(new Set());
-    setIsSelectionMode(false);
-  };
-
-  const handleDownloadSelected = async () => {
-    if (selectedItems.size === 0) return;
-
-    setIsDownloading(true);
-    try {
-      const selectedHistory = history.filter((item) => selectedItems.has(item.id));
-
-      if (selectedHistory.length === 1) {
-        // 单张直接下载
-        const item = selectedHistory[0];
-        await downloadAndSaveImage(item.imageUrl, item.seed, item.timestamp);
-      } else {
-        // 多张打包下载
-        const zip = new JSZip();
-        const suffix = getModeSuffix();
-        const ext = getSaveExt(saveFormat);
-
-        for (let i = 0; i < selectedHistory.length; i++) {
-          const item = selectedHistory[i];
-          const blob = await downloadSingleImage(item.imageUrl, item.seed);
-          if (blob) {
-            zip.file(generateImageFileName(suffix, item.timestamp, ext), blob);
-          }
-        }
-
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(zipBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `novelai_images_${Date.now()}.zip`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      console.error('下载失败:', error);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleDownloadAll = async () => {
-    if (history.length === 0) return;
-
-    setIsDownloading(true);
-    try {
-      const zip = new JSZip();
-      const suffix = getModeSuffix();
-      const ext = getSaveExt(saveFormat);
-
-      for (let i = 0; i < history.length; i++) {
-        const item = history[i];
-        const blob = await downloadSingleImage(item.imageUrl, item.seed);
-        if (blob) {
-          zip.file(generateImageFileName(suffix, item.timestamp, ext), blob);
-        }
-      }
-
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(zipBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `novelai_all_${Date.now()}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('打包下载失败:', error);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
+  const handleDeleteSelected = () => deleteSelectedDownloads(deleteHistoryItems);
 
   return (
     <div className="flex flex-col h-full bg-nai-bg">
