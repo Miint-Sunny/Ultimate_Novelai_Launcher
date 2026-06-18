@@ -4,6 +4,7 @@ import { getCachedIsOpus } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
 import { calculateCropRect, alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
+import { MobileInpaintCropPreview } from './inpaint/MobileInpaintCropPreview';
 import { MobileInpaintExpandOverlay } from './inpaint/MobileInpaintExpandOverlay';
 import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
 import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
@@ -926,49 +927,15 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
                 }}
               />
             )}
-            {/* 裁切预览框 */}
-            {isCropMode && cropPreview && !isGenerating && (() => {
-              const scale = baseScale * zoom;
-              return (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: `${displayWidth}px`,
-                    height: `${displayHeight}px`,
-                    pointerEvents: 'none',
-                    zIndex: 5,
-                  }}
-                >
-                  <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${cropPreview.y * scale}px`, background: 'rgba(0,0,0,0.4)' }} />
-                  <div style={{ position: 'absolute', top: `${(cropPreview.y + cropPreview.height) * scale}px`, left: 0, width: '100%', bottom: 0, background: 'rgba(0,0,0,0.4)' }} />
-                  <div style={{ position: 'absolute', top: `${cropPreview.y * scale}px`, left: 0, width: `${cropPreview.x * scale}px`, height: `${cropPreview.height * scale}px`, background: 'rgba(0,0,0,0.4)' }} />
-                  <div style={{ position: 'absolute', top: `${cropPreview.y * scale}px`, left: `${(cropPreview.x + cropPreview.width) * scale}px`, right: 0, height: `${cropPreview.height * scale}px`, background: 'rgba(0,0,0,0.4)' }} />
-                  <div style={{
-                    position: 'absolute',
-                    top: `${cropPreview.y * scale}px`,
-                    left: `${cropPreview.x * scale}px`,
-                    width: `${cropPreview.width * scale}px`,
-                    height: `${cropPreview.height * scale}px`,
-                    border: '2px dashed rgba(45, 212, 191, 0.8)',
-                  }} />
-                  <div style={{
-                    position: 'absolute',
-                    top: `${cropPreview.y * scale - 20}px`,
-                    left: `${cropPreview.x * scale}px`,
-                    background: 'rgba(45, 212, 191, 0.9)',
-                    color: 'black',
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    padding: '1px 4px',
-                    borderRadius: '3px',
-                  }}>
-                    {cropPreview.width}x{cropPreview.height}
-                  </div>
-                </div>
-              );
-            })()}
+            <MobileInpaintCropPreview
+              isCropMode={isCropMode}
+              cropPreview={cropPreview}
+              isGenerating={isGenerating}
+              displayWidth={displayWidth}
+              displayHeight={displayHeight}
+              baseScale={baseScale}
+              zoom={zoom}
+            />
             {showOriginal && snapshotRef.current && (() => {
               const snap = snapshotRef.current!;
               const s = displayWidth / imageWidth;
