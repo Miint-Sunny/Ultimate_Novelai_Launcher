@@ -104,7 +104,7 @@ Important preserved behavior:
 
 ### Mobile Settings Page
 
-`src/components/mobile/MobileSettingsPage.tsx` has already been reduced from about 1249 lines to about 545 lines.
+`src/components/mobile/MobileSettingsPage.tsx` has already been reduced from about 1249 lines to about 494 lines.
 
 Extracted files:
 
@@ -112,12 +112,12 @@ Extracted files:
 - `src/components/mobile/settings/MobileBackupSettingsSection.tsx`
 - `src/components/mobile/settings/MobilePresetSettingsSection.tsx`
 - `src/components/mobile/settings/MobileAISettingsSection.tsx`
+- `src/components/mobile/settings/MobileAutocompleteSettingsSection.tsx`
 - `src/components/mobile/settings/MobileSettingsToggle.tsx`
 
 Remaining reasonable cuts:
 
 - extract theme settings section.
-- extract autocomplete settings section.
 - extract login/token/Bot auth settings section.
 - optionally extract the settings main list/header shell after sections are stable.
 
@@ -179,7 +179,7 @@ Important preserved behavior:
 Approximate sizes at this handoff:
 
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
-- `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
+- `src/components/mobile/MobileSettingsPage.tsx`: 494 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
 - `src/components/mobile/MobileImagePage.tsx`: 452 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 436 lines
