@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Image as ImageIcon,
   Download,
@@ -13,13 +13,13 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
-import { MobileInpaintOverlay, type ExpandPayload } from './MobileInpaintOverlay';
+import { MobileInpaintOverlay } from './MobileInpaintOverlay';
 import { MobileUpscaleSheet } from './MobileUpscaleSheet';
 import { MobileFullscreenImageViewer } from './MobileFullscreenImageViewer';
 import { MobileExpandedGallerySheet } from './MobileExpandedGallerySheet';
 import { MobileSaveSettingsSheet } from './MobileSaveSettingsSheet';
-import { alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { registerBackHandler } from './MobileLayout';
+import { useMobileInpaintBridge } from './gallery/useMobileInpaintBridge';
 import { useMobileSaveDownloadWorkflow } from './gallery/useMobileSaveDownloadWorkflow';
 
 export const MobileGalleryPage: React.FC = () => {
@@ -50,9 +50,24 @@ export const MobileGalleryPage: React.FC = () => {
   const [showError, setShowError] = useState(true);
 
   // 工具栏相关状态
-  const [isInpaintMode, setIsInpaintMode] = useState(false);
-  const [isInpainting, setIsInpainting] = useState(false);
   const [isUpscaleModalOpen, setIsUpscaleModalOpen] = useState(false);
+  const {
+    isInpaintMode,
+    setIsInpaintMode,
+    isInpainting,
+    initialMask,
+    inpaintOriginalImage,
+    inpaintDimensions,
+    openInpaintMode,
+    handleInpaintGenerate,
+    handleCloseInpaint,
+  } = useMobileInpaintBridge({
+    imageUrl,
+    targetWidth,
+    targetHeight,
+    isGenerating,
+    isQueuing,
+  });
 
   // 展开图库状态
   const [isGalleryExpanded, setIsGalleryExpanded] = useState(false);
@@ -124,23 +139,6 @@ export const MobileGalleryPage: React.FC = () => {
     return registerBackHandler(handleBack);
   }, [isFullscreen, isGalleryExpanded, showSaveSettings, isUpscaleModalOpen, isInpaintMode]);
 
-  // 监听从生成页面发来的打开重绘模式事件
-  const [initialMask, setInitialMask] = useState<string | null>(null);
-  const [inpaintOriginalImage, setInpaintOriginalImage] = useState<string | null>(null);
-  const [inpaintDimensions, setInpaintDimensions] = useState<{ width: number; height: number } | null>(null);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setInitialMask(detail?.maskBase64 || null);
-      setInpaintOriginalImage(detail?.imageBase64 ? `data:image/png;base64,${detail.imageBase64}` : null);
-      setInpaintDimensions(detail?.width && detail?.height ? { width: detail.width, height: detail.height } : null);
-      setIsInpaintMode(true);
-    };
-    window.addEventListener('open-inpaint-mode', handler);
-    return () => window.removeEventListener('open-inpaint-mode', handler);
-  }, []);
-
   // 当有新错误时重置显示状态
   useEffect(() => {
     if (result && !result.success) {
@@ -158,167 +156,6 @@ export const MobileGalleryPage: React.FC = () => {
   // 重新生成
   const handleRegenerate = () => {
     window.dispatchEvent(new Event('regenerate-image'));
-  };
-
-  // 局部重绘处理
-  const handleInpaintGenerate = async (
-    maskBase64: string,
-    strength: number,
-    cropRect?: CropRect,
-    expandPayload?: ExpandPayload,
-  ) => {
-    // 优先使用从图生图传入的原始图片，没有才回退到主画布图片
-    const sourceImageUrl = inpaintOriginalImage || imageUrl;
-    if (!sourceImageUrl) return;
-
-
-    // 获取原图实际尺寸
-    const sourceWidth = inpaintDimensions?.width || targetWidth;
-    const sourceHeight = inpaintDimensions?.height || targetHeight;
-
-    setIsInpainting(true);
-    try {
-      // ===== 扩图框选模式：MobileInpaintOverlay 已准备好完整载荷 =====
-      if (expandPayload) {
-        pendingPasteBackRef.current = true;
-        const event = new CustomEvent('inpaint-generate', {
-          detail: {
-            imageBase64: expandPayload.imageBase64,
-            maskBase64: expandPayload.maskBase64,
-            strength,
-            width: expandPayload.width,
-            height: expandPayload.height,
-            cropInfo: {
-              cropRect: expandPayload.selection,
-              originalImageBase64: expandPayload.originalImageBase64,
-              originalWidth: expandPayload.originalWidth,
-              originalHeight: expandPayload.originalHeight,
-              isExpand: true,
-            },
-          }
-        });
-        window.dispatchEvent(event);
-        return;
-      }
-
-      // ===== 普通重绘 / 裁切重绘模式 =====
-      const response = await fetch(sourceImageUrl);
-      const blob = await response.blob();
-
-      let imageBase64: string;
-      let fullWidth = sourceWidth;
-      let fullHeight = sourceHeight;
-
-      const reader = new FileReader();
-      imageBase64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-
-      // 裁切重绘模式
-      let cropInfo: { cropRect: CropRect; sendRect?: CropRect; originalImageBase64: string; originalWidth: number; originalHeight: number } | undefined;
-
-      if (cropRect) {
-        const fullImageBase64 = imageBase64;
-
-        // tight cropRect 用于回贴；sendRect 是 64 对齐后发送给 API 的区域
-        const sendRect = alignSendRect(cropRect, fullWidth, fullHeight);
-
-        const fullImg = new Image();
-        await new Promise<void>((resolve) => {
-          fullImg.onload = () => resolve();
-          fullImg.src = `data:image/png;base64,${fullImageBase64}`;
-        });
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = sendRect.width;
-        cropCanvas.height = sendRect.height;
-        const cropCtx = cropCanvas.getContext('2d')!;
-        cropCtx.drawImage(fullImg, -sendRect.x, -sendRect.y);
-        imageBase64 = cropCanvas.toDataURL('image/png').split(',')[1];
-
-        const maskImg = new Image();
-        await new Promise<void>((resolve) => {
-          maskImg.onload = () => resolve();
-          maskImg.src = `data:image/png;base64,${maskBase64}`;
-        });
-        const maskCropCanvas = document.createElement('canvas');
-        maskCropCanvas.width = sendRect.width;
-        maskCropCanvas.height = sendRect.height;
-        const maskCropCtx = maskCropCanvas.getContext('2d')!;
-        maskCropCtx.fillStyle = '#000000';
-        maskCropCtx.fillRect(0, 0, sendRect.width, sendRect.height);
-        maskCropCtx.drawImage(maskImg, -sendRect.x, -sendRect.y);
-        maskBase64 = maskCropCanvas.toDataURL('image/png').split(',')[1];
-
-        cropInfo = {
-          cropRect,
-          sendRect,
-          originalImageBase64: fullImageBase64,
-          originalWidth: fullWidth,
-          originalHeight: fullHeight,
-        };
-
-        fullWidth = sendRect.width;
-        fullHeight = sendRect.height;
-      }
-
-      if (cropInfo) pendingPasteBackRef.current = true;
-      const event = new CustomEvent('inpaint-generate', {
-        detail: {
-          imageBase64,
-          maskBase64,
-          strength,
-          width: fullWidth,
-          height: fullHeight,
-          cropInfo,
-        }
-      });
-      window.dispatchEvent(event);
-    } catch (error) {
-      console.error('局部重绘失败:', error);
-      setIsInpainting(false);
-    }
-  };
-
-  // 追踪生成状态变化
-  const wasGeneratingRef = useRef(false);
-  const wasQueuingRef = useRef(false);
-  const pendingPasteBackRef = useRef(false);
-
-  useEffect(() => {
-    const wasActive = wasGeneratingRef.current || wasQueuingRef.current;
-    const isActive = isGenerating || isQueuing;
-
-    if (isInpainting && wasActive && !isActive) {
-      setIsInpainting(false);
-      if (!pendingPasteBackRef.current) {
-        setInpaintOriginalImage(null);
-        setInpaintDimensions(null);
-        setInitialMask(null);
-      }
-    }
-
-    wasGeneratingRef.current = isGenerating;
-    wasQueuingRef.current = isQueuing;
-  }, [isGenerating, isQueuing, isInpainting]);
-
-  useEffect(() => {
-    const onDone = () => {
-      pendingPasteBackRef.current = false;
-      setInpaintOriginalImage(null);
-      setInpaintDimensions(null);
-      setInitialMask(null);
-    };
-    window.addEventListener('inpaint-pasteback-done', onDone);
-    return () => window.removeEventListener('inpaint-pasteback-done', onDone);
-  }, []);
-
-  const handleCloseInpaint = () => {
-    setIsInpaintMode(false);
-    setInitialMask(null);
-    setInpaintOriginalImage(null);
-    setInpaintDimensions(null);
   };
 
   // 超分辨率完成处理
@@ -411,7 +248,7 @@ export const MobileGalleryPage: React.FC = () => {
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all ${hasImage ? 'text-gray-300 active:bg-white/10' : 'text-gray-600'
                   }`}
-                onClick={() => { setInitialMask(null); setInpaintOriginalImage(null); setInpaintDimensions(null); setIsInpaintMode(true); }}
+                onClick={openInpaintMode}
                 disabled={!hasImage}
               >
                 <Paintbrush className="w-4 h-4" />
