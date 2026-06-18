@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Image as ImageIcon,
-  Download,
-  FileDigit,
   Maximize2,
-  Settings2,
   X,
-  RefreshCw,
   Settings,
   Paintbrush,
   AlertCircle,
@@ -19,6 +15,7 @@ import { MobileExpandedGallerySheet } from './MobileExpandedGallerySheet';
 import { MobileSaveSettingsSheet } from './MobileSaveSettingsSheet';
 import { registerBackHandler } from './MobileLayout';
 import { MobileCompactGalleryStrip } from './gallery/MobileCompactGalleryStrip';
+import { MobileCurrentImageToolbar } from './gallery/MobileCurrentImageToolbar';
 import { useMobileInpaintBridge } from './gallery/useMobileInpaintBridge';
 import { useMobileSaveDownloadWorkflow } from './gallery/useMobileSaveDownloadWorkflow';
 
@@ -360,71 +357,15 @@ export const MobileGalleryPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 当前图片工具栏 */}
-        {imageUrl && !isGenerating && (
-          <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
-            {/* 对比按钮 - 仅在当前图片是重绘图片且有对比原图时显示 */}
-            <button
-              onClick={handleUseSeed}
-              className="flex items-center gap-1.5 px-3 py-2 bg-black/70 backdrop-blur-sm rounded-lg text-sm"
-            >
-              <FileDigit className="w-4 h-4" />
-              {currentSeed}
-            </button>
-            <button
-              onClick={handleRegenerate}
-              className="p-2.5 bg-nai-accent/90 backdrop-blur-sm rounded-lg"
-              title="重新生成"
-            >
-              <RefreshCw className="w-5 h-5 text-black" />
-            </button>
-            <button
-              onClick={handleDownload}
-              className="p-2.5 bg-black/70 backdrop-blur-sm rounded-lg"
-              title="下载"
-            >
-              <Download className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                if (!imageUrl) return;
-                const currentItem = history.find(h => h.imageUrl === imageUrl);
-                // 通过事件触发 MobileGeneratePage 的导入面板
-                window.dispatchEvent(new CustomEvent('open-image-import', {
-                  detail: {
-                    dataUrl: imageUrl,
-                    metadata: currentItem?.metadata ? (() => {
-                      const m = currentItem.metadata!;
-                      return {
-                        source: `NovelAI (${m.model})`,
-                        sourceType: 'novelai',
-                        prompt: m.positivePrompt,
-                        negativePrompt: m.negativePrompt,
-                        width: currentItem.width,
-                        height: currentItem.height,
-                        seed: String(currentItem.seed),
-                        steps: String(m.steps),
-                        scale: String(m.scale),
-                        sampler: m.sampler,
-                        cfgRescale: m.cfgRescale,
-                        noiseSchedule: m.noiseSchedule,
-                        characterPrompts: m.characterPrompts?.map(cp => ({
-                          prompt: cp.positive,
-                          uc: cp.negative,
-                          center: cp.position ? { x: 0, y: 0 } : undefined,
-                        })),
-                      };
-                    })() : null,
-                  },
-                }));
-              }}
-              className="p-2.5 bg-black/70 backdrop-blur-sm rounded-lg"
-              title="导入元数据"
-            >
-              <Settings2 className="w-5 h-5" />
-            </button>
-          </div>
-        )}
+        <MobileCurrentImageToolbar
+          imageUrl={imageUrl}
+          isGenerating={isGenerating}
+          currentSeed={currentSeed}
+          history={history}
+          onUseSeed={handleUseSeed}
+          onRegenerate={handleRegenerate}
+          onDownload={handleDownload}
+        />
       </div>
 
       <MobileCompactGalleryStrip
