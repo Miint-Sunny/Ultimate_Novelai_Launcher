@@ -5,6 +5,7 @@ import { getAISettings } from '../../services/localLibrary';
 import { calculateCropRect, alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
 import { MobileInpaintCompareOverlay, type InpaintSnapshot } from './inpaint/MobileInpaintCompareOverlay';
+import { buildExpandPayload } from './inpaint/expandPayload';
 import { MobileInpaintCropPreview } from './inpaint/MobileInpaintCropPreview';
 import { MobileInpaintExpandOverlay } from './inpaint/MobileInpaintExpandOverlay';
 import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
@@ -13,26 +14,10 @@ import { expandMaskRegions, getMaskBase64FromCanvas } from './inpaint/maskUtils'
 
 type BrushShape = 'square' | 'circle';
 
-// 扩图框选区域（图片坐标系，x/y 可为负表示超出图片左/上边界）
-export interface ExpandSelection {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-// 扩图预备载荷（MobileInpaintOverlay 内部构建好的完整图+遮罩）
-export interface ExpandPayload {
-  imageBase64: string;
-  maskBase64: string;
-  width: number;
-  height: number;
-  // 回贴信息
-  selection: ExpandSelection;
-  originalImageBase64: string;
-  originalWidth: number;
-  originalHeight: number;
-}
+// 扩图相关类型与 payload 构建已抽到 ./inpaint/expandPayload.ts；
+// 此处 re-export 保持对外类型 API 稳定（useMobileInpaintBridge 直接 import ExpandPayload）。
+import type { ExpandPayload } from './inpaint/expandPayload';
+export type { ExpandSelection, ExpandPayload } from './inpaint/expandPayload';
 
 interface MobileInpaintOverlayProps {
   imageUrl: string;
@@ -548,60 +533,10 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
 
     // ===== 扩图框选模式 =====
     if (isExpandMode && hasExpand) {
-      const sel: ExpandSelection = {
-        x: -expandPadding.left,
-        y: -expandPadding.top,
-        width: imageWidth + expandPadding.left + expandPadding.right,
-        height: imageHeight + expandPadding.top + expandPadding.bottom,
-      };
-      const img = loadedImageRef.current;
-      if (!img) return;
-
-      // 构建选区大小的图片（白底 + 原图对应部分）
-      const imgCanvas = document.createElement('canvas');
-      imgCanvas.width = sel.width;
-      imgCanvas.height = sel.height;
-      const imgCtx = imgCanvas.getContext('2d')!;
-      imgCtx.fillStyle = '#ffffff';
-      imgCtx.fillRect(0, 0, sel.width, sel.height);
-      imgCtx.drawImage(img, expandPadding.left, expandPadding.top, imageWidth, imageHeight);
-      const imageBase64 = imgCanvas.toDataURL('image/png').split(',')[1];
-
-      // 构建选区大小的遮罩（图片覆盖区域=黑=保留，外部=白=生���）
-      const maskCanvas = document.createElement('canvas');
-      maskCanvas.width = sel.width;
-      maskCanvas.height = sel.height;
-      const maskCtx = maskCanvas.getContext('2d')!;
-      maskCtx.fillStyle = '#ffffff';
-      maskCtx.fillRect(0, 0, sel.width, sel.height);
-      // 原图区域设为黑色（保留）
-      maskCtx.fillStyle = '#000000';
-      maskCtx.fillRect(expandPadding.left, expandPadding.top, imageWidth, imageHeight);
-      // 8x8 网格对齐
-      const maskData = maskCtx.getImageData(0, 0, sel.width, sel.height);
-      const expandedMask = expandMaskRegions(maskData);
-      maskCtx.putImageData(expandedMask, 0, 0);
-      const selMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
-
-      // 获取原图 base64
-      const origCanvas = document.createElement('canvas');
-      origCanvas.width = imageWidth;
-      origCanvas.height = imageHeight;
-      origCanvas.getContext('2d')!.drawImage(img, 0, 0);
-      const originalImageBase64 = origCanvas.toDataURL('image/png').split(',')[1];
-
-      const expandPayload: ExpandPayload = {
-        imageBase64,
-        maskBase64: selMaskBase64,
-        width: sel.width,
-        height: sel.height,
-        selection: sel,
-        originalImageBase64,
-        originalWidth: imageWidth,
-        originalHeight: imageHeight,
-      };
-      activeGenRectRef.current = { x: 0, y: 0, width: sel.width, height: sel.height };
-      onGenerate(selMaskBase64, strength, undefined, expandPayload);
+      const result = buildExpandPayload(loadedImageRef.current, imageWidth, imageHeight, expandPadding);
+      if (!result) return;
+      activeGenRectRef.current = result.genRect;
+      onGenerate(result.maskBase64, strength, undefined, result.payload);
       return;
     }
 
