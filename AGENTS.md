@@ -125,7 +125,7 @@ Do not change token storage semantics while doing UI cleanup. Token handling mus
 
 ### Mobile Inpaint Overlay
 
-`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 773 lines.
+`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 765 lines.
 
 Extracted files:
 
@@ -137,6 +137,7 @@ Extracted files:
 - `src/components/mobile/inpaint/MobileInpaintCompareOverlay.tsx`
 - `src/components/mobile/inpaint/maskUtils.ts` (mobile-specific `expandMaskRegions` + `getMaskBase64FromCanvas`; intentionally distinct from desktop `src/components/inpaint/maskUtils.ts`)
 - `src/components/mobile/inpaint/expandPayload.ts` (`buildExpandPayload` + `ExpandSelection`/`ExpandPayload` types; main file re-exports types so `useMobileInpaintBridge` import path stays stable)
+- `src/components/mobile/inpaint/scaleUtils.ts` (`calculateBaseScale` pure helper for `baseScale` useMemo)
 
 Important preserved behavior:
 
@@ -166,7 +167,7 @@ Suggested approach:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/MobileInpaintOverlay.tsx`: 773 lines
+- `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 875 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
