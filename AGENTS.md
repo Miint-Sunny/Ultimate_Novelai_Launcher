@@ -125,7 +125,7 @@ Do not change token storage semantics while doing UI cleanup. Token handling mus
 
 ### Mobile Inpaint Overlay
 
-`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 992 lines.
+`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 980 lines.
 
 Extracted files:
 
@@ -134,6 +134,7 @@ Extracted files:
 - `src/components/mobile/inpaint/MobileInpaintProgressPill.tsx`
 - `src/components/mobile/inpaint/MobileInpaintExpandOverlay.tsx`
 - `src/components/mobile/inpaint/MobileInpaintCropPreview.tsx`
+- `src/components/mobile/inpaint/MobileInpaintCompareOverlay.tsx`
 
 Important preserved behavior:
 
@@ -141,13 +142,13 @@ Important preserved behavior:
 - `inpaint-strength-sync` and `inpaint-panel-strength-change` events remain unchanged.
 - crop/expand payload shape passed to `onGenerate` must remain unchanged.
 - canvas dimensions, mask expansion, and 8x8 alignment behavior are sensitive; avoid changing algorithms while extracting.
+- The original-image compare overlay is driven by `snapshotRef` (a ref, read during render) paired with `showOriginal`; re-render visibility is triggered by `setHasSnapshot(true)` set right after the ref in `handleGenerate`, so passing `snapshot={snapshotRef.current}` as a prop preserves timing.
 
 Next good cuts:
 
-- Extract the original-image comparison overlay based on `snapshotRef` and `showOriginal`.
 - Extract canvas image lifecycle/loading into a hook only if the boundary is very clear.
 - Extract touch/pinch/draw event handling into a hook after UI extraction is complete.
-- Extract mask expansion and generate-payload building into helpers with no behavior changes.
+- Extract mask expansion (`expandMaskRegions`) and `getMaskBase64` / generate-payload building into helpers with no behavior changes.
 
 ### Mobile Tools Page
 
@@ -163,7 +164,7 @@ Suggested approach:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/MobileInpaintOverlay.tsx`: 992 lines
+- `src/components/mobile/MobileInpaintOverlay.tsx`: 980 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 875 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 545 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
