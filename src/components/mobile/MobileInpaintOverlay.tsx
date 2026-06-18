@@ -10,6 +10,7 @@ import { MobileInpaintCropPreview } from './inpaint/MobileInpaintCropPreview';
 import { MobileInpaintExpandOverlay } from './inpaint/MobileInpaintExpandOverlay';
 import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
 import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
+import { calculateBaseScale } from './inpaint/scaleUtils';
 import { expandMaskRegions, getMaskBase64FromCanvas } from './inpaint/maskUtils';
 
 type BrushShape = 'square' | 'circle';
@@ -121,19 +122,10 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   });
 
   // 同步计算 baseScale
-  const baseScale = useMemo(() => {
-    const { width, height } = containerSize;
-    if (width === 0 || height === 0) return 0;
-    const maxWidth = width - 16;
-    const maxHeight = height - 180;
-    // 扩图模式需要更大的边距，留出按钮空间
-    const expandModeMargin = isExpandMode ? 80 : 0;
-    const availableWidth = maxWidth - expandModeMargin * 2;
-    const availableHeight = maxHeight - expandModeMargin * 2;
-    const totalW = imageWidth + expandPadding.left + expandPadding.right;
-    const totalH = imageHeight + expandPadding.top + expandPadding.bottom;
-    return Math.min(availableWidth / totalW, availableHeight / totalH, 1);
-  }, [imageWidth, imageHeight, expandPadding, isExpandMode, containerSize]);
+  const baseScale = useMemo(
+    () => calculateBaseScale(containerSize, imageWidth, imageHeight, expandPadding, isExpandMode),
+    [imageWidth, imageHeight, expandPadding, isExpandMode, containerSize],
+  );
 
   // 进入/退出扩图模式时重置
   useEffect(() => {
