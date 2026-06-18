@@ -11,7 +11,7 @@ import { MobileInpaintExpandOverlay } from './inpaint/MobileInpaintExpandOverlay
 import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
 import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
 import { calculateBaseScale } from './inpaint/scaleUtils';
-import { expandMaskRegions, getMaskBase64FromCanvas } from './inpaint/maskUtils';
+import { getMaskBase64FromCanvas } from './inpaint/maskUtils';
 
 type BrushShape = 'square' | 'circle';
 
