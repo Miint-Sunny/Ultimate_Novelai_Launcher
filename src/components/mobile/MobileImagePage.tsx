@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Image as ImageIcon,
   Download,
@@ -20,13 +20,13 @@ import {
   Square,
   Loader2,
   AlertCircle,
-  Eye,
 } from 'lucide-react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { processImageForSave, getSaveExt, estimateSavedSize, type SaveFormat } from '../../utils/imageMetadata';
 import { generateImageFileName } from '../../utils/fileSystem';
 import { MobileInpaintOverlay, type ExpandPayload } from './MobileInpaintOverlay';
 import { MobileUpscaleSheet } from './MobileUpscaleSheet';
+import { MobileFullscreenImageViewer } from './MobileFullscreenImageViewer';
 import { alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { registerBackHandler } from './MobileLayout';
 import JSZip from 'jszip';
@@ -859,7 +859,7 @@ export const MobileGalleryPage: React.FC = () => {
 
       {/* 全屏预览 - 支持双指缩放 */}
       {isFullscreen && imageUrl && (
-        <FullscreenImageViewer
+        <MobileFullscreenImageViewer
           imageUrl={imageUrl}
           onClose={() => setIsFullscreen(false)}
         />
@@ -1264,241 +1264,6 @@ export const MobileGalleryPage: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// 全屏图片查看器 - 支持双指缩放
-const FullscreenImageViewer: React.FC<{
-  imageUrl: string;
-  onClose: () => void;
-}> = ({ imageUrl, onClose }) => {
-  const [scale, setScale] = useState(1);
-  const [translate, setTranslate] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-
-  // 触摸状态
-  const touchStateRef = useRef({
-    initialDistance: 0,
-    initialScale: 1,
-    initialTranslate: { x: 0, y: 0 },
-    initialCenter: { x: 0, y: 0 },
-    lastTouchEnd: 0,
-    isPinching: false,
-    isDragging: false,
-    startTouch: { x: 0, y: 0 },
-  });
-
-  // 计算两点间距离
-  const getDistance = (touches: React.TouchList) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  // 计算两点中心
-  const getCenter = (touches: React.TouchList) => {
-    if (touches.length < 2) {
-      return { x: touches[0].clientX, y: touches[0].clientY };
-    }
-    return {
-      x: (touches[0].clientX + touches[1].clientX) / 2,
-      y: (touches[0].clientY + touches[1].clientY) / 2,
-    };
-  };
-
-  // 限制平移范围
-  const clampTranslate = useCallback(
-    (tx: number, ty: number, currentScale: number) => {
-      if (!containerRef.current || !imageRef.current) return { x: tx, y: ty };
-
-      const container = containerRef.current.getBoundingClientRect();
-      const img = imageRef.current;
-
-      // 计算图片实际显示尺寸
-      const imgRatio = img.naturalWidth / img.naturalHeight;
-      const containerRatio = container.width / container.height;
-
-      let displayWidth: number, displayHeight: number;
-      if (imgRatio > containerRatio) {
-        displayWidth = container.width;
-        displayHeight = container.width / imgRatio;
-      } else {
-        displayHeight = container.height;
-        displayWidth = container.height * imgRatio;
-      }
-
-      const scaledWidth = displayWidth * currentScale;
-      const scaledHeight = displayHeight * currentScale;
-
-      // 如果缩放后图片小于容器，居中显示
-      if (scaledWidth <= container.width && scaledHeight <= container.height) {
-        return { x: 0, y: 0 };
-      }
-
-      // 计算最大平移范围
-      const maxX = Math.max(0, (scaledWidth - container.width) / 2);
-      const maxY = Math.max(0, (scaledHeight - container.height) / 2);
-
-      return {
-        x: Math.max(-maxX, Math.min(maxX, tx)),
-        y: Math.max(-maxY, Math.min(maxY, ty)),
-      };
-    },
-    []
-  );
-
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      const touches = e.touches;
-      const state = touchStateRef.current;
-
-      if (touches.length === 2) {
-        // 双指缩放开始
-        state.isPinching = true;
-        state.isDragging = false;
-        state.initialDistance = getDistance(touches);
-        state.initialScale = scale;
-        state.initialTranslate = { ...translate };
-        state.initialCenter = getCenter(touches);
-      } else if (touches.length === 1 && scale > 1) {
-        // 单指拖动（仅在放大时）
-        state.isDragging = true;
-        state.isPinching = false;
-        state.startTouch = { x: touches[0].clientX, y: touches[0].clientY };
-        state.initialTranslate = { ...translate };
-      }
-    },
-    [scale, translate]
-  );
-
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent) => {
-      const touches = e.touches;
-      const state = touchStateRef.current;
-
-      if (state.isPinching && touches.length === 2) {
-        e.preventDefault();
-
-        const currentDistance = getDistance(touches);
-        const currentCenter = getCenter(touches);
-
-        // 计算新缩放比例
-        let newScale = state.initialScale * (currentDistance / state.initialDistance);
-        newScale = Math.max(1, Math.min(5, newScale)); // 限制缩放范围 1x - 5x
-
-        // 计算缩放中心偏移
-        const centerDeltaX = currentCenter.x - state.initialCenter.x;
-        const centerDeltaY = currentCenter.y - state.initialCenter.y;
-
-        let newTranslate = {
-          x: state.initialTranslate.x + centerDeltaX,
-          y: state.initialTranslate.y + centerDeltaY,
-        };
-
-        newTranslate = clampTranslate(newTranslate.x, newTranslate.y, newScale);
-
-        setScale(newScale);
-        setTranslate(newTranslate);
-      } else if (state.isDragging && touches.length === 1 && scale > 1) {
-        e.preventDefault();
-
-        const deltaX = touches[0].clientX - state.startTouch.x;
-        const deltaY = touches[0].clientY - state.startTouch.y;
-
-        const newTranslate = clampTranslate(
-          state.initialTranslate.x + deltaX,
-          state.initialTranslate.y + deltaY,
-          scale
-        );
-
-        setTranslate(newTranslate);
-      }
-    },
-    [scale, clampTranslate]
-  );
-
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent) => {
-      const state = touchStateRef.current;
-      const now = Date.now();
-
-      // 检测双击
-      if (e.touches.length === 0 && !state.isPinching) {
-        if (now - state.lastTouchEnd < 300) {
-          // 双击切换缩放
-          if (scale > 1) {
-            setScale(1);
-            setTranslate({ x: 0, y: 0 });
-          } else {
-            setScale(2);
-          }
-        }
-        state.lastTouchEnd = now;
-      }
-
-      if (e.touches.length < 2) {
-        state.isPinching = false;
-      }
-      if (e.touches.length === 0) {
-        state.isDragging = false;
-
-        // 如果缩放回到1，重置位置
-        if (scale <= 1) {
-          setTranslate({ x: 0, y: 0 });
-        }
-      }
-    },
-    [scale]
-  );
-
-  // 点击关闭（仅在未缩放时）
-  const handleClick = useCallback(() => {
-    if (scale <= 1) {
-      onClose();
-    }
-  }, [scale, onClose]);
-
-  return (
-    <div
-      ref={containerRef}
-      className="fixed inset-0 z-50 bg-black flex items-center justify-center touch-none"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onClick={handleClick}
-    >
-      <img
-        ref={imageRef}
-        src={imageUrl}
-        alt="Generated"
-        className="max-w-full max-h-full object-contain select-none"
-        style={{
-          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-          transition:
-            touchStateRef.current.isPinching || touchStateRef.current.isDragging
-              ? 'none'
-              : 'transform 0.2s ease-out',
-        }}
-        draggable={false}
-      />
-      <button
-        className="absolute top-4 right-4 p-2 bg-white/10 rounded-full z-10"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-      >
-        <X className="w-6 h-6 text-white" />
-      </button>
-      {/* 缩放提示 */}
-      {scale > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/60 rounded-full text-white text-sm">
-          {scale.toFixed(1)}x
         </div>
       )}
     </div>
