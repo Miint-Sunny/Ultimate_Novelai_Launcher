@@ -23,7 +23,6 @@ import {
   saveAppSettings,
   type AppSettings,
   DEFAULT_APP_SETTINGS,
-  THEME_OPTIONS,
   getApiToken,
   saveApiToken,
 } from '../../services/localLibrary';
@@ -35,8 +34,9 @@ import { sidecarApi } from '../../api/sidecar';
 import { MobileAISettingsSection } from './settings/MobileAISettingsSection';
 import { MobileAutocompleteSettingsSection } from './settings/MobileAutocompleteSettingsSection';
 import { MobileBackupSettingsSection } from './settings/MobileBackupSettingsSection';
-import { MobileProfileSettingsSection } from './settings/MobileProfileSettingsSection';
 import { MobilePresetSettingsSection } from './settings/MobilePresetSettingsSection';
+import { MobileProfileSettingsSection } from './settings/MobileProfileSettingsSection';
+import { MobileThemeSettingsSection } from './settings/MobileThemeSettingsSection';
 
 type SettingsSection = 'profile' | 'theme' | 'ai' | 'autocomplete' | 'login' | 'presets' | 'backup' | null;
 
@@ -202,31 +202,10 @@ export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout
 
       case 'theme':
         return (
-          <div className="p-4 space-y-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">选择主题</div>
-            <div className="grid grid-cols-2 gap-3">
-              {THEME_OPTIONS.map((theme) => (
-                <button
-                  key={theme.id}
-                  onClick={() => updateSettingsImmediate({ theme: theme.id })}
-                  className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${settings.theme === theme.id
-                    ? 'bg-nai-accent/20 border-nai-accent'
-                    : 'bg-gray-800 border-gray-700 active:bg-gray-700'
-                    }`}
-                >
-                  <div
-                    className="w-6 h-6 rounded-full border-2 border-gray-500 shadow-lg"
-                    style={{ backgroundColor: theme.color }}
-                  />
-                  <span className={`text-sm font-medium ${settings.theme === theme.id ? 'text-nai-accent' : 'text-gray-300'}`}>
-                    {theme.name}
-                  </span>
-                  {settings.theme === theme.id && <Check className="w-4 h-4 text-nai-accent ml-auto" />}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500 mt-4">更多主题即将推出...</p>
-          </div>
+          <MobileThemeSettingsSection
+            settings={settings}
+            updateSettingsImmediate={updateSettingsImmediate}
+          />
         );
 
       case 'ai':
