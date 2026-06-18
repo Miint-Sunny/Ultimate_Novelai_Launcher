@@ -83,8 +83,8 @@ const TagButton: React.FC<{ tagText: string; isAccentBubble: boolean }> = ({ tag
           setTimeout(() => setCopied(false), 2000);
         }}
         className={`inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded cursor-pointer border font-mono text-xs transition-all ${
-          isAccentBubble 
-            ? 'bg-black/10 hover:bg-black/20 border-transparent text-black font-bold shadow-sm' 
+          isAccentBubble
+            ? 'bg-black/10 hover:bg-black/20 border-transparent text-black font-bold shadow-sm'
             : 'bg-[#1a1c23] border-[#2c3144]/80 hover:border-nai-accent/50 hover:bg-[#232736] text-nai-accent shadow-sm'
         }`}
         title="点击复制标签"
@@ -343,7 +343,7 @@ export const MobileAIAssistantSheet: React.FC<MobileAIAssistantSheetProps> = ({
                   </div>
                 );
               }
-              
+
               // 错误日志 - 优化展示样式
               if (log.type === 'error') {
                 return (
@@ -371,7 +371,7 @@ export const MobileAIAssistantSheet: React.FC<MobileAIAssistantSheetProps> = ({
                   </div>
                 );
               }
-              
+
               return (
                   <div
                     key={idx}
