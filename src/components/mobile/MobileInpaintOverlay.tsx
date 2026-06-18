@@ -4,6 +4,7 @@ import { getCachedIsOpus } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
 import { calculateCropRect, alignSendRect, type CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
+import { MobileInpaintCompareOverlay, type InpaintSnapshot } from './inpaint/MobileInpaintCompareOverlay';
 import { MobileInpaintCropPreview } from './inpaint/MobileInpaintCropPreview';
 import { MobileInpaintExpandOverlay } from './inpaint/MobileInpaintExpandOverlay';
 import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
@@ -91,7 +92,7 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const preGenerateImageRef = useRef<string | null>(null);
-  const snapshotRef = useRef<{ url: string; width: number; height: number; padLeft: number; padTop: number } | null>(null);
+  const snapshotRef = useRef<InpaintSnapshot | null>(null);
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const preGenerateSizeRef = useRef<{ width: number; height: number; padLeft: number; padTop: number } | null>(null);
   // 当前生成使用的裁切/扩图区域（用于流式预览定位）
@@ -936,26 +937,13 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
               baseScale={baseScale}
               zoom={zoom}
             />
-            {showOriginal && snapshotRef.current && (() => {
-              const snap = snapshotRef.current!;
-              const s = displayWidth / imageWidth;
-              const offL = snap.padLeft * s;
-              const offT = snap.padTop * s;
-              const origW = snap.width * s;
-              const origH = snap.height * s;
-              return (
-                <div style={{ position: 'absolute', top: 0, left: 0, width: `${displayWidth}px`, height: `${displayHeight}px`, zIndex: 50, pointerEvents: 'none' }}>
-                  <img src={snap.url} alt="原图对比" style={{
-                    position: 'absolute', top: `${offT}px`, left: `${offL}px`,
-                    width: `${origW}px`, height: `${origH}px`, display: 'block',
-                  }} />
-                  {offT > 0 && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${offT}px`, background: '#0a0a0f' }} />}
-                  {offT + origH < displayHeight && <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: `${displayHeight - offT - origH}px`, background: '#0a0a0f' }} />}
-                  {offL > 0 && <div style={{ position: 'absolute', top: `${offT}px`, left: 0, width: `${offL}px`, height: `${origH}px`, background: '#0a0a0f' }} />}
-                  {offL + origW < displayWidth && <div style={{ position: 'absolute', top: `${offT}px`, right: 0, width: `${displayWidth - offL - origW}px`, height: `${origH}px`, background: '#0a0a0f' }} />}
-                </div>
-              );
-            })()}
+            <MobileInpaintCompareOverlay
+              showOriginal={showOriginal}
+              snapshot={snapshotRef.current}
+              displayWidth={displayWidth}
+              displayHeight={displayHeight}
+              imageWidth={imageWidth}
+            />
           </div>
         </div>
 
