@@ -6,8 +6,14 @@ import {
   type VibeData,
 } from '../../../services/localLibrary';
 import { getPublicVibeFile } from '../../../services/publicLibrary';
-import { MODEL_MAP, MODEL_TO_ENCODING_KEY } from '../../generation/modelResolutionOptions';
 import type { ActiveVibe, VibeFile } from '../types';
+import {
+  countMobileVibeTags,
+  filterMobileLocalVibes,
+  filterMobilePublicVibes,
+  isMobileVibeCompatibleWithModel,
+  resolveMobileVibeModelApi,
+} from './mobileVibeFilters';
 import {
   collectPublicVibeFile,
   exportMobileActiveVibes,
@@ -60,59 +66,28 @@ export function useMobileVibeLibrary({
     refreshLocalVibes,
   });
 
-  const currentModelApi = useMemo(
-    () => MODEL_MAP[model] || 'nai-diffusion-4-5-full',
-    [model],
-  );
+  const currentModelApi = useMemo(() => resolveMobileVibeModelApi(model), [model]);
 
   const isVibeCompatibleWithModel = useCallback((vibe: VibeFile & { hasImage?: boolean }) => {
-    if (vibe.image || vibe.hasImage) return true;
-    if (!vibe.supportedModels || vibe.supportedModels.length === 0) return true;
-    const currentEncodingKey = MODEL_TO_ENCODING_KEY[currentModelApi];
-    if (!currentEncodingKey) return true;
-    return vibe.supportedModels.some((supportedModel) =>
-      supportedModel === currentEncodingKey ||
-      (currentModelApi === 'nai-diffusion-4-5-full' && supportedModel === 'v4full') ||
-      (currentModelApi === 'nai-diffusion-4-5-curated' && supportedModel === 'v4curated')
-    );
+    return isMobileVibeCompatibleWithModel(vibe, currentModelApi);
   }, [currentModelApi]);
 
-  const filterVibeList = useCallback((files: VibeFile[]) => {
-    let filtered = files;
-    const query = vibeSearchQuery.trim().toLowerCase();
-    if (query) {
-      filtered = filtered.filter((file) => file.name.toLowerCase().includes(query));
-    }
-    if (vibeModelFilter !== 'all') {
-      filtered = filtered.filter((file) => file.supportedModels?.includes(vibeModelFilter));
-    }
-    return filtered;
-  }, [vibeModelFilter, vibeSearchQuery]);
-
-  const filteredPublicVibes = useMemo(() => filterVibeList(vibeFiles), [filterVibeList, vibeFiles]);
-  const vibeTagFilteredLocalFiles = useMemo(() => {
-    let files = localVibeFiles;
-    if (vibeSearchQuery.trim()) {
-      const query = vibeSearchQuery.trim().toLowerCase();
-      files = files.filter((file) => file.name.toLowerCase().includes(query));
-    }
-    if (vibeTags.vibeSelectedTagFilter.size > 0) {
-      files = files.filter((file) => {
-        const tags = (file as VibeFile & { tags?: string[] }).tags || [];
-        return tags.some((tag) => vibeTags.vibeSelectedTagFilter.has(tag));
-      });
-    }
-    return files;
-  }, [localVibeFiles, vibeSearchQuery, vibeTags.vibeSelectedTagFilter]);
-
-  const vibeTagUsageCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const file of localVibeFiles) {
-      const tags = (file as VibeFile & { tags?: string[] }).tags || [];
-      for (const tag of tags) counts.set(tag, (counts.get(tag) || 0) + 1);
-    }
-    return counts;
-  }, [localVibeFiles]);
+  const filteredPublicVibes = useMemo(
+    () => filterMobilePublicVibes(vibeFiles, vibeSearchQuery, vibeModelFilter),
+    [vibeFiles, vibeModelFilter, vibeSearchQuery],
+  );
+  const vibeTagFilteredLocalFiles = useMemo(
+    () => filterMobileLocalVibes(
+      localVibeFiles,
+      vibeSearchQuery,
+      vibeTags.vibeSelectedTagFilter,
+    ),
+    [localVibeFiles, vibeSearchQuery, vibeTags.vibeSelectedTagFilter],
+  );
+  const vibeTagUsageCounts = useMemo(
+    () => countMobileVibeTags(localVibeFiles),
+    [localVibeFiles],
+  );
 
   const loadVibes = useCallback(async () => {
     setIsLoadingVibes(true);
