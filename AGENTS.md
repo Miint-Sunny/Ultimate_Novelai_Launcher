@@ -199,7 +199,7 @@ Important preserved behavior:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/FullscreenEditor.tsx`: 373 lines
+- `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
@@ -218,7 +218,7 @@ These were extracted during a broader sweep of mobile sheets/components:
 
 - `src/components/mobile/ai-assistant/AssistantMessageParts.tsx` (`TypewriterText` + `TagButton` + `renderMessageContent` from `MobileAIAssistantSheet`)
 - `src/components/mobile/artist/MobileArtistEditorSheet.tsx` and `src/components/mobile/artist/MobileArtistListItem.tsx` (editor/list UI from `MobileArtistModal`)
-- `src/components/mobile/fullscreen-editor/` hooks and parts (`FullscreenChipEditorArea`, `SelectedTagPanel`, `SuggestionStrip`, `useSuggestionSelection`, tag action/translation/wiki/drag hooks, editor lifecycle hooks, input workflow hook, tag editing hook)
+- `src/components/mobile/fullscreen-editor/` hooks and parts (`FullscreenChipEditorArea`, `FullscreenRawTextEditor`, `NaturalLanguageLoadingPill`, `SelectedTagPanel`, `SuggestionStrip`, `useSuggestionSelection`, tag action/translation/wiki/drag hooks, editor lifecycle hooks, input workflow hook, tag editing hook)
 - `src/components/mobile/inspiration/MobileInspirationCategoryGroup.tsx` (`CategoryGroup` from `MobileInspirationSheet`)
 - `src/components/mobile/prompt-summary/PromptSummaryParts.tsx` (prompt summary card pieces)
 - `src/components/mobile/upscale/loadImageToCanvas.ts` (`loadImageToCanvas` from `MobileUpscaleSheet`)

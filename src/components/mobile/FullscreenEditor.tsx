@@ -8,6 +8,8 @@ import {
 import { getAppSettings } from '../../services/localLibrary';
 import { EditorToolbar } from './fullscreen-editor/EditorToolbar';
 import { FullscreenChipEditorArea } from './fullscreen-editor/FullscreenChipEditorArea';
+import { FullscreenRawTextEditor } from './fullscreen-editor/FullscreenRawTextEditor';
+import { NaturalLanguageLoadingPill } from './fullscreen-editor/NaturalLanguageLoadingPill';
 import { SelectedTagPanel } from './fullscreen-editor/SelectedTagPanel';
 import { SuggestionStrip } from './fullscreen-editor/SuggestionStrip';
 import { useChipDragSort } from './fullscreen-editor/useChipDragSort';
@@ -252,26 +254,13 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
     >
       {/* 主编辑区域 */}
       {rawMode ? (
-        /* 纯文本模式 */
-        <div className="flex-1 min-h-0 overflow-y-auto px-3 pt-3 pb-2">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => {
-              saveValue(e.target.value);
-              // 触发自动补全：取光标前最后一个逗号后的文本
-              const v = e.target.value;
-              const pos = e.target.selectionStart;
-              const before = v.slice(0, pos);
-              const lastComma = Math.max(before.lastIndexOf(','), before.lastIndexOf('，'));
-              const current = before.slice(lastComma + 1).trim();
-              triggerAutocomplete(current);
-            }}
-            placeholder={type === 'prompt' ? '输入提示词，逗号分隔...' : '输入排除标签...'}
-            className="w-full h-full bg-transparent text-white text-[13px] font-mono outline-none placeholder-gray-600 resize-none leading-relaxed"
-            autoFocus
-          />
-        </div>
+        <FullscreenRawTextEditor
+          type={type}
+          value={value}
+          textareaRef={textareaRef}
+          onSaveValue={saveValue}
+          onTriggerAutocomplete={triggerAutocomplete}
+        />
       ) : (
         <FullscreenChipEditorArea
           type={type}
@@ -300,15 +289,7 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
         />
       )}
 
-      {/* 自然语言翻译加载提示 */}
-      {nlTranslating && !showSuggestions && (
-        <div className="flex-shrink-0 bg-nai-panel border-t border-white/[0.06] px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-3.5 h-3.5 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-            <span className="text-xs text-cyan-200/80">翻译中...</span>
-          </div>
-        </div>
-      )}
+      <NaturalLanguageLoadingPill isVisible={nlTranslating && !showSuggestions} />
 
       <SuggestionStrip
         showSuggestions={showSuggestions}
