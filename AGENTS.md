@@ -195,6 +195,25 @@ Important preserved behavior:
 - `switch-to-generate` event name and metadata import payload shape must remain unchanged.
 - Metadata batch download naming (`processed_${Date.now()}.zip`, `_clean`, `_custom`) must remain unchanged.
 
+### Mobile AI Assistant Sheet
+
+`src/components/mobile/MobileAIAssistantSheet.tsx` has been reduced from about 394 lines to about 105 lines. It is now the sheet shell: open/close overlay, panel sizing, send action, and composition.
+
+Extracted files:
+
+- `src/components/mobile/ai-assistant/useMobileAssistantSheetState.ts` (input state, random suggestions, thinking ticker, visual viewport height, log auto-scroll, open-focus)
+- `src/components/mobile/ai-assistant/AssistantHeader.tsx`
+- `src/components/mobile/ai-assistant/AssistantInputBar.tsx`
+- `src/components/mobile/ai-assistant/AssistantEmptySuggestions.tsx`
+- `src/components/mobile/ai-assistant/AssistantLogList.tsx` (success/error/normal log rows, retry/restore/regenerate actions, progress row)
+- `src/components/mobile/ai-assistant/AssistantMessageParts.tsx` (`TypewriterText` + `TagButton` + `renderMessageContent`)
+
+Important preserved behavior:
+
+- Random empty-state suggestions are still chosen when the sheet opens.
+- `visualViewport` resize handling, log auto-scroll, and delayed input focus are unchanged.
+- Enter-to-send, Shift+Enter newline, textarea auto-height, clear logs, retry, restore, regenerate, success thinking expansion, and progress typewriter behavior are unchanged.
+
 ## Current Large File Map
 
 Approximate sizes at this handoff:
@@ -202,12 +221,12 @@ Approximate sizes at this handoff:
 - `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
-- `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
 - `src/components/mobile/MobileImagePage.tsx`: 370 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
 - `src/components/mobile/MobileUpscaleSheet.tsx`: 259 lines
 - `src/components/mobile/MobileArtistModal.tsx`: 243 lines
+- `src/components/mobile/MobileAIAssistantSheet.tsx`: 105 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 49 lines
 
 These numbers will drift. Update this section when a future cleanup phase significantly changes them.
@@ -216,7 +235,7 @@ These numbers will drift. Update this section when a future cleanup phase signif
 
 These were extracted during a broader sweep of mobile sheets/components:
 
-- `src/components/mobile/ai-assistant/AssistantMessageParts.tsx` (`TypewriterText` + `TagButton` + `renderMessageContent` from `MobileAIAssistantSheet`)
+- `src/components/mobile/ai-assistant/` (`AssistantHeader`, `AssistantInputBar`, `AssistantLogList`, `AssistantEmptySuggestions`, `AssistantMessageParts`, `useMobileAssistantSheetState` from `MobileAIAssistantSheet`)
 - `src/components/mobile/artist/MobileArtistEditorSheet.tsx` and `src/components/mobile/artist/MobileArtistListItem.tsx` (editor/list UI from `MobileArtistModal`)
 - `src/components/mobile/fullscreen-editor/` hooks and parts (`FullscreenChipEditorArea`, `FullscreenRawTextEditor`, `NaturalLanguageLoadingPill`, `SelectedTagPanel`, `SuggestionStrip`, `useSuggestionSelection`, tag action/translation/wiki/drag hooks, editor lifecycle hooks, input workflow hook, tag editing hook)
 - `src/components/mobile/inspiration/MobileInspirationCategoryGroup.tsx` (`CategoryGroup` from `MobileInspirationSheet`)
@@ -228,7 +247,7 @@ These were extracted during a broader sweep of mobile sheets/components:
 ## Recommended Next Mobile Cuts
 
 1. `MobileGeneratePage`: keep shrinking orchestration only when a new domain coordinator is obvious; avoid moving JSX around without changing ownership.
-2. `MobileAIAssistantSheet`: extract only if the message stream, prompt actions, or model controls become a clear independent boundary.
+2. `MobileAIAssistantSheet`: now small enough; only revisit if assistant behavior changes or `AssistantLogList` grows beyond its current message-stream boundary.
 3. `MobileInpaintOverlay`: it is near the threshold; only touch for crop/expand helper boundaries or to narrow existing hooks.
 4. `MobileImagePage`: remaining code is mostly layout plus already-extracted workflow hooks; touch it only for a specific boundary.
 
