@@ -51,6 +51,14 @@ The preferred refactor style is a strangler pattern:
 5. Do not combine unrelated cleanup with behavior changes.
 6. Commit one logical cut at a time.
 
+For mobile cleanup, split by product domain instead of line count:
+
+- Page shells own layout, sheet visibility, and orchestration only.
+- Domain hooks own stateful workflows, persistence, events, and cross-feature rules.
+- Section components own visible UI for one coherent feature area.
+- Pure helpers own parsing, formatting, payload construction, and byte-sensitive conversions.
+- Avoid "parts" files that collect unrelated JSX just to shrink a parent file.
+
 For each cut, run:
 
 ```bash
@@ -67,7 +75,7 @@ As of the last handoff, the active cleanup has focused on the mobile pages and t
 
 ### Mobile Generate Page
 
-`src/components/mobile/MobileGeneratePage.tsx` has already been reduced to about 529 lines.
+`src/components/mobile/MobileGeneratePage.tsx` has already been reduced to about 526 lines.
 
 Existing extracted area:
 
@@ -77,10 +85,11 @@ Existing extracted area:
 - image import workflows
 - metadata/tagger import actions
 - Vibe/OC/artist/CR mobile library hooks
+- `useMobileReferenceLibraries`, which coordinates Vibe/CR mutual exclusion so the page does not wire those two libraries together directly
 - prompt assist and translation hooks
 - generation runner and preparation helpers
 
-Do not add new business logic directly to `MobileGeneratePage.tsx`. Put new behavior into `src/components/mobile/generate/` or an existing nearby component.
+Do not add new business logic directly to `MobileGeneratePage.tsx`. Put new behavior into `src/components/mobile/generate/` or an existing nearby component. Cross-feature rules such as "adding Vibe clears CR" belong in coordinator hooks, not in the page shell.
 
 ### Mobile Image/Gallery Page
 
@@ -105,7 +114,7 @@ Important preserved behavior:
 
 ### Mobile Settings Page
 
-`src/components/mobile/MobileSettingsPage.tsx` has already been reduced from about 1249 lines to about 473 lines.
+`src/components/mobile/MobileSettingsPage.tsx` has already been reduced from about 1249 lines to about 359 lines.
 
 Extracted files:
 
@@ -115,18 +124,19 @@ Extracted files:
 - `src/components/mobile/settings/MobileAISettingsSection.tsx`
 - `src/components/mobile/settings/MobileAutocompleteSettingsSection.tsx`
 - `src/components/mobile/settings/MobileThemeSettingsSection.tsx`
+- `src/components/mobile/settings/MobileLoginSettingsSection.tsx`
+- `src/components/mobile/settings/AdvancedSettingControls.tsx`
 - `src/components/mobile/settings/MobileSettingsToggle.tsx`
 
 Remaining reasonable cuts:
 
-- extract login/token/Bot auth settings section.
-- optionally extract the settings main list/header shell after sections are stable.
+- optionally extract the settings main list/header shell if future edits make the page grow again.
 
 Do not change token storage semantics while doing UI cleanup. Token handling must continue through sidecar/keychain-oriented APIs and must not introduce plaintext storage beyond existing compatibility paths.
 
 ### Mobile Inpaint Overlay
 
-`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 765 lines.
+`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 425 lines.
 
 Extracted files:
 
@@ -139,6 +149,9 @@ Extracted files:
 - `src/components/mobile/inpaint/maskUtils.ts` (mobile-specific `expandMaskRegions` + `getMaskBase64FromCanvas`; intentionally distinct from desktop `src/components/inpaint/maskUtils.ts`)
 - `src/components/mobile/inpaint/expandPayload.ts` (`buildExpandPayload` + `ExpandSelection`/`ExpandPayload` types; main file re-exports types so `useMobileInpaintBridge` import path stays stable)
 - `src/components/mobile/inpaint/scaleUtils.ts` (`calculateBaseScale` pure helper for `baseScale` useMemo)
+- `src/components/mobile/inpaint/useInpaintCanvasLoader.ts`
+- `src/components/mobile/inpaint/useInpaintCompositePreview.ts`
+- `src/components/mobile/inpaint/useInpaintDrawing.ts`
 
 Important preserved behavior:
 
@@ -150,13 +163,12 @@ Important preserved behavior:
 
 Next good cuts:
 
-- Extract canvas image lifecycle/loading into a hook only if the boundary is very clear.
-- Extract touch/pinch/draw event handling into a hook after UI extraction is complete.
 - Optionally extract the crop-rect computation inside `handleGenerate` (the `isCropMode` branch calling `calculateCropRect`) into a small helper.
+- If touching the overlay again, prefer making the existing hooks narrower over adding more state to the overlay file.
 
 ### Mobile Tools Page
 
-`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 436 lines.
+`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 431 lines.
 
 Extracted files:
 
@@ -168,6 +180,7 @@ Remaining reasonable cuts:
 
 - Extract `cleanImageMetadataProper` into a small helper (`formatFileSize` already moved into `MobileMetadataDetail`).
 - After helpers are stable, extract the weight-convert UI section and the metadata tool UI section into section components.
+- Keep the weight converter and metadata batch tool as separate domains; do not create one generic "tools parts" component.
 
 Important preserved behavior:
 
@@ -179,14 +192,16 @@ Important preserved behavior:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/MobileInpaintOverlay.tsx`: 765 lines
-- `src/components/mobile/MobileGeneratePage.tsx`: 529 lines
+- `src/components/mobile/FullscreenEditor.tsx`: 706 lines
+- `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
 - `src/components/mobile/MobileUpscaleSheet.tsx`: 478 lines
-- `src/components/mobile/MobileSettingsPage.tsx`: 473 lines
-- `src/components/mobile/MobileToolsPage.tsx`: 436 lines
+- `src/components/mobile/MobileToolsPage.tsx`: 431 lines
+- `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
 - `src/components/mobile/MobileImagePage.tsx`: 415 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
+- `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
+- `src/components/mobile/MobileArtistModal.tsx`: 243 lines
 
 These numbers will drift. Update this section when a future cleanup phase significantly changes them.
 
@@ -195,9 +210,19 @@ These numbers will drift. Update this section when a future cleanup phase signif
 These were extracted during a broader sweep of mobile sheets/components:
 
 - `src/components/mobile/ai-assistant/AssistantMessageParts.tsx` (`TypewriterText` + `TagButton` + `renderMessageContent` from `MobileAIAssistantSheet`)
+- `src/components/mobile/artist/MobileArtistEditorSheet.tsx` and `src/components/mobile/artist/MobileArtistListItem.tsx` (editor/list UI from `MobileArtistModal`)
+- `src/components/mobile/fullscreen-editor/` hooks and parts (`SelectedTagPanel`, `SuggestionStrip`, `useSuggestionSelection`, tag action/translation/wiki/drag hooks)
 - `src/components/mobile/inspiration/MobileInspirationCategoryGroup.tsx` (`CategoryGroup` from `MobileInspirationSheet`)
+- `src/components/mobile/prompt-summary/PromptSummaryParts.tsx` (prompt summary card pieces)
 - `src/components/mobile/upscale/loadImageToCanvas.ts` (`loadImageToCanvas` from `MobileUpscaleSheet`)
 - `src/components/mobile/tools/types.ts` (shared `MetadataFile` type, moved out of `MobileToolsPage` to avoid child→parent dependency)
+
+## Recommended Next Mobile Cuts
+
+1. `MobileUpscaleSheet`: extract `useMobileUpscaleWorkflow` for mode selection, progress, API/local canvas branches, and result handling. Then split option/progress/result UI sections.
+2. `MobileToolsPage`: extract metadata cleanup/parsing helpers, then split `MobileWeightToolSection` and `MobileMetadataToolSection`.
+3. `MobileImagePage`: review overlay/back-stack and viewer/gallery coordination; extract only if there is a clear workflow boundary.
+4. `FullscreenEditor`: it is still large, but many domains are already extracted. Continue only by coherent editor domains such as panel state, keyboard handling, or selected-tag actions.
 
 ## Refactor Rules For Future Agents
 

@@ -19,11 +19,10 @@ import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImportWorkflow } from './generate/useMobileImageImportWorkflow';
 import { useMobileInspirationApply } from './generate/useMobileInspirationApply';
 import { useMobileOCManager } from './generate/useMobileOCManager';
-import { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
-import { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
 import { useMobilePromptTokenCounts } from './generate/useMobilePromptTokenCounts';
 import { useMobilePromptAssistWorkflow } from './generate/useMobilePromptAssistWorkflow';
+import { useMobileReferenceLibraries } from './generate/useMobileReferenceLibraries';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 // ==================== 主组件 ====================
@@ -115,10 +114,13 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     currentOptions: currentResolutionOptions,
   } = useMobileResolutionPicker(localWidth, localHeight);
 
-  const vibeLibrary = useMobileVibeLibrary({
+  const {
+    vibeLibrary,
+    preciseReferenceLibrary,
+  } = useMobileReferenceLibraries({
     model,
-    clearActiveCR: () => preciseReferenceLibrary.setActiveCR(null),
     showVibeModal,
+    closeCRSheet: () => setShowCRModal(false),
   });
   const {
     activeVibes,
@@ -129,10 +131,6 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     loadVibes,
   } = vibeLibrary;
 
-  const preciseReferenceLibrary = useMobilePreciseReferences({
-    clearActiveVibes: () => setActiveVibes([]),
-    closeSheet: () => setShowCRModal(false),
-  });
   const {
     activePreciseRefs,
     activeCR,
@@ -525,5 +523,4 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
 };
 
 export default MobileGeneratePage;
-
 
