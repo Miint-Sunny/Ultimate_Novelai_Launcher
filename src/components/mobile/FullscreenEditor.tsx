@@ -23,6 +23,7 @@ import { useFullscreenTagActions } from './fullscreen-editor/useFullscreenTagAct
 import { useFullscreenTagTranslations } from './fullscreen-editor/useFullscreenTagTranslations';
 import { useFullscreenWiki } from './fullscreen-editor/useFullscreenWiki';
 import { useFullscreenOpenLifecycle } from './fullscreen-editor/useFullscreenOpenLifecycle';
+import { useFullscreenTagEditing } from './fullscreen-editor/useFullscreenTagEditing';
 import { useFullscreenUndoValue } from './fullscreen-editor/useFullscreenUndoValue';
 import { useFullscreenViewportHeight } from './fullscreen-editor/useFullscreenViewportHeight';
 import { useSuggestionSelection } from './fullscreen-editor/useSuggestionSelection';
@@ -75,10 +76,8 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
   const [nlTranslating, setNlTranslating] = useState(false);
   // 补全选中后短暂屏蔽芯片点击
   const suppressChipClickRef = useRef(false);
-  // 标签编辑状态
   const [editingTagText, setEditingTagText] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
-
   const clearSelection = useCallback(() => setSelectedTags(new Set()), []);
   const clearEditing = useCallback(() => setEditingTagText(null), []);
 
@@ -190,6 +189,24 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
     scrollToBottom,
   });
 
+  const clearSuggestions = useCallback(() => {
+    setShowSuggestions(false);
+    setSuggestions([]);
+  }, [setShowSuggestions, setSuggestions]);
+
+  const {
+    commitTagEdit,
+    cancelTagEdit,
+  } = useFullscreenTagEditing({
+    editingTagText,
+    setEditingTagText,
+    selectedTags,
+    parsedTags,
+    rebuildValue,
+    setSelectedTags,
+    clearSuggestions,
+  });
+
   const selectSuggestion = useSuggestionSelection({
     rawMode,
     value,
@@ -229,41 +246,6 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
     singleCleanTag,
     openWikiPreview,
   } = useFullscreenWiki({ selectedTags, parsedTags });
-
-  // 选中变化时退出编辑模式
-  const prevSelectedRef = useRef(selectedTags);
-  useEffect(() => {
-    if (prevSelectedRef.current !== selectedTags) {
-      prevSelectedRef.current = selectedTags;
-      setEditingTagText(null);
-    }
-  }, [selectedTags]);
-
-  // 提交标签编辑
-  const commitTagEdit = useCallback(() => {
-    if (editingTagText === null || selectedTags.size !== 1) { setEditingTagText(null); return; }
-    const idx = Array.from(selectedTags)[0];
-    const trimmed = editingTagText.trim();
-    if (!trimmed) {
-      rebuildValue(parsedTags.filter((_, i) => i !== idx));
-      setSelectedTags(new Set());
-    } else if (trimmed !== parsedTags[idx]?.trim()) {
-      const t = [...parsedTags];
-      t[idx] = trimmed;
-      rebuildValue(t);
-      setSelectedTags(new Set());
-    }
-    setEditingTagText(null);
-    setShowSuggestions(false);
-    setSuggestions([]);
-  }, [editingTagText, selectedTags, parsedTags, rebuildValue]);
-
-  // 取消标签编辑
-  const cancelTagEdit = useCallback(() => {
-    setEditingTagText(null);
-    setShowSuggestions(false);
-    setSuggestions([]);
-  }, []);
 
   if (!isOpen) return null;
 
