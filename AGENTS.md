@@ -93,12 +93,16 @@ Do not add new business logic directly to `MobileGeneratePage.tsx`. Put new beha
 
 ### Mobile Image/Gallery Page
 
-`src/components/mobile/MobileImagePage.tsx` has already been reduced to about 415 lines.
+`src/components/mobile/MobileImagePage.tsx` has already been reduced to about 370 lines.
 
 Extracted files:
 
 - `src/components/mobile/gallery/useMobileSaveDownloadWorkflow.ts`
 - `src/components/mobile/gallery/useMobileInpaintBridge.ts`
+- `src/components/mobile/gallery/useMobileGalleryBackStack.ts`
+- `src/components/mobile/gallery/useMobileGallerySelection.ts`
+- `src/components/mobile/gallery/useMobileGenerationErrorToast.ts`
+- `src/components/mobile/gallery/useMobileUpscaleCompletion.ts`
 - `src/components/mobile/gallery/MobileCompactGalleryStrip.tsx`
 - `src/components/mobile/gallery/MobileCurrentImageToolbar.tsx`
 - `src/components/mobile/gallery/MobileImageStatusPill.tsx`
@@ -111,6 +115,7 @@ Important preserved behavior:
 - save settings localStorage keys remain unchanged.
 - `open-image-import`, `open-inpaint-mode`, `inpaint-generate`, and `inpaint-pasteback-done` event names remain unchanged.
 - batch download ZIP naming and image metadata import payloads should remain compatible.
+- mobile back priority remains fullscreen, expanded gallery, save settings, upscale sheet, inpaint.
 
 ### Mobile Settings Page
 
@@ -197,8 +202,8 @@ Approximate sizes at this handoff:
 - `src/components/mobile/FullscreenEditor.tsx`: 706 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
-- `src/components/mobile/MobileImagePage.tsx`: 415 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
+- `src/components/mobile/MobileImagePage.tsx`: 370 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
 - `src/components/mobile/MobileUpscaleSheet.tsx`: 259 lines
@@ -222,10 +227,10 @@ These were extracted during a broader sweep of mobile sheets/components:
 
 ## Recommended Next Mobile Cuts
 
-1. `MobileImagePage`: review overlay/back-stack and viewer/gallery coordination; extract only if there is a clear workflow boundary.
-2. `FullscreenEditor`: it is still large, but many domains are already extracted. Continue only by coherent editor domains such as panel state, keyboard handling, or selected-tag actions.
-3. `MobileGeneratePage`: keep shrinking orchestration only when a new domain coordinator is obvious; avoid moving JSX around without changing ownership.
-4. `MobileAIAssistantSheet`: extract only if the message stream, prompt actions, or model controls become a clear independent boundary.
+1. `FullscreenEditor`: it is still large, but many domains are already extracted. Continue only by coherent editor domains such as panel state, keyboard handling, or selected-tag actions.
+2. `MobileGeneratePage`: keep shrinking orchestration only when a new domain coordinator is obvious; avoid moving JSX around without changing ownership.
+3. `MobileAIAssistantSheet`: extract only if the message stream, prompt actions, or model controls become a clear independent boundary.
+4. `MobileImagePage`: remaining code is mostly layout plus already-extracted workflow hooks; touch it only for a specific boundary.
 
 ## Refactor Rules For Future Agents
 

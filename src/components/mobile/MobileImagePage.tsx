@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Image as ImageIcon,
   Maximize2,
@@ -13,12 +13,15 @@ import { MobileUpscaleSheet } from './MobileUpscaleSheet';
 import { MobileFullscreenImageViewer } from './MobileFullscreenImageViewer';
 import { MobileExpandedGallerySheet } from './MobileExpandedGallerySheet';
 import { MobileSaveSettingsSheet } from './MobileSaveSettingsSheet';
-import { registerBackHandler } from './MobileLayout';
+import { useMobileGalleryBackStack } from './gallery/useMobileGalleryBackStack';
 import { MobileCompactGalleryStrip } from './gallery/MobileCompactGalleryStrip';
 import { MobileCurrentImageToolbar } from './gallery/MobileCurrentImageToolbar';
+import { useMobileGallerySelection } from './gallery/useMobileGallerySelection';
+import { useMobileGenerationErrorToast } from './gallery/useMobileGenerationErrorToast';
 import { MobileImageStatusPill } from './gallery/MobileImageStatusPill';
 import { useMobileInpaintBridge } from './gallery/useMobileInpaintBridge';
 import { useMobileSaveDownloadWorkflow } from './gallery/useMobileSaveDownloadWorkflow';
+import { useMobileUpscaleCompletion } from './gallery/useMobileUpscaleCompletion';
 
 export const MobileGalleryPage: React.FC = () => {
   const {
@@ -45,7 +48,7 @@ export const MobileGalleryPage: React.FC = () => {
   } = useGeneration();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showError, setShowError] = useState(true);
+  const { showError, setShowError } = useMobileGenerationErrorToast(result);
 
   // 工具栏相关状态
   const [isUpscaleModalOpen, setIsUpscaleModalOpen] = useState(false);
@@ -69,8 +72,16 @@ export const MobileGalleryPage: React.FC = () => {
 
   // 展开图库状态
   const [isGalleryExpanded, setIsGalleryExpanded] = useState(false);
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const {
+    selectedItems,
+    setSelectedItems,
+    isSelectionMode,
+    setIsSelectionMode,
+    clearSelection,
+    toggleSelectItem,
+    selectAll,
+    deselectAll,
+  } = useMobileGallerySelection(history);
   const {
     showSaveSettings,
     setShowSaveSettings,
@@ -105,44 +116,28 @@ export const MobileGalleryPage: React.FC = () => {
     : imageUrl;
   const hasImage = !!imageUrl && !isGenerating && !isInpaintMode;
 
-  // 注册返回处理器 - 处理各种弹出层的关闭
-  useEffect(() => {
-    const handleBack = () => {
-      // 按优先级处理各种弹出层
-      if (isFullscreen) {
-        setIsFullscreen(false);
-        return true;
-      }
-      if (isGalleryExpanded) {
-        setIsGalleryExpanded(false);
-        setIsSelectionMode(false);
-        setSelectedItems(new Set());
-        return true;
-      }
-      if (showSaveSettings) {
-        setShowSaveSettings(false);
-        return true;
-      }
-      if (isUpscaleModalOpen) {
-        setIsUpscaleModalOpen(false);
-        return true;
-      }
-      if (isInpaintMode) {
-        setIsInpaintMode(false);
-        return true;
-      }
-      return false;
-    };
+  const closeGallery = useCallback(() => {
+    setIsGalleryExpanded(false);
+    setIsSelectionMode(false);
+    clearSelection();
+  }, [clearSelection, setIsSelectionMode]);
+  const closeFullscreen = useCallback(() => setIsFullscreen(false), []);
+  const closeSaveSettings = useCallback(() => setShowSaveSettings(false), [setShowSaveSettings]);
+  const closeUpscaleModal = useCallback(() => setIsUpscaleModalOpen(false), []);
+  const closeInpaintMode = useCallback(() => setIsInpaintMode(false), [setIsInpaintMode]);
 
-    return registerBackHandler(handleBack);
-  }, [isFullscreen, isGalleryExpanded, showSaveSettings, isUpscaleModalOpen, isInpaintMode]);
-
-  // 当有新错误时重置显示状态
-  useEffect(() => {
-    if (result && !result.success) {
-      setShowError(true);
-    }
-  }, [result]);
+  useMobileGalleryBackStack({
+    isFullscreen,
+    closeFullscreen,
+    isGalleryExpanded,
+    closeGallery,
+    showSaveSettings,
+    closeSaveSettings,
+    isUpscaleModalOpen,
+    closeUpscaleModal,
+    isInpaintMode,
+    closeInpaintMode,
+  });
 
   // 使用种子
   const handleUseSeed = () => {
@@ -157,42 +152,10 @@ export const MobileGalleryPage: React.FC = () => {
   };
 
   // 超分辨率完成处理
-  const handleUpscaleComplete = async (resultBlob: Blob, scale: number) => {
-    const url = URL.createObjectURL(resultBlob);
-
-    // 使用 Image 元素获取尺寸（兼容移动端）
-    const img = new Image();
-    img.src = url;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = reject;
-    });
-
-    const width = img.naturalWidth;
-    const height = img.naturalHeight;
-    addUpscaledImage(url, width, height, currentSeed || 0, scale);
-  };
-
-  // 展开图库相关处理
-  const toggleSelectItem = (id: string) => {
-    setSelectedItems((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  };
-
-  const selectAll = () => {
-    setSelectedItems(new Set(history.map((item) => item.id)));
-  };
-
-  const deselectAll = () => {
-    setSelectedItems(new Set());
-  };
+  const handleUpscaleComplete = useMobileUpscaleCompletion({
+    currentSeed,
+    addUpscaledImage,
+  });
 
   const handleDeleteSelected = () => deleteSelectedDownloads(deleteHistoryItems);
 
@@ -392,16 +355,12 @@ export const MobileGalleryPage: React.FC = () => {
         isSelectionMode={isSelectionMode}
         setIsSelectionMode={setIsSelectionMode}
         selectedItems={selectedItems}
-        clearSelection={() => setSelectedItems(new Set())}
+        clearSelection={clearSelection}
         selectAll={selectAll}
         deselectAll={deselectAll}
         toggleSelectItem={toggleSelectItem}
         selectHistoryItem={selectHistoryItem}
-        closeGallery={() => {
-          setIsGalleryExpanded(false);
-          setIsSelectionMode(false);
-          setSelectedItems(new Set());
-        }}
+        closeGallery={closeGallery}
         isDownloading={isDownloading}
         handleDownloadAll={handleDownloadAll}
         handleDownloadSelected={handleDownloadSelected}
