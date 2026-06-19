@@ -1,8 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import { createPublicOC, deletePublicOC, getOCPreviewUrl, getPublicOCs, updatePublicOC } from '../../../services/publicLibrary';
+import { createPublicOC, deletePublicOC, getPublicOCs, updatePublicOC } from '../../../services/publicLibrary';
 import { generateImageStream } from '../../../services/novelai';
 import { blobToBase64 } from '../imageUtils';
 import type { CharacterPrompt, OCFile } from '../types';
+import {
+  buildCharacterPromptsFromOCs,
+  filterMobileOCs,
+  toMobileOCFile,
+} from './mobileOCData';
 
 interface UseMobileOCManagerOptions {
   currentUserId: string | null;
@@ -50,18 +55,7 @@ export function useMobileOCManager({
     setIsLoadingOCs(true);
     try {
       const publicOCData = await getPublicOCs();
-      const publicOCList: OCFile[] = publicOCData.map((oc) => ({
-        id: oc.id,
-        name: oc.zh_name || oc.en_name,
-        preview: oc.preview_url ? getOCPreviewUrl(oc.en_name) : '',
-        positive: oc.tag_group || '',
-        negative: '',
-        user: 'Bot公共库',
-        aliases: oc.zh_aliases || [],
-        created_by: oc.created_by || '',
-        created_at: oc.created_at || 0,
-        isLocal: false,
-      }));
+      const publicOCList: OCFile[] = publicOCData.map(toMobileOCFile);
       setOcPublicFiles(publicOCList);
       setOcLocalFiles(publicOCList.filter((oc) => currentUserId && oc.created_by === currentUserId));
     } catch (error) {
@@ -250,16 +244,7 @@ export function useMobileOCManager({
     const allOCsMap = new Map([...ocPublicFiles, ...ocLocalFiles].map((oc) => [oc.id, oc]));
     const selectedOCs = Array.from(selectedOCIds).map((id) => allOCsMap.get(id)).filter(Boolean) as OCFile[];
     const availableSlots = Math.max(0, 6 - characterPrompts.length);
-    const newCharacters: CharacterPrompt[] = selectedOCs
-      .slice(0, availableSlots)
-      .map((oc) => ({
-        id: `char_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-        positive: oc.positive || '',
-        negative: oc.negative || '',
-        activeTab: 'prompt',
-        enabled: true,
-        name: oc.name,
-      }));
+    const newCharacters: CharacterPrompt[] = buildCharacterPromptsFromOCs(selectedOCs, availableSlots);
     if (newCharacters.length < selectedOCs.length) alert('角色提示词最多 6 个，已按剩余槽位添加');
     if (newCharacters.length > 0) setCharacterPrompts((prev) => [...prev, ...newCharacters]);
     setSelectedOCIds(new Set());
@@ -268,13 +253,7 @@ export function useMobileOCManager({
 
   const filteredOCs = useMemo(() => {
     const source = ocTab === 'public' ? ocPublicFiles : ocLocalFiles;
-    const query = ocSearchQuery.trim().toLowerCase();
-    if (!query) return source;
-    return source.filter((oc) =>
-      oc.name.toLowerCase().includes(query) ||
-      oc.positive.toLowerCase().includes(query) ||
-      (oc.created_by || '').toLowerCase().includes(query)
-    );
+    return filterMobileOCs(source, ocSearchQuery);
   }, [ocLocalFiles, ocPublicFiles, ocSearchQuery, ocTab]);
 
   return {
