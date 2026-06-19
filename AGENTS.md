@@ -86,10 +86,19 @@ Existing extracted area:
 - metadata/tagger import actions
 - Vibe/OC/artist/CR mobile library hooks
 - `useMobileReferenceLibraries`, which coordinates Vibe/CR mutual exclusion so the page does not wire those two libraries together directly
+- `useMobileVibeTags`, which owns Vibe tag pool, tag editor, batch tagging, and tag CRUD state/actions
+- `mobileVibeFilters`, which owns Vibe model compatibility, public/local filtering, and tag usage counting
+- `mobileOCData`, which owns mobile OC mapping, search filtering, and selected OC to character prompt construction
 - prompt assist and translation hooks
 - generation runner and preparation helpers
 
 Do not add new business logic directly to `MobileGeneratePage.tsx`. Put new behavior into `src/components/mobile/generate/` or an existing nearby component. Cross-feature rules such as "adding Vibe clears CR" belong in coordinator hooks, not in the page shell.
+
+Important preserved behavior:
+
+- Vibe add still clears active precise references through `useMobileReferenceLibraries`.
+- Public Vibe async file completion, local Vibe import/export/delete, recent usage, and tag editing behavior are unchanged.
+- OC creation/edit/delete/preview generation and confirmation into character prompts are unchanged; only mapping/filtering/build helpers moved.
 
 ### Mobile Image/Gallery Page
 
@@ -223,12 +232,14 @@ Important preserved behavior:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 377 lines
 - `src/components/mobile/MobileImagePage.tsx`: 370 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
+- `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
+- `src/components/mobile/generate/useMobileOCManager.ts`: 296 lines
+- `src/components/mobile/generate/useMobileVibeLibrary.ts`: 277 lines
 - `src/components/mobile/MobileUpscaleSheet.tsx`: 259 lines
 - `src/components/mobile/MobileArtistModal.tsx`: 243 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 105 lines
