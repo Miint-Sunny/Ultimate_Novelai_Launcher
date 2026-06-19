@@ -25,6 +25,9 @@ import { useChipDragSort } from './fullscreen-editor/useChipDragSort';
 import { useFullscreenTagActions } from './fullscreen-editor/useFullscreenTagActions';
 import { useFullscreenTagTranslations } from './fullscreen-editor/useFullscreenTagTranslations';
 import { useFullscreenWiki } from './fullscreen-editor/useFullscreenWiki';
+import { useFullscreenOpenLifecycle } from './fullscreen-editor/useFullscreenOpenLifecycle';
+import { useFullscreenUndoValue } from './fullscreen-editor/useFullscreenUndoValue';
+import { useFullscreenViewportHeight } from './fullscreen-editor/useFullscreenViewportHeight';
 import { useSuggestionSelection } from './fullscreen-editor/useSuggestionSelection';
 import { WikiPreviewSheet } from './fullscreen-editor/WikiPreviewSheet';
 
@@ -54,7 +57,7 @@ export interface FullscreenEditorProps {
 export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
   isOpen, onClose, type, value, onChange, presetTokens = 0, totalTokens = 0,
 }) => {
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  const viewportHeight = useFullscreenViewportHeight(isOpen);
 
   // 权重预设（来自设置，监听同页面 + 跨标签页变更，与桌面端一致）
   const [weightPresets, setWeightPresets] = useState(() => getAppSettings().weightPresets || [-1, 0.5, 0.8, 1.5, 2.0]);
@@ -85,65 +88,24 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
   const [editingTagText, setEditingTagText] = useState<string | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  // 打开时聚焦输入框，关闭时重置选中
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    } else {
-      setSelectedTags(new Set());
-      setEditingTagText(null);
-    }
-  }, [isOpen]);
+  const clearSelection = useCallback(() => setSelectedTags(new Set()), []);
+  const clearEditing = useCallback(() => setEditingTagText(null), []);
 
-  // 监听 visualViewport 变化
-  useEffect(() => {
-    if (!isOpen) return;
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const handleResize = () => setViewportHeight(viewport.height);
-    handleResize();
-    viewport.addEventListener('resize', handleResize);
-    viewport.addEventListener('scroll', handleResize);
-    return () => { viewport.removeEventListener('resize', handleResize); viewport.removeEventListener('scroll', handleResize); };
-  }, [isOpen]);
+  useFullscreenOpenLifecycle({
+    isOpen,
+    inputRef,
+    clearSelection,
+    clearEditing,
+  });
 
-  // 实时保存 + 撤回栈（与桌面端一致，50 层；连续输入 800ms 内合并为一步，避免纯文本模式逐字符入栈）
-  const undoStackRef = useRef<string[]>([]);
-  const isUndoingRef = useRef(false);
-  const lastUndoPushRef = useRef(0);
-  const [undoDepth, setUndoDepth] = useState(0);
-
-  const saveValue = useCallback((newValue: string) => {
-    if (!isUndoingRef.current && newValue !== value) {
-      const now = Date.now();
-      if (now - lastUndoPushRef.current > 800) {
-        undoStackRef.current.push(value);
-        if (undoStackRef.current.length > 50) undoStackRef.current.shift();
-        setUndoDepth(undoStackRef.current.length);
-      }
-      lastUndoPushRef.current = now;
-    }
-    onChange(newValue);
-  }, [onChange, value]);
-
-  const handleUndo = useCallback(() => {
-    const prev = undoStackRef.current.pop();
-    if (prev === undefined) return;
-    setUndoDepth(undoStackRef.current.length);
-    isUndoingRef.current = true;
-    saveValue(prev);
-    isUndoingRef.current = false;
-    lastUndoPushRef.current = 0; // 撤回后下一次编辑立即入栈，不与撤回前的操作合并
-    setSelectedTags(new Set());
-    setEditingTagText(null);
-  }, [saveValue]);
-
-  // 编辑器打开/编辑目标切换（角色编辑器 tab 切换 type）时重置撤回栈，避免跨字段混入历史
-  useEffect(() => {
-    undoStackRef.current = [];
-    lastUndoPushRef.current = 0;
-    setUndoDepth(0);
-  }, [isOpen, type]);
+  const { saveValue, handleUndo, undoDepth } = useFullscreenUndoValue({
+    isOpen,
+    type,
+    value,
+    onChange,
+    clearSelection,
+    clearEditing,
+  });
 
   // 滚动到底部（让输入框不被补全遮挡）
   const scrollToBottom = useCallback(() => {
