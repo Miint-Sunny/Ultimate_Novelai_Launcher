@@ -1,23 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteVibe,
-  getVibeTagPool,
   recordVibeUsageBatch,
   removeRecentVibeEntry,
-  saveVibeTagPool,
-  setVibeTags as setVibeTagsStorage,
   type VibeData,
 } from '../../../services/localLibrary';
 import { getPublicVibeFile } from '../../../services/publicLibrary';
 import { MODEL_MAP, MODEL_TO_ENCODING_KEY } from '../../generation/modelResolutionOptions';
 import type { ActiveVibe, VibeFile } from '../types';
 import {
-  applyTagsToMobileActiveVibes,
   collectPublicVibeFile,
   exportMobileActiveVibes,
   importMobileVibeFile,
   loadMobileVibeLists,
 } from './mobileVibeLibraryData';
+import { useMobileVibeTags } from './useMobileVibeTags';
 
 interface UseMobileVibeLibraryOptions {
   model: string;
@@ -40,15 +37,7 @@ export function useMobileVibeLibrary({
   const [collectingVibeIds, setCollectingVibeIds] = useState<Set<string>>(new Set());
   const [vibeSearchQuery, setVibeSearchQuery] = useState('');
   const [vibeModelFilter] = useState<string>('all');
-  const [vibeTagPool, setVibeTagPool] = useState<string[]>([]);
-  const [vibeSelectedTagFilter, setVibeSelectedTagFilter] = useState<Set<string>>(new Set());
   const [vibeMenuOpenId, setVibeMenuOpenId] = useState<string | null>(null);
-  const [vibeTagSettingsOpen, setVibeTagSettingsOpen] = useState(false);
-  const [vibeTagSettingsCreating, setVibeTagSettingsCreating] = useState(false);
-  const [vibeTagSettingsNewName, setVibeTagSettingsNewName] = useState('');
-  const [vibeBatchTagOpen, setVibeBatchTagOpen] = useState(false);
-  const [vibeBatchTagsToAdd, setVibeBatchTagsToAdd] = useState<Set<string>>(new Set());
-  const [vibeTagEditorTarget, setVibeTagEditorTarget] = useState<{ vibeId: string; current: Set<string> } | null>(null);
   const [vibeFabOpen, setVibeFabOpen] = useState(false);
   const [vibeCloudMenuOpen, setVibeCloudMenuOpen] = useState(false);
 
@@ -60,6 +49,16 @@ export function useMobileVibeLibrary({
       preview: vibe.preview,
     })));
   }, [activeVibes]);
+
+  const refreshLocalVibes = useCallback(async () => {
+    const { local } = await loadMobileVibeLists();
+    setLocalVibeFiles(local);
+  }, []);
+
+  const vibeTags = useMobileVibeTags({
+    activeVibes,
+    refreshLocalVibes,
+  });
 
   const currentModelApi = useMemo(
     () => MODEL_MAP[model] || 'nai-diffusion-4-5-full',
@@ -97,14 +96,14 @@ export function useMobileVibeLibrary({
       const query = vibeSearchQuery.trim().toLowerCase();
       files = files.filter((file) => file.name.toLowerCase().includes(query));
     }
-    if (vibeSelectedTagFilter.size > 0) {
+    if (vibeTags.vibeSelectedTagFilter.size > 0) {
       files = files.filter((file) => {
         const tags = (file as VibeFile & { tags?: string[] }).tags || [];
-        return tags.some((tag) => vibeSelectedTagFilter.has(tag));
+        return tags.some((tag) => vibeTags.vibeSelectedTagFilter.has(tag));
       });
     }
     return files;
-  }, [localVibeFiles, vibeSearchQuery, vibeSelectedTagFilter]);
+  }, [localVibeFiles, vibeSearchQuery, vibeTags.vibeSelectedTagFilter]);
 
   const vibeTagUsageCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -114,16 +113,6 @@ export function useMobileVibeLibrary({
     }
     return counts;
   }, [localVibeFiles]);
-
-  const refreshLocalVibes = useCallback(async () => {
-    const { local } = await loadMobileVibeLists();
-    setLocalVibeFiles(local);
-  }, []);
-
-  const reloadVibeTagPool = useCallback(async () => {
-    const pool = await getVibeTagPool();
-    setVibeTagPool(pool);
-  }, []);
 
   const loadVibes = useCallback(async () => {
     setIsLoadingVibes(true);
@@ -141,8 +130,8 @@ export function useMobileVibeLibrary({
   useEffect(() => {
     if (!showVibeModal) return;
     loadVibes();
-    reloadVibeTagPool();
-  }, [loadVibes, reloadVibeTagPool, showVibeModal]);
+    vibeTags.reloadVibeTagPool();
+  }, [loadVibes, showVibeModal, vibeTags.reloadVibeTagPool]);
 
   const handleAddVibe = useCallback(async (vibe: VibeFile) => {
     if (activeVibes.some((item) => item.id === vibe.id)) return;
@@ -253,41 +242,6 @@ export function useMobileVibeLibrary({
     }
   }, [activeVibes]);
 
-  const saveVibeTags = useCallback(async () => {
-    if (!vibeTagEditorTarget) return;
-    await setVibeTagsStorage(vibeTagEditorTarget.vibeId, Array.from(vibeTagEditorTarget.current));
-    await refreshLocalVibes();
-    await reloadVibeTagPool();
-    setVibeTagEditorTarget(null);
-  }, [refreshLocalVibes, reloadVibeTagPool, vibeTagEditorTarget]);
-
-  const applyBatchTags = useCallback(async () => {
-    const tagsToAdd = Array.from(vibeBatchTagsToAdd);
-    if (tagsToAdd.length === 0) {
-      setVibeBatchTagOpen(false);
-      return;
-    }
-    await applyTagsToMobileActiveVibes(activeVibes, tagsToAdd);
-    await refreshLocalVibes();
-    await reloadVibeTagPool();
-    setVibeBatchTagOpen(false);
-    setVibeBatchTagsToAdd(new Set());
-  }, [activeVibes, refreshLocalVibes, reloadVibeTagPool, vibeBatchTagsToAdd]);
-
-  const createVibeTag = useCallback((tag: string) => {
-    const next = [...vibeTagPool, tag].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-    setVibeTagPool(next);
-    saveVibeTagPool(next);
-    setVibeTagSettingsNewName('');
-    setVibeTagSettingsCreating(false);
-  }, [vibeTagPool]);
-
-  const deleteVibeTag = useCallback((tag: string) => {
-    const next = vibeTagPool.filter((item) => item !== tag);
-    setVibeTagPool(next);
-    saveVibeTagPool(next);
-  }, [vibeTagPool]);
-
   return {
     activeVibes,
     setActiveVibes,
@@ -304,32 +258,32 @@ export function useMobileVibeLibrary({
     vibeSearchQuery,
     setVibeSearchQuery,
     filteredPublicVibes,
-    vibeTagPool,
-    setVibeTagPool,
-    vibeSelectedTagFilter,
-    setVibeSelectedTagFilter,
+    vibeTagPool: vibeTags.vibeTagPool,
+    setVibeTagPool: vibeTags.setVibeTagPool,
+    vibeSelectedTagFilter: vibeTags.vibeSelectedTagFilter,
+    setVibeSelectedTagFilter: vibeTags.setVibeSelectedTagFilter,
     vibeTagFilteredLocalFiles,
     vibeTagUsageCounts,
     vibeMenuOpenId,
     setVibeMenuOpenId,
-    vibeTagSettingsOpen,
-    setVibeTagSettingsOpen,
-    vibeTagSettingsCreating,
-    setVibeTagSettingsCreating,
-    vibeTagSettingsNewName,
-    setVibeTagSettingsNewName,
-    vibeBatchTagOpen,
-    setVibeBatchTagOpen,
-    vibeBatchTagsToAdd,
-    setVibeBatchTagsToAdd,
-    vibeTagEditorTarget,
-    setVibeTagEditorTarget,
+    vibeTagSettingsOpen: vibeTags.vibeTagSettingsOpen,
+    setVibeTagSettingsOpen: vibeTags.setVibeTagSettingsOpen,
+    vibeTagSettingsCreating: vibeTags.vibeTagSettingsCreating,
+    setVibeTagSettingsCreating: vibeTags.setVibeTagSettingsCreating,
+    vibeTagSettingsNewName: vibeTags.vibeTagSettingsNewName,
+    setVibeTagSettingsNewName: vibeTags.setVibeTagSettingsNewName,
+    vibeBatchTagOpen: vibeTags.vibeBatchTagOpen,
+    setVibeBatchTagOpen: vibeTags.setVibeBatchTagOpen,
+    vibeBatchTagsToAdd: vibeTags.vibeBatchTagsToAdd,
+    setVibeBatchTagsToAdd: vibeTags.setVibeBatchTagsToAdd,
+    vibeTagEditorTarget: vibeTags.vibeTagEditorTarget,
+    setVibeTagEditorTarget: vibeTags.setVibeTagEditorTarget,
     vibeFabOpen,
     setVibeFabOpen,
     vibeCloudMenuOpen,
     setVibeCloudMenuOpen,
     loadVibes,
-    reloadVibeTagPool,
+    reloadVibeTagPool: vibeTags.reloadVibeTagPool,
     refreshLocalVibes,
     isVibeCompatibleWithModel,
     handleAddVibe,
@@ -340,9 +294,9 @@ export function useMobileVibeLibrary({
     deleteLocalVibe,
     deleteSelectedLocalVibes,
     exportSelectedVibes,
-    saveVibeTags,
-    applyBatchTags,
-    createVibeTag,
-    deleteVibeTag,
+    saveVibeTags: vibeTags.saveVibeTags,
+    applyBatchTags: vibeTags.applyBatchTags,
+    createVibeTag: vibeTags.createVibeTag,
+    deleteVibeTag: vibeTags.deleteVibeTag,
   };
 }
