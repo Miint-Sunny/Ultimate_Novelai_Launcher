@@ -141,7 +141,7 @@ Do not change token storage semantics while doing UI cleanup. Token handling mus
 
 ### Mobile Inpaint Overlay
 
-`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 425 lines.
+`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 389 lines.
 
 Extracted files:
 
@@ -154,6 +154,8 @@ Extracted files:
 - `src/components/mobile/inpaint/maskUtils.ts` (mobile-specific `expandMaskRegions` + `getMaskBase64FromCanvas`; intentionally distinct from desktop `src/components/inpaint/maskUtils.ts`)
 - `src/components/mobile/inpaint/expandPayload.ts` (`buildExpandPayload` + `ExpandSelection`/`ExpandPayload` types; main file re-exports types so `useMobileInpaintBridge` import path stays stable)
 - `src/components/mobile/inpaint/scaleUtils.ts` (`calculateBaseScale` pure helper for `baseScale` useMemo)
+- `src/components/mobile/inpaint/generationPayload.ts` (`calculateInpaintGenerationDimensions` + `buildMaskGenerationPayload` for crop/normal mask payload construction)
+- `src/components/mobile/inpaint/useInpaintStrengthSync.ts` (window event bridge for `inpaint-strength-sync` / `inpaint-panel-strength-change`)
 - `src/components/mobile/inpaint/useInpaintCanvasLoader.ts`
 - `src/components/mobile/inpaint/useInpaintCompositePreview.ts`
 - `src/components/mobile/inpaint/useInpaintDrawing.ts`
@@ -165,11 +167,12 @@ Important preserved behavior:
 - crop/expand payload shape passed to `onGenerate` must remain unchanged.
 - canvas dimensions, mask expansion, and 8x8 alignment behavior are sensitive; avoid changing algorithms while extracting.
 - The original-image compare overlay is driven by `snapshotRef` (a ref, read during render) paired with `showOriginal`; re-render visibility is triggered by `setHasSnapshot(true)` set right after the ref in `handleGenerate`, so passing `snapshot={snapshotRef.current}` as a prop preserves timing.
+- Strength sync event names remain unchanged: `inpaint-strength-sync` from img2img controls into the overlay, and `inpaint-panel-strength-change` from overlay back to img2img controls.
 
 Next good cuts:
 
-- Optionally extract the crop-rect computation inside `handleGenerate` (the `isCropMode` branch calling `calculateCropRect`) into a small helper.
 - If touching the overlay again, prefer making the existing hooks narrower over adding more state to the overlay file.
+- The next plausible extraction is a small crop/expand mode controller hook around `isExpandMode`, `expandPadding`, `isCropMode`, `resetExpand`, `adjustExpand`, `handleToggleCrop`, and `handleToggleExpand`; do this only if it stays behavior-preserving.
 
 ### Mobile Tools Page
 
@@ -220,7 +223,7 @@ Approximate sizes at this handoff:
 
 - `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
-- `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
+- `src/components/mobile/MobileInpaintOverlay.tsx`: 389 lines
 - `src/components/mobile/MobileImagePage.tsx`: 370 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines

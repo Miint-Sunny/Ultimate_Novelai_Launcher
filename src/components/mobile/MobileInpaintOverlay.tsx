@@ -2,19 +2,20 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import { getCachedIsOpus } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
-import { calculateCropRect, alignSendRect, type CropRect } from '../../utils/maskCrop';
+import type { CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
 import { MobileInpaintCompareOverlay, type InpaintSnapshot } from './inpaint/MobileInpaintCompareOverlay';
 import { buildExpandPayload } from './inpaint/expandPayload';
+import { buildMaskGenerationPayload, calculateInpaintGenerationDimensions } from './inpaint/generationPayload';
 import { MobileInpaintCropPreview } from './inpaint/MobileInpaintCropPreview';
 import { MobileInpaintExpandOverlay } from './inpaint/MobileInpaintExpandOverlay';
 import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
 import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
 import { calculateBaseScale } from './inpaint/scaleUtils';
-import { getMaskBase64FromCanvas } from './inpaint/maskUtils';
 import { useInpaintCompositePreview } from './inpaint/useInpaintCompositePreview';
 import { useInpaintCanvasLoader } from './inpaint/useInpaintCanvasLoader';
 import { useInpaintDrawing, type BrushShape } from './inpaint/useInpaintDrawing';
+import { useInpaintStrengthSync } from './inpaint/useInpaintStrengthSync';
 
 // 扩图相关类型与 payload 构建已抽到 ./inpaint/expandPayload.ts；
 // 此处 re-export 保持对外类型 API 稳定（useMobileInpaintBridge 直接 import ExpandPayload）。
@@ -54,30 +55,11 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   const [brushSize, setBrushSize] = useState(40);
   const [brushShape, setBrushShape] = useState<BrushShape>('circle');
   const [isEraser, setIsEraser] = useState(false);
-  const [strength, setStrength] = useState(0.7);
+  const { strength, handleStrengthChange } = useInpaintStrengthSync();
 
-  // 监听图生图区域的重绘强度变化
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { strength: newStrength } = (e as CustomEvent).detail;
-      setStrength(newStrength);
-    };
-    window.addEventListener('inpaint-strength-sync', handler);
-    return () => window.removeEventListener('inpaint-strength-sync', handler);
-  }, []);
-
-  // 实时同步 strength 到图生图区域（仅在用户拖动时）
-  const handleStrengthChange = (newStrength: number) => {
-    setStrength(newStrength);
-    window.dispatchEvent(new CustomEvent('inpaint-panel-strength-change', { detail: { strength: newStrength } }));
-  };
-
-  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
-  const preGenerateImageRef = useRef<string | null>(null);
   const snapshotRef = useRef<InpaintSnapshot | null>(null);
   const [hasSnapshot, setHasSnapshot] = useState(false);
-  const preGenerateSizeRef = useRef<{ width: number; height: number; padLeft: number; padTop: number } | null>(null);
   // 当前生成使用的裁切/扩图区域（用于流式预览定位）
   const activeGenRectRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
@@ -173,9 +155,6 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   // 8x8 网格区域扩张 + base64 读取：见 ./inpaint/maskUtils.ts
 
   const handleGenerate = () => {
-    if (!preGenerateImageRef.current) {
-      preGenerateImageRef.current = imageUrl;
-    }
     if (canvasRef.current) {
       snapshotRef.current = {
         url: canvasRef.current.toDataURL('image/png'),
@@ -184,8 +163,6 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
       };
       setHasSnapshot(true);
     }
-    preGenerateSizeRef.current = { width: imageWidth, height: imageHeight, padLeft: expandPadding.left, padTop: expandPadding.top };
-    setOriginalImageUrl(imageUrl);
 
     // ===== 扩图框选模式 =====
     if (isExpandMode && hasExpand) {
@@ -197,20 +174,9 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
     }
 
     // ===== 普通遮罩 / 裁切重绘模式 =====
-    const maskBase64 = getMaskBase64FromCanvas(maskCanvasRef.current, imageWidth, imageHeight);
-
-    let cropRect: CropRect | undefined;
-    if (isCropMode && maskCanvasRef.current) {
-      const maskCtx = maskCanvasRef.current.getContext('2d');
-      if (maskCtx) {
-        const maskData = maskCtx.getImageData(0, 0, imageWidth, imageHeight);
-        const rect = calculateCropRect(maskData, imageWidth, imageHeight);
-        if (rect) cropRect = rect;
-      }
-    }
-
-    activeGenRectRef.current = cropRect || null;
-    onGenerate(maskBase64, strength, cropRect);
+    const payload = buildMaskGenerationPayload(maskCanvasRef.current, imageWidth, imageHeight, isCropMode);
+    activeGenRectRef.current = payload.genRect;
+    onGenerate(payload.maskBase64, strength, payload.cropRect);
   };
 
   const displayWidth = imageWidth * baseScale * zoom;
@@ -228,17 +194,15 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
 
   // 本次生成实际分辨率 + 点数消耗
   const genDimensions = useMemo(() => {
-    if (isExpandMode && hasExpand) {
-      return {
-        width: imageWidth + expandPadding.left + expandPadding.right,
-        height: imageHeight + expandPadding.top + expandPadding.bottom,
-      };
-    }
-    if (isCropMode && cropPreview) {
-      const aligned = alignSendRect(cropPreview, imageWidth, imageHeight);
-      return { width: aligned.width, height: aligned.height };
-    }
-    return { width: imageWidth, height: imageHeight };
+    return calculateInpaintGenerationDimensions({
+      isExpandMode,
+      hasExpand,
+      expandPadding,
+      isCropMode,
+      cropPreview,
+      imageWidth,
+      imageHeight,
+    });
   }, [isExpandMode, hasExpand, expandPadding, isCropMode, cropPreview, imageWidth, imageHeight]);
 
   const costInfo = useMemo(() => {
