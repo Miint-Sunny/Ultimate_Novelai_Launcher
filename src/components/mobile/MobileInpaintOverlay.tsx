@@ -12,8 +12,9 @@ import { MobileInpaintHeader } from './inpaint/MobileInpaintHeader';
 import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
 import { calculateBaseScale } from './inpaint/scaleUtils';
 import { getMaskBase64FromCanvas } from './inpaint/maskUtils';
-
-type BrushShape = 'square' | 'circle';
+import { useInpaintCompositePreview } from './inpaint/useInpaintCompositePreview';
+import { useInpaintCanvasLoader } from './inpaint/useInpaintCanvasLoader';
+import { useInpaintDrawing, type BrushShape } from './inpaint/useInpaintDrawing';
 
 // 扩图相关类型与 payload 构建已抽到 ./inpaint/expandPayload.ts；
 // 此处 re-export 保持对外类型 API 稳定（useMobileInpaintBridge 直接 import ExpandPayload）。
@@ -50,7 +51,6 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [isDrawing, setIsDrawing] = useState(false);
   const [brushSize, setBrushSize] = useState(40);
   const [brushShape, setBrushShape] = useState<BrushShape>('circle');
   const [isEraser, setIsEraser] = useState(false);
@@ -72,10 +72,6 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
     window.dispatchEvent(new CustomEvent('inpaint-panel-strength-change', { detail: { strength: newStrength } }));
   };
 
-  const [history, setHistory] = useState<ImageData[]>([]);
-  const [lastBrushPos, setLastBrushPos] = useState<{ x: number; y: number } | null>(null);
-  const [compositeUrl, setCompositeUrl] = useState<string | null>(null);
-
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const preGenerateImageRef = useRef<string | null>(null);
@@ -91,25 +87,16 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
-  // 触摸相关状态
-  const [isPinching, setIsPinching] = useState(false);
-  const lastPinchDistRef = useRef<number>(0);
-  const lastPinchCenterRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-
-  // 延迟绘制，防止双指误触
-  const touchStartTimeRef = useRef<number>(0);
-  const pendingDrawRef = useRef<{ x: number; y: number } | null>(null);
-  const drawDelayMs = 80; // 延迟时间，等待判断是否有第二根手指
-
   // 扩图模式（上下左右箭头拓宽）
   const [isExpandMode, setIsExpandMode] = useState(false);
   const [expandPadding, setExpandPadding] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
   const EXPAND_STEP = 64;
+  const resetExpand = useCallback(() => {
+    setExpandPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+  }, []);
 
   // 裁切重绘模式
   const [isCropMode, setIsCropMode] = useState(false);
-  const [cropPreview, setCropPreview] = useState<CropRect | null>(null);
-
   // 容器尺寸，用于同步计算 baseScale
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
@@ -127,384 +114,61 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
     [imageWidth, imageHeight, expandPadding, isExpandMode, containerSize],
   );
 
+  const {
+    historyLength,
+    setHistory,
+    cropPreview,
+    setCropPreview,
+    updateCropPreview,
+    handleUndo,
+    handleClear,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+  } = useInpaintDrawing({
+    canvasRef,
+    maskCanvasRef,
+    imageWidth,
+    imageHeight,
+    baseScale,
+    zoom,
+    brushSize,
+    brushShape,
+    isEraser,
+    isGenerating,
+    isExpandMode,
+    isCropMode,
+    onZoomChange: setZoom,
+    onPanChange: setPan,
+  });
+
   // 进入/退出扩图模式时重置
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
   }, [isExpandMode]);
 
-  const isFirstLoadRef = useRef(true);
-  // 缓存已加载的图片，避免扩图时重复异步加载导致闪烁
-  const loadedImageRef = useRef<HTMLImageElement | null>(null);
-  const loadedImageUrlRef = useRef<string | null>(null);
-
-  // 将图片绘制到 canvas 的核心逻辑（同步，要求 img 已加载）
-  const drawImageToCanvas = useCallback((
-    ctx: CanvasRenderingContext2D,
-    maskCtx: CanvasRenderingContext2D,
-    img: HTMLImageElement,
-    totalWidth: number,
-    totalHeight: number,
-    savedMaskData: ImageData | null,
-  ) => {
-    ctx.fillStyle = '#0a0a0f';
-    ctx.fillRect(0, 0, totalWidth, totalHeight);
-    ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
-
-    // 恢复遮罩数据
-    if (savedMaskData) {
-      maskCtx.putImageData(savedMaskData, 0, 0);
-    } else {
-      maskCtx.clearRect(0, 0, totalWidth, totalHeight);
-
-      if (isFirstLoadRef.current) {
-        setHistory([]);
-        isFirstLoadRef.current = false;
-
-        // 如果有初始遮罩，加载并绘制到遮罩画布
-        if (initialMask) {
-          const maskImg = new Image();
-          maskImg.onload = () => {
-            maskCtx.clearRect(0, 0, totalWidth, totalHeight);
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = totalWidth;
-            tempCanvas.height = totalHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            if (tempCtx) {
-              tempCtx.drawImage(maskImg, 0, 0, totalWidth, totalHeight);
-              const maskData = tempCtx.getImageData(0, 0, totalWidth, totalHeight);
-              const data = maskData.data;
-              for (let i = 0; i < data.length; i += 4) {
-                if (data[i] > 128) {
-                  data[i] = 168;
-                  data[i + 1] = 85;
-                  data[i + 2] = 247;
-                  data[i + 3] = 255;
-                } else {
-                  data[i + 3] = 0;
-                }
-              }
-              maskCtx.putImageData(maskData, 0, 0);
-            }
-          };
-          maskImg.src = `data:image/png;base64,${initialMask}`;
-        }
-      }
-    }
-    setIsCanvasReady(true);
-  }, [imageWidth, imageHeight, initialMask]);
-
-  useEffect(() => {
-    if (!canvasRef.current || !maskCanvasRef.current || baseScale === 0) return;
-    const canvas = canvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!ctx || !maskCtx) return;
-
-    // 画布始终为图片原始尺寸
-    const totalWidth = imageWidth;
-    const totalHeight = imageHeight;
-
-    const sizeChanged = canvas.width !== totalWidth || canvas.height !== totalHeight;
-
-    let savedMaskData: ImageData | null = null;
-    if (!isFirstLoadRef.current && !sizeChanged && maskCanvas.width > 0 && maskCanvas.height > 0) {
-      savedMaskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-    }
-    if (sizeChanged) {
-      setHistory([]);
-      resetExpand();
-      setCropPreview(null);
-    }
-
-    canvas.width = totalWidth;
-    canvas.height = totalHeight;
-    maskCanvas.width = totalWidth;
-    maskCanvas.height = totalHeight;
-
-    // 如果图片已缓存且 URL 没变，直接同步绘制（无闪烁）
-    if (loadedImageRef.current && loadedImageUrlRef.current === imageUrl) {
-      drawImageToCanvas(ctx, maskCtx, loadedImageRef.current, totalWidth, totalHeight, savedMaskData);
-      return;
-    }
-
-    // 首次加载或 URL 变化，异步加载图片
-    ctx.fillStyle = '#0a0a0f';
-    ctx.fillRect(0, 0, totalWidth, totalHeight);
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      loadedImageRef.current = img;
-      loadedImageUrlRef.current = imageUrl;
-      drawImageToCanvas(ctx, maskCtx, img, totalWidth, totalHeight, savedMaskData);
-    };
-    img.src = imageUrl;
-  }, [imageUrl, imageWidth, imageHeight, baseScale, drawImageToCanvas]);
-
-  // 流式预览合成
-  // 普通模式：全图预览按遮罩混合；裁切模式：只在裁切区域内显示预览
-  useEffect(() => {
-    if (!previewUrl || !canvasRef.current || !maskCanvasRef.current) {
-      setCompositeUrl(null);
-      return;
-    }
-    const canvas = canvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    const w = imageWidth;
-    const h = imageHeight;
-    const genRect = activeGenRectRef.current;
-
-    const compositeCanvas = document.createElement('canvas');
-    compositeCanvas.width = w;
-    compositeCanvas.height = h;
-    const compositeCtx = compositeCanvas.getContext('2d');
-    if (!compositeCtx) return;
-
-    const previewImg = new Image();
-    previewImg.crossOrigin = 'anonymous';
-    previewImg.onload = () => {
-      compositeCtx.drawImage(canvas, 0, 0);
-      const originalData = compositeCtx.getImageData(0, 0, w, h);
-
-      if (genRect) {
-        compositeCtx.drawImage(previewImg, genRect.x, genRect.y, genRect.width, genRect.height);
-      } else {
-        compositeCtx.drawImage(previewImg, 0, 0, w, h);
-      }
-      const previewData = compositeCtx.getImageData(0, 0, w, h);
-
-      const maskCtx = maskCanvas.getContext('2d');
-      if (!maskCtx) return;
-      const maskData = maskCtx.getImageData(0, 0, w, h);
-
-      for (let i = 0; i < maskData.data.length; i += 4) {
-        const hasMask = maskData.data[i] > 0 || maskData.data[i + 1] > 0 || maskData.data[i + 2] > 0 || maskData.data[i + 3] > 0;
-        if (!hasMask) {
-          previewData.data[i] = originalData.data[i];
-          previewData.data[i + 1] = originalData.data[i + 1];
-          previewData.data[i + 2] = originalData.data[i + 2];
-          previewData.data[i + 3] = originalData.data[i + 3];
-        }
-      }
-      compositeCtx.putImageData(previewData, 0, 0);
-      setCompositeUrl(compositeCanvas.toDataURL('image/png'));
-    };
-    previewImg.src = previewUrl;
-    return () => setCompositeUrl(null);
-  }, [previewUrl, imageWidth, imageHeight]);
-
-  const saveHistory = useCallback(() => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!maskCtx) return;
-    const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-    setHistory((prev) => [...prev.slice(-20), imageData]);
-  }, []);
-
-  const updateCropPreview = useCallback(() => {
-    if (!isCropMode || !maskCanvasRef.current) {
-      setCropPreview(null);
-      return;
-    }
-    const maskCtx = maskCanvasRef.current.getContext('2d');
-    if (!maskCtx) return;
-    const maskData = maskCtx.getImageData(0, 0, imageWidth, imageHeight);
-    const rect = calculateCropRect(maskData, imageWidth, imageHeight);
-    setCropPreview(rect);
-  }, [isCropMode, imageWidth, imageHeight]);
-
-  const handleUndo = useCallback(() => {
-    if (history.length === 0) return;
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!maskCtx) return;
-    const prevState = history[history.length - 1];
-    maskCtx.putImageData(prevState, 0, 0);
-    setHistory((prev) => prev.slice(0, -1));
-    setTimeout(() => updateCropPreview(), 0);
-  }, [history, updateCropPreview]);
-
-  const handleClear = useCallback(() => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const maskCtx = maskCanvas.getContext('2d');
-    if (!maskCtx) return;
-    saveHistory();
-    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-    setCropPreview(null);
-  }, [saveHistory]);
-
-  const getCanvasCoords = useCallback(
-    (clientX: number, clientY: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-      const rect = canvas.getBoundingClientRect();
-      const x = (clientX - rect.left) / (baseScale * zoom);
-      const y = (clientY - rect.top) / (baseScale * zoom);
-      return { x, y };
-    },
-    [baseScale, zoom]
-  );
-
-  const drawBrush = useCallback(
-    (x: number, y: number, erase: boolean = false) => {
-      const maskCanvas = maskCanvasRef.current;
-      if (!maskCanvas) return;
-      const maskCtx = maskCanvas.getContext('2d');
-      if (!maskCtx) return;
-      const scaledBrushSize = brushSize / zoom;
-      const halfSize = scaledBrushSize / 2;
-
-      // 略微缩小圆形笔刷实际绘制的半径（减小 4 像素），补偿后续处理中的 8x8 VAE 膨胀
-      const actualHalfSize = brushShape === 'circle' ? Math.max(1, halfSize - 4) : halfSize;
-      const actualScaledBrushSize = brushShape === 'circle' ? actualHalfSize * 2 : scaledBrushSize;
-
-      if (erase) {
-        if (brushShape === 'square') {
-          maskCtx.clearRect(x - halfSize, y - halfSize, scaledBrushSize, scaledBrushSize);
-        } else {
-          maskCtx.save();
-          maskCtx.beginPath();
-          maskCtx.arc(x, y, actualHalfSize, 0, Math.PI * 2);
-          maskCtx.clip();
-          maskCtx.clearRect(x - actualHalfSize, y - actualHalfSize, actualScaledBrushSize, actualScaledBrushSize);
-          maskCtx.restore();
-        }
-      } else {
-        // 使用紫色
-        maskCtx.fillStyle = 'rgba(168, 85, 247, 1)';
-        if (brushShape === 'square') {
-          maskCtx.fillRect(x - halfSize, y - halfSize, scaledBrushSize, scaledBrushSize);
-        } else {
-          maskCtx.beginPath();
-          maskCtx.arc(x, y, actualHalfSize, 0, Math.PI * 2);
-          maskCtx.fill();
-        }
-      }
-    },
-    [brushSize, brushShape, zoom]
-  );
-
-  const drawLine = useCallback(
-    (x1: number, y1: number, x2: number, y2: number, erase: boolean = false) => {
-      const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-      const scaledBrushSize = brushSize / zoom;
-      const steps = Math.max(1, Math.ceil(dist / (scaledBrushSize / 4)));
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const x = x1 + (x2 - x1) * t;
-        const y = y1 + (y2 - y1) * t;
-        drawBrush(x, y, erase);
-      }
-    },
-    [brushSize, zoom, drawBrush]
-  );
-
-  // 触摸事件处理
-  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (e.touches.length === 2) {
-      // 双指缩放/平移 - 生成中也允许
-      e.preventDefault();
-      pendingDrawRef.current = null;
-      setIsPinching(true);
-      setIsDrawing(false);
-      setLastBrushPos(null);
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const dist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-      lastPinchDistRef.current = dist;
-      lastPinchCenterRef.current = {
-        x: (touch1.clientX + touch2.clientX) / 2,
-        y: (touch1.clientY + touch2.clientY) / 2,
-      };
-    } else if (e.touches.length === 1 && !isPinching) {
-      // 单指绘制 - 生成中或扩图模式不允许
-      if (isGenerating || isExpandMode) return;
-      const touch = e.touches[0];
-      const { x, y } = getCanvasCoords(touch.clientX, touch.clientY);
-      touchStartTimeRef.current = Date.now();
-      pendingDrawRef.current = { x, y };
-
-      setTimeout(() => {
-        if (pendingDrawRef.current && !isPinching) {
-          saveHistory();
-          setIsDrawing(true);
-          setLastBrushPos(pendingDrawRef.current);
-          drawBrush(pendingDrawRef.current.x, pendingDrawRef.current.y, isEraser);
-          pendingDrawRef.current = null;
-        }
-      }, drawDelayMs);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
-
-    if (e.touches.length === 2) {
-      // 双指操作 - 取消待处理的绘制
-      e.preventDefault();
-      pendingDrawRef.current = null;
-      setIsDrawing(false);
-
-      if (!isPinching) {
-        setIsPinching(true);
-        const touch1 = e.touches[0];
-        const touch2 = e.touches[1];
-        lastPinchDistRef.current = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-        lastPinchCenterRef.current = {
-          x: (touch1.clientX + touch2.clientX) / 2,
-          y: (touch1.clientY + touch2.clientY) / 2,
-        };
-        return;
-      }
-
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const dist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
-      const center = {
-        x: (touch1.clientX + touch2.clientX) / 2,
-        y: (touch1.clientY + touch2.clientY) / 2,
-      };
-
-      // 缩放
-      if (lastPinchDistRef.current > 0) {
-        const scale = dist / lastPinchDistRef.current;
-        setZoom((prev) => Math.min(Math.max(prev * scale, 0.5), 5));
-      }
-
-      // 平移
-      const dx = center.x - lastPinchCenterRef.current.x;
-      const dy = center.y - lastPinchCenterRef.current.y;
-      setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-
-      lastPinchDistRef.current = dist;
-      lastPinchCenterRef.current = center;
-    } else if (e.touches.length === 1 && !isPinching) {
-      const touch = e.touches[0];
-      const { x, y } = getCanvasCoords(touch.clientX, touch.clientY);
-
-      // 如果还在等待延迟，更新待绘制位置
-      if (pendingDrawRef.current) {
-        pendingDrawRef.current = { x, y };
-      } else if (isDrawing && lastBrushPos) {
-        // 已经开始绘制
-        drawLine(lastBrushPos.x, lastBrushPos.y, x, y, isEraser);
-        setLastBrushPos({ x, y });
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    pendingDrawRef.current = null;
-    setIsDrawing(false);
-    setLastBrushPos(null);
-    setIsPinching(false);
-    lastPinchDistRef.current = 0;
-    updateCropPreview();
-  };
+  const { loadedImageRef } = useInpaintCanvasLoader({
+    canvasRef,
+    maskCanvasRef,
+    imageUrl,
+    imageWidth,
+    imageHeight,
+    baseScale,
+    initialMask,
+    onResetExpand: resetExpand,
+    onCropPreviewChange: setCropPreview,
+    onHistoryChange: setHistory,
+    onCanvasReadyChange: setIsCanvasReady,
+  });
+  const compositeUrl = useInpaintCompositePreview({
+    previewUrl,
+    canvasRef,
+    maskCanvasRef,
+    imageWidth,
+    imageHeight,
+    activeGenRectRef,
+  });
 
   // 8x8 网格区域扩张 + base64 读取：见 ./inpaint/maskUtils.ts
 
@@ -558,10 +222,6 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
       const newValue = Math.max(0, prev[direction] + delta);
       return { ...prev, [direction]: newValue };
     });
-  }, []);
-
-  const resetExpand = useCallback(() => {
-    setExpandPadding({ top: 0, bottom: 0, left: 0, right: 0 });
   }, []);
 
   const hasExpand = expandPadding.top > 0 || expandPadding.bottom > 0 || expandPadding.left > 0 || expandPadding.right > 0;
@@ -744,7 +404,7 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
         setIsEraser={setIsEraser}
         brushShape={brushShape}
         setBrushShape={setBrushShape}
-        historyLength={history.length}
+        historyLength={historyLength}
         onUndo={handleUndo}
         onClear={handleClearAll}
         isCropMode={isCropMode}
