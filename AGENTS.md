@@ -199,7 +199,7 @@ Important preserved behavior:
 
 Approximate sizes at this handoff:
 
-- `src/components/mobile/FullscreenEditor.tsx`: 563 lines
+- `src/components/mobile/FullscreenEditor.tsx`: 373 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
@@ -218,7 +218,7 @@ These were extracted during a broader sweep of mobile sheets/components:
 
 - `src/components/mobile/ai-assistant/AssistantMessageParts.tsx` (`TypewriterText` + `TagButton` + `renderMessageContent` from `MobileAIAssistantSheet`)
 - `src/components/mobile/artist/MobileArtistEditorSheet.tsx` and `src/components/mobile/artist/MobileArtistListItem.tsx` (editor/list UI from `MobileArtistModal`)
-- `src/components/mobile/fullscreen-editor/` hooks and parts (`SelectedTagPanel`, `SuggestionStrip`, `useSuggestionSelection`, tag action/translation/wiki/drag hooks, editor lifecycle hooks, input workflow hook, tag editing hook)
+- `src/components/mobile/fullscreen-editor/` hooks and parts (`FullscreenChipEditorArea`, `SelectedTagPanel`, `SuggestionStrip`, `useSuggestionSelection`, tag action/translation/wiki/drag hooks, editor lifecycle hooks, input workflow hook, tag editing hook)
 - `src/components/mobile/inspiration/MobileInspirationCategoryGroup.tsx` (`CategoryGroup` from `MobileInspirationSheet`)
 - `src/components/mobile/prompt-summary/PromptSummaryParts.tsx` (prompt summary card pieces)
 - `src/components/mobile/upscale/loadImageToCanvas.ts` (`loadImageToCanvas` from `MobileUpscaleSheet`)
@@ -227,9 +227,9 @@ These were extracted during a broader sweep of mobile sheets/components:
 
 ## Recommended Next Mobile Cuts
 
-1. `FullscreenEditor`: it is still large, but lifecycle/undo/input workflow are now extracted. The next coherent cut is the chip renderer area, but keep drag refs and marker chip behavior together.
-2. `MobileGeneratePage`: keep shrinking orchestration only when a new domain coordinator is obvious; avoid moving JSX around without changing ownership.
-3. `MobileAIAssistantSheet`: extract only if the message stream, prompt actions, or model controls become a clear independent boundary.
+1. `MobileGeneratePage`: keep shrinking orchestration only when a new domain coordinator is obvious; avoid moving JSX around without changing ownership.
+2. `MobileAIAssistantSheet`: extract only if the message stream, prompt actions, or model controls become a clear independent boundary.
+3. `MobileInpaintOverlay`: it is near the threshold; only touch for crop/expand helper boundaries or to narrow existing hooks.
 4. `MobileImagePage`: remaining code is mostly layout plus already-extracted workflow hooks; touch it only for a specific boundary.
 
 ## Refactor Rules For Future Agents

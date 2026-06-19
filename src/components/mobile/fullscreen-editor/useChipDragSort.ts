@@ -5,7 +5,7 @@ import {
 } from '../../../utils/promptTags';
 import { getMarkerVisual } from '../../tag-manager/markerVisual';
 
-interface DragState {
+export interface DragState {
   index: number;
   startX: number;
   startY: number;
@@ -19,7 +19,7 @@ interface DragState {
   startScrollTop: number;
 }
 
-interface DragGhost {
+export interface DragGhost {
   x: number;
   y: number;
   w: number;
