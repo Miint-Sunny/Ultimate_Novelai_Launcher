@@ -19,6 +19,7 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 )
+SUBSCRIPTION_URL = "https://api.novelai.net/user/subscription"
 
 
 class NovelAIError(Exception):
@@ -170,6 +171,60 @@ async def upscale_image(
         read_timeout=180.0,
     )
     return await _extract_image_from_zip(response.content)
+
+
+def parse_anlas_subscription(data: dict[str, Any]) -> dict[str, Any]:
+    steps = data.get("trainingStepsLeft")
+    if not isinstance(steps, dict):
+        steps = {}
+
+    fixed = int(steps.get("fixedTrainingStepsLeft") or 0)
+    purchased = int(steps.get("purchasedTrainingSteps") or 0)
+    tier = data.get("tier")
+    active = data.get("active", True)
+    return {
+        "fixedTrainingStepsLeft": fixed,
+        "purchasedTrainingSteps": purchased,
+        "isOpus": tier == 3 and active is not False,
+    }
+
+
+async def fetch_anlas(settings: Settings) -> dict[str, Any]:
+    if not settings.nai_token:
+        raise NovelAIError("NAI token is not configured")
+
+    headers = {
+        "Authorization": f"Bearer {settings.nai_token}",
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json",
+        "Origin": "https://novelai.net",
+        "Referer": "https://novelai.net",
+    }
+    async with httpx.AsyncClient(
+        headers={key: value for key, value in headers.items() if key != "Authorization"},
+        timeout=httpx.Timeout(10.0, read=20.0),
+    ) as client:
+        response = await client.get(
+            SUBSCRIPTION_URL,
+            headers={"Authorization": headers["Authorization"]},
+        )
+
+    if response.status_code != 200:
+        message = f"NovelAI subscription request failed with HTTP {response.status_code}"
+        try:
+            body = response.json()
+            message = body.get("message") or body.get("error") or message
+        except Exception:
+            body = response.text[:500]
+        raise NovelAIError(message, response.status_code, str(body))
+
+    try:
+        data = response.json()
+    except Exception as exc:
+        raise NovelAIError("NovelAI subscription response was not valid JSON") from exc
+    if not isinstance(data, dict):
+        raise NovelAIError("NovelAI subscription response was not an object")
+    return parse_anlas_subscription(data)
 
 
 async def _post_nai_json(

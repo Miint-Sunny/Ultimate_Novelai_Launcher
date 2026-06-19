@@ -5,7 +5,7 @@ import unittest
 try:
     from pydantic import ValidationError
 
-    from sidecar.nai.client import build_official_payload
+    from sidecar.nai.client import build_official_payload, parse_anlas_subscription
     from sidecar.nai.models import GenerationParams
 except ModuleNotFoundError as exc:  # pragma: no cover - dependency bootstrap guard
     ValidationError = None  # type: ignore[assignment]
@@ -29,7 +29,29 @@ class NaiModelTests(unittest.TestCase):
         self.assertEqual(payload["parameters"]["v4_prompt"]["caption"]["base_caption"], "1girl, smile")
         self.assertEqual(payload["parameters"]["v4_negative_prompt"]["caption"]["base_caption"], "bad anatomy")
 
+    def test_parses_subscription_anlas_balance(self) -> None:
+        parsed = parse_anlas_subscription(
+            {
+                "tier": 3,
+                "active": True,
+                "trainingStepsLeft": {
+                    "fixedTrainingStepsLeft": 1200,
+                    "purchasedTrainingSteps": 34,
+                },
+            }
+        )
+
+        self.assertEqual(parsed["fixedTrainingStepsLeft"], 1200)
+        self.assertEqual(parsed["purchasedTrainingSteps"], 34)
+        self.assertTrue(parsed["isOpus"])
+
+    def test_parses_missing_subscription_steps_as_zero(self) -> None:
+        parsed = parse_anlas_subscription({"tier": 1, "active": True})
+
+        self.assertEqual(parsed["fixedTrainingStepsLeft"], 0)
+        self.assertEqual(parsed["purchasedTrainingSteps"], 0)
+        self.assertFalse(parsed["isOpus"])
+
 
 if __name__ == "__main__":
     unittest.main()
-

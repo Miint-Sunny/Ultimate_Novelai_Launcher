@@ -31,7 +31,7 @@ from .library import init_library
 from .library_routes import register_library_routes
 from .local_settings import write_local_settings
 from .llm.client import LLMConversionError, LLMNotConfiguredError, chat_completion, convert_natural_to_tags
-from .nai.client import NovelAIError, encode_vibe, generate_image, generate_image_from_payload, upscale_image
+from .nai.client import NovelAIError, encode_vibe, fetch_anlas, generate_image, generate_image_from_payload, upscale_image
 from .nai.models import GenerateRequest, GenerationParams, ResolvedPrompt
 from .storage import image_path, write_mock_image
 
@@ -356,13 +356,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_library_routes(app, resolved_settings)
 
     @app.get("/api/anlas")
-    def legacy_anlas() -> dict[str, Any]:
-        return {
-            "fixedTrainingStepsLeft": 0,
-            "purchasedTrainingSteps": 0,
-            "isOpus": False,
-            "configured": resolved_settings.nai_configured,
-        }
+    async def legacy_anlas() -> dict[str, Any]:
+        if not resolved_settings.nai_configured:
+            return {
+                "fixedTrainingStepsLeft": 0,
+                "purchasedTrainingSteps": 0,
+                "isOpus": False,
+                "configured": False,
+            }
+        if resolved_settings.mock_generation and not resolved_settings.nai_token:
+            return {
+                "fixedTrainingStepsLeft": 0,
+                "purchasedTrainingSteps": 0,
+                "isOpus": False,
+                "configured": True,
+            }
+        try:
+            return {**await fetch_anlas(resolved_settings), "configured": True}
+        except NovelAIError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.get("/api/data/{filename}")
     def legacy_data_file(filename: str) -> Any:
