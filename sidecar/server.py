@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from . import APP_VERSION
 from .config import Settings, load_settings
-from .credentials import delete_stored_token, set_stored_token
+from .credentials import CredentialStorageError, delete_stored_token, set_stored_token
 from .db import (
     create_generation,
     get_generation,
@@ -156,7 +156,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/auth/token")
     def set_token(req: TokenRequest) -> dict[str, Any]:
         nonlocal resolved_settings
-        set_stored_token(resolved_settings.data_dir, req.token)
+        try:
+            set_stored_token(resolved_settings.data_dir, req.token)
+        except CredentialStorageError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         if settings is None:
             resolved_settings = load_settings()
             app.state.settings = resolved_settings
