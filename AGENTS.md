@@ -141,7 +141,7 @@ Do not change token storage semantics while doing UI cleanup. Token handling mus
 
 ### Mobile Inpaint Overlay
 
-`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 389 lines.
+`src/components/mobile/MobileInpaintOverlay.tsx` has already been reduced from about 1201 lines to about 377 lines.
 
 Extracted files:
 
@@ -157,8 +157,10 @@ Extracted files:
 - `src/components/mobile/inpaint/generationPayload.ts` (`calculateInpaintGenerationDimensions` + `buildMaskGenerationPayload` for crop/normal mask payload construction)
 - `src/components/mobile/inpaint/useInpaintStrengthSync.ts` (window event bridge for `inpaint-strength-sync` / `inpaint-panel-strength-change`)
 - `src/components/mobile/inpaint/useInpaintCanvasLoader.ts`
+- `src/components/mobile/inpaint/useInpaintContainerSize.ts`
 - `src/components/mobile/inpaint/useInpaintCompositePreview.ts`
 - `src/components/mobile/inpaint/useInpaintDrawing.ts`
+- `src/components/mobile/inpaint/useInpaintSnapshot.ts`
 
 Important preserved behavior:
 
@@ -166,7 +168,7 @@ Important preserved behavior:
 - `inpaint-strength-sync` and `inpaint-panel-strength-change` events remain unchanged.
 - crop/expand payload shape passed to `onGenerate` must remain unchanged.
 - canvas dimensions, mask expansion, and 8x8 alignment behavior are sensitive; avoid changing algorithms while extracting.
-- The original-image compare overlay is driven by `snapshotRef` (a ref, read during render) paired with `showOriginal`; re-render visibility is triggered by `setHasSnapshot(true)` set right after the ref in `handleGenerate`, so passing `snapshot={snapshotRef.current}` as a prop preserves timing.
+- The original-image compare overlay is driven by `useInpaintSnapshot`; it still stores `snapshotRef` in a ref, pairs it with `showOriginal`, and triggers visibility by setting `hasSnapshot` right after capture.
 - Strength sync event names remain unchanged: `inpaint-strength-sync` from img2img controls into the overlay, and `inpaint-panel-strength-change` from overlay back to img2img controls.
 
 Next good cuts:
@@ -223,7 +225,7 @@ Approximate sizes at this handoff:
 
 - `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
-- `src/components/mobile/MobileInpaintOverlay.tsx`: 389 lines
+- `src/components/mobile/MobileInpaintOverlay.tsx`: 377 lines
 - `src/components/mobile/MobileImagePage.tsx`: 370 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines

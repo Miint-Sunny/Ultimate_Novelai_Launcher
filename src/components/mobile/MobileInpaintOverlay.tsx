@@ -4,7 +4,7 @@ import { getCachedIsOpus } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
 import type { CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
-import { MobileInpaintCompareOverlay, type InpaintSnapshot } from './inpaint/MobileInpaintCompareOverlay';
+import { MobileInpaintCompareOverlay } from './inpaint/MobileInpaintCompareOverlay';
 import { buildExpandPayload } from './inpaint/expandPayload';
 import { buildMaskGenerationPayload, calculateInpaintGenerationDimensions } from './inpaint/generationPayload';
 import { MobileInpaintCropPreview } from './inpaint/MobileInpaintCropPreview';
@@ -14,7 +14,9 @@ import { MobileInpaintProgressPill } from './inpaint/MobileInpaintProgressPill';
 import { calculateBaseScale } from './inpaint/scaleUtils';
 import { useInpaintCompositePreview } from './inpaint/useInpaintCompositePreview';
 import { useInpaintCanvasLoader } from './inpaint/useInpaintCanvasLoader';
+import { useInpaintContainerSize } from './inpaint/useInpaintContainerSize';
 import { useInpaintDrawing, type BrushShape } from './inpaint/useInpaintDrawing';
+import { useInpaintSnapshot } from './inpaint/useInpaintSnapshot';
 import { useInpaintStrengthSync } from './inpaint/useInpaintStrengthSync';
 
 // 扩图相关类型与 payload 构建已抽到 ./inpaint/expandPayload.ts；
@@ -50,16 +52,14 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { containerRef, containerSize } = useInpaintContainerSize();
 
   const [brushSize, setBrushSize] = useState(40);
   const [brushShape, setBrushShape] = useState<BrushShape>('circle');
   const [isEraser, setIsEraser] = useState(false);
   const { strength, handleStrengthChange } = useInpaintStrengthSync();
 
-  const [showOriginal, setShowOriginal] = useState(false);
-  const snapshotRef = useRef<InpaintSnapshot | null>(null);
-  const [hasSnapshot, setHasSnapshot] = useState(false);
+  const { showOriginal, setShowOriginal, snapshotRef, hasSnapshot, captureSnapshot } = useInpaintSnapshot();
   // 当前生成使用的裁切/扩图区域（用于流式预览定位）
   const activeGenRectRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
@@ -79,17 +79,6 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
 
   // 裁切重绘模式
   const [isCropMode, setIsCropMode] = useState(false);
-  // 容器尺寸，用于同步计算 baseScale
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    setContainerSize(prev => (prev.width === w && prev.height === h) ? prev : { width: w, height: h });
-  });
-
   // 同步计算 baseScale
   const baseScale = useMemo(
     () => calculateBaseScale(containerSize, imageWidth, imageHeight, expandPadding, isExpandMode),
@@ -155,14 +144,13 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   // 8x8 网格区域扩张 + base64 读取：见 ./inpaint/maskUtils.ts
 
   const handleGenerate = () => {
-    if (canvasRef.current) {
-      snapshotRef.current = {
-        url: canvasRef.current.toDataURL('image/png'),
-        width: imageWidth, height: imageHeight,
-        padLeft: expandPadding.left, padTop: expandPadding.top,
-      };
-      setHasSnapshot(true);
-    }
+    captureSnapshot({
+      canvas: canvasRef.current,
+      imageWidth,
+      imageHeight,
+      padLeft: expandPadding.left,
+      padTop: expandPadding.top,
+    });
 
     // ===== 扩图框选模式 =====
     if (isExpandMode && hasExpand) {
