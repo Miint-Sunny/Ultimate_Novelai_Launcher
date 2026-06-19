@@ -89,6 +89,7 @@ Existing extracted area:
 - `useMobileVibeTags`, which owns Vibe tag pool, tag editor, batch tagging, and tag CRUD state/actions
 - `mobileVibeFilters`, which owns Vibe model compatibility, public/local filtering, and tag usage counting
 - `mobileOCData`, which owns mobile OC mapping, search filtering, and selected OC to character prompt construction
+- `useMobileOCEditor`, which owns OC editor draft state, create/edit save, preview generation, paste fallback, and delete-current-editor flow
 - prompt assist and translation hooks
 - generation runner and preparation helpers
 
@@ -98,7 +99,23 @@ Important preserved behavior:
 
 - Vibe add still clears active precise references through `useMobileReferenceLibraries`.
 - Public Vibe async file completion, local Vibe import/export/delete, recent usage, and tag editing behavior are unchanged.
-- OC creation/edit/delete/preview generation and confirmation into character prompts are unchanged; only mapping/filtering/build helpers moved.
+- OC creation/edit/delete/preview generation and confirmation into character prompts are unchanged; editor workflow is now separate from list/selection management.
+
+### Mobile Image Import Modal
+
+`src/components/mobile/MobileImageImportModal.tsx` is now the modal shell and mode router.
+
+Extracted files:
+
+- `src/components/mobile/MobileImageImportModalViews.tsx` owns the four visible modes: tagger result, full metadata, metadata import, and no-metadata use-as choice.
+- `src/components/mobile/MobileImageImportModalParts.tsx` still owns small reusable controls such as use-as buttons and import option rows.
+
+Important preserved behavior:
+
+- Tagger result copy/import, include-character toggle, and clean-import toggle are unchanged.
+- Full metadata still renders through `MetadataDetailPanel`.
+- Metadata import options and unsupported-settings disabling are unchanged.
+- Use-as Vibe / Img2Img / CR buttons keep the same callbacks and placement semantics.
 
 ### Mobile Image/Gallery Page
 
@@ -238,10 +255,12 @@ Approximate sizes at this handoff:
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/FullscreenEditor.tsx`: 354 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
-- `src/components/mobile/generate/useMobileOCManager.ts`: 296 lines
 - `src/components/mobile/generate/useMobileVibeLibrary.ts`: 277 lines
 - `src/components/mobile/MobileUpscaleSheet.tsx`: 259 lines
 - `src/components/mobile/MobileArtistModal.tsx`: 243 lines
+- `src/components/mobile/generate/useMobileOCEditor.ts`: 190 lines
+- `src/components/mobile/generate/useMobileOCManager.ts`: 165 lines
+- `src/components/mobile/MobileImageImportModal.tsx`: 128 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 105 lines
 - `src/components/mobile/MobileToolsPage.tsx`: 49 lines
 
