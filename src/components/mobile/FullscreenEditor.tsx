@@ -14,14 +14,11 @@ import {
 } from '../../utils/promptTags';
 import { getMarkerVisual } from '../tag-manager/markerVisual';
 import { getAppSettings } from '../../services/localLibrary';
-import {
-  getTagSuggestionsDebounced,
-  type TagSuggestion,
-} from '../../services/tagAutocomplete';
 import { EditorToolbar } from './fullscreen-editor/EditorToolbar';
 import { SelectedTagPanel } from './fullscreen-editor/SelectedTagPanel';
 import { SuggestionStrip } from './fullscreen-editor/SuggestionStrip';
 import { useChipDragSort } from './fullscreen-editor/useChipDragSort';
+import { useFullscreenInputWorkflow } from './fullscreen-editor/useFullscreenInputWorkflow';
 import { useFullscreenTagActions } from './fullscreen-editor/useFullscreenTagActions';
 import { useFullscreenTagTranslations } from './fullscreen-editor/useFullscreenTagTranslations';
 import { useFullscreenWiki } from './fullscreen-editor/useFullscreenWiki';
@@ -70,17 +67,11 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
 
   // 选中的标签索引（支持多选）
   const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
-  // 输入框
-  const [inputText, setInputText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 布局模式：芯片 vs 纯文本
   const [rawMode, setRawMode] = useState(false);
-  // 自动补全
-  const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedSuggIdx, setSelectedSuggIdx] = useState(0);
   const [nlTranslating, setNlTranslating] = useState(false);
   // 补全选中后短暂屏蔽芯片点击
   const suppressChipClickRef = useRef(false);
@@ -178,64 +169,26 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
     if (valid.size !== selectedTags.size) setSelectedTags(valid);
   }, [parsedTags.length, selectedTags]);
 
-  // ========== 输入框逻辑 ==========
-  const commitInput = useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const newVal = value ? value + ', ' + trimmed : trimmed;
-    saveValue(newVal);
-    setInputText('');
-    setShowSuggestions(false);
-    setSuggestions([]);
-  }, [value, saveValue]);
-
-  const handleInputChange = useCallback((text: string) => {
-    // 检测逗号 → 自动提交（仅当逗号前内容不含中文时触发）
-    const commaMatch = text.match(/[,，]/);
-    if (commaMatch) {
-      const beforeComma = text.slice(0, commaMatch.index);
-      const hasChinese = /[\u4e00-\u9fa5]/.test(beforeComma);
-      if (!hasChinese) {
-        const parts = text.split(/[,，]/);
-        const tagsToCommit = parts.slice(0, -1).map(s => s.trim()).filter(Boolean);
-        if (tagsToCommit.length > 0) {
-          const allTags = tagsToCommit.join(', ');
-          const newVal = value ? value + ', ' + allTags : allTags;
-          saveValue(newVal);
-        }
-        const remaining = parts[parts.length - 1];
-        setInputText(remaining);
-        setShowSuggestions(false);
-        setSuggestions([]);
-        triggerAutocomplete(remaining);
-        return;
-      }
-    }
-    setInputText(text);
-    triggerAutocomplete(text);
-  }, [value, saveValue]);
-
-  const triggerAutocomplete = useCallback((text: string) => {
-    const trimmed = text.trim();
-    const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);
-    const minLen = hasChinese ? 1 : 2;
-    if (trimmed.length >= minLen) {
-      getTagSuggestionsDebounced(trimmed, (newSuggestions) => {
-        if (newSuggestions.length > 0) {
-          setSuggestions([...newSuggestions]);
-          setShowSuggestions(true);
-          setSelectedSuggIdx(-1);
-          scrollToBottom();
-        } else {
-          setShowSuggestions(false);
-          setSuggestions([]);
-        }
-      }, 250);
-    } else {
-      setShowSuggestions(false);
-      setSuggestions([]);
-    }
-  }, [scrollToBottom]);
+  const {
+    inputText,
+    setInputText,
+    suggestions,
+    setSuggestions,
+    showSuggestions,
+    setShowSuggestions,
+    selectedSuggIdx,
+    commitInput,
+    triggerAutocomplete,
+    handleInputChange,
+    handlePaste,
+    handleInputKeyDown,
+  } = useFullscreenInputWorkflow({
+    value,
+    parsedTags,
+    saveValue,
+    rebuildValue,
+    scrollToBottom,
+  });
 
   const selectSuggestion = useSuggestionSelection({
     rawMode,
@@ -258,46 +211,6 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
     setEditingTagText,
     setTagTranslations,
   });
-
-  // 粘贴时自动分割多个标签（保留换行结构，与桌面端一致）
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pasted = e.clipboardData.getData('text');
-    if (!pasted) return;
-    // 保留换行结构：先按行拆分，每行内按逗号规整
-    const lines = pasted.split(/\r?\n/).map(line =>
-      line.split(/[,，]/).map(s => s.trim()).filter(Boolean).join(', ')
-    ).filter(Boolean);
-    if (lines.length === 0) return;
-    if (lines.length === 1 && !lines[0].includes(',')) return; // 单个标签走正常 onChange 流程
-    e.preventDefault();
-    const allTags = lines.join('\n');
-    const newVal = value ? value + ', ' + allTags : allTags;
-    saveValue(newVal);
-    setInputText('');
-    setShowSuggestions(false);
-    setSuggestions([]);
-  }, [value, saveValue]);
-
-  // Backspace 空输入时删除最后一个标签
-  const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (inputText.trim()) {
-        commitInput(inputText);
-      }
-    } else if (e.key === 'ArrowDown' && showSuggestions) {
-      e.preventDefault();
-      setSelectedSuggIdx(prev => (prev + 1) % suggestions.length);
-    } else if (e.key === 'ArrowUp' && showSuggestions) {
-      e.preventDefault();
-      setSelectedSuggIdx(prev => (prev - 1 + suggestions.length) % suggestions.length);
-    } else if (e.key === 'Backspace' && !inputText && parsedTags.length > 0) {
-      e.preventDefault();
-      const tags = [...parsedTags];
-      tags.pop();
-      rebuildValue(tags);
-    }
-  }, [showSuggestions, suggestions, selectedSuggIdx, selectSuggestion, inputText, commitInput, parsedTags, rebuildValue]);
 
   const { tagActions, currentNumericWeight } = useFullscreenTagActions({
     parsedTags,
