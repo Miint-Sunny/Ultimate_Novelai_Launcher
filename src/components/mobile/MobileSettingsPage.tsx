@@ -19,7 +19,7 @@ import {
   type AppSettings,
   DEFAULT_APP_SETTINGS,
   getApiToken,
-  saveApiToken,
+  markApiTokenConfigured,
 } from '../../services/localLibrary';
 import { copyToClipboard } from '../../utils/clipboard';
 import { botService, onlineService, type BotAuthState, type BotTaskState } from '../../services/botService';
@@ -175,11 +175,11 @@ export const MobileSettingsPage: React.FC<MobileSettingsPageProps> = ({ onLogout
     try {
       if (trimmedToken) {
         await sidecarApi.saveToken(trimmedToken);
-        saveApiToken(trimmedToken);
+        markApiTokenConfigured(true);
         setToken('');
       } else {
         await sidecarApi.clearToken();
-        saveApiToken('');
+        markApiTokenConfigured(false);
       }
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 1500);

@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import {
-  saveApiToken,
+  markApiTokenConfigured,
   saveUserId,
   saveAppSettings,
   getAppSettings,
@@ -111,7 +111,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
       // 保存测试模式设置
       const settings = getAppSettings();
       saveAppSettings({ ...settings, loginMode: 'token', queueEnabled: false });
-      saveApiToken('configured');
+      markApiTokenConfigured(true);
       saveUserId('dev-test-user');
       handleSuccess();
     }
@@ -133,7 +133,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
       try {
         setIsProcessing(true);
         await sidecarApi.saveToken(trimmedToken);
-        saveApiToken(trimmedToken);
+        markApiTokenConfigured(true);
 
         const userId = await generateSecureUserId(trimmedToken);
         saveUserId(userId);

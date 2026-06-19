@@ -7,7 +7,7 @@ import {
   DEFAULT_APP_SETTINGS,
   THEME_OPTIONS,
   getApiToken,
-  saveApiToken,
+  markApiTokenConfigured,
 } from '../services/localLibrary';
 import { botService, type BotAuthState, type BotTaskState } from '../services/botService';
 import { clearTagCache } from '../services/tagAutocomplete';
@@ -167,11 +167,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     try {
       if (trimmedToken) {
         await sidecarApi.saveToken(trimmedToken);
-        saveApiToken(trimmedToken);
+        markApiTokenConfigured(true);
         setToken('');
       } else {
         await sidecarApi.clearToken();
-        saveApiToken('');
+        markApiTokenConfigured(false);
       }
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 1500);
