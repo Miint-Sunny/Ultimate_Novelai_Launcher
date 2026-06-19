@@ -69,6 +69,116 @@ git diff --check
 
 Then commit with a narrow message such as `Extract mobile inpaint bottom toolbar`.
 
+## Claude Code Handoff: Security And Service Layer
+
+Claude Code is expected to take the next phase focused on **security hardening** and **service-layer cleanup**. This is more important now than further mobile line-count reduction.
+
+Do these first:
+
+1. Harden NovelAI token storage.
+2. Make legacy frontend services explicit adapters instead of hidden direct API clients.
+3. Move or quarantine old backend direct NovelAI calls.
+4. Keep current UI behavior stable while changing plumbing underneath.
+
+Do not do these during this phase:
+
+- Do not redesign the app or five-zone layout.
+- Do not add new product features.
+- Do not change visible copy unless needed for a security/error message.
+- Do not delete legacy remote/workshop/cloud entry points until there is a replacement adapter or an explicit stub state.
+- Do not introduce plaintext token storage.
+
+### Current Security Risks
+
+- `sidecar/credentials.py` uses macOS Keychain first, but its fallback still writes a raw `novelai.token` file under the sidecar data directory. Replace this with cross-platform credential storage:
+  - macOS: Keychain.
+  - Windows: Credential Manager.
+  - Linux: Secret Service/libsecret when available.
+  - If no secure store is available, return a clear configuration error instead of silently writing plaintext.
+- Token logging must stay forbidden. Do not log full tokens, cookies, authorization headers, or full base64 image payloads. Avoid even token previews unless a temporary diagnostic is explicitly requested and removed before commit.
+- Frontend code must never store the token in `localStorage`, IndexedDB, bundled config, or generated assets.
+- `src/services/localLibrary/authSession.ts` currently uses misleading names such as `saveApiToken`, but it only writes a configured flag. Rename this in a dedicated small cleanup so future agents do not accidentally reintroduce plaintext storage.
+
+### Current Service-Layer Risks
+
+The desired boundary is:
+
+- UI components call domain hooks or facades.
+- Facades call `src/api/sidecar.ts` or an explicitly named legacy adapter.
+- The sidecar owns NovelAI, LLM, Vibe encode, upscale, metadata, tagger, SQLite, filesystem, and credentials.
+
+Known files that still need service cleanup:
+
+- `src/services/botService.ts`
+  - Split into bot auth/session, task polling, local sidecar library facade, and optional legacy cloud adapter.
+  - Existing public function names may remain as compatibility wrappers, but internals should be small modules.
+  - Anlas should continue to go through sidecar, not frontend direct calls.
+- `src/services/novelai.ts`
+  - Keep as a typed compatibility layer only if callers still require it.
+  - Do not add direct NovelAI auth or generation here.
+- `src/services/tagAutocomplete.ts`
+  - Split into local search/cache, remote tag API client, merge/ranking logic, wiki preview helpers, and translation helpers.
+  - Route remote calls through a clear sidecar or legacy-backend client instead of ad hoc fetches.
+- `src/components/ImageGenPage.tsx`
+  - Treat workshop/remote generation as a legacy adapter surface. Do not further entangle it with local sidecar generation.
+- `server/app.py`
+  - This is still a large legacy backend with direct NovelAI image, vibe, upscale, anlas, and queue behavior.
+  - Do not add new behavior to it.
+  - Either split it into routers/services or mark it as legacy reference and migrate active desktop behavior to `sidecar/`.
+
+### Suggested Claude Code Work Order
+
+1. **Credentials first**
+   - Replace plaintext fallback in `sidecar/credentials.py`.
+   - Add focused tests for set/get/delete token status without exposing token values.
+   - Verify no frontend token storage is introduced.
+
+2. **Token and settings naming cleanup**
+   - Rename frontend configured-token helpers so the name reflects that only a flag is stored.
+   - Keep the public login/settings behavior unchanged.
+
+3. **Split `botService.ts`**
+   - Extract bot auth/session helpers.
+   - Extract generation task polling helpers.
+   - Extract cloud-vibe/legacy remote adapter helpers.
+   - Keep exported facade shape stable for existing components.
+
+4. **Split `tagAutocomplete.ts`**
+   - Extract cache/inflight registry.
+   - Extract remote API client.
+   - Extract ranking/merge helpers.
+   - Preserve autocomplete order, wiki preview behavior, translation behavior, and cache keys.
+
+5. **Decide `server/app.py` fate**
+   - Prefer quarantine plus gradual migration over a big-bang rewrite.
+   - If splitting, start with routers that do not change payload shape.
+
+### Required Validation For Security/Service Work
+
+Run these before committing:
+
+```bash
+npm run build
+npm run scan:secrets
+npm run test:sidecar
+git diff --check
+```
+
+If Rust/Tauri files were touched, also run:
+
+```bash
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+Manual smoke checks for this phase:
+
+- Login/settings token save still reports configured status.
+- Refreshing the app does not require re-entering token on platforms with a secure store.
+- Removing the token clears configured status.
+- No token appears in DevTools localStorage/IndexedDB or frontend bundle text search.
+- No token appears in server logs on failed NovelAI/anlas/vibe/upscale requests.
+- Existing generation, public/local library, vibe, autocomplete, and settings screens still open without crashing.
+
 ## Current Refactor Progress
 
 As of the last handoff, the active cleanup has focused on the mobile pages and their largest inline UI blocks.
