@@ -168,25 +168,27 @@ Next good cuts:
 
 ### Mobile Tools Page
 
-`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 431 lines.
+`src/components/mobile/MobileToolsPage.tsx` has been reduced from about 875 lines to about 49 lines. It is now only the tools tab shell.
 
 Extracted files:
 
 - `src/components/mobile/tools/weightConvert.tsx` (`mobileWeightConvert` namespace: `convertSDToNAI`/`convertNAIToSD`/`renderNAIHighlighted`/`renderSDHighlighted`; intentionally distinct from `utils/promptTags.ts` single-tag version and duplicated in desktop `ToolsModal.tsx` — merging needs a dedicated behavior-alignment task).
 - `src/components/mobile/tools/characterRecognition.ts` (`useCharacterRecognition` hook + `CharacterMatch` type + matchers/fetchers; duplicated verbatim in desktop `ToolsModal.tsx` — same merging caveat).
 - `src/components/mobile/tools/MobileMetadataDetail.tsx` (full-screen metadata detail panel; imports `MetadataFile` type from main file which now `export`s it).
+- `src/components/mobile/tools/MobileWeightToolSection.tsx`
+- `src/components/mobile/tools/MobileMetadataToolSection.tsx`
+- `src/components/mobile/tools/useMobileMetadataBatch.ts`
 
 Remaining reasonable cuts:
 
-- Extract `cleanImageMetadataProper` into a small helper (`formatFileSize` already moved into `MobileMetadataDetail`).
-- After helpers are stable, extract the weight-convert UI section and the metadata tool UI section into section components.
-- Keep the weight converter and metadata batch tool as separate domains; do not create one generic "tools parts" component.
+- Future work should focus on desktop/mobile behavior alignment for duplicated weight conversion and character recognition, not more mobile page splitting.
 
 Important preserved behavior:
 
 - Weight conversion output (including the `1.05`/`0.952381` special-weight mapping and `\(` escaping) must remain byte-identical.
 - Character recognition LCS threshold (`0.90`) and the 5-match cap must remain unchanged.
 - `switch-to-generate` event name and metadata import payload shape must remain unchanged.
+- Metadata batch download naming (`processed_${Date.now()}.zip`, `_clean`, `_custom`) must remain unchanged.
 
 ## Current Large File Map
 
@@ -194,14 +196,14 @@ Approximate sizes at this handoff:
 
 - `src/components/mobile/FullscreenEditor.tsx`: 706 lines
 - `src/components/mobile/MobileGeneratePage.tsx`: 526 lines
-- `src/components/mobile/MobileUpscaleSheet.tsx`: 478 lines
-- `src/components/mobile/MobileToolsPage.tsx`: 431 lines
 - `src/components/mobile/MobileInpaintOverlay.tsx`: 425 lines
 - `src/components/mobile/MobileImagePage.tsx`: 415 lines
 - `src/components/mobile/MobileAIAssistantSheet.tsx`: 394 lines
 - `src/components/mobile/MobileSettingsPage.tsx`: 359 lines
 - `src/components/mobile/MobileInspirationSheet.tsx`: 300 lines
+- `src/components/mobile/MobileUpscaleSheet.tsx`: 259 lines
 - `src/components/mobile/MobileArtistModal.tsx`: 243 lines
+- `src/components/mobile/MobileToolsPage.tsx`: 49 lines
 
 These numbers will drift. Update this section when a future cleanup phase significantly changes them.
 
@@ -215,14 +217,15 @@ These were extracted during a broader sweep of mobile sheets/components:
 - `src/components/mobile/inspiration/MobileInspirationCategoryGroup.tsx` (`CategoryGroup` from `MobileInspirationSheet`)
 - `src/components/mobile/prompt-summary/PromptSummaryParts.tsx` (prompt summary card pieces)
 - `src/components/mobile/upscale/loadImageToCanvas.ts` (`loadImageToCanvas` from `MobileUpscaleSheet`)
+- `src/components/mobile/upscale/useMobileUpscaleWorkflow.ts` (state/progress/local/API/img2img branches from `MobileUpscaleSheet`)
 - `src/components/mobile/tools/types.ts` (shared `MetadataFile` type, moved out of `MobileToolsPage` to avoid child→parent dependency)
 
 ## Recommended Next Mobile Cuts
 
-1. `MobileUpscaleSheet`: extract `useMobileUpscaleWorkflow` for mode selection, progress, API/local canvas branches, and result handling. Then split option/progress/result UI sections.
-2. `MobileToolsPage`: extract metadata cleanup/parsing helpers, then split `MobileWeightToolSection` and `MobileMetadataToolSection`.
-3. `MobileImagePage`: review overlay/back-stack and viewer/gallery coordination; extract only if there is a clear workflow boundary.
-4. `FullscreenEditor`: it is still large, but many domains are already extracted. Continue only by coherent editor domains such as panel state, keyboard handling, or selected-tag actions.
+1. `MobileImagePage`: review overlay/back-stack and viewer/gallery coordination; extract only if there is a clear workflow boundary.
+2. `FullscreenEditor`: it is still large, but many domains are already extracted. Continue only by coherent editor domains such as panel state, keyboard handling, or selected-tag actions.
+3. `MobileGeneratePage`: keep shrinking orchestration only when a new domain coordinator is obvious; avoid moving JSX around without changing ownership.
+4. `MobileAIAssistantSheet`: extract only if the message stream, prompt actions, or model controls become a clear independent boundary.
 
 ## Refactor Rules For Future Agents
 
