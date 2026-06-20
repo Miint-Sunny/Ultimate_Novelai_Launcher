@@ -70,6 +70,12 @@ export interface TokenStatus {
   mock_generation: boolean;
 }
 
+export interface LlmKeyStatus {
+  key_configured: boolean;
+  source: 'environment' | 'credential-store' | 'none';
+  llm_configured: boolean;
+}
+
 export interface AppSettings {
   version: string;
   data_dir: string;
@@ -78,6 +84,7 @@ export interface AppSettings {
   llm_base_url: string;
   llm_model: string;
   llm_configured: boolean;
+  llm_key_configured: boolean;
   token: TokenStatus;
 }
 
@@ -232,6 +239,13 @@ export const sidecarApi = {
       body: JSON.stringify({ token }),
     }),
   clearToken: () => requestJson<TokenStatus>('/auth/token', { method: 'DELETE' }),
+  llmKeyStatus: () => requestJson<LlmKeyStatus>('/auth/llm-key/status'),
+  saveLlmKey: (apiKey: string) =>
+    requestJson<LlmKeyStatus>('/auth/llm-key', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+  clearLlmKey: () => requestJson<LlmKeyStatus>('/auth/llm-key', { method: 'DELETE' }),
   generate: (request: GenerationRequest) =>
     requestJson<GenerationResult>('/generate', {
       method: 'POST',
