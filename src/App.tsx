@@ -10,10 +10,20 @@ import { UpdateAvailableBanner } from './components/UpdateAvailableBanner';
 import { botService } from './services/botService';
 import { getBackendUrl } from './utils/apiConfig';
 
-// Desktop and mobile layouts are split into separate chunks so each device only
-// downloads/parses the UI tree it actually renders.
+// Layout is chosen by WINDOW WIDTH, not device type: a wide tablet gets the
+// desktop layout, and a narrowed desktop window gets the narrow ("mobile")
+// layout. Both are split into separate chunks and lazy-loaded so startup only
+// parses the current width's tree. The inactive layout is prefetched during
+// idle (see App) so resizing across the 768px breakpoint switches instantly
+// with no Suspense flash.
 const AppContent = lazy(() => import('./AppContent'));
 const MobileAppContent = lazy(() => import('./MobileAppContent'));
+
+// Warm both layout chunks so a runtime width switch never blocks on a fetch.
+function prefetchLayouts() {
+  import('./AppContent');
+  import('./MobileAppContent');
+}
 
 // 检测是否为移动设备
 const useIsMobile = () => {
@@ -61,6 +71,22 @@ const BillingSettlementCheck: React.FC = () => {
 
 function App() {
   const isMobile = useIsMobile();
+
+  // After first paint, prefetch the inactive layout during idle time so
+  // resizing across the 768px breakpoint (or a tablet rotating) switches
+  // instantly. The active layout is already loading via <Suspense> below.
+  useEffect(() => {
+    const w = window as typeof window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(prefetchLayouts);
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(prefetchLayouts, 1500);
+    return () => window.clearTimeout(id);
+  }, []);
 
   return (
     <AuthProvider>
