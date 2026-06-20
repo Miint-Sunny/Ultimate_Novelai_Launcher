@@ -1,5 +1,5 @@
 import { Check, Download, Heart, Loader2, MoreVertical, Palette, Tag, Trash2 } from 'lucide-react';
-import { getBackendUrl } from '../../utils/apiConfig';
+import { getPublicVibeDownloadUrl } from '../../services/publicLibrary';
 import type { VibeFile } from './types';
 
 interface MobileVibeListItemProps {
@@ -92,7 +92,7 @@ export function MobileVibeListItem({
               event.stopPropagation();
               if (vibe.fileName) {
                 const anchor = document.createElement('a');
-                anchor.href = `${getBackendUrl()}/api/vibes/download/${encodeURIComponent(vibe.fileName)}`;
+                anchor.href = getPublicVibeDownloadUrl(vibe.fileName);
                 anchor.download = vibe.fileName;
                 anchor.click();
               }

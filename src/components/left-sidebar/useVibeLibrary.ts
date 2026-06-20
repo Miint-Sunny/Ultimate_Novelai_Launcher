@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getBackendUrl } from '../../utils/apiConfig';
 import {
   scanVibeFilesFromDirectory,
   type FileSystemDirectoryHandle,
@@ -18,6 +17,7 @@ import {
   deletePublicVibe,
   getPublicVibeFile,
   getPublicVibes,
+  resolvePublicVibeThumbnailUrl,
 } from '../../services/publicLibrary';
 import type { VibeFile } from '../vibe';
 import type { ToastType } from './types';
@@ -274,13 +274,12 @@ export function useVibeLibrary(showToast: ShowToast, isVibeModalOpen: boolean) {
     setIsLoadingPublicVibes(true);
     try {
       const vibes = await getPublicVibes(forceRefresh);
-      const backendUrl = getBackendUrl();
 
       const vibeFiles: VibeFile[] = vibes.map(v => ({
         id: v.id || v.filename || `vibe-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         name: v.name,
         size: '',
-        preview: v.thumbnail ? (v.thumbnail.startsWith('/') ? `${backendUrl}${v.thumbnail}` : v.thumbnail) : '',
+        preview: resolvePublicVibeThumbnailUrl(v.thumbnail),
         supportedModels: v.supportedModels,
         defaultStrength: v.defaultStrength,
         defaultInfoExtracted: v.defaultInfoExtracted,
