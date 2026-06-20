@@ -153,6 +153,23 @@ Known files that still need service cleanup:
    - Prefer quarantine plus gradual migration over a big-bang rewrite.
    - If splitting, start with routers that do not change payload shape.
 
+### Claude Code Progress (Completed)
+
+The five-item work order above has been completed. Notes for the next agent:
+
+1. **Credentials hardened.** `sidecar/credentials.py` now stores the token only in an OS secret store — macOS Keychain (`security`), Windows Credential Manager (Win32 `Cred*` via ctypes), Linux Secret Service (`secret-tool`). The plaintext writer is gone; `set_stored_token` raises `CredentialStorageError` when no secure store is available (surfaced by `/auth/token` as HTTP 503), and any legacy `novelai.token` file is read once for migration then deleted. Covered by `sidecar/tests/test_credentials.py` (in-memory fake backend, asserts no plaintext is ever written).
+2. **Token helper renamed.** `saveApiToken` → `markApiTokenConfigured(configured: boolean)` in `src/services/localLibrary/authSession.ts`; all four call sites updated. The token never reaches the frontend (flag-only in localStorage).
+3. **`botService.ts` split** into `src/services/bot/`: `botSession.ts` (BotService class — auth/session + task polling kept together because they share `ws`/`taskState`/`emit`), `cloudLibraryAdapter.ts` (legacy cloud backend adapter), `onlineService.ts`. `botService.ts` is now a thin re-export facade; the ~28 importers and all export names are unchanged. Anlas still routes through the sidecar.
+4. **`tagAutocomplete.ts` split** into `src/services/tag-autocomplete/`: `types`, `suggestionCache` (cache registry, key = `query.toLowerCase()`), `ranking`, `remoteClient` (Danbooru autocomplete/search/verify), `wiki` (preview/names/exists + inflight dedup), `localSearch`, `translation`. The `getTagSuggestions` orchestrator and debounce wrapper stay in `tagAutocomplete.ts`; only edit to its body was swapping three inline fetches for `remoteClient`. Full public API re-exported unchanged.
+5. **`server/app.py` quarantined**, not split. Added a LEGACY banner to its docstring and to `server/README.md`: no new features there, active desktop behavior lives in `sidecar/`.
+
+Remaining optional follow-ups (not required):
+
+- Intra-`BotService` split of auth/session vs task polling — deferred because they share mutable WebSocket/task state; only worth doing behind a shared core, behavior-preserving.
+- `server/app.py` router/service extraction — start with routers that do not change payload shape, one at a time.
+
+Note on line endings: the desktop `.ts`/`.tsx` and `server/` files are CRLF; new files were written as LF and edits to CRLF files keep added lines LF so `git diff --check` stays clean (it flags trailing `\r`).
+
 ### Required Validation For Security/Service Work
 
 Run these before committing:
