@@ -31,6 +31,7 @@ class Settings:
     llm_api_key: str
     llm_model: str
     mock_generation: bool
+    danbooru_proxy_url: str = ""
 
     @property
     def db_path(self) -> Path:
@@ -82,4 +83,5 @@ def load_settings() -> Settings:
             or os.environ.get("NAI_STUDIO_MOCK_GENERATION", "")
         ).strip().lower()
         in {"1", "true", "yes", "on"},
+        danbooru_proxy_url=os.environ.get("DANBOORU_PROXY_URL", "").strip(),
     )

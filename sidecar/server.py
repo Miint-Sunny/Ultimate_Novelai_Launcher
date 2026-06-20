@@ -35,6 +35,7 @@ from .db import (
 )
 from .library import init_library
 from .library_routes import register_library_routes
+from .tags import register_tag_routes
 from .local_settings import write_local_settings
 from .llm.client import LLMConversionError, LLMNotConfiguredError, chat_completion, convert_natural_to_tags
 from .nai.client import NovelAIError, encode_vibe, fetch_anlas, generate_image, generate_image_from_payload, upscale_image
@@ -371,10 +372,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def legacy_translate_proxy(req: ChatCompletionRequest) -> dict[str, Any]:
         return await _chat_completion_response(resolved_settings, req)
 
-    @app.get("/tags/search")
-    def tags_search(q: str = "", limit: int = 20) -> dict[str, Any]:
-        return {"items": [], "query": q, "limit": min(max(limit, 1), 100)}
-
     @app.post("/api/tags/translations/lookup")
     def tag_translation_lookup(req: TagTranslationLookupRequest) -> dict[str, str]:
         return lookup_tag_translations(resolved_settings, req.tags)
@@ -392,6 +389,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"metadata": None, "warnings": ["metadata import adapter is not configured yet"]}
 
     register_library_routes(app, resolved_settings)
+    register_tag_routes(app, resolved_settings)
 
     @app.get("/api/anlas")
     async def legacy_anlas() -> dict[str, Any]:
