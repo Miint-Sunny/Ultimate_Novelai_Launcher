@@ -22,6 +22,7 @@ from pathlib import Path
 SERVICE_NAME = "Ultimate Novelai launcher"
 ACCOUNT_NOVELAI = "novelai-token"
 ACCOUNT_LLM = "llm-api-key"
+ACCOUNT_LLM_BACKUP = "llm-api-key-backup"
 
 
 class CredentialStorageError(RuntimeError):
@@ -90,6 +91,27 @@ def set_stored_llm_key(data_dir: Path, api_key: str) -> bool:
 def delete_stored_llm_key(data_dir: Path) -> None:
     """Remove the LLM API key from the secure store."""
     _secure_delete(ACCOUNT_LLM)
+
+
+def get_stored_llm_backup_key(data_dir: Path) -> str:
+    """Return the stored backup LLM API key, or "" if none."""
+    return _secure_get(ACCOUNT_LLM_BACKUP)
+
+
+def set_stored_llm_backup_key(data_dir: Path, api_key: str) -> bool:
+    """Persist the backup LLM API key in a secure OS store (raises if none available)."""
+    api_key = api_key.strip()
+    if not api_key:
+        delete_stored_llm_backup_key(data_dir)
+        return True
+    if _secure_set(ACCOUNT_LLM_BACKUP, api_key):
+        return True
+    raise _no_store_error()
+
+
+def delete_stored_llm_backup_key(data_dir: Path) -> None:
+    """Remove the backup LLM API key from the secure store."""
+    _secure_delete(ACCOUNT_LLM_BACKUP)
 
 
 def _no_store_error() -> CredentialStorageError:

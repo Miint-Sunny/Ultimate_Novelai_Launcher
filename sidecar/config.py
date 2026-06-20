@@ -5,8 +5,29 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .credentials import get_stored_llm_key, get_stored_token
+from .credentials import get_stored_llm_backup_key, get_stored_llm_key, get_stored_token
 from .local_settings import read_local_settings
+
+# Per-protocol default base URLs (used when the user leaves base URL blank).
+LLM_DEFAULT_BASES = {
+    "anthropic": "https://api.anthropic.com",
+    "gemini": "https://generativelanguage.googleapis.com",
+}
+
+
+@dataclass(frozen=True)
+class LlmSlot:
+    provider: str  # "openai" | "anthropic" | "gemini"
+    base_url: str
+    api_key: str
+    model: str
+
+
+def _resolve_llm_base(provider: str, base_url: str) -> str:
+    base = (base_url or "").strip().rstrip("/")
+    if base:
+        return base
+    return LLM_DEFAULT_BASES.get(provider, "")
 
 
 def _default_data_dir() -> Path:
@@ -32,6 +53,11 @@ class Settings:
     llm_model: str
     mock_generation: bool
     danbooru_proxy_url: str = ""
+    llm_provider: str = "openai"
+    llm_backup_provider: str = "openai"
+    llm_backup_base_url: str = ""
+    llm_backup_api_key: str = ""
+    llm_backup_model: str = ""
 
     @property
     def db_path(self) -> Path:
@@ -45,12 +71,25 @@ class Settings:
     def nai_configured(self) -> bool:
         return bool(self.nai_token.strip()) or self.mock_generation
 
+    def llm_slots(self) -> list[LlmSlot]:
+        """Usable LLM endpoints in priority order: [primary, backup]."""
+        slots: list[LlmSlot] = []
+        candidates = [
+            (self.llm_provider, self.llm_base_url, self.llm_api_key, self.llm_model),
+            (self.llm_backup_provider, self.llm_backup_base_url, self.llm_backup_api_key, self.llm_backup_model),
+        ]
+        for provider, base, key, model in candidates:
+            provider = (provider or "openai").strip().lower()
+            key = (key or "").strip()
+            model = (model or "").strip()
+            base = _resolve_llm_base(provider, base)
+            if key and model and base:
+                slots.append(LlmSlot(provider, base, key, model))
+        return slots
+
     @property
     def llm_configured(self) -> bool:
-        return all(
-            value.strip()
-            for value in (self.llm_base_url, self.llm_api_key, self.llm_model)
-        )
+        return bool(self.llm_slots())
 
 
 def load_settings() -> Settings:
@@ -84,4 +123,9 @@ def load_settings() -> Settings:
         ).strip().lower()
         in {"1", "true", "yes", "on"},
         danbooru_proxy_url=os.environ.get("DANBOORU_PROXY_URL", "").strip(),
+        llm_provider=(os.environ.get("LLM_PROVIDER", local.get("llm_provider", "openai")) or "openai").strip().lower() or "openai",
+        llm_backup_provider=(os.environ.get("LLM_BACKUP_PROVIDER", local.get("llm_backup_provider", "openai")) or "openai").strip().lower() or "openai",
+        llm_backup_base_url=os.environ.get("LLM_BACKUP_BASE_URL", local.get("llm_backup_base_url", "")).rstrip("/"),
+        llm_backup_api_key=os.environ.get("LLM_BACKUP_API_KEY", "").strip() or get_stored_llm_backup_key(data_dir),
+        llm_backup_model=os.environ.get("LLM_BACKUP_MODEL", local.get("llm_backup_model", "")).strip(),
     )

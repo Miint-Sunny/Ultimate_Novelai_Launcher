@@ -18,8 +18,10 @@ from . import APP_VERSION
 from .config import Settings, load_settings
 from .credentials import (
     CredentialStorageError,
+    delete_stored_llm_backup_key,
     delete_stored_llm_key,
     delete_stored_token,
+    set_stored_llm_backup_key,
     set_stored_llm_key,
     set_stored_token,
 )
@@ -52,10 +54,15 @@ class TokenRequest(BaseModel):
 
 class LlmKeyRequest(BaseModel):
     api_key: str = Field(min_length=1)
+    slot: str = "primary"  # "primary" | "backup"
 
 
 class SettingsUpdateRequest(BaseModel):
     nai_base_url: str | None = None
+    llm_provider: str | None = None
+    llm_backup_provider: str | None = None
+    llm_backup_base_url: str | None = None
+    llm_backup_model: str | None = None
     llm_base_url: str | None = None
     llm_model: str | None = None
 
@@ -192,8 +199,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/auth/llm-key")
     def set_llm_key(req: LlmKeyRequest) -> dict[str, Any]:
         nonlocal resolved_settings
+        setter = set_stored_llm_backup_key if req.slot == "backup" else set_stored_llm_key
         try:
-            set_stored_llm_key(resolved_settings.data_dir, req.api_key)
+            setter(resolved_settings.data_dir, req.api_key)
         except CredentialStorageError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if settings is None:
@@ -202,9 +210,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _llm_status(resolved_settings)
 
     @app.delete("/auth/llm-key")
-    def delete_llm_key() -> dict[str, Any]:
+    def delete_llm_key(slot: str = "primary") -> dict[str, Any]:
         nonlocal resolved_settings
-        delete_stored_llm_key(resolved_settings.data_dir)
+        remover = delete_stored_llm_backup_key if slot == "backup" else delete_stored_llm_key
+        remover(resolved_settings.data_dir)
         if settings is None:
             resolved_settings = load_settings()
             app.state.settings = resolved_settings
@@ -522,10 +531,11 @@ def _token_status(settings: Settings) -> dict[str, Any]:
 
 
 def _llm_status(settings: Settings) -> dict[str, Any]:
-    env_configured = bool(os.environ.get("LLM_API_KEY", "").strip())
     return {
+        "provider": settings.llm_provider,
         "key_configured": bool(settings.llm_api_key),
-        "source": "environment" if env_configured else ("credential-store" if settings.llm_api_key else "none"),
+        "backup_provider": settings.llm_backup_provider,
+        "backup_key_configured": bool(settings.llm_backup_api_key),
         "llm_configured": settings.llm_configured,
     }
 
@@ -536,10 +546,15 @@ def _settings_payload(settings: Settings) -> dict[str, Any]:
         "data_dir": str(settings.data_dir),
         "nai_base_url": settings.nai_base_url,
         "nai_configured": settings.nai_configured,
+        "llm_provider": settings.llm_provider,
         "llm_base_url": settings.llm_base_url,
         "llm_model": settings.llm_model,
-        "llm_configured": settings.llm_configured,
         "llm_key_configured": bool(settings.llm_api_key),
+        "llm_backup_provider": settings.llm_backup_provider,
+        "llm_backup_base_url": settings.llm_backup_base_url,
+        "llm_backup_model": settings.llm_backup_model,
+        "llm_backup_key_configured": bool(settings.llm_backup_api_key),
+        "llm_configured": settings.llm_configured,
         "token": _token_status(settings),
     }
 
