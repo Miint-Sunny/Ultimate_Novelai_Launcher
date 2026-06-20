@@ -1,6 +1,7 @@
 import React from 'react';
 import type { AppSettings } from '../../../services/localLibrary';
 import { MobileSettingsToggle } from './MobileSettingsToggle';
+import { LlmApiSettings } from '../../settings/LlmApiSettings';
 
 interface MobileAISettingsSectionProps {
   settings: AppSettings;
@@ -27,20 +28,7 @@ export const MobileAISettingsSection: React.FC<MobileAISettingsSectionProps> = (
       />
     </div>
 
-    <div>
-      <label className="text-xs text-gray-500 uppercase tracking-wider mb-3 block">AI 接口</label>
-      <div className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-white">Sidecar 托管</p>
-            <p className="mt-1 text-xs text-gray-500">LLM_BASE_URL / LLM_API_KEY / LLM_MODEL</p>
-          </div>
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-            本地
-          </span>
-        </div>
-      </div>
-    </div>
+    <LlmApiSettings />
 
     <div>
       <label className="text-xs text-gray-500 uppercase tracking-wider mb-3 block">超分服务</label>

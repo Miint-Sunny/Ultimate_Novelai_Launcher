@@ -1,5 +1,6 @@
 import React from 'react';
 import { type AppSettings } from '../../services/localLibrary';
+import { LlmApiSettings } from './LlmApiSettings';
 
 interface AISettingsSectionProps {
   settings: AppSettings;
@@ -38,22 +39,7 @@ export const AISettingsSection: React.FC<AISettingsSectionProps> = ({
         </p>
       </div>
 
-      <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">
-        <label className="block text-xs text-gray-400 mb-3 uppercase tracking-wider">
-          AI 接口
-        </label>
-        <div className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-900 px-4 py-3">
-          <div>
-            <p className="text-sm text-white">Sidecar 托管</p>
-            <p className="mt-1 text-xs text-gray-500">
-              LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
-            </p>
-          </div>
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-            本地安全配置
-          </span>
-        </div>
-      </div>
+      <LlmApiSettings />
 
       {/* 超分服务 */}
       <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">
