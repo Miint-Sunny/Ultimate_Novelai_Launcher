@@ -16,7 +16,13 @@ from pydantic import BaseModel, Field
 
 from . import APP_VERSION
 from .config import Settings, load_settings
-from .credentials import CredentialStorageError, delete_stored_token, set_stored_token
+from .credentials import (
+    CredentialStorageError,
+    delete_stored_llm_key,
+    delete_stored_token,
+    set_stored_llm_key,
+    set_stored_token,
+)
 from .db import (
     create_generation,
     get_generation,
@@ -41,6 +47,10 @@ logger = logging.getLogger(__name__)
 
 class TokenRequest(BaseModel):
     token: str = Field(min_length=1)
+
+
+class LlmKeyRequest(BaseModel):
+    api_key: str = Field(min_length=1)
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -173,6 +183,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             resolved_settings = load_settings()
             app.state.settings = resolved_settings
         return _token_status(resolved_settings)
+
+    @app.get("/auth/llm-key/status")
+    def llm_key_status() -> dict[str, Any]:
+        return _llm_status(resolved_settings)
+
+    @app.post("/auth/llm-key")
+    def set_llm_key(req: LlmKeyRequest) -> dict[str, Any]:
+        nonlocal resolved_settings
+        try:
+            set_stored_llm_key(resolved_settings.data_dir, req.api_key)
+        except CredentialStorageError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if settings is None:
+            resolved_settings = load_settings()
+            app.state.settings = resolved_settings
+        return _llm_status(resolved_settings)
+
+    @app.delete("/auth/llm-key")
+    def delete_llm_key() -> dict[str, Any]:
+        nonlocal resolved_settings
+        delete_stored_llm_key(resolved_settings.data_dir)
+        if settings is None:
+            resolved_settings = load_settings()
+            app.state.settings = resolved_settings
+        return _llm_status(resolved_settings)
 
     @app.get("/history")
     def history(limit: int = 100) -> dict[str, Any]:
@@ -488,6 +523,15 @@ def _token_status(settings: Settings) -> dict[str, Any]:
     }
 
 
+def _llm_status(settings: Settings) -> dict[str, Any]:
+    env_configured = bool(os.environ.get("LLM_API_KEY", "").strip())
+    return {
+        "key_configured": bool(settings.llm_api_key),
+        "source": "environment" if env_configured else ("credential-store" if settings.llm_api_key else "none"),
+        "llm_configured": settings.llm_configured,
+    }
+
+
 def _settings_payload(settings: Settings) -> dict[str, Any]:
     return {
         "version": APP_VERSION,
@@ -497,6 +541,7 @@ def _settings_payload(settings: Settings) -> dict[str, Any]:
         "llm_base_url": settings.llm_base_url,
         "llm_model": settings.llm_model,
         "llm_configured": settings.llm_configured,
+        "llm_key_configured": bool(settings.llm_api_key),
         "token": _token_status(settings),
     }
 

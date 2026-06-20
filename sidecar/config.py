@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .credentials import get_stored_token
+from .credentials import get_stored_llm_key, get_stored_token
 from .local_settings import read_local_settings
 
 
@@ -75,7 +75,7 @@ def load_settings() -> Settings:
         nai_token=env_token or get_stored_token(data_dir),
         nai_base_url=os.environ.get("NAI_API_BASE_URL", local.get("nai_base_url", "https://image.novelai.net")).rstrip("/"),
         llm_base_url=os.environ.get("LLM_BASE_URL", local.get("llm_base_url", "")).rstrip("/"),
-        llm_api_key=os.environ.get("LLM_API_KEY", "").strip(),
+        llm_api_key=os.environ.get("LLM_API_KEY", "").strip() or get_stored_llm_key(data_dir),
         llm_model=os.environ.get("LLM_MODEL", local.get("llm_model", "")).strip(),
         mock_generation=(
             os.environ.get("ULTIMATE_NOVELAI_LAUNCHER_MOCK_GENERATION")
