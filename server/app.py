@@ -311,7 +311,7 @@ class TokenManager:
                     "total_success": 0,
                     "total_errors": 0,
                 }
-                print(f"[TokenManager] 注册 Token: {token[:20]}...")
+                print(f"[TokenManager] 注册 Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
     
     async def register_all(self):
         """注册配置中的所有 Token"""
@@ -344,7 +344,7 @@ class TokenManager:
             ):
                 info["disabled"] = True
                 info["disabled_at"] = time.time()
-                print(f"[TokenManager] ⚠ Token {token[:20]}... 已自动禁用"
+                print(f"[TokenManager] ⚠ Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 已自动禁用"
                       f"（连续 {info['errors']} 次错误，最后错误: {error_msg}）")
                 # 状态发生变化，唤醒正在等待的协程以便重新评估
                 self._cond.notify_all()
@@ -431,7 +431,7 @@ class TokenManager:
         async with self._lock:
             return [
                 {
-                    "token_preview": token[:20] + "...",
+                    "token_id": hashlib.sha256(token.encode()).hexdigest()[:8],
                     "anlas": info["anlas"],
                     "consecutive_errors": info["errors"],
                     "disabled": info["disabled"],
@@ -1395,7 +1395,7 @@ async def novelai_worker(worker_id: int, token: str):
     global _current_task, _running_count
     
     worker_name = f"Worker-{worker_id + 1}"
-    print(f"[{worker_name}] 启动，Token: {token[:20]}...")
+    print(f"[{worker_name}] 启动，Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
     
     while True:
         item = await _image_queue.get()
@@ -3894,7 +3894,7 @@ async def fetch_novelai_anlas() -> int:
                             await token_manager.update_anlas(token, anlas)
                             total_anlas += anlas
                         else:
-                            print(f"[Anlas] Token {token[:20]}... 查询失败: HTTP {resp.status}")
+                            print(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 查询失败: HTTP {resp.status}")
                     last_err = None
                     break  # 成功，跳出重试循环
                 except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
@@ -3905,7 +3905,7 @@ async def fetch_novelai_anlas() -> int:
                     last_err = e
                     break  # 非网络错误不重试
             if last_err is not None:
-                print(f"[Anlas] Token {token[:20]}... 获取点数失败: {last_err}")
+                print(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 获取点数失败: {last_err}")
     
     return total_anlas
 
@@ -6407,7 +6407,7 @@ async def encode_vibe(req: EncodeVibeRequest):
     if image_data.startswith('data:'):
         image_data = image_data.split(',', 1)[1] if ',' in image_data else image_data
 
-    print(f"[Vibe Encode] Model: {req.model}, Image length: {len(image_data)}, Token: {token[:20]}...")
+    print(f"[Vibe Encode] Model: {req.model}, Image length: {len(image_data)}, Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
 
     url = 'https://image.novelai.net/ai/encode-vibe'
     headers = {
