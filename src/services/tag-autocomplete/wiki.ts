@@ -2,7 +2,7 @@
 // 包含 wiki 存在性 / 中文名 / 预览 / 中文摘要四类查询，
 // 各自带 per-tag 缓存 + in-flight 去重注册表。行为与缓存 key 保持不变。
 
-import { getBackendUrl } from '../../utils/apiConfig';
+import { sidecarApi } from '../../api/sidecar';
 import type { TagWikiPreview } from './types';
 
 // 缓存
@@ -54,8 +54,7 @@ export async function fetchWikiChineseNames(tags: string[]): Promise<Record<stri
   if (missing.length > 0) {
     const promise = (async (): Promise<Record<string, string[]>> => {
       try {
-        const backendUrl = getBackendUrl();
-        const res = await fetch(`${backendUrl}/api/tags/wiki?tags=${encodeURIComponent(missing.join(','))}`);
+        const res = await fetch(sidecarApi.url(`/api/tags/wiki?tags=${encodeURIComponent(missing.join(','))}`));
         if (res.ok) {
           const data = await res.json() as Record<string, string[]>;
           for (const tag of missing) {
@@ -115,8 +114,7 @@ export async function fetchWikiExistsBatch(tags: string[]): Promise<Record<strin
   if (missing.length > 0) {
     const promise = (async (): Promise<Record<string, boolean>> => {
       try {
-        const backendUrl = getBackendUrl();
-        const res = await fetch(`${backendUrl}/api/tags/wiki-exists-batch`, {
+        const res = await fetch(sidecarApi.url('/api/tags/wiki-exists-batch'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tags: missing }),
@@ -167,8 +165,7 @@ export async function fetchTagWikiPreview(tag: string): Promise<TagWikiPreview |
 
   const promise = (async (): Promise<TagWikiPreview | null> => {
     try {
-      const backendUrl = getBackendUrl();
-      const res = await fetch(`${backendUrl}/api/tags/wiki-preview?tag=${encodeURIComponent(normalized)}`);
+      const res = await fetch(sidecarApi.url(`/api/tags/wiki-preview?tag=${encodeURIComponent(normalized)}`));
       if (!res.ok) return null;
       const data = await res.json() as TagWikiPreview;
       wikiExistsCache.set(normalized, !!data?.hasWiki);
@@ -197,8 +194,7 @@ export async function fetchTagWikiSummaryZh(tag: string): Promise<string> {
 
   const promise = (async (): Promise<string> => {
     try {
-      const backendUrl = getBackendUrl();
-      const res = await fetch(`${backendUrl}/api/tags/wiki-preview-summary-zh?tag=${encodeURIComponent(normalized)}`);
+      const res = await fetch(sidecarApi.url(`/api/tags/wiki-preview-summary-zh?tag=${encodeURIComponent(normalized)}`));
       if (!res.ok) return '';
       const data = await res.json() as { hasWiki?: boolean; summaryZh?: string };
       const summaryZh = data?.hasWiki && data.summaryZh ? data.summaryZh : '';

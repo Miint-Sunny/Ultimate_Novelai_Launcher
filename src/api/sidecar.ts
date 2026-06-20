@@ -274,10 +274,6 @@ export const sidecarApi = {
       method: 'POST',
       body: JSON.stringify({ input, params, negative }),
     }),
-  searchTags: (query: string, limit = 20) =>
-    requestJson<{ items: unknown[]; query: string; limit: number }>(
-      `/tags/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-    ),
   getAnlas: async (): Promise<AnlasInfo | null> => {
     try {
       const data = await requestJson<AnlasInfo & { configured?: boolean }>('/api/anlas');

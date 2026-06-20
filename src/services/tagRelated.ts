@@ -4,7 +4,7 @@
  * 给定一个或多个已选 tag, 返回 Danbooru 上常一起出现的标签 (基于 NPMI 共现统计).
  * 后端有 LRU 缓存, 前端再加一层内存缓存, 避免重复请求.
  */
-import { getBackendUrl } from '../utils/apiConfig';
+import { sidecarApi } from '../api/sidecar';
 
 export interface RelatedTag {
   tag: string;            // Danbooru 英文标签 (下划线格式)
@@ -65,14 +65,13 @@ export async function fetchRelatedTags(
 
   const promise = (async () => {
     try {
-      const backendUrl = getBackendUrl();
       const body: Record<string, unknown> = {
         tags: tags.map(t => t.toLowerCase().trim().replace(/\s+/g, '_')),
         limit,
         show_nsfw: showNsfw,
       };
       if (categories && categories.length) body.categories = categories;
-      const res = await fetch(`${backendUrl}/api/tags/related`, {
+      const res = await fetch(sidecarApi.url('/api/tags/related'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
