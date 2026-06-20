@@ -166,7 +166,7 @@ The five-item work order above has been completed. Notes for the next agent:
 Remaining optional follow-ups (not required):
 
 - Intra-`BotService` split of auth/session vs task polling — deferred because they share mutable WebSocket/task state; only worth doing behind a shared core, behavior-preserving.
-- `server/app.py` router/service extraction — start with routers that do not change payload shape, one at a time.
+- `server/app.py` router/service extraction — investigated and intentionally NOT done. Finding: there is no clean payload-neutral router to pull out first. Even the "stateless" endpoints are coupled to module-level state/helpers — `/health` reads ~10 globals (`trial_pool`, `queue_manager`, `_image_queue`, `_boost_*`, …), `/api/nai-status` reads `_nai_status_cache` (filled by a background task), and `/api/data/*` uses `ALLOWED_DATA_FILES` plus the shared `_file_etag`/`_check_not_modified` helpers that ~6 other route groups (vibes/previews/etc.) also call. A real split needs a preparatory pass that hoists shared helpers/state into modules and rewires many call sites — risky on a 9k-line file with ZERO tests. Since this file is quarantined, prefer migrating active endpoints to `sidecar/` over reshuffling the monolith. If a split is still wanted, start by extracting `_file_etag`/`_check_not_modified` (+ ETag helpers) into a shared `server/http_cache.py`, update call sites, then carve routers that depend only on config + that shared module.
 
 Note on line endings: the desktop `.ts`/`.tsx` and `server/` files are CRLF; new files were written as LF and edits to CRLF files keep added lines LF so `git diff --check` stays clean (it flags trailing `\r`).
 
