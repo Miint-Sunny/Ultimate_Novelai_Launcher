@@ -39,8 +39,6 @@ export const AISettingsSection: React.FC<AISettingsSectionProps> = ({
         </p>
       </div>
 
-      <LlmApiSettings />
-
       {/* 超分服务 */}
       <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">
         <label className="block text-xs text-gray-400 mb-3 uppercase tracking-wider">
@@ -193,6 +191,9 @@ export const AISettingsSection: React.FC<AISettingsSectionProps> = ({
           </p>
         )}
       </div>
+
+      {/* LLM 接口配置（放在最底部） */}
+      <LlmApiSettings />
     </div>
   );
 };

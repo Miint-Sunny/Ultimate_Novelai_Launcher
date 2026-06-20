@@ -70,9 +70,13 @@ export interface TokenStatus {
   mock_generation: boolean;
 }
 
+export type LlmProvider = 'openai' | 'anthropic' | 'gemini';
+
 export interface LlmKeyStatus {
+  provider: string;
   key_configured: boolean;
-  source: 'environment' | 'credential-store' | 'none';
+  backup_provider: string;
+  backup_key_configured: boolean;
   llm_configured: boolean;
 }
 
@@ -81,10 +85,15 @@ export interface AppSettings {
   data_dir: string;
   nai_base_url: string;
   nai_configured: boolean;
+  llm_provider: string;
   llm_base_url: string;
   llm_model: string;
-  llm_configured: boolean;
   llm_key_configured: boolean;
+  llm_backup_provider: string;
+  llm_backup_base_url: string;
+  llm_backup_model: string;
+  llm_backup_key_configured: boolean;
+  llm_configured: boolean;
   token: TokenStatus;
 }
 
@@ -227,7 +236,11 @@ export const sidecarApi = {
   deleteJson: <T>(path: string) => requestJson<T>(path, { method: 'DELETE' }),
   health: () => requestJson<{ ok: boolean; version: string }>('/health'),
   settings: () => requestJson<AppSettings>('/settings'),
-  updateSettings: (settings: Partial<Pick<AppSettings, 'nai_base_url' | 'llm_base_url' | 'llm_model'>>) =>
+  updateSettings: (
+    settings: Partial<Pick<AppSettings,
+      'nai_base_url' | 'llm_provider' | 'llm_base_url' | 'llm_model'
+      | 'llm_backup_provider' | 'llm_backup_base_url' | 'llm_backup_model'>>,
+  ) =>
     requestJson<AppSettings>('/settings', {
       method: 'POST',
       body: JSON.stringify(settings),
@@ -240,12 +253,13 @@ export const sidecarApi = {
     }),
   clearToken: () => requestJson<TokenStatus>('/auth/token', { method: 'DELETE' }),
   llmKeyStatus: () => requestJson<LlmKeyStatus>('/auth/llm-key/status'),
-  saveLlmKey: (apiKey: string) =>
+  saveLlmKey: (apiKey: string, slot: 'primary' | 'backup' = 'primary') =>
     requestJson<LlmKeyStatus>('/auth/llm-key', {
       method: 'POST',
-      body: JSON.stringify({ api_key: apiKey }),
+      body: JSON.stringify({ api_key: apiKey, slot }),
     }),
-  clearLlmKey: () => requestJson<LlmKeyStatus>('/auth/llm-key', { method: 'DELETE' }),
+  clearLlmKey: (slot: 'primary' | 'backup' = 'primary') =>
+    requestJson<LlmKeyStatus>(`/auth/llm-key?slot=${slot}`, { method: 'DELETE' }),
   generate: (request: GenerationRequest) =>
     requestJson<GenerationResult>('/generate', {
       method: 'POST',

@@ -28,8 +28,6 @@ export const MobileAISettingsSection: React.FC<MobileAISettingsSectionProps> = (
       />
     </div>
 
-    <LlmApiSettings />
-
     <div>
       <label className="text-xs text-gray-500 uppercase tracking-wider mb-3 block">超分服务</label>
       <div className="rounded-xl border border-gray-700 bg-gray-800 px-4 py-3">
@@ -108,5 +106,8 @@ export const MobileAISettingsSection: React.FC<MobileAISettingsSectionProps> = (
         <p className="text-xs text-gray-500">使用当前页面地址作为服务端</p>
       )}
     </div>
+
+    {/* LLM 接口配置（放在最底部） */}
+    <LlmApiSettings />
   </div>
 );
