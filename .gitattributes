@@ -1,0 +1,40 @@
+# Normalize all text files to LF in the repository and working tree.
+# This ends the mixed CRLF/LF state so diffs stay clean and `git diff --check`
+# no longer flags carriage returns on edited lines.
+* text=auto eol=lf
+
+# Explicit text types
+*.ts    text
+*.tsx   text
+*.js    text
+*.jsx   text
+*.mjs   text
+*.cjs   text
+*.json  text
+*.css   text
+*.html  text
+*.md    text
+*.py    text
+*.rs    text
+*.toml  text
+*.yml   text
+*.yaml  text
+*.svg   text
+*.sh    text eol=lf
+
+# Binary assets — never normalize / never diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.icns  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.zip   binary
+*.gz    binary
+*.naiv4vibe binary
