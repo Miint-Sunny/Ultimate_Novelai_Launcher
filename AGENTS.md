@@ -170,6 +170,18 @@ Remaining optional follow-ups (not required):
 
 Note on line endings: the desktop `.ts`/`.tsx` and `server/` files are CRLF; new files were written as LF and edits to CRLF files keep added lines LF so `git diff --check` stays clean (it flags trailing `\r`).
 
+### Claude Code Progress — Review Round (Completed)
+
+A follow-up review pass added these (all gated + committed):
+
+- **`.gitignore` hardened** to ignore `.env`, `.env.*`, `server/config.py`, `sidecar/secrets/`, `sidecar/settings.json` (the legacy backend config holds real tokens/keys).
+- **Legacy token-preview logs redacted** in `server/app.py`: all `token[:20]` previews and the `token_preview` status field now use a non-reversible 8-char sha256 id.
+- **Stray `/api/tags/verify` fetches** in `useDesktopFloatingPanelLifecycle.ts` and `useFullscreenWiki.ts` now go through `tag-autocomplete/remoteClient.verifyTags` (re-exported from the `tagAutocomplete` facade).
+- **Frontend de-dup:** deleted empty `src/_temp_fullscreen_editor.tsx`; centralized `oc_data.json` as `API_PATHS.DATA_OC_DATA`; merged character recognition into `src/utils/characterRecognition.ts` and weight conversion into `src/utils/weightConversion.tsx` (desktop + mobile share; mobile modules re-export).
+- **Sidecar tests 22 → 47:** added `test_nai_client.py` and `test_llm_client.py` (sanitize-for-log redaction, payload/anlas parsing, zip extraction, token/LLM-not-configured guards).
+
+Still open from the review backlog (larger, deserve focused sessions): split `SettingsModal.tsx` (~1011 lines, mirror the `mobile/settings/` section pattern; touches the token-save UI so preserve behavior) and the gradual `server/app.py` router extraction. Lower-value optional: `arrayBufferToBase64` helper and a localStorage-JSON wrapper.
+
 ### Required Validation For Security/Service Work
 
 Run these before committing:
@@ -335,8 +347,8 @@ Next good cuts:
 
 Extracted files:
 
-- `src/components/mobile/tools/weightConvert.tsx` (`mobileWeightConvert` namespace: `convertSDToNAI`/`convertNAIToSD`/`renderNAIHighlighted`/`renderSDHighlighted`; intentionally distinct from `utils/promptTags.ts` single-tag version and duplicated in desktop `ToolsModal.tsx` — merging needs a dedicated behavior-alignment task).
-- `src/components/mobile/tools/characterRecognition.ts` (`useCharacterRecognition` hook + `CharacterMatch` type + matchers/fetchers; duplicated verbatim in desktop `ToolsModal.tsx` — same merging caveat).
+- `src/components/mobile/tools/weightConvert.tsx` (`mobileWeightConvert` namespace; now a thin re-export of the shared `src/utils/weightConversion.tsx`. Still intentionally distinct from `utils/promptTags.ts` single-tag version. The desktop/mobile duplication has been merged into the shared util — conversion output stays byte-identical).
+- `src/components/mobile/tools/characterRecognition.ts` (now re-exports `useCharacterRecognition`/`CharacterMatch` from the shared `src/utils/characterRecognition.ts`; the desktop `ToolsModal.tsx` copy has been removed and both import the shared util).
 - `src/components/mobile/tools/MobileMetadataDetail.tsx` (full-screen metadata detail panel; imports `MetadataFile` type from main file which now `export`s it).
 - `src/components/mobile/tools/MobileWeightToolSection.tsx`
 - `src/components/mobile/tools/MobileMetadataToolSection.tsx`
@@ -344,7 +356,7 @@ Extracted files:
 
 Remaining reasonable cuts:
 
-- Future work should focus on desktop/mobile behavior alignment for duplicated weight conversion and character recognition, not more mobile page splitting.
+- Weight conversion and character recognition are now de-duplicated into `src/utils/weightConversion.tsx` and `src/utils/characterRecognition.ts` (desktop + mobile share them). Remaining mobile work should avoid further page splitting.
 
 Important preserved behavior:
 
