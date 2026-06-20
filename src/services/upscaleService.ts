@@ -1,5 +1,7 @@
 import { sidecarApi } from '../api/sidecar';
 import { getAppSettings } from './localLibrary';
+import { generateImageStream, processImg2ImgImage } from './novelai';
+import { extractImageMetadata } from '../utils/imageMetadata';
 
 // 1.5x 图生图放大的总像素上限（与普通生成保持一致：1024 × 3072 = 3,145,728）
 export const UPSCALE_15X_MAX_PIXELS = 1024 * 3072;
@@ -157,9 +159,6 @@ export async function upscaleViaImg2Img(
   noise: number,
   onProgress?: (progress: UpscaleProgress) => void
 ): Promise<Blob> {
-  const { generateImageStream, processImg2ImgImage } = await import('./novelai');
-  const { extractImageMetadata } = await import('../utils/imageMetadata');
-
   const settings = getAppSettings();
   const tokenStatus = await sidecarApi.tokenStatus();
   if (!tokenStatus.configured && !tokenStatus.mock_generation && settings.loginMode !== 'bot') {
