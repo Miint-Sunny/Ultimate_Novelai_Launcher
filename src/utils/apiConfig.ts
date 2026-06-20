@@ -46,6 +46,7 @@ export const API_PATHS = {
   DATA_ROLE_TAG_MAPPING: '/api/data/role_tag_mapping.json',
   DATA_NAI_NSFW: '/api/data/NAI_NSFW.json',
   DATA_NAI_COMMON: '/api/data/NAI_Common.json',
+  DATA_OC_DATA: '/api/data/oc_data.json',
   
   // 标签服务
   TAGS_WIKI: '/api/tags/wiki',

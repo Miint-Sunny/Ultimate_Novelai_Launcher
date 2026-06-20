@@ -61,7 +61,7 @@ async function fetchRoleTagMapping(): Promise<RoleTagMapping> {
 async function fetchOCData(): Promise<OCData> {
   if (cachedOCData) return cachedOCData;
   try {
-    const res = await fetch(buildApiUrl('/api/data/oc_data.json'));
+    const res = await fetch(buildApiUrl(API_PATHS.DATA_OC_DATA));
     if (!res.ok) return {};
     cachedOCData = await res.json();
     return cachedOCData!;
