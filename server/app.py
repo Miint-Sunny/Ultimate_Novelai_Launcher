@@ -1,4 +1,14 @@
 """
+⚠️ LEGACY — 旧版独立后端单体（quarantined）
+
+这是参考项目遗留的大单体后端，直接调用 NovelAI 生图/vibe/upscale/anlas 并自带队列。
+桌面端的活跃实现已迁移到 sidecar/（FastAPI），前端通过 src/api/sidecar.ts 访问。
+
+维护约束：
+- 不要在本文件新增功能；新行为请加到 sidecar/。
+- 仅作为可选的云/队列/workshop 适配面保留，待逐步迁移后下线。
+- 不要在日志中打印 token / cookie / Authorization / 完整 base64 图片。
+
 NovelAI Web UI 后端服务（独立运行版）
 - 内置图片生成队列：直接调用 NovelAI API，不依赖 Bot
 - 排队系统：多用户共享Token时的单线程队列管理

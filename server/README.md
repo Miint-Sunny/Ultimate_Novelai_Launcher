@@ -1,3 +1,15 @@
+> ⚠️ **LEGACY / 已隔离（quarantined）**
+>
+> 本目录是参考项目遗留的旧版独立后端单体（`app.py`，约 9k 行），直接调用 NovelAI 生图 / vibe / upscale / anlas，并自带队列与 Bot 授权。
+> 桌面端的活跃实现已迁移到仓库根的 `sidecar/`（FastAPI sidecar），前端只通过 `src/api/sidecar.ts` 访问 sidecar。
+>
+> 维护约束：
+> - 不要在 `server/app.py` 新增功能；新行为请加到 `sidecar/`。
+> - 仅作为可选的云 / 队列 / workshop 适配面保留，按职责小步拆 routers/services 后逐步下线，禁止 big-bang 重写。
+> - 日志中禁止出现 token / cookie / Authorization / 完整 base64 图片。
+
+---
+
 # NovelAI Web UI 后端服务
 
 排队系统后端服务，用于多用户共享Token时的单线程队列管理。
