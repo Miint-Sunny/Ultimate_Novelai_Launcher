@@ -28,3 +28,10 @@ src-tauri/gen
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets / local config (never commit real tokens/keys)
+.env
+.env.*
+server/config.py
+sidecar/secrets/
+sidecar/settings.json
