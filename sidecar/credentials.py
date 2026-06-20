@@ -1,15 +1,15 @@
-"""Cross-platform secure storage for the NovelAI token.
+"""Cross-platform secure storage for app secrets (NovelAI token, LLM API key).
 
-The token is only ever persisted through an OS-managed secret store:
+Each secret is stored under its own account in an OS-managed secret store:
 
 - macOS: Keychain (via the ``security`` CLI).
 - Windows: Credential Manager (via the Win32 ``Cred*`` API through ctypes).
 - Linux/BSD: Secret Service / libsecret (via the ``secret-tool`` CLI).
 
 If no secure store is available the caller receives a :class:`CredentialStorageError`
-instead of the token being written to disk in plaintext. The legacy plaintext
-``novelai.token`` file is no longer written; it is only read once for migration
-and then deleted.
+instead of the secret being written to disk in plaintext. The legacy plaintext
+``novelai.token`` file (NovelAI token only) is no longer written; it is read once
+for migration and then deleted.
 """
 
 from __future__ import annotations
@@ -20,60 +20,90 @@ import sys
 from pathlib import Path
 
 SERVICE_NAME = "Ultimate Novelai launcher"
-ACCOUNT_NAME = "novelai-token"
+ACCOUNT_NOVELAI = "novelai-token"
+ACCOUNT_LLM = "llm-api-key"
 
 
 class CredentialStorageError(RuntimeError):
-    """Raised when the token cannot be stored or removed via a secure OS store."""
+    """Raised when a secret cannot be stored or removed via a secure OS store."""
+
+
+# ---------------------------------------------------------------------------
+# NovelAI token (public API — unchanged behaviour, incl. legacy file migration)
+# ---------------------------------------------------------------------------
 
 
 def get_stored_token(data_dir: Path) -> str:
-    """Return the stored token, migrating any legacy plaintext file if present."""
-    token = _secure_get()
+    """Return the stored NovelAI token, migrating any legacy plaintext file if present."""
+    token = _secure_get(ACCOUNT_NOVELAI)
     if token:
         return token
     # One-time migration: a previous build may have written a plaintext file.
     legacy = _file_get_token(data_dir)
     if legacy:
-        if _secure_available() and _secure_set(legacy):
+        if _secure_available() and _secure_set(ACCOUNT_NOVELAI, legacy):
             _file_delete_token(data_dir)
         return legacy
     return ""
 
 
 def set_stored_token(data_dir: Path, token: str) -> bool:
-    """Persist the token in a secure OS store.
-
-    Returns ``True`` on success. Raises :class:`CredentialStorageError` when no
-    secure store is available so the token is never written in plaintext.
-    """
+    """Persist the NovelAI token in a secure OS store (raises if none available)."""
     token = token.strip()
     if not token:
         delete_stored_token(data_dir)
         return True
-    if _secure_set(token):
+    if _secure_set(ACCOUNT_NOVELAI, token):
         # Remove any leftover plaintext from older builds now that it is in the store.
         _file_delete_token(data_dir)
         return True
-    if not _secure_available():
-        raise CredentialStorageError(
-            "未找到可用的系统安全凭据存储 "
-            "(macOS Keychain / Windows Credential Manager / Linux Secret Service)，"
-            "为避免明文保存，token 未被写入。"
-        )
-    raise CredentialStorageError(
-        "系统安全凭据存储写入失败，token 未被保存。"
-    )
+    raise _no_store_error()
 
 
 def delete_stored_token(data_dir: Path) -> None:
-    """Remove the token from the secure store and clean up any legacy plaintext."""
-    _secure_delete()
+    """Remove the NovelAI token from the secure store and clean up legacy plaintext."""
+    _secure_delete(ACCOUNT_NOVELAI)
     _file_delete_token(data_dir)
 
 
 # ---------------------------------------------------------------------------
-# Secure backend dispatch (per platform)
+# LLM API key (secure store only; never had a plaintext file)
+# ---------------------------------------------------------------------------
+
+
+def get_stored_llm_key(data_dir: Path) -> str:
+    """Return the stored LLM API key, or "" if none."""
+    return _secure_get(ACCOUNT_LLM)
+
+
+def set_stored_llm_key(data_dir: Path, api_key: str) -> bool:
+    """Persist the LLM API key in a secure OS store (raises if none available)."""
+    api_key = api_key.strip()
+    if not api_key:
+        delete_stored_llm_key(data_dir)
+        return True
+    if _secure_set(ACCOUNT_LLM, api_key):
+        return True
+    raise _no_store_error()
+
+
+def delete_stored_llm_key(data_dir: Path) -> None:
+    """Remove the LLM API key from the secure store."""
+    _secure_delete(ACCOUNT_LLM)
+
+
+def _no_store_error() -> CredentialStorageError:
+    if not _secure_available():
+        return CredentialStorageError(
+            "未找到可用的系统安全凭据存储 "
+            "(macOS Keychain / Windows Credential Manager / Linux Secret Service)，"
+            "为避免明文保存，密钥未被写入。"
+        )
+    return CredentialStorageError("系统安全凭据存储写入失败，密钥未被保存。")
+
+
+# ---------------------------------------------------------------------------
+# Secure backend dispatch (per platform), keyed by account
 # ---------------------------------------------------------------------------
 
 
@@ -85,29 +115,29 @@ def _secure_available() -> bool:
     return shutil.which("secret-tool") is not None
 
 
-def _secure_get() -> str:
+def _secure_get(account: str) -> str:
     if sys.platform == "darwin":
-        return _macos_get_password()
+        return _macos_get_password(account)
     if sys.platform == "win32":
-        return _windows_get_password()
-    return _secret_tool_get()
+        return _windows_get_password(account)
+    return _secret_tool_get(account)
 
 
-def _secure_set(token: str) -> bool:
+def _secure_set(account: str, value: str) -> bool:
     if sys.platform == "darwin":
-        return _macos_set_password(token)
+        return _macos_set_password(account, value)
     if sys.platform == "win32":
-        return _windows_set_password(token)
-    return _secret_tool_set(token)
+        return _windows_set_password(account, value)
+    return _secret_tool_set(account, value)
 
 
-def _secure_delete() -> None:
+def _secure_delete(account: str) -> None:
     if sys.platform == "darwin":
-        _macos_delete_password()
+        _macos_delete_password(account)
     elif sys.platform == "win32":
-        _windows_delete_password()
+        _windows_delete_password(account)
     else:
-        _secret_tool_delete()
+        _secret_tool_delete(account)
 
 
 # ---------------------------------------------------------------------------
@@ -115,10 +145,10 @@ def _secure_delete() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _macos_get_password() -> str:
+def _macos_get_password(account: str) -> str:
     try:
         result = subprocess.run(
-            ["security", "find-generic-password", "-s", SERVICE_NAME, "-a", ACCOUNT_NAME, "-w"],
+            ["security", "find-generic-password", "-s", SERVICE_NAME, "-a", account, "-w"],
             capture_output=True,
             check=False,
             text=True,
@@ -129,7 +159,7 @@ def _macos_get_password() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _macos_set_password(token: str) -> bool:
+def _macos_set_password(account: str, value: str) -> bool:
     try:
         result = subprocess.run(
             [
@@ -139,9 +169,9 @@ def _macos_set_password(token: str) -> bool:
                 "-s",
                 SERVICE_NAME,
                 "-a",
-                ACCOUNT_NAME,
+                account,
                 "-w",
-                token,
+                value,
             ],
             capture_output=True,
             check=False,
@@ -153,10 +183,10 @@ def _macos_set_password(token: str) -> bool:
     return result.returncode == 0
 
 
-def _macos_delete_password() -> None:
+def _macos_delete_password(account: str) -> None:
     try:
         subprocess.run(
-            ["security", "delete-generic-password", "-s", SERVICE_NAME, "-a", ACCOUNT_NAME],
+            ["security", "delete-generic-password", "-s", SERVICE_NAME, "-a", account],
             capture_output=True,
             check=False,
             text=True,
@@ -170,15 +200,17 @@ def _macos_delete_password() -> None:
 # Linux/BSD Secret Service (secret-tool CLI)
 # ---------------------------------------------------------------------------
 
-_SECRET_TOOL_ATTRS = ["service", SERVICE_NAME, "account", ACCOUNT_NAME]
+
+def _secret_tool_attrs(account: str) -> list[str]:
+    return ["service", SERVICE_NAME, "account", account]
 
 
-def _secret_tool_get() -> str:
+def _secret_tool_get(account: str) -> str:
     if shutil.which("secret-tool") is None:
         return ""
     try:
         result = subprocess.run(
-            ["secret-tool", "lookup", *_SECRET_TOOL_ATTRS],
+            ["secret-tool", "lookup", *_secret_tool_attrs(account)],
             capture_output=True,
             check=False,
             text=True,
@@ -189,14 +221,14 @@ def _secret_tool_get() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _secret_tool_set(token: str) -> bool:
+def _secret_tool_set(account: str, value: str) -> bool:
     if shutil.which("secret-tool") is None:
         return False
     try:
         # The secret is read from stdin, keeping it out of the process argv list.
         result = subprocess.run(
-            ["secret-tool", "store", "--label", SERVICE_NAME, *_SECRET_TOOL_ATTRS],
-            input=token,
+            ["secret-tool", "store", "--label", SERVICE_NAME, *_secret_tool_attrs(account)],
+            input=value,
             capture_output=True,
             check=False,
             text=True,
@@ -207,12 +239,12 @@ def _secret_tool_set(token: str) -> bool:
     return result.returncode == 0
 
 
-def _secret_tool_delete() -> None:
+def _secret_tool_delete(account: str) -> None:
     if shutil.which("secret-tool") is None:
         return
     try:
         subprocess.run(
-            ["secret-tool", "clear", *_SECRET_TOOL_ATTRS],
+            ["secret-tool", "clear", *_secret_tool_attrs(account)],
             capture_output=True,
             check=False,
             text=True,
@@ -226,9 +258,12 @@ def _secret_tool_delete() -> None:
 # Windows Credential Manager (Win32 Cred* API via ctypes)
 # ---------------------------------------------------------------------------
 
-_WINDOWS_TARGET = f"{SERVICE_NAME}/{ACCOUNT_NAME}"
 _CRED_TYPE_GENERIC = 1
 _CRED_PERSIST_LOCAL_MACHINE = 2
+
+
+def _windows_target(account: str) -> str:
+    return f"{SERVICE_NAME}/{account}"
 
 
 def _windows_advapi():
@@ -265,7 +300,7 @@ def _windows_structs():
     return ctypes, wintypes, CREDENTIAL
 
 
-def _windows_get_password() -> str:
+def _windows_get_password(account: str) -> str:
     advapi = _windows_advapi()
     if advapi is None:
         return ""
@@ -273,7 +308,7 @@ def _windows_get_password() -> str:
         ctypes, wintypes, CREDENTIAL = _windows_structs()
         cred_ptr = ctypes.POINTER(CREDENTIAL)()
         ok = advapi.CredReadW(
-            _WINDOWS_TARGET, _CRED_TYPE_GENERIC, 0, ctypes.byref(cred_ptr)
+            _windows_target(account), _CRED_TYPE_GENERIC, 0, ctypes.byref(cred_ptr)
         )
         if not ok:
             return ""
@@ -290,40 +325,40 @@ def _windows_get_password() -> str:
         return ""
 
 
-def _windows_set_password(token: str) -> bool:
+def _windows_set_password(account: str, value: str) -> bool:
     advapi = _windows_advapi()
     if advapi is None:
         return False
     try:
         ctypes, wintypes, CREDENTIAL = _windows_structs()
-        blob = token.encode("utf-16-le")
+        blob = value.encode("utf-16-le")
         blob_buf = ctypes.create_string_buffer(blob, len(blob))
         cred = CREDENTIAL()
         cred.Type = _CRED_TYPE_GENERIC
-        cred.TargetName = _WINDOWS_TARGET
+        cred.TargetName = _windows_target(account)
         cred.CredentialBlobSize = len(blob)
         cred.CredentialBlob = ctypes.cast(blob_buf, ctypes.POINTER(ctypes.c_byte))
         cred.Persist = _CRED_PERSIST_LOCAL_MACHINE
-        cred.UserName = ACCOUNT_NAME
+        cred.UserName = account
         return bool(advapi.CredWriteW(ctypes.byref(cred), 0))
     except Exception:
         return False
 
 
-def _windows_delete_password() -> None:
+def _windows_delete_password(account: str) -> None:
     advapi = _windows_advapi()
     if advapi is None:
         return
     try:
-        import ctypes
+        import ctypes  # noqa: F401
 
-        advapi.CredDeleteW(_WINDOWS_TARGET, _CRED_TYPE_GENERIC, 0)
+        advapi.CredDeleteW(_windows_target(account), _CRED_TYPE_GENERIC, 0)
     except Exception:
         return
 
 
 # ---------------------------------------------------------------------------
-# Legacy plaintext file (read + delete only, for migration/cleanup)
+# Legacy plaintext file (NovelAI token only; read + delete for migration)
 # ---------------------------------------------------------------------------
 
 

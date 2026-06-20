@@ -11,22 +11,22 @@ from sidecar import credentials
 
 @contextmanager
 def fake_secure_store(initial: str | None = None, available: bool = True):
-    """Patch the secure backend with an in-memory store so tests never touch the real OS keychain."""
+    """Patch the secure backend with an in-memory, account-keyed store so tests never touch the real OS keychain."""
     store: dict[str, str] = {}
     if initial is not None:
-        store["token"] = initial
+        store[credentials.ACCOUNT_NOVELAI] = initial
 
-    def _get() -> str:
-        return store.get("token", "")
+    def _get(account: str) -> str:
+        return store.get(account, "")
 
-    def _set(token: str) -> bool:
+    def _set(account: str, value: str) -> bool:
         if not available:
             return False
-        store["token"] = token
+        store[account] = value
         return True
 
-    def _delete() -> None:
-        store.pop("token", None)
+    def _delete(account: str) -> None:
+        store.pop(account, None)
 
     with mock.patch.object(credentials, "_secure_get", _get), mock.patch.object(
         credentials, "_secure_set", _set
@@ -46,6 +46,8 @@ class CredentialsTests(unittest.TestCase):
 
     def _plaintext_path(self) -> Path:
         return self._data_dir() / "secrets" / "novelai.token"
+
+    # ---- NovelAI token ----
 
     def test_set_get_delete_roundtrip(self) -> None:
         with fake_secure_store():
@@ -72,8 +74,8 @@ class CredentialsTests(unittest.TestCase):
     def test_secure_store_present_but_write_fails_raises(self) -> None:
         # available() True but _secure_set returns False (e.g. CLI error).
         with mock.patch.object(credentials, "_secure_available", lambda: True), mock.patch.object(
-            credentials, "_secure_set", lambda token: False
-        ), mock.patch.object(credentials, "_secure_get", lambda: ""):
+            credentials, "_secure_set", lambda account, value: False
+        ), mock.patch.object(credentials, "_secure_get", lambda account: ""):
             with self.assertRaises(credentials.CredentialStorageError):
                 credentials.set_stored_token(self._data_dir(), "token-write-fails")
             self.assertFalse(self._plaintext_path().exists())
@@ -86,7 +88,7 @@ class CredentialsTests(unittest.TestCase):
         with fake_secure_store() as store:
             self.assertEqual(credentials.get_stored_token(self._data_dir()), "token-legacy-value")
             # Migrated into the secure store and the plaintext file removed.
-            self.assertEqual(store.get("token"), "token-legacy-value")
+            self.assertEqual(store.get(credentials.ACCOUNT_NOVELAI), "token-legacy-value")
             self.assertFalse(legacy.exists())
 
     def test_set_removes_existing_legacy_plaintext(self) -> None:
@@ -108,6 +110,43 @@ class CredentialsTests(unittest.TestCase):
         with fake_secure_store(available=False):
             self.assertEqual(credentials.get_stored_token(self._data_dir()), "token-orphan-value")
             self.assertTrue(legacy.exists())
+
+    # ---- LLM API key ----
+
+    def test_llm_key_roundtrip(self) -> None:
+        with fake_secure_store() as store:
+            self.assertTrue(credentials.set_stored_llm_key(self._data_dir(), "llm-key-value"))
+            self.assertEqual(credentials.get_stored_llm_key(self._data_dir()), "llm-key-value")
+            # Stored under the LLM account, separate from the NovelAI token.
+            self.assertEqual(store.get(credentials.ACCOUNT_LLM), "llm-key-value")
+            self.assertNotIn(credentials.ACCOUNT_NOVELAI, store)
+
+            credentials.delete_stored_llm_key(self._data_dir())
+            self.assertEqual(credentials.get_stored_llm_key(self._data_dir()), "")
+
+    def test_llm_key_empty_clears(self) -> None:
+        with fake_secure_store() as store:
+            credentials.set_stored_llm_key(self._data_dir(), "llm-key-value")
+            self.assertTrue(credentials.set_stored_llm_key(self._data_dir(), "  "))
+            self.assertEqual(credentials.get_stored_llm_key(self._data_dir()), "")
+            self.assertNotIn(credentials.ACCOUNT_LLM, store)
+
+    def test_llm_key_no_secure_store_raises(self) -> None:
+        with fake_secure_store(available=False):
+            with self.assertRaises(credentials.CredentialStorageError):
+                credentials.set_stored_llm_key(self._data_dir(), "llm-key-should-not-persist")
+            self.assertEqual(credentials.get_stored_llm_key(self._data_dir()), "")
+
+    def test_token_and_llm_key_are_independent(self) -> None:
+        with fake_secure_store():
+            credentials.set_stored_token(self._data_dir(), "the-token")
+            credentials.set_stored_llm_key(self._data_dir(), "the-llm-key")
+            self.assertEqual(credentials.get_stored_token(self._data_dir()), "the-token")
+            self.assertEqual(credentials.get_stored_llm_key(self._data_dir()), "the-llm-key")
+            # Deleting one leaves the other intact.
+            credentials.delete_stored_token(self._data_dir())
+            self.assertEqual(credentials.get_stored_token(self._data_dir()), "")
+            self.assertEqual(credentials.get_stored_llm_key(self._data_dir()), "the-llm-key")
 
 
 if __name__ == "__main__":
