@@ -2,6 +2,8 @@
 
 Ultimate Novelai launcher is a NovelAI desktop creation tool, macOS first and Windows-aware.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a one-page module map and the frontend→sidecar boundary rule (read it first to orient). This file holds the detailed rules and refactor history.
+
 ## Product Direction
 
 - `docs_and_plan/ideas.md` is the product source of truth.
