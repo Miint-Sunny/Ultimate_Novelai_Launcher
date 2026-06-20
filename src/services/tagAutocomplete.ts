@@ -25,6 +25,7 @@ import { aiDirectTranslate, aiRecommendTags, translateTagWithGemini } from './ta
 export type { TagWikiPreviewExample, TagWikiPreview, TagSuggestion } from './tag-autocomplete/types';
 export { clearTagCache } from './tag-autocomplete/suggestionCache';
 export { fetchWikiChineseNames, fetchWikiExistsBatch, fetchTagWikiPreview, fetchTagWikiSummaryZh } from './tag-autocomplete/wiki';
+export { verifyTags } from './tag-autocomplete/remoteClient';
 export { clearArtistOCCache, preloadAutocompleteData, lookupCharacterChineseName } from './tag-autocomplete/localSearch';
 export { getTranslationCacheSnapshot, setTranslationCacheEntries, translateTagWithGemini } from './tag-autocomplete/translation';
 

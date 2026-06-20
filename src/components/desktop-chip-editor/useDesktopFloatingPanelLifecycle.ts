@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
-import { fetchWikiChineseNames, type TagSuggestion } from '../../services/tagAutocomplete';
+import { fetchWikiChineseNames, verifyTags, type TagSuggestion } from '../../services/tagAutocomplete';
 import { translateSegments } from '../../services/translate';
-import { getBackendUrl } from '../../utils/apiConfig';
 import { NEWLINE_SENTINEL, cleanTagName } from '../../utils/promptTags';
 
 interface TagPanelState {
@@ -102,13 +101,8 @@ export function useDesktopFloatingPanelLifecycle({
     setTagPanelPostCount(null);
     (async () => {
       try {
-        const res = await fetch(`${getBackendUrl()}/api/tags/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tags: [queryTag] }),
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json() as Record<string, number>;
+        const data = await verifyTags([queryTag]);
+        if (cancelled) return;
         const value = data[queryTag];
         if (typeof value === 'number') setTagPanelPostCount(value);
       } catch {

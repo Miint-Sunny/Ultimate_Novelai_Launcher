@@ -4,10 +4,10 @@ import {
   cleanTagName,
   isCollapsibleMarker,
 } from '../../../utils/promptTags';
-import { getBackendUrl } from '../../../utils/apiConfig';
 import {
   fetchTagWikiPreview,
   fetchTagWikiSummaryZh,
+  verifyTags,
 } from '../../../services/tagAutocomplete';
 import type { WikiPreviewState } from './WikiPreviewSheet';
 
@@ -39,13 +39,8 @@ export const useFullscreenWiki = ({
     const queryTag = singleCleanTag.toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
     (async () => {
       try {
-        const res = await fetch(`${getBackendUrl()}/api/tags/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tags: [queryTag] }),
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json() as Record<string, number>;
+        const data = await verifyTags([queryTag]);
+        if (cancelled) return;
         const v = data[queryTag];
         if (typeof v === 'number') setSelectedPostCount(v);
       } catch { /* silent */ }
