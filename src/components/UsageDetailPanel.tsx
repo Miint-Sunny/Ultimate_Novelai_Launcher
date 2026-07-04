@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BarChart3, Zap, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { getBackendUrl } from '../utils/apiConfig';
+import { botService } from '../services/botService';
 
 /* ---------- Types ---------- */
 interface TypeBreakdownItem {
@@ -77,6 +78,9 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
     setLoading(true);
     try {
       const params = new URLSearchParams({ user_id: userId });
+      // 后端按会话推导目标用户（普通用户仅限本人，管理员可查任意 user_id）。
+      const sessionId = botService.getAuthState().sessionId;
+      if (sessionId) params.set('session_id', sessionId);
       if (periodStart && periodEnd) {
         params.set('period_start', periodStart);
         params.set('period_end', periodEnd);

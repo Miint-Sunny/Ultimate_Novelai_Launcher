@@ -522,6 +522,24 @@ BILLING_TIER_WEIGHTS = [0, 1, 3, 6]  # 免费/一阶/二阶/三阶 权重
 BILLING_CYCLE_DAY = 27               # 每月结算分界日
 
 
+# ==================== 访问控制（可选，默认全空 = 安全默认）====================
+# 全站账单报表 / 任意用户查询只对"管理员"开放；Bot 轮询端点可选加共享密钥。
+# 这些字段可以不定义（app.py 用 getattr 兜底），老 config.py 无需改动即可运行。
+
+# 管理员 QQ 号列表：这些用户的会话可查看 /api/billing/report 全站报表，
+# 以及任意 user_id 的 /api/billing/user(/details)。默认空 = 无人（报表被锁死）。
+ADMIN_USER_IDS: list[str] = []
+
+# 后台/curl 用管理员密钥：请求头 X-Admin-Token 带上它即视为管理员（无需登录会话）。
+# 留空 = 不启用该通道。仅供你在后台机器上直接拉报表，切勿下发给前端。
+ADMIN_TOKEN = ""
+
+# Bot 轮询端点（/api/bot/tasks/pending、/task/update、/anlas/update）共享密钥：
+# 请求头 X-Bot-Secret。留空 = 不校验（保持原行为，不会断开你现有的 QQ 机器人）。
+# 配置后需让你的 Bot 端在这些请求上带同一个密钥。
+BOT_SHARED_SECRET = ""
+
+
 # ==================== Anima（cnb ComfyUI 二次元出图后端）====================
 # 用户切到 MODEL_CHOICES["anima"] 渠道后：ChatResponse.image_backend = "anima"，
 # Bot 端按此路由到 server 的 anima provider（M3 实现）；本块给 M2/M3 用。

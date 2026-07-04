@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Callable, List, Tuple
 import threading
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -62,6 +62,8 @@ from config import (
     NAI_BOOST_ACTIVE_ACCOUNTS, NAI_BOOST_QUOTA_REFRESH_SEC,
     NAI_RECAPTCHA_TOKEN_API_URL,
 )
+# 整模块导入，供访问控制读取"可选、向后兼容"的安全配置项（老 config.py 缺字段时取默认）。
+import config as _appcfg
 
 # Boost 通道
 from captcha_client import (
@@ -2671,10 +2673,12 @@ app = FastAPI(
 )
 
 # CORS配置
+# 不开 allow_credentials：本后端用 session_id（body/query）而非 cookie，
+# "* + credentials" 既是无效组合又放大风险。去掉后浏览器仍可跨域调用，
+# 但敏感端点已改为需管理员/会话/Bot 密钥，见下方 _require_admin / _require_bot_secret。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -3411,6 +3415,67 @@ class BotAuthManager:
 bot_auth_manager = BotAuthManager()
 
 
+# ==================== 访问控制（管理员 / 计费自查 / Bot 密钥）====================
+# 均为可选、向后兼容：老 config.py 未定义这些字段时取安全默认。
+#   ADMIN_USER_IDS   : 管理员 QQ 号列表（可查全站报表 / 任意用户），默认空 = 无人。
+#   ADMIN_TOKEN      : 后台/curl 用的管理员密钥（请求头 X-Admin-Token），默认空 = 不启用。
+#   BOT_SHARED_SECRET: Bot 轮询端点共享密钥（请求头 X-Bot-Secret），默认空 = 不强制（不改行为）。
+
+def _admin_user_ids() -> set:
+    return {str(x) for x in (getattr(_appcfg, "ADMIN_USER_IDS", None) or [])}
+
+
+def _admin_token_value() -> str:
+    return str(getattr(_appcfg, "ADMIN_TOKEN", "") or "")
+
+
+def _bot_shared_secret_value() -> str:
+    return str(getattr(_appcfg, "BOT_SHARED_SECRET", "") or "")
+
+
+def _secure_eq(provided: str, expected: str) -> bool:
+    """Constant-time string compare that tolerates any (incl. non-ASCII) input."""
+    try:
+        return secrets.compare_digest(str(provided).encode("utf-8"), str(expected).encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _is_admin(session_id: str, admin_token: str) -> bool:
+    """管理员 = 持有效 ADMIN_TOKEN，或会话的 bot_user_id ∈ ADMIN_USER_IDS。"""
+    tok = _admin_token_value()
+    if tok and admin_token and _secure_eq(admin_token, tok):
+        return True
+    if session_id:
+        session = bot_auth_manager.get_session(session_id)
+        if session and str(session.bot_user_id) in _admin_user_ids():
+            return True
+    return False
+
+
+def _require_admin(session_id: str = "", x_admin_token: str = Header(default="")) -> None:
+    """全站/管理端点依赖：需管理员会话或有效 ADMIN_TOKEN，否则 403。默认无管理员即锁死。"""
+    if not _is_admin(session_id, x_admin_token):
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+
+def _resolve_billing_target(session_id: str, requested_user_id: str, admin_token: str) -> str:
+    """普通用户只能查自己（user_id 强制取会话）；管理员可查任意 user_id。未登录且非管理员 → 401。"""
+    if _is_admin(session_id, admin_token):
+        return requested_user_id
+    session = bot_auth_manager.get_session(session_id) if session_id else None
+    if not session:
+        raise HTTPException(status_code=401, detail="未登录或会话已过期")
+    return str(session.bot_user_id)
+
+
+def _require_bot_secret(x_bot_secret: str = Header(default="")) -> None:
+    """Bot 轮询端点依赖：仅当配置了 BOT_SHARED_SECRET 时才强制（可选式，默认不改行为）。"""
+    secret = _bot_shared_secret_value()
+    if secret and not _secure_eq(x_bot_secret, secret):
+        raise HTTPException(status_code=401, detail="bot unauthorized")
+
+
 # ==================== Bot API 端点 ====================
 
 class GenerateAuthCodeResponse(BaseModel):
@@ -3706,7 +3771,7 @@ class PendingTasksResponse(BaseModel):
     tasks: list
 
 
-@app.get("/api/bot/tasks/pending", response_model=PendingTasksResponse)
+@app.get("/api/bot/tasks/pending", response_model=PendingTasksResponse, dependencies=[Depends(_require_bot_secret)])
 async def get_pending_tasks():
     """获取待处理任务（由Bot轮询调用）"""
     pending = []
@@ -3730,7 +3795,7 @@ class UpdateTaskRequest(BaseModel):
     result: Optional[Dict[str, Any]] = None
 
 
-@app.post("/api/bot/task/update")
+@app.post("/api/bot/task/update", dependencies=[Depends(_require_bot_secret)])
 async def update_task(req: UpdateTaskRequest):
     """更新任务状态（由Bot调用）"""
     await bot_auth_manager.update_task(req.task_id, req.status, req.result, req.queue_position)
@@ -3860,7 +3925,7 @@ class UpdateAnlasRequest(BaseModel):
     anlas: int
 
 
-@app.post("/api/bot/anlas/update")
+@app.post("/api/bot/anlas/update", dependencies=[Depends(_require_bot_secret)])
 async def update_anlas(req: UpdateAnlasRequest):
     """更新点数（由Bot调用）"""
     _anlas_cache["anlas"] = req.anlas
@@ -4575,7 +4640,7 @@ async def _fetch_month_user_data(year: int, month: int) -> list[dict]:
     return await _fetch_period_user_data(month_start, month_end)
 
 
-@app.get("/api/billing/report")
+@app.get("/api/billing/report", dependencies=[Depends(_require_admin)])
 async def get_billing_report(year: int = 0, month: int = 0,
                              period_start: str = "", period_end: str = "",
                              total_cost: float = 0, anlas_threshold: int = -1):
@@ -4612,8 +4677,10 @@ async def get_billing_report(year: int = 0, month: int = 0,
 
 
 @app.get("/api/billing/user")
-async def get_billing_user(user_id: str, year: int = 0, month: int = 0):
-    """查询指定用户在指定计费周期的费用（默认上个27日周期）"""
+async def get_billing_user(user_id: str = "", year: int = 0, month: int = 0,
+                           session_id: str = "", x_admin_token: str = Header(default="")):
+    """查询用户在指定计费周期的费用（默认上个27日周期）。普通用户仅限本人，管理员可查任意 user_id。"""
+    user_id = _resolve_billing_target(session_id, user_id, x_admin_token)
     now = datetime.now(_BEIJING_TZ).replace(tzinfo=None)
     if year == 0 or month == 0:
         start, end = _prev_billing_period(now)
@@ -4671,12 +4738,14 @@ async def get_billing_user(user_id: str, year: int = 0, month: int = 0):
 
 
 @app.get("/api/billing/user/details")
-async def get_billing_user_details(user_id: str, year: int = 0, month: int = 0,
+async def get_billing_user_details(user_id: str = "", year: int = 0, month: int = 0,
                                     period_start: str = "", period_end: str = "",
-                                    period: str = "prev"):
-    """获取指定用户在指定计费周期的使用详情。
+                                    period: str = "prev",
+                                    session_id: str = "", x_admin_token: str = Header(default="")):
+    """获取用户在指定计费周期的使用详情。普通用户仅限本人，管理员可查任意 user_id。
     优先使用 period_start/period_end，否则按 year/month，否则按 period='current'|'prev'。
     """
+    user_id = _resolve_billing_target(session_id, user_id, x_admin_token)
     now = datetime.now(_BEIJING_TZ).replace(tzinfo=None)
     if period_start and period_end:
         start = datetime.fromisoformat(period_start)
@@ -4909,6 +4978,9 @@ async def get_latest_settlement(session_id: str = ""):
             current_user = u
             break
     report["current_user"] = current_user
+    # 结算弹窗是"每用户"视图：不向普通用户泄露全站用户明细列表，只保留本人行。
+    # 管理员需要全站数据请走已鉴权的 /api/billing/report。
+    report["users"] = [current_user] if current_user else []
 
     # 查支付状态：以"自最近一次结算日（= 当前周期起点 = prev_end）以来是否有 mark_paid 记录"为准。
     # 不再以 period_start 作为查找键，这样调整 BILLING_* 参数后已付款用户不会被错误地重新弹窗；
