@@ -5278,8 +5278,10 @@ def _save_preview_image(en_name: str, base64_data: str, zh_name: str = "", zh_al
 
         image_data = base64.b64decode(base64_data)
 
-        # 保存纯净版到 oc_images_clean
-        clean_filename = f"{en_name}_preview.jpg"
+        # 保存纯净版到 oc_images_clean（清洗文件名，杜绝 ../ 之类的路径穿越写入）
+        import re as _re
+        safe_en_name = _re.sub(r"[^A-Za-z0-9_-]", "_", en_name) or "oc"
+        clean_filename = f"{safe_en_name}_preview.jpg"
         clean_filepath = clean_dir / clean_filename
         with open(clean_filepath, "wb") as f:
             f.write(image_data)
@@ -7766,10 +7768,12 @@ def _save_artist_preview_image(name: str, base64_data: str) -> Optional[str]:
             base64_data = base64_data.split(",", 1)[1]
         
         image_data = base64.b64decode(base64_data)
-        
-        # 保存为jpg
+
+        # 保存为jpg（清洗文件名，杜绝路径穿越写入）
+        import re as _re
+        safe_name = _re.sub(r"[^A-Za-z0-9_-]", "_", name) or "artist"
         timestamp = int(time.time() * 1000)
-        filename = f"artist_preview_{name}_{timestamp}.jpg"
+        filename = f"artist_preview_{safe_name}_{timestamp}.jpg"
         filepath = ARTIST_IMAGES_DIR / filename
         
         with open(filepath, "wb") as f:
@@ -7958,7 +7962,8 @@ async def use_artist(artist_name: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8765)
+    # Secure default: bind to loopback. Use run.py --host 0.0.0.0 to expose on the LAN.
+    uvicorn.run(app, host="127.0.0.1", port=8765)
 
 
 # ==================== 公共 CR 管理 API ====================
@@ -8217,7 +8222,40 @@ async def translate_proxy(req: TranslateProxyRequest):
     用于解决 HTTPS 页面无法直接请求 HTTP 翻译服务的问题
     """
     import aiohttp
-    
+    import ipaddress as _ipaddress
+    from urllib.parse import urlparse as _urlparse
+
+    # 校验 base_url，避免被当作 SSRF 跳板：仅允许 http(s)，并拒绝 link-local / 云元数据地址
+    # （含 IPv4-mapped IPv6 [::ffff:169.254.169.254] 及整数/十六进制编码形式）。
+    # 注意：此端点本质是"用户自配翻译代理"，对任意主机名开放，这只是最小加固——
+    # 部署方切勿把该 legacy 后端暴露在不可信网络上。
+    _parsed = _urlparse(req.base_url)
+    _host = (_parsed.hostname or "").lower()
+    if _parsed.scheme not in ("http", "https") or not _host:
+        raise HTTPException(status_code=400, detail="无效的 base_url")
+
+    def _is_link_local_host(h: str) -> bool:
+        c = h[1:-1] if h.startswith("[") and h.endswith("]") else h
+        ip = None
+        try:
+            ip = _ipaddress.ip_address(c)
+        except ValueError:
+            try:
+                if c.startswith("0x"):
+                    ip = _ipaddress.ip_address(int(c, 16) & 0xFFFFFFFF)
+                elif c.isdigit():
+                    ip = _ipaddress.ip_address(int(c) & 0xFFFFFFFF)
+            except (ValueError, OverflowError):
+                ip = None
+        if ip is None:
+            return False
+        if isinstance(ip, _ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        return ip.is_link_local
+
+    if _is_link_local_host(_host):
+        raise HTTPException(status_code=400, detail="无效的 base_url")
+
     # 构建目标 URL
     target_url = f"{req.base_url.rstrip('/')}/chat/completions"
     

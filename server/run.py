@@ -8,7 +8,7 @@ NovelAI Web UI 后端服务启动脚本
     python run.py [--host HOST] [--port PORT] [--reload]
 
 示例:
-    python run.py                    # 默认 0.0.0.0:8765
+    python run.py                    # 默认 127.0.0.1:8765（仅本机；如需局域网访问用 --host 0.0.0.0）
     python run.py --port 8080        # 使用端口 8080
     python run.py --reload           # 开发模式，自动重载
 """
@@ -19,7 +19,7 @@ import uvicorn
 
 def main():
     parser = argparse.ArgumentParser(description="NovelAI Web UI Backend Server")
-    parser.add_argument("--host", default="0.0.0.0", help="绑定地址 (默认: 0.0.0.0)")
+    parser.add_argument("--host", default="127.0.0.1", help="绑定地址 (默认: 127.0.0.1；如需局域网/公网访问显式传 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8765, help="端口号 (默认: 8765)")
     parser.add_argument("--reload", action="store_true", help="开发模式，自动重载")
     args = parser.parse_args()
