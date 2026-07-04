@@ -3,6 +3,18 @@ import type { Node } from '@tiptap/pm/model';
 import { findSubtypeByTagType, getRegistrySnapshot } from '../tag-manager/registry';
 import { getIconSvg } from '../tag-manager/iconSvgCache';
 
+// The node view is built with innerHTML, so any value interpolated into markup must
+// be HTML-escaped. label/content originate from tag and OC/CR data (some of it from
+// the shared/public library), i.e. across a trust boundary.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 interface ResolvedTagConfig {
   bg: string;
   border: string;
@@ -83,10 +95,10 @@ export const CollapsibleTagNode = TiptapNode.create({
         const preview = content.length > 80 ? content.substring(0, 80) + '...' : content;
 
         dom.innerHTML = `
-          <span class="inline-flex items-center gap-1.5 px-2 rounded-md ${config.bg} border ${config.border} text-sm select-none cursor-grab active:cursor-grabbing ${config.hoverBg} transition-colors" style="line-height: 16px; padding-top: 1px; padding-bottom: 1px;" title="${preview.replace(/"/g, '&quot;')}">
+          <span class="inline-flex items-center gap-1.5 px-2 rounded-md ${config.bg} border ${config.border} text-sm select-none cursor-grab active:cursor-grabbing ${config.hoverBg} transition-colors" style="line-height: 16px; padding-top: 1px; padding-bottom: 1px;" title="${escapeHtml(preview)}">
             <span data-action="expand" class="inline-flex items-center gap-1.5 cursor-pointer">
               <span class="inline-flex items-center text-white/90" style="line-height:0">${config.iconSvg}</span>
-              <span class="font-medium text-white/90">${label || config.name}</span>
+              <span class="font-medium text-white/90">${escapeHtml(label || config.name)}</span>
             </span>
             <span data-action="delete" class="text-white/40 hover:text-red-400 transition-colors cursor-pointer" title="删除">✕</span>
           </span>
