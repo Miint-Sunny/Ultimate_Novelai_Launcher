@@ -2,7 +2,7 @@
 // 包含 wiki 存在性 / 中文名 / 预览 / 中文摘要四类查询，
 // 各自带 per-tag 缓存 + in-flight 去重注册表。行为与缓存 key 保持不变。
 
-import { sidecarApi } from '../../api/sidecar';
+import { sidecarApi, sidecarAuthHeaders } from '../../api/sidecar';
 import type { TagWikiPreview } from './types';
 
 // 缓存
@@ -194,7 +194,9 @@ export async function fetchTagWikiSummaryZh(tag: string): Promise<string> {
 
   const promise = (async (): Promise<string> => {
     try {
-      const res = await fetch(sidecarApi.url(`/api/tags/wiki-preview-summary-zh?tag=${encodeURIComponent(normalized)}`));
+      const res = await fetch(sidecarApi.url(`/api/tags/wiki-preview-summary-zh?tag=${encodeURIComponent(normalized)}`), {
+        headers: await sidecarAuthHeaders(),
+      });
       if (!res.ok) return '';
       const data = await res.json() as { hasWiki?: boolean; summaryZh?: string };
       const summaryZh = data?.hasWiki && data.summaryZh ? data.summaryZh : '';

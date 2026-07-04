@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import uuid
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -143,6 +144,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    def require_sidecar_auth(x_sidecar_auth: str = Header(default="")) -> None:
+        """Gate sensitive endpoints on the per-session shared secret.
+
+        When the Tauri shell injects ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_AUTH, only
+        callers that echo it back (i.e. this app's own frontend) may spend the
+        NovelAI/LLM credentials, change the outbound base URL, or mutate credentials
+        and the local library. When no token is configured (e.g. `npm run sidecar`
+        during development) the check is a no-op so the dev workflow is unaffected.
+        """
+        expected = resolved_settings.sidecar_auth_token
+        if expected and not hmac.compare_digest(x_sidecar_auth, expected):
+            raise HTTPException(status_code=401, detail="unauthorized sidecar request")
+
+    auth = Depends(require_sidecar_auth)
+
     @app.get("/health")
     def health() -> dict[str, Any]:
         return {
@@ -157,7 +173,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_settings() -> dict[str, Any]:
         return _settings_payload(resolved_settings)
 
-    @app.post("/settings")
+    @app.post("/settings", dependencies=[auth])
     def update_settings(req: SettingsUpdateRequest) -> dict[str, Any]:
         nonlocal resolved_settings
         updates = req.model_dump(exclude_none=True)
@@ -171,7 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def token_status() -> dict[str, Any]:
         return _token_status(resolved_settings)
 
-    @app.post("/auth/token")
+    @app.post("/auth/token", dependencies=[auth])
     def set_token(req: TokenRequest) -> dict[str, Any]:
         nonlocal resolved_settings
         try:
@@ -183,7 +199,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.settings = resolved_settings
         return _token_status(resolved_settings)
 
-    @app.delete("/auth/token")
+    @app.delete("/auth/token", dependencies=[auth])
     def delete_token() -> dict[str, Any]:
         nonlocal resolved_settings
         delete_stored_token(resolved_settings.data_dir)
@@ -196,7 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def llm_key_status() -> dict[str, Any]:
         return _llm_status(resolved_settings)
 
-    @app.post("/auth/llm-key")
+    @app.post("/auth/llm-key", dependencies=[auth])
     def set_llm_key(req: LlmKeyRequest) -> dict[str, Any]:
         nonlocal resolved_settings
         setter = set_stored_llm_backup_key if req.slot == "backup" else set_stored_llm_key
@@ -209,7 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.settings = resolved_settings
         return _llm_status(resolved_settings)
 
-    @app.delete("/auth/llm-key")
+    @app.delete("/auth/llm-key", dependencies=[auth])
     def delete_llm_key(slot: str = "primary") -> dict[str, Any]:
         nonlocal resolved_settings
         remover = delete_stored_llm_backup_key if slot == "backup" else delete_stored_llm_key
@@ -219,7 +235,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.settings = resolved_settings
         return _llm_status(resolved_settings)
 
-    @app.get("/history")
+    @app.get("/history", dependencies=[auth])
     def history(limit: int = 100) -> dict[str, Any]:
         safe_limit = min(max(limit, 1), 100)
         return {"items": [record.to_api() for record in list_history(resolved_settings, safe_limit)]}
@@ -235,7 +251,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="image not found")
         return FileResponse(path, media_type="image/png")
 
-    @app.post("/generate")
+    @app.post("/generate", dependencies=[auth])
     async def generate(req: GenerateRequest) -> dict[str, Any]:
         try:
             resolved = await _resolve_prompt(resolved_settings, req)
@@ -312,7 +328,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def cancel_generation_task(task_id: str) -> dict[str, Any]:
         return {"ok": False, "task_id": task_id, "message": "no active local task runner is configured"}
 
-    @app.post("/vibe/encode")
+    @app.post("/vibe/encode", dependencies=[auth])
     async def vibe_encode(req: VibeEncodeRequest) -> dict[str, Any]:
         if resolved_settings.mock_generation:
             return {"encoding": "mock-vibe-encoding"}
@@ -327,7 +343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except NovelAIError as exc:
             raise HTTPException(status_code=400 if exc.status_code == 0 else 502, detail=str(exc)) from exc
 
-    @app.post("/upscale")
+    @app.post("/upscale", dependencies=[auth])
     async def upscale(req: UpscaleRequest) -> Response:
         try:
             if resolved_settings.mock_generation:
@@ -346,7 +362,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except NovelAIError as exc:
             raise HTTPException(status_code=400 if exc.status_code == 0 else 502, detail=str(exc)) from exc
 
-    @app.post("/agent/generate-prompt")
+    @app.post("/agent/generate-prompt", dependencies=[auth])
     async def agent_generate_prompt(req: AgentGeneratePromptRequest) -> dict[str, Any]:
         try:
             result = await convert_natural_to_tags(
@@ -365,6 +381,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "params": result.params.model_dump(),
         }
 
+    # Intentionally NOT gated on the sidecar auth token: the frontend consumes this as
+    # a raw SSE stream (src/services/agentService.ts) that cannot carry the auth header
+    # via requestJson. It can spend the LLM key on cache-miss; the residual (a local
+    # process abusing it) is accepted rather than break the streaming AI assistant.
     @app.post("/api/agent/web/generate-prompt")
     async def legacy_agent_web_generate_prompt(req: AgentWebGeneratePromptRequest) -> StreamingResponse:
         return StreamingResponse(
@@ -373,11 +393,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    @app.post("/api/translate/en2zh")
+    @app.post("/api/translate/en2zh", dependencies=[auth])
     async def legacy_translate_en2zh(req: ChatCompletionRequest) -> dict[str, Any]:
         return await _chat_completion_response(resolved_settings, req)
 
-    @app.post("/api/translate/proxy")
+    @app.post("/api/translate/proxy", dependencies=[auth])
     async def legacy_translate_proxy(req: ChatCompletionRequest) -> dict[str, Any]:
         return await _chat_completion_response(resolved_settings, req)
 
@@ -397,10 +417,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def metadata_import() -> dict[str, Any]:
         return {"metadata": None, "warnings": ["metadata import adapter is not configured yet"]}
 
-    register_library_routes(app, resolved_settings)
-    register_tag_routes(app, resolved_settings)
+    register_library_routes(app, resolved_settings, auth)
+    register_tag_routes(app, resolved_settings, auth)
 
-    @app.get("/api/anlas")
+    @app.get("/api/anlas", dependencies=[auth])
     async def legacy_anlas() -> dict[str, Any]:
         if not resolved_settings.nai_configured:
             return {

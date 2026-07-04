@@ -121,12 +121,49 @@ export function getSidecarUrl(): string {
   ).replace(/\/$/, '');
 }
 
+// The Tauri shell mints a per-session token and exposes it over the global bridge.
+// The sidecar's sensitive endpoints require it; in a plain browser dev build there is
+// no Tauri bridge and the sidecar leaves its auth check disabled, so the header is
+// simply omitted. Cached after the first lookup (undefined = not looked up yet).
+let sidecarAuthToken: string | null | undefined;
+
+type TauriBridge = {
+  core?: { invoke?: (cmd: string) => Promise<unknown> };
+  invoke?: (cmd: string) => Promise<unknown>;
+};
+
+async function getSidecarAuthToken(): Promise<string | null> {
+  if (sidecarAuthToken !== undefined) return sidecarAuthToken;
+  try {
+    const tauri = (window as unknown as { __TAURI__?: TauriBridge }).__TAURI__;
+    const invoke = tauri?.core?.invoke ?? tauri?.invoke;
+    const value = invoke ? await invoke('sidecar_auth_token') : null;
+    sidecarAuthToken = typeof value === 'string' && value ? value : null;
+  } catch {
+    sidecarAuthToken = null;
+  }
+  return sidecarAuthToken;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getSidecarAuthToken();
+  return token ? { 'X-Sidecar-Auth': token } : {};
+}
+
+// Exposed for the few sidecar endpoints that are (by design) hit with a raw fetch
+// instead of via requestJson/requestBlob but still need the auth header — currently
+// the LLM-key-spending tag routes (related / wiki summary).
+export async function sidecarAuthHeaders(): Promise<Record<string, string>> {
+  return authHeaders();
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = await resolveSidecarUrl();
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(await authHeaders()),
       ...(init?.headers || {}),
     },
   });
@@ -138,7 +175,13 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   const baseUrl = await resolveSidecarUrl();
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      ...(await authHeaders()),
+      ...(init?.headers || {}),
+    },
+  });
   if (!response.ok) {
     throw new Error(await readError(response));
   }

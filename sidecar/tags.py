@@ -406,7 +406,13 @@ class TagsRelatedRequest(BaseModel):
     categories: Optional[list[str]] = None
 
 
-def register_tag_routes(app, settings: Settings) -> None:
+def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
+    # Most tag routes only hit external Danbooru and are left open (they are fetched
+    # directly by the browser). The two that reach the user's LLM key via
+    # chat_completion (related / wiki-preview-summary-zh) are gated on the sidecar
+    # auth token so a local/drive-by caller cannot spend the key.
+    llm_deps = [auth] if auth is not None else []
+
     @app.get("/api/tags/autocomplete")
     async def tags_autocomplete(query: str, limit: int = 10) -> Any:
         if not query or len(query) < 2:
@@ -604,7 +610,7 @@ def register_tag_routes(app, settings: Settings) -> None:
             print(f"Wiki preview fetch error for {normalized}: {e}")
             return {"hasWiki": False}
 
-    @app.get("/api/tags/wiki-preview-summary-zh")
+    @app.get("/api/tags/wiki-preview-summary-zh", dependencies=llm_deps)
     async def tags_wiki_preview_summary_zh(tag: str) -> dict[str, Any]:
         normalized = _normalize_tag(tag)
         if not normalized:
@@ -701,7 +707,7 @@ def register_tag_routes(app, settings: Settings) -> None:
             body["error"] = upstream_error
         return body
 
-    @app.post("/api/tags/related")
+    @app.post("/api/tags/related", dependencies=llm_deps)
     async def tags_related(req: TagsRelatedRequest) -> dict[str, Any]:
         if not req.tags:
             return {"results": []}

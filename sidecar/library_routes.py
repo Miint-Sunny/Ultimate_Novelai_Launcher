@@ -31,13 +31,18 @@ from .library import (
 )
 
 
-def register_library_routes(app: FastAPI, settings: Settings) -> None:
+def register_library_routes(app: FastAPI, settings: Settings, auth: Any = None) -> None:
+    # Mutating library routes are gated on the sidecar auth token (when the shell
+    # injects one); read routes stay open so browser <img> previews/thumbnails and
+    # direct fetches keep working without a header.
+    write_deps = [auth] if auth is not None else []
+
     @app.get("/api/oc/list")
     def legacy_oc_list() -> dict[str, Any]:
         ocs = list_ocs(settings)
         return {"ocs": ocs, "total": len(ocs), "configured": True}
 
-    @app.post("/api/oc/create")
+    @app.post("/api/oc/create", dependencies=write_deps)
     def legacy_oc_create(data: dict[str, Any]) -> dict[str, Any]:
         try:
             oc = create_oc(settings, data)
@@ -49,7 +54,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
     def legacy_oc_preview(oc_id: str) -> FileResponse:
         return _asset_file_response(settings, "oc", oc_id)
 
-    @app.put("/api/oc/{oc_name}")
+    @app.put("/api/oc/{oc_name}", dependencies=write_deps)
     def legacy_oc_update(oc_name: str, data: dict[str, Any]) -> dict[str, Any]:
         try:
             oc = update_oc(settings, oc_name, data)
@@ -59,7 +64,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=404, detail="oc not found")
         return {"success": True, "message": "更新成功", "oc": oc, "configured": True}
 
-    @app.delete("/api/oc/{oc_name}")
+    @app.delete("/api/oc/{oc_name}", dependencies=write_deps)
     def legacy_oc_delete(oc_name: str) -> dict[str, Any]:
         if not delete_oc(settings, oc_name):
             raise HTTPException(status_code=404, detail="oc not found")
@@ -70,7 +75,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
         vibes = list_vibes(settings)
         return {"vibes": vibes, "total": len(vibes), "configured": True}
 
-    @app.post("/api/vibes/upload")
+    @app.post("/api/vibes/upload", dependencies=write_deps)
     def legacy_vibes_upload(data: dict[str, Any]) -> dict[str, Any]:
         vibe_data = data.get("vibe_data")
         if not isinstance(vibe_data, dict):
@@ -106,7 +111,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=404, detail="vibe not found")
         return data
 
-    @app.put("/api/vibes/file/{filename}")
+    @app.put("/api/vibes/file/{filename}", dependencies=write_deps)
     def legacy_vibe_update(filename: str, data: dict[str, Any]) -> dict[str, Any]:
         try:
             vibe = update_vibe(settings, filename, data)
@@ -116,7 +121,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=404, detail="vibe not found")
         return {"success": True, "message": "更新成功", "vibe": vibe, "configured": True}
 
-    @app.delete("/api/vibes/file/{filename}")
+    @app.delete("/api/vibes/file/{filename}", dependencies=write_deps)
     def legacy_vibe_delete(filename: str) -> dict[str, Any]:
         try:
             deleted = delete_vibe(settings, filename)
@@ -146,7 +151,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
         artists = list_artists(settings)
         return {"artists": artists, "total": len(artists), "configured": True}
 
-    @app.post("/api/artists/create")
+    @app.post("/api/artists/create", dependencies=write_deps)
     def legacy_artist_create(data: dict[str, Any]) -> dict[str, Any]:
         try:
             artist = create_artist(settings, data)
@@ -158,7 +163,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
     def legacy_artist_preview(artist_id: str) -> FileResponse:
         return _asset_file_response(settings, "artists", artist_id)
 
-    @app.put("/api/artists/{artist_name}")
+    @app.put("/api/artists/{artist_name}", dependencies=write_deps)
     def legacy_artist_update(artist_name: str, data: dict[str, Any]) -> dict[str, Any]:
         try:
             artist = update_artist(settings, artist_name, data)
@@ -168,13 +173,13 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=404, detail="artist not found")
         return {"success": True, "message": "更新成功", "artist": artist, "configured": True}
 
-    @app.delete("/api/artists/{artist_name}")
+    @app.delete("/api/artists/{artist_name}", dependencies=write_deps)
     def legacy_artist_delete(artist_name: str) -> dict[str, Any]:
         if not delete_artist(settings, artist_name):
             raise HTTPException(status_code=404, detail="artist not found")
         return {"success": True, "message": "删除成功", "configured": True}
 
-    @app.post("/api/artists/{artist_name}/use")
+    @app.post("/api/artists/{artist_name}/use", dependencies=write_deps)
     def legacy_artist_use(artist_name: str) -> dict[str, Any]:
         return {"success": use_artist(settings, artist_name), "configured": True}
 
@@ -183,7 +188,7 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
         crs = list_crs(settings)
         return {"crs": crs, "total": len(crs), "configured": True}
 
-    @app.post("/api/cr/create")
+    @app.post("/api/cr/create", dependencies=write_deps)
     def legacy_cr_create(data: dict[str, Any]) -> dict[str, Any]:
         try:
             cr = create_cr(settings, data)
@@ -195,14 +200,14 @@ def register_library_routes(app: FastAPI, settings: Settings) -> None:
     def legacy_cr_preview(cr_id: str) -> FileResponse:
         return _asset_file_response(settings, "cr", cr_id)
 
-    @app.put("/api/cr/{cr_id}")
+    @app.put("/api/cr/{cr_id}", dependencies=write_deps)
     def legacy_cr_update(cr_id: str, data: dict[str, Any]) -> dict[str, Any]:
         cr = update_cr(settings, cr_id, data)
         if not cr:
             raise HTTPException(status_code=404, detail="cr not found")
         return {"success": True, "message": "更新成功", "cr": cr, "configured": True}
 
-    @app.delete("/api/cr/{cr_id}")
+    @app.delete("/api/cr/{cr_id}", dependencies=write_deps)
     def legacy_cr_delete(cr_id: str) -> dict[str, Any]:
         if not delete_cr(settings, cr_id):
             raise HTTPException(status_code=404, detail="cr not found")

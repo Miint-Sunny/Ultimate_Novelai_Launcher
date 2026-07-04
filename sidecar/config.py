@@ -58,6 +58,9 @@ class Settings:
     llm_backup_base_url: str = ""
     llm_backup_api_key: str = ""
     llm_backup_model: str = ""
+    # Per-session shared secret injected by the Tauri shell; when non-empty the
+    # sidecar requires it on sensitive endpoints (see server.require_sidecar_auth).
+    sidecar_auth_token: str = ""
 
     @property
     def db_path(self) -> Path:
@@ -128,4 +131,5 @@ def load_settings() -> Settings:
         llm_backup_base_url=os.environ.get("LLM_BACKUP_BASE_URL", local.get("llm_backup_base_url", "")).rstrip("/"),
         llm_backup_api_key=os.environ.get("LLM_BACKUP_API_KEY", "").strip() or get_stored_llm_backup_key(data_dir),
         llm_backup_model=os.environ.get("LLM_BACKUP_MODEL", local.get("llm_backup_model", "")).strip(),
+        sidecar_auth_token=os.environ.get("ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_AUTH", "").strip(),
     )
