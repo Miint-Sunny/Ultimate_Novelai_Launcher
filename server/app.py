@@ -3476,6 +3476,12 @@ def _require_bot_secret(x_bot_secret: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="bot unauthorized")
 
 
+def _require_session(session_id: str = "") -> None:
+    """需要有效登录会话（不要求管理员）。用于聚合但非公开的端点，如全平台统计。"""
+    if not session_id or not bot_auth_manager.get_session(session_id):
+        raise HTTPException(status_code=401, detail="未登录或会话已过期")
+
+
 # ==================== Bot API 端点 ====================
 
 class GenerateAuthCodeResponse(BaseModel):
@@ -4255,7 +4261,7 @@ async def get_user_stats_points(session_id: str, time_range: str = "month"):
 
 # ==================== 全平台统计 API ====================
 
-@app.get("/api/platform/stats")
+@app.get("/api/platform/stats", dependencies=[Depends(_require_session)])
 async def get_platform_stats(time_range: str = "today"):
     """全平台统计摘要（不限用户）"""
     s, e = _time_bounds(time_range)
@@ -4276,7 +4282,7 @@ async def get_platform_stats(time_range: str = "today"):
     return {"ai_calls": ai, "image_calls": img, "points_spent": pts, "total_calls": ai + img, "active_users": users}
 
 
-@app.get("/api/platform/stats/daily")
+@app.get("/api/platform/stats/daily", dependencies=[Depends(_require_session)])
 async def get_platform_stats_daily(time_range: str = "week"):
     """全平台按天聚合统计，today 按3小时分割"""
     s, e = _time_bounds(time_range)
@@ -4317,7 +4323,7 @@ async def get_platform_stats_daily(time_range: str = "week"):
     return {"data": data, "time_range": time_range}
 
 
-@app.get("/api/platform/stats/all")
+@app.get("/api/platform/stats/all", dependencies=[Depends(_require_session)])
 async def get_platform_stats_all():
     """全平台历史全量统计"""
     async with aiosqlite.connect(str(_STATS_DB)) as db:
@@ -4340,7 +4346,7 @@ async def get_platform_stats_all():
     }
 
 
-@app.get("/api/platform/stats/hourly-heatmap")
+@app.get("/api/platform/stats/hourly-heatmap", dependencies=[Depends(_require_session)])
 async def get_platform_hourly_heatmap(days: int = 30):
     """全平台按小时聚合负载热力图，仅统计最近 N 天（默认 30 天）"""
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
@@ -4372,7 +4378,7 @@ async def get_platform_hourly_heatmap(days: int = 30):
     return {"heatmap": heatmap, "total_days": total_days, "days_range": days}
 
 
-@app.get("/api/platform/stats/hourly-duration")
+@app.get("/api/platform/stats/hourly-duration", dependencies=[Depends(_require_session)])
 async def get_platform_hourly_duration(days: int = 30):
     """全平台按小时聚合平均生成耗时热力图"""
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
@@ -4403,7 +4409,7 @@ async def get_platform_hourly_duration(days: int = 30):
     return {"heatmap": heatmap, "total_days": total_days, "days_range": days}
 
 
-@app.get("/api/platform/stats/hourly-users")
+@app.get("/api/platform/stats/hourly-users", dependencies=[Depends(_require_session)])
 async def get_platform_hourly_users(days: int = 30):
     """全平台按小时聚合活跃用户热力图，统计每小时去重用户数"""
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
@@ -5071,12 +5077,14 @@ async def get_payment_qrcode(type: str = "wechat"):
     文件命名：payment_qr_wechat.png / payment_qr_alipay.png
     兼容旧命名：payment_qr.png 作为微信的 fallback
     """
-    name = f"payment_qr_{type}"
+    # 清洗 type，杜绝 ../ 之类的路径穿越读取（正常取值 wechat/alipay）。
+    safe_type = re.sub(r"[^a-z0-9_]", "", (type or "").lower()) or "wechat"
+    name = f"payment_qr_{safe_type}"
     qr_path = BOT_DATA_DIR / f"{name}.png"
     if not qr_path.exists():
         qr_path = BOT_DATA_DIR / f"{name}.jpg"
     # fallback: 旧命名 payment_qr.png（仅微信）
-    if not qr_path.exists() and type == "wechat":
+    if not qr_path.exists() and safe_type == "wechat":
         qr_path = BOT_DATA_DIR / "payment_qr.png"
         if not qr_path.exists():
             qr_path = BOT_DATA_DIR / "payment_qr.jpg"
@@ -9271,12 +9279,14 @@ from fastapi.responses import FileResponse
 @app.get("/api/workshop/images/{filename}")
 async def workshop_serve_image(filename: str):
     """提供生成图片的静态文件服务"""
-    filepath = os.path.join(_WORKSHOP_OUTPUT_DIR, filename)
-    if not os.path.isfile(filepath):
+    # 防路径穿越：解析后的绝对路径必须仍落在 outputs 目录内（挡住 ../、%2f 等）。
+    base = os.path.realpath(_WORKSHOP_OUTPUT_DIR)
+    filepath = os.path.realpath(os.path.join(base, filename))
+    if not filepath.startswith(base + os.sep) or not os.path.isfile(filepath):
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Image not found"}, status_code=404)
     # 根据扩展名确定 MIME
-    if filename.endswith(".png"):
+    if filepath.endswith(".png"):
         media_type = "image/png"
     else:
         media_type = "image/webp"
