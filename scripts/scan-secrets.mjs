@@ -20,6 +20,11 @@ const patterns = [
   { name: 'legacy NovelAI proxy host', re: new RegExp('novelai\\.' + 'sora214\\.top') },
   { name: 'Genspark cookie value', re: new RegExp("GENSPARK_" + "COOKIE\\s*=\\s*[\"'][^\"']{8,}") },
   { name: 'Cloudflare clearance cookie', re: new RegExp('cf_' + 'clearance=') },
+  { name: 'AWS access key id', re: new RegExp('AK' + 'IA[0-9A-Z]{16}') },
+  { name: 'Google API key', re: new RegExp('AI' + 'za[0-9A-Za-z_-]{35}') },
+  { name: 'GitHub token', re: new RegExp('gh' + '[pousr]_[0-9A-Za-z]{36}') },
+  { name: 'Slack token', re: new RegExp('xo' + 'x[baprs]-[0-9A-Za-z-]{10,}') },
+  { name: 'private key block', re: new RegExp('-----BEGIN [A-Z ]{0,20}PRIVATE KEY-----') },
 ];
 
 const textExtensions = new Set([
