@@ -3482,6 +3482,40 @@ def _require_session(session_id: str = "") -> None:
         raise HTTPException(status_code=401, detail="未登录或会话已过期")
 
 
+# 授权码校验限速：只统计"失败"尝试的滑动窗口，防止对短授权码（6 位十六进制）的暴力爆破。
+# 合法 Bot 用有效码校验会成功、不计入失败，故正常登录（哪怕都来自 Bot 同一 IP）永不被限流。
+# 按 bot_user_id 分桶：单个用户手滑不会拖累其他人；全局上限兜住"轮换 user_id"的分布式爆破。
+# 配合可选的 X-Bot-Secret 可在部署侧彻底关闭该向量。
+_VERIFY_FAIL_WINDOW_SEC = 60.0
+_VERIFY_FAIL_MAX_PER_USER = 20
+_VERIFY_FAIL_MAX_GLOBAL = 100
+_verify_fails: dict = collections.defaultdict(collections.deque)
+
+
+def _verify_blocked(user_key: str) -> bool:
+    now = time.time()
+    cutoff = now - _VERIFY_FAIL_WINDOW_SEC
+    gq = _verify_fails.get("*")
+    if gq:
+        while gq and gq[0] < cutoff:
+            gq.popleft()
+    uq = _verify_fails.get(user_key)
+    if uq:
+        while uq and uq[0] < cutoff:
+            uq.popleft()
+        if not uq:
+            _verify_fails.pop(user_key, None)
+    g = len(_verify_fails.get("*") or ())
+    u = len(_verify_fails.get(user_key) or ())
+    return g >= _VERIFY_FAIL_MAX_GLOBAL or u >= _VERIFY_FAIL_MAX_PER_USER
+
+
+def _verify_record_failure(user_key: str) -> None:
+    now = time.time()
+    _verify_fails["*"].append(now)
+    _verify_fails[user_key].append(now)
+
+
 # ==================== Bot API 端点 ====================
 
 class GenerateAuthCodeResponse(BaseModel):
@@ -3523,12 +3557,16 @@ class VerifyAuthCodeResponse(BaseModel):
     message: str
 
 
-@app.post("/api/bot/auth/verify", response_model=VerifyAuthCodeResponse)
+@app.post("/api/bot/auth/verify", response_model=VerifyAuthCodeResponse, dependencies=[Depends(_require_bot_secret)])
 async def verify_auth_code(req: VerifyAuthCodeRequest):
     """Bot验证授权码（由Bot调用）"""
+    user_key = req.bot_user_id or "unknown"
+    if _verify_blocked(user_key):
+        raise HTTPException(status_code=429, detail="验证失败次数过多，请稍后再试")
     session_id = await bot_auth_manager.verify_auth_code(req.code, req.bot_user_id)
     if session_id:
         return VerifyAuthCodeResponse(success=True, session_id=session_id, message="授权成功")
+    _verify_record_failure(user_key)
     return VerifyAuthCodeResponse(success=False, message="授权码无效或已过期")
 
 class ValidateSessionRequest(BaseModel):
