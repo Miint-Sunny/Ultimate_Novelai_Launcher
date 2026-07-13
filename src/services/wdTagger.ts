@@ -1,3 +1,5 @@
+import { appBackendApi } from '../api/appBackendApi';
+
 /**
  * WD Tagger 服务
  * 通过后端代理调用 Hugging Face WD Tagger Space
@@ -19,7 +21,7 @@ export async function analyzeImageWithWDTagger(
   imageBase64: string
 ): Promise<WDTaggerResult | null> {
   try {
-    const resp = await fetch('/api/wd-tagger', {
+    const resp = await appBackendApi.request('/api/wd-tagger', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageBase64 }),

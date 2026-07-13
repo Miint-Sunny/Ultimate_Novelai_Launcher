@@ -22,10 +22,19 @@ export interface PromptToolButtonProps {
   tone: 'purple' | 'amber' | 'pink' | 'cyan';
   icon: ReactNode;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string;
 }
 
 // 提示词摘要卡底部的工具按钮（AI助手/画师串/灵感/OC），按 tone 着色。
-export function PromptToolButton({ label, tone, icon, onClick }: PromptToolButtonProps) {
+export function PromptToolButton({
+  label,
+  tone,
+  icon,
+  onClick,
+  disabled = false,
+  title,
+}: PromptToolButtonProps) {
   const toneClass = {
     purple: 'bg-purple-500/15 text-purple-400 active:bg-purple-500/25',
     amber: 'bg-amber-500/15 text-amber-400 active:bg-amber-500/25',
@@ -35,8 +44,10 @@ export function PromptToolButton({ label, tone, icon, onClick }: PromptToolButto
 
   return (
     <button
+      disabled={disabled}
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${toneClass}`}
+      title={title}
+      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${disabled ? 'cursor-not-allowed bg-gray-800/60 text-gray-600' : toneClass}`}
     >
       {icon}
       <span className="text-xs font-medium">{label}</span>

@@ -7,10 +7,10 @@ Provider 只承载「连到哪、用什么 key、走哪个 httpx client」，HTT
     GoogleProvider(api_key=, base_url=, http_client=None)
     AnthropicProvider(base_url=, api_key=)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -18,25 +18,31 @@ import httpx
 @dataclass
 class OpenAIProvider:
     """OpenAI 兼容网关连接配置。http_client 非空时所有请求走它（NAI 适配 transport 用）。"""
+
     base_url: str
     api_key: str = ""
-    http_client: Optional[httpx.AsyncClient] = None
+    http_client: httpx.AsyncClient | None = None
 
 
 @dataclass
 class GoogleProvider:
-    """Gemini / Vertex 连接配置。http_client 非空时走它（Vertex Express 代理/重写 transport 用）。"""
+    """Gemini / Vertex 连接配置。
+
+    http_client 非空时走它，供 Vertex Express 代理或重写 transport 使用。
+    """
+
     api_key: str = ""
     base_url: str = ""
-    http_client: Optional[httpx.AsyncClient] = None
+    http_client: httpx.AsyncClient | None = None
 
 
 @dataclass
 class AnthropicProvider:
     """Anthropic /v1/messages 连接配置（当前无自定义 transport 需求）。"""
+
     base_url: str
     api_key: str = ""
-    http_client: Optional[httpx.AsyncClient] = None
+    http_client: httpx.AsyncClient | None = None
 
 
 __all__ = ["OpenAIProvider", "GoogleProvider", "AnthropicProvider"]

@@ -11,7 +11,9 @@
  * - UI 组件（日志面板、AgentResult 卡片）数据契约保持不变（AgentResult / LogEntry / GenerationSnapshot 都是兼容的）
  */
 
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
+import { getAppSettings } from './localLibrary/appSettings';
+import { botService } from './bot/botSession';
 import { cleanPromptMarkers } from './novelai';
 
 // ==================== 可选 model（与后端 MODEL_CHOICES 对齐）====================
@@ -338,6 +340,14 @@ class AgentService {
     skipUserLog = false,
     imageBase64?: string,
   ): Promise<AgentResult | null> {
+    const availability = appBackendApi.desktopAgentAvailability();
+    if (!availability.available) {
+      const message = availability.reason || '当前后端不支持完整桌面 Agent';
+      this.addLog('error', message);
+      this.updateState({ status: 'error', error: message });
+      return null;
+    }
+
     if (!this.context) {
       this.updateState({ status: 'error', error: '未设置上下文' });
       return null;
@@ -401,7 +411,18 @@ class AgentService {
     }
 
     try {
-      const backendUrl = getBackendUrl();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      };
+      if (getAppSettings().serverMode === 'custom') {
+        const sessionId = botService.getAuthState().sessionId;
+        if (!sessionId) {
+          throw new Error('私有云 Agent 需要先完成 Bot 登录');
+        }
+        headers['X-Bot-Session'] = sessionId;
+      }
+
       const body = {
         user_request: userRequest,
         model,
@@ -430,9 +451,9 @@ class AgentService {
         })),
       };
 
-      const resp = await fetch(`${backendUrl}/api/agent/web/generate-prompt`, {
+      const resp = await appBackendApi.request('/api/agent/web/generate-prompt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+        headers,
         body: JSON.stringify(body),
         signal: this.abortController.signal,
       });

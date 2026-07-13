@@ -17,19 +17,29 @@ require_tool -> toolConfig.functionCallingConfig.mode = ANY / AUTO。
 **PROHIBITED_CONTENT 契约**：上游拦截时抛的异常文本必须含 "PROHIBITED_CONTENT"，
 供 provider_errors.is_google_prohibited_content_error 命中 -> router 跳过重试 + 友好降级。
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
+from ..exceptions import LLMError, ModelHTTPError
 from ..messages import (
-    ModelMessage, ModelRequest, ModelResponse,
-    SystemPromptPart, UserPromptPart, ToolReturnPart, RetryPromptPart,
-    TextPart, ThinkingPart, ToolCallPart, ToolDefinition, BinaryContent,
+    BinaryContent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolDefinition,
+    ToolReturnPart,
+    UserPromptPart,
 )
-from ..exceptions import LLMError, ModelHTTPError, UnexpectedModelBehavior
 from ..result import Usage
 from .base import Model, get_default_http_client
 
@@ -46,7 +56,10 @@ _GEMINI_DROP_KEYS = {"$ref", "$defs", "$schema", "title", "additionalProperties"
 
 
 def _to_gemini_schema(schema: Any) -> Any:
-    """把标准 JSON schema 清洗成 Gemini 接受的 OpenAPI 3.0 子集（无 $ref/anyOf/additionalProperties）。"""
+    """把标准 JSON schema 清洗成 Gemini 接受的 OpenAPI 3.0 子集。
+
+    输出不含 $ref、anyOf 和 additionalProperties。
+    """
     if isinstance(schema, list):
         return [_to_gemini_schema(x) for x in schema]
     if not isinstance(schema, dict):
@@ -54,9 +67,11 @@ def _to_gemini_schema(schema: Any) -> Any:
 
     # anyOf:[T, null] -> T + nullable
     if "anyOf" in schema:
-        variants = [v for v in schema["anyOf"] if not (isinstance(v, dict) and v.get("type") == "null")]
+        variants = [
+            v for v in schema["anyOf"] if not (isinstance(v, dict) and v.get("type") == "null")
+        ]
         has_null = any(isinstance(v, dict) and v.get("type") == "null" for v in schema["anyOf"])
-        base = _to_gemini_schema(variants[0]) if variants else {"type": "string"}
+        base: Any = _to_gemini_schema(variants[0]) if variants else {"type": "string"}
         if isinstance(base, dict):
             if has_null:
                 base["nullable"] = True
@@ -89,6 +104,7 @@ def _to_gemini_schema(schema: Any) -> Any:
 # ============================================================
 # GoogleModel
 # ============================================================
+
 
 class GoogleModel(Model):
     def __init__(self, model_name: str, provider) -> None:
@@ -133,20 +149,24 @@ class GoogleModel(Model):
                     elif isinstance(part, UserPromptPart):
                         user_parts.extend(self._user_parts(part.content))
                     elif isinstance(part, ToolReturnPart):
-                        user_parts.append({
-                            "functionResponse": {
-                                "name": part.tool_name,
-                                "response": {"result": _jsonable(part.content)},
-                            }
-                        })
-                    elif isinstance(part, RetryPromptPart):
-                        if part.tool_name:
-                            user_parts.append({
+                        user_parts.append(
+                            {
                                 "functionResponse": {
                                     "name": part.tool_name,
-                                    "response": {"error": part.content},
+                                    "response": {"result": _jsonable(part.content)},
                                 }
-                            })
+                            }
+                        )
+                    elif isinstance(part, RetryPromptPart):
+                        if part.tool_name:
+                            user_parts.append(
+                                {
+                                    "functionResponse": {
+                                        "name": part.tool_name,
+                                        "response": {"error": part.content},
+                                    }
+                                }
+                            )
                         else:
                             user_parts.append({"text": part.content})
                 if user_parts:
@@ -180,18 +200,20 @@ class GoogleModel(Model):
             body["systemInstruction"] = {"parts": system_texts}
 
         if tools:
-            body["tools"] = [{
-                "functionDeclarations": [
-                    {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": _to_gemini_schema(
-                            t.parameters_json_schema or {"type": "object", "properties": {}}
-                        ),
-                    }
-                    for t in tools
-                ]
-            }]
+            body["tools"] = [
+                {
+                    "functionDeclarations": [
+                        {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": _to_gemini_schema(
+                                t.parameters_json_schema or {"type": "object", "properties": {}}
+                            ),
+                        }
+                        for t in tools
+                    ]
+                }
+            ]
             body["toolConfig"] = {
                 "functionCallingConfig": {"mode": "ANY" if require_tool else "AUTO"}
             }
@@ -220,7 +242,7 @@ class GoogleModel(Model):
         system_parts: list[SystemPromptPart],
         tools: list[ToolDefinition],
         require_tool: bool,
-        model_settings: Optional[dict] = None,
+        model_settings: dict | None = None,
     ) -> tuple[ModelResponse, Usage]:
         settings = dict(model_settings or {})
         body = self._build_body(messages, system_parts, tools, require_tool, settings)
@@ -236,7 +258,9 @@ class GoogleModel(Model):
             text = _safe_text(resp)
             # 部分网关把 PROHIBITED_CONTENT 直接放进 4xx body
             if "PROHIBITED_CONTENT" in text.upper():
-                raise GeminiBlockedError(f"Gemini blocked (HTTP {resp.status_code}): PROHIBITED_CONTENT; {text}")
+                raise GeminiBlockedError(
+                    f"Gemini blocked (HTTP {resp.status_code}): PROHIBITED_CONTENT; {text}"
+                )
             raise ModelHTTPError(resp.status_code, text, body=text)
 
         data = resp.json()
@@ -246,6 +270,7 @@ class GoogleModel(Model):
 # ============================================================
 # 响应解析
 # ============================================================
+
 
 def _parse_gemini_response(data: dict) -> tuple[ModelResponse, Usage]:
     usage = _parse_usage(data.get("usageMetadata"))
@@ -261,7 +286,9 @@ def _parse_gemini_response(data: dict) -> tuple[ModelResponse, Usage]:
         for p in content.get("parts") or []:
             if "functionCall" in p:
                 fc = p["functionCall"] or {}
-                parts.append(ToolCallPart(tool_name=fc.get("name") or "", args=fc.get("args") or {}))
+                parts.append(
+                    ToolCallPart(tool_name=fc.get("name") or "", args=fc.get("args") or {})
+                )
             elif "text" in p:
                 if p.get("thought"):
                     parts.append(ThinkingPart(content=str(p.get("text") or "")))
@@ -269,7 +296,9 @@ def _parse_gemini_response(data: dict) -> tuple[ModelResponse, Usage]:
                     parts.append(TextPart(content=str(p["text"])))
 
     if not parts:
-        reason_blob = f"blockReason={block_reason or 'none'}, finishReason={finish_reason or 'none'}"
+        reason_blob = (
+            f"blockReason={block_reason or 'none'}, finishReason={finish_reason or 'none'}"
+        )
         if "PROHIBITED" in (block_reason + finish_reason).upper():
             raise GeminiBlockedError(f"Gemini blocked: PROHIBITED_CONTENT ({reason_blob})")
         if block_reason or finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
@@ -292,6 +321,7 @@ def _parse_usage(raw: Any) -> Usage:
 # ============================================================
 # helpers
 # ============================================================
+
 
 def _merge_same_role(contents: list[dict]) -> list[dict]:
     """合并相邻同 role 的 content（Gemini 要求 user/model 交替）。"""

@@ -7,22 +7,31 @@ max_tokens 是 Anthropic 必填项：取 settings.max_tokens，没有则默认 4
 
 require_tool -> tool_choice {"type":"any"} / {"type":"auto"}；extra_body 可覆盖。
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
-from ..messages import (
-    ModelMessage, ModelRequest, ModelResponse,
-    SystemPromptPart, UserPromptPart, ToolReturnPart, RetryPromptPart,
-    TextPart, ThinkingPart, ToolCallPart, ToolDefinition, BinaryContent,
-)
 from ..exceptions import ModelHTTPError
+from ..messages import (
+    BinaryContent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolDefinition,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from ..result import Usage
 from .base import Model, get_default_http_client
-
 
 _ANTHROPIC_VERSION = "2023-06-01"
 _DEFAULT_MAX_TOKENS = 4096
@@ -48,18 +57,28 @@ class AnthropicModel(Model):
         if isinstance(content, list):
             for item in content:
                 if isinstance(item, BinaryContent):
-                    blocks.append({
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": item.media_type, "data": item.base64},
-                    })
+                    blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": item.media_type,
+                                "data": item.base64,
+                            },
+                        }
+                    )
                 elif item is not None and str(item):
                     blocks.append({"type": "text", "text": str(item)})
         else:
             blocks.append({"type": "text", "text": str(content)})
         return blocks
 
-    def _build_messages(self, messages: list[ModelMessage], system_parts: list[SystemPromptPart]) -> tuple[list[dict], list[dict]]:
-        system_blocks: list[dict] = [{"type": "text", "text": sp.content} for sp in system_parts if sp.content]
+    def _build_messages(
+        self, messages: list[ModelMessage], system_parts: list[SystemPromptPart]
+    ) -> tuple[list[dict], list[dict]]:
+        system_blocks: list[dict] = [
+            {"type": "text", "text": sp.content} for sp in system_parts if sp.content
+        ]
         wire: list[dict] = []
 
         for msg in messages:
@@ -72,19 +91,23 @@ class AnthropicModel(Model):
                     elif isinstance(part, UserPromptPart):
                         blocks.extend(self._user_blocks(part.content))
                     elif isinstance(part, ToolReturnPart):
-                        blocks.append({
-                            "type": "tool_result",
-                            "tool_use_id": part.tool_call_id or part.tool_name,
-                            "content": _json_content(part.content),
-                        })
-                    elif isinstance(part, RetryPromptPart):
-                        if part.tool_name:
-                            blocks.append({
+                        blocks.append(
+                            {
                                 "type": "tool_result",
                                 "tool_use_id": part.tool_call_id or part.tool_name,
-                                "content": part.content,
-                                "is_error": True,
-                            })
+                                "content": _json_content(part.content),
+                            }
+                        )
+                    elif isinstance(part, RetryPromptPart):
+                        if part.tool_name:
+                            blocks.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": part.tool_call_id or part.tool_name,
+                                    "content": part.content,
+                                    "is_error": True,
+                                }
+                            )
                         else:
                             blocks.append({"type": "text", "text": part.content})
                 if blocks:
@@ -97,12 +120,14 @@ class AnthropicModel(Model):
                             blocks.append({"type": "text", "text": part.content})
                     elif isinstance(part, ToolCallPart):
                         args = part.args if isinstance(part.args, dict) else _try_json(part.args)
-                        blocks.append({
-                            "type": "tool_use",
-                            "id": part.tool_call_id or part.tool_name,
-                            "name": part.tool_name,
-                            "input": args,
-                        })
+                        blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": part.tool_call_id or part.tool_name,
+                                "name": part.tool_name,
+                                "input": args,
+                            }
+                        )
                     # ThinkingPart 不回灌
                 if blocks:
                     wire.append({"role": "assistant", "content": blocks})
@@ -132,7 +157,8 @@ class AnthropicModel(Model):
                 {
                     "name": t.name,
                     "description": t.description,
-                    "input_schema": t.parameters_json_schema or {"type": "object", "properties": {}},
+                    "input_schema": t.parameters_json_schema
+                    or {"type": "object", "properties": {}},
                 }
                 for t in tools
             ]
@@ -152,7 +178,7 @@ class AnthropicModel(Model):
         system_parts: list[SystemPromptPart],
         tools: list[ToolDefinition],
         require_tool: bool,
-        model_settings: Optional[dict] = None,
+        model_settings: dict | None = None,
     ) -> tuple[ModelResponse, Usage]:
         settings = dict(model_settings or {})
         body = self._build_body(messages, system_parts, tools, require_tool, settings)
@@ -179,6 +205,7 @@ class AnthropicModel(Model):
 # 响应解析
 # ============================================================
 
+
 def _parse_anthropic_response(data: dict) -> tuple[ModelResponse, Usage]:
     parts: list = []
     for block in data.get("content") or []:
@@ -187,11 +214,13 @@ def _parse_anthropic_response(data: dict) -> tuple[ModelResponse, Usage]:
             if str(block.get("text") or "").strip():
                 parts.append(TextPart(content=str(block["text"])))
         elif btype == "tool_use":
-            parts.append(ToolCallPart(
-                tool_name=block.get("name") or "",
-                args=block.get("input") or {},
-                tool_call_id=block.get("id") or "",
-            ))
+            parts.append(
+                ToolCallPart(
+                    tool_name=block.get("name") or "",
+                    args=block.get("input") or {},
+                    tool_call_id=block.get("id") or "",
+                )
+            )
         elif btype == "thinking":
             thought = block.get("thinking") or block.get("text") or ""
             if thought:
@@ -212,6 +241,7 @@ def _parse_usage(raw: Any) -> Usage:
 # ============================================================
 # helpers
 # ============================================================
+
 
 def _merge_same_role(messages: list[dict]) -> list[dict]:
     merged: list[dict] = []

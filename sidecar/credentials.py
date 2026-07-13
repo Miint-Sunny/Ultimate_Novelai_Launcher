@@ -44,7 +44,11 @@ def get_stored_token(data_dir: Path) -> str:
     if legacy:
         if _secure_available() and _secure_set(ACCOUNT_NOVELAI, legacy):
             _file_delete_token(data_dir)
-        return legacy
+            return legacy
+        raise CredentialStorageError(
+            "检测到旧版明文 NovelAI token，但无法迁移到系统安全凭据存储；"
+            "为避免继续使用明文密钥，sidecar 已拒绝加载它。"
+        )
     return ""
 
 
@@ -168,9 +172,12 @@ def _secure_delete(account: str) -> None:
 
 
 def _macos_get_password(account: str) -> str:
+    executable = shutil.which("security")
+    if executable is None:
+        return ""
     try:
-        result = subprocess.run(
-            ["security", "find-generic-password", "-s", SERVICE_NAME, "-a", account, "-w"],
+        result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+            [executable, "find-generic-password", "-s", SERVICE_NAME, "-a", account, "-w"],
             capture_output=True,
             check=False,
             text=True,
@@ -182,10 +189,13 @@ def _macos_get_password(account: str) -> str:
 
 
 def _macos_set_password(account: str, value: str) -> bool:
+    executable = shutil.which("security")
+    if executable is None:
+        return False
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
             [
-                "security",
+                executable,
                 "add-generic-password",
                 "-U",
                 "-s",
@@ -193,8 +203,10 @@ def _macos_set_password(account: str, value: str) -> bool:
                 "-a",
                 account,
                 "-w",
-                value,
             ],
+            # With no argv value after ``-w``, ``security`` reads the password
+            # from stdin. This keeps the secret out of process listings.
+            input=value + "\n",
             capture_output=True,
             check=False,
             text=True,
@@ -206,9 +218,12 @@ def _macos_set_password(account: str, value: str) -> bool:
 
 
 def _macos_delete_password(account: str) -> None:
+    executable = shutil.which("security")
+    if executable is None:
+        return
     try:
-        subprocess.run(
-            ["security", "delete-generic-password", "-s", SERVICE_NAME, "-a", account],
+        subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+            [executable, "delete-generic-password", "-s", SERVICE_NAME, "-a", account],
             capture_output=True,
             check=False,
             text=True,
@@ -228,11 +243,12 @@ def _secret_tool_attrs(account: str) -> list[str]:
 
 
 def _secret_tool_get(account: str) -> str:
-    if shutil.which("secret-tool") is None:
+    executable = shutil.which("secret-tool")
+    if executable is None:
         return ""
     try:
-        result = subprocess.run(
-            ["secret-tool", "lookup", *_secret_tool_attrs(account)],
+        result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+            [executable, "lookup", *_secret_tool_attrs(account)],
             capture_output=True,
             check=False,
             text=True,
@@ -244,12 +260,13 @@ def _secret_tool_get(account: str) -> str:
 
 
 def _secret_tool_set(account: str, value: str) -> bool:
-    if shutil.which("secret-tool") is None:
+    executable = shutil.which("secret-tool")
+    if executable is None:
         return False
     try:
         # The secret is read from stdin, keeping it out of the process argv list.
-        result = subprocess.run(
-            ["secret-tool", "store", "--label", SERVICE_NAME, *_secret_tool_attrs(account)],
+        result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+            [executable, "store", "--label", SERVICE_NAME, *_secret_tool_attrs(account)],
             input=value,
             capture_output=True,
             check=False,
@@ -262,11 +279,12 @@ def _secret_tool_set(account: str, value: str) -> bool:
 
 
 def _secret_tool_delete(account: str) -> None:
-    if shutil.which("secret-tool") is None:
+    executable = shutil.which("secret-tool")
+    if executable is None:
         return
     try:
-        subprocess.run(
-            ["secret-tool", "clear", *_secret_tool_attrs(account)],
+        subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+            [executable, "clear", *_secret_tool_attrs(account)],
             capture_output=True,
             check=False,
             text=True,

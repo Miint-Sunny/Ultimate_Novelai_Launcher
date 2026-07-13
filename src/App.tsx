@@ -8,7 +8,7 @@ import { BillingSettlementModal } from './components/BillingSettlementModal';
 import { NaiStatusBanner } from './components/NaiStatusBanner';
 import { UpdateAvailableBanner } from './components/UpdateAvailableBanner';
 import { botService } from './services/botService';
-import { getBackendUrl } from './utils/apiConfig';
+import { appBackendApi } from './api/appBackendApi';
 
 // Layout is chosen by WINDOW WIDTH, not device type: a wide tablet gets the
 // desktop layout, and a narrowed desktop window gets the narrow ("mobile")
@@ -51,7 +51,9 @@ const BillingSettlementCheck: React.FC = () => {
     let cancelled = false;
     const check = async () => {
       try {
-        const res = await fetch(`${getBackendUrl()}/api/billing/settlement?session_id=${sessionId}`);
+        const res = await appBackendApi.request('/api/billing/settlement', undefined, {
+          session_id: sessionId,
+        });
         if (cancelled || !res.ok) return;
         const data = await res.json();
         // 未支付且有金额 → 自动弹出

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from sidecar.config import load_settings
 from sidecar.local_settings import read_local_settings, write_local_settings
 
 
@@ -87,6 +90,56 @@ class LocalSettingsUrlGuardTests(unittest.TestCase):
             out = write_local_settings(data_dir, {"nai_base_url": "", "llm_base_url": ""})
             self.assertEqual(out["nai_base_url"], "")
             self.assertEqual(out["llm_base_url"], "")
+
+    def test_trusted_lan_networks_are_explicit_normalized_cidrs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            data_dir = Path(temp)
+            out = write_local_settings(
+                data_dir,
+                {
+                    "llm_network_scope": "trusted-lan",
+                    "llm_trusted_networks": ["10.23.7.9/16", "fc00::1/64", "10.23.0.0/16"],
+                },
+            )
+            self.assertEqual(out["llm_network_scope"], "trusted-lan")
+            self.assertEqual(out["llm_trusted_networks"], ["10.23.0.0/16", "fc00::/64"])
+
+    def test_rejects_public_or_malformed_trusted_lan_networks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            data_dir = Path(temp)
+            for networks in (["8.8.8.0/24"], ["not-a-network"], "10.0.0.0/8"):
+                out = write_local_settings(data_dir, {"llm_trusted_networks": networks})
+                self.assertNotIn("llm_trusted_networks", out)
+
+    def test_load_settings_resolves_stored_and_environment_trusted_networks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            data_dir = Path(temp)
+            write_local_settings(
+                data_dir,
+                {
+                    "llm_trusted_networks": ["10.0.0.0/8"],
+                    "llm_backup_trusted_networks": ["172.16.0.0/12"],
+                },
+            )
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "ULTIMATE_NOVELAI_LAUNCHER_DATA_DIR": temp,
+                        "LLM_TRUSTED_NETWORKS": "192.168.10.0/24, 192.168.20.0/24",
+                    },
+                    clear=True,
+                ),
+                patch("sidecar.config.get_stored_token", return_value=""),
+                patch("sidecar.config.get_stored_llm_key", return_value=""),
+                patch("sidecar.config.get_stored_llm_backup_key", return_value=""),
+            ):
+                settings = load_settings()
+            self.assertEqual(
+                settings.llm_trusted_networks,
+                ("192.168.10.0/24", "192.168.20.0/24"),
+            )
+            self.assertEqual(settings.llm_backup_trusted_networks, ("172.16.0.0/12",))
 
 
 if __name__ == "__main__":

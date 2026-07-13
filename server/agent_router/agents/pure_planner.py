@@ -2,21 +2,21 @@
 pure_planner_agent —— 单职责 NovelAI 绘图 planner。
 
 设计：
-  - output_type=PromptedOutput(DrawSpec)，避免 OpenAI-compatible 网关校验 final_result array schema 失败
+  - output_type=PromptedOutput(DrawSpec)，避免 OpenAI-compatible 网关校验
+    final_result array schema 失败
   - system_prompt 只挂 prompts.yaml 的 planner.system_prompts 各段，每段独立一条 role:system
   - 不要人格 / 不要对话规则 / 不要 reply_text 约束 / 不要 should_draw 决策
   - 仍挂 search_* 工具
 """
+
 from __future__ import annotations
 
-from ..llm import Agent, PromptedOutput, RunContext
-
 from ..deps import AgentDeps
-from ..schemas import DrawSpec
+from ..llm import Agent, PromptedOutput, RunContext
 from ..model_provider import get_model
 from ..prompts import load_planner_section
+from ..schemas import DrawSpec
 from ..tools import register_knowledge_tools
-
 
 # 默认绑定全局 ACTIVE_MODEL；运行时 router 通过 model= 参数按所选 model 覆盖
 pure_planner_agent: Agent[AgentDeps, DrawSpec] = Agent(
@@ -54,11 +54,14 @@ def _register_planner_sections() -> None:
     """把每个 yaml 段注册成一个独立 @system_prompt（每段一条 role:system）。
     preset 由 deps.prompt_preset 决定（空 → prompts.yaml；'anima' → prompts_anima.yaml）。"""
     for section_name in _PLANNER_SECTIONS:
+
         def _make_loader(name: str):
             async def _loader(ctx: RunContext[AgentDeps]) -> str:
                 return load_planner_section(name, preset=ctx.deps.prompt_preset)
+
             _loader.__name__ = f"_planner_{name}"
             return _loader
+
         pure_planner_agent.system_prompt(_make_loader(section_name))
 
 
@@ -69,6 +72,7 @@ _register_planner_sections()
 async def _anti_marker(ctx: RunContext[AgentDeps]) -> str:
     """防上游指纹标记（env CPA_ENABLE_ANTI_MARKER=true 时启用，每次生成新噪声）"""
     from .anti_marker import make_anti_marker_noise
+
     return make_anti_marker_noise()
 
 

@@ -14,28 +14,44 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import copy
 import json
 import re
+import threading
 import time
-from typing import Any, Optional
+from collections.abc import Callable, Mapping
+from typing import Annotated, Any, cast
 
 import httpx
-from pydantic import BaseModel
-
 from curl_cffi import requests as _cffi_requests
+from curl_cffi.requests import ProxySpec
+from fastapi import HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import Settings
 from .db import lookup_tag_translations
+from .infrastructure import HttpClientPool
 from .llm.client import chat_completion
+from .security import OutboundPolicy
 
 DANBOORU = "https://danbooru.donmai.us"
 DANBOORU_SEARCH_BASE = "https://sakizuki-danboorusearch.hf.space"
 
 WIKI_CACHE_TTL = 3600
+_WIKI_CACHE_MAX = 1000
 _SEARCH_CACHE_TTL = 1800
 _SEARCH_CACHE_MAX = 500
 _RELATED_CACHE_TTL = 86400
 _RELATED_CACHE_MAX = 1000
+
+_TAG_MAX_LENGTH = 256
+_SEMANTIC_QUERY_MAX_LENGTH = 500
+_WIKI_QUERY_MAX_LENGTH = (_TAG_MAX_LENGTH + 1) * 10
+_AUTOCOMPLETE_LIMIT_MAX = 50
+_VERIFY_TAGS_MAX = 20
+_WIKI_BATCH_MAX = 50
+_RELATED_TAGS_MAX = 20
+_RELATED_CATEGORIES_MAX = 10
 
 CJK_RANGE = r"\u4e00-\u9fff"
 _POST_EXAMPLE_RATING = "rating:g,s"
@@ -46,7 +62,7 @@ _RELATED_FALLBACK_SYS = (
     "Given anchor tags, output a JSON array of 12 General-category Danbooru tags "
     "that commonly appear with the anchor in image illustrations. "
     "Only output General tags. Use canonical lowercase underscore tag names. "
-    "Each item must be {\"tag\": <english_tag>, \"cn_name\": <short Chinese name>}. "
+    'Each item must be {"tag": <english_tag>, "cn_name": <short Chinese name>}. '
     "Do not repeat anchor tags. Output a single JSON array only."
 )
 
@@ -61,28 +77,54 @@ _wiki_summary_zh_cache: dict[str, str] = {}
 _wiki_summary_zh_cache_time: dict[str, float] = {}
 _search_cache: dict[tuple, tuple[float, list]] = {}
 _related_cache: dict[tuple, tuple[float, list]] = {}
+_tag_cache_lock = threading.RLock()
 
 # ---- Danbooru session (curl_cffi, Chrome impersonation, optional proxy) ----
 _danbooru_session = None  # type: ignore[var-annotated]
+_danbooru_proxy_key: tuple[tuple[str, str], ...] = ()
+_danbooru_session_lock = threading.Lock()
 
 
-def _danbooru_proxies(settings: Settings):
-    url = getattr(settings, "danbooru_proxy_url", "") or ""
+def _danbooru_proxies(settings: Settings) -> ProxySpec | None:
+    url = str(getattr(settings, "danbooru_proxy_url", "") or "")
     if not url:
         return None
     if url.startswith("socks5://"):
-        url = "socks5h://" + url[len("socks5://"):]
+        url = "socks5h://" + url[len("socks5://") :]
     return {"http": url, "https": url}
 
 
 def _get_danbooru_session(settings: Settings):
-    global _danbooru_session
-    if _danbooru_session is None:
-        _danbooru_session = _cffi_requests.Session(impersonate="chrome")
-        proxies = _danbooru_proxies(settings)
-        if proxies:
-            _danbooru_session.proxies = dict(proxies)
-    return _danbooru_session
+    global _danbooru_proxy_key, _danbooru_session
+    proxies = _danbooru_proxies(settings)
+    proxy_key = tuple(
+        sorted(
+            (str(name), str(value))
+            for name, value in cast(Mapping[str, str], proxies or {}).items()
+        )
+    )
+    with _danbooru_session_lock:
+        if _danbooru_session is None or proxy_key != _danbooru_proxy_key:
+            if _danbooru_session is not None:
+                _danbooru_session.close()
+            _danbooru_session = _cffi_requests.Session(
+                impersonate="chrome",
+                proxies=proxies,
+            )
+            _danbooru_proxy_key = proxy_key
+        return _danbooru_session
+
+
+def close_tag_clients() -> None:
+    """Close the compatibility curl session during runtime shutdown."""
+
+    global _danbooru_proxy_key, _danbooru_session
+    with _danbooru_session_lock:
+        if _danbooru_session is not None:
+            _danbooru_session.close()
+        _danbooru_session = None
+        _danbooru_proxy_key = ()
+    _clear_tag_caches()
 
 
 def _normalize_tag(tag: str) -> str:
@@ -91,6 +133,139 @@ def _normalize_tag(tag: str) -> str:
 
 def _wiki_cache_fresh(ts: float) -> bool:
     return (time.time() - ts) < WIKI_CACHE_TTL
+
+
+def _prune_timed_cache(
+    values: dict[Any, Any],
+    timestamps: dict[Any, float],
+    *,
+    max_entries: int,
+    ttl: float,
+    now: float | None = None,
+) -> None:
+    """Expire and bound a value/timestamp pair without leaving orphan keys."""
+
+    current = time.time() if now is None else now
+    with _tag_cache_lock:
+        for key in set(values) | set(timestamps):
+            timestamp = timestamps.get(key)
+            if key not in values or timestamp is None or current - timestamp >= ttl:
+                values.pop(key, None)
+                timestamps.pop(key, None)
+
+        overflow = len(timestamps) - max_entries
+        if overflow > 0:
+            oldest = sorted(timestamps, key=timestamps.__getitem__)[:overflow]
+            for key in oldest:
+                values.pop(key, None)
+                timestamps.pop(key, None)
+
+
+def _timed_cache_get(
+    values: dict[Any, Any],
+    timestamps: dict[Any, float],
+    key: Any,
+    *,
+    ttl: float = WIKI_CACHE_TTL,
+) -> Any | None:
+    current = time.time()
+    with _tag_cache_lock:
+        timestamp = timestamps.get(key)
+        if key not in values or timestamp is None or current - timestamp >= ttl:
+            values.pop(key, None)
+            timestamps.pop(key, None)
+            return None
+        return copy.deepcopy(values[key])
+
+
+def _timed_cache_put(
+    values: dict[Any, Any],
+    timestamps: dict[Any, float],
+    key: Any,
+    value: Any,
+    *,
+    max_entries: int = _WIKI_CACHE_MAX,
+    ttl: float = WIKI_CACHE_TTL,
+    now: float | None = None,
+) -> None:
+    current = time.time() if now is None else now
+    with _tag_cache_lock:
+        values[key] = copy.deepcopy(value)
+        timestamps[key] = current
+    _prune_timed_cache(
+        values,
+        timestamps,
+        max_entries=max_entries,
+        ttl=ttl,
+        now=current,
+    )
+
+
+def _result_cache_get(cache: dict, key: tuple, *, ttl: float) -> list | None:
+    current = time.time()
+    with _tag_cache_lock:
+        entry = cache.get(key)
+        if entry is None:
+            return None
+        timestamp, value = entry
+        if current - timestamp >= ttl:
+            cache.pop(key, None)
+            return None
+        return copy.deepcopy(value)
+
+
+def _result_cache_put(
+    cache: dict,
+    key: tuple,
+    value: list,
+    *,
+    max_entries: int,
+    ttl: float,
+    now: float | None = None,
+) -> None:
+    current = time.time() if now is None else now
+    with _tag_cache_lock:
+        cache[key] = (current, copy.deepcopy(value))
+        expired = [cache_key for cache_key, (ts, _) in cache.items() if current - ts >= ttl]
+        for cache_key in expired:
+            cache.pop(cache_key, None)
+        overflow = len(cache) - max_entries
+        if overflow > 0:
+            oldest = sorted(cache, key=lambda cache_key: cache[cache_key][0])[:overflow]
+            for cache_key in oldest:
+                cache.pop(cache_key, None)
+
+
+def _prune_wiki_caches() -> None:
+    for values, timestamps in (
+        (_wiki_cache, _wiki_cache_time),
+        (_wiki_exists_cache, _wiki_exists_cache_time),
+        (_wiki_preview_cache, _wiki_preview_cache_time),
+        (_wiki_summary_zh_cache, _wiki_summary_zh_cache_time),
+    ):
+        _prune_timed_cache(
+            values,
+            timestamps,
+            max_entries=_WIKI_CACHE_MAX,
+            ttl=WIKI_CACHE_TTL,
+        )
+
+
+def _clear_tag_caches() -> None:
+    with _tag_cache_lock:
+        for cache in (
+            _wiki_cache,
+            _wiki_cache_time,
+            _wiki_exists_cache,
+            _wiki_exists_cache_time,
+            _wiki_preview_cache,
+            _wiki_preview_cache_time,
+            _wiki_summary_zh_cache,
+            _wiki_summary_zh_cache_time,
+            _search_cache,
+            _related_cache,
+        ):
+            cache.clear()
 
 
 # ---- wiki markup helpers ----
@@ -114,7 +289,12 @@ def _strip_wiki_markup(text: str) -> str:
 
 
 def _build_wiki_summary(body: str, limit: int = 320) -> str:
-    text = re.split(r"\nh\d\.\s+(?:Examples|See also)\b", body or "", maxsplit=1, flags=re.IGNORECASE)[0]
+    text = re.split(
+        r"\nh\d\.\s+(?:Examples|See also)\b",
+        body or "",
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
     text = _strip_wiki_markup(text)
     text = re.sub(r"\s+", " ", text).strip()
     if len(text) <= limit:
@@ -130,7 +310,7 @@ def _limit_chinese_preview_text(text: str, limit: int = 140) -> str:
     return text[:limit].rstrip("，。；、,. ") + "..."
 
 
-def _absolute_danbooru_url(url: Optional[str]) -> Optional[str]:
+def _absolute_danbooru_url(url: str | None) -> str | None:
     if not url:
         return None
     if url.startswith("//"):
@@ -143,7 +323,7 @@ def _absolute_danbooru_url(url: Optional[str]) -> Optional[str]:
 # ---- Danbooru fetchers (sync; run via asyncio.to_thread) ----
 
 
-def _fetch_wiki_page(settings: Settings, tag: str) -> Optional[dict]:
+def _fetch_wiki_page(settings: Settings, tag: str) -> dict | None:
     session = _get_danbooru_session(settings)
     resp = session.get(f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5)
     if resp.status_code != 200:
@@ -174,7 +354,7 @@ def _check_wiki_page_exists(settings: Settings, tag: str) -> tuple[bool, bool]:
         return False, False
 
 
-def _fetch_wiki_example(session, ref_type: str, ref_id: int) -> Optional[dict]:
+def _fetch_wiki_example(session, ref_type: str, ref_id: int) -> dict | None:
     if ref_type == "post":
         resp = session.get(f"{DANBOORU}/posts/{ref_id}.json", timeout=8)
         if resp.status_code != 200:
@@ -202,7 +382,10 @@ def _fetch_wiki_example(session, ref_type: str, ref_id: int) -> Optional[dict]:
         if not isinstance(data, dict):
             return None
         preview_url = _absolute_danbooru_url(
-            data.get("file_url") or data.get("large_file_url") or data.get("image_url") or data.get("preview_file_url")
+            data.get("file_url")
+            or data.get("large_file_url")
+            or data.get("image_url")
+            or data.get("preview_file_url")
         )
         variants = data.get("variants") or []
         if not preview_url and isinstance(variants, list):
@@ -256,14 +439,16 @@ def _fetch_posts_examples(session, tag: str, limit: int = 4) -> list[dict]:
         )
         if not post_id or not preview_url:
             continue
-        examples.append({
-            "type": "post",
-            "id": post_id,
-            "previewUrl": preview_url,
-            "pageUrl": f"{DANBOORU}/posts/{post_id}",
-            "width": post.get("image_width"),
-            "height": post.get("image_height"),
-        })
+        examples.append(
+            {
+                "type": "post",
+                "id": post_id,
+                "previewUrl": preview_url,
+                "pageUrl": f"{DANBOORU}/posts/{post_id}",
+                "width": post.get("image_width"),
+                "height": post.get("image_height"),
+            }
+        )
         if len(examples) >= limit:
             break
     return examples
@@ -314,7 +499,13 @@ def _extract_chat_text(result: dict) -> str:
     return ""
 
 
-async def _translate_wiki_preview_summary(settings: Settings, tag: str, body: str, fallback_summary: str) -> str:
+async def _translate_wiki_preview_summary(
+    settings: Settings,
+    tag: str,
+    body: str,
+    fallback_summary: str,
+    http: HttpClientPool | None = None,
+) -> str:
     source = _build_wiki_summary(body, limit=1200) or fallback_summary
     if not source:
         return ""
@@ -332,7 +523,13 @@ async def _translate_wiki_preview_summary(settings: Settings, tag: str, body: st
         {"role": "user", "content": f"Tag: {tag}\nWiki内容:\n{source}"},
     ]
     try:
-        result = await chat_completion(settings=settings, messages=messages, temperature=0.2, max_tokens=300)
+        result = await chat_completion(
+            settings=settings,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=300,
+            http=http,
+        )
         return _limit_chinese_preview_text(_extract_chat_text(result), 140)
     except Exception as e:
         print(f"Wiki summary translation error for {tag}: {e}")
@@ -355,7 +552,7 @@ def _parse_ds_fallback_results(content: str) -> list[dict]:
     if start == -1 or end == -1 or end <= start:
         return []
     try:
-        arr = json.loads(text[start:end + 1])
+        arr = json.loads(text[start : end + 1])
     except Exception:
         return []
     if not isinstance(arr, list):
@@ -376,13 +573,24 @@ def _parse_ds_fallback_results(content: str) -> list[dict]:
     return cleaned
 
 
-async def _ds_fallback_related(settings: Settings, anchor_tags: list[str], limit: int) -> list[dict]:
+async def _ds_fallback_related(
+    settings: Settings,
+    anchor_tags: list[str],
+    limit: int,
+    http: HttpClientPool | None = None,
+) -> list[dict]:
     messages = [
         {"role": "system", "content": _RELATED_FALLBACK_SYS},
         {"role": "user", "content": "Anchor tags: " + ", ".join(anchor_tags)},
     ]
     try:
-        result = await chat_completion(settings=settings, messages=messages, temperature=0.3, max_tokens=1500)
+        result = await chat_completion(
+            settings=settings,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1500,
+            http=http,
+        )
         return _parse_ds_fallback_results(_extract_chat_text(result))[:limit]
     except Exception as e:
         print(f"[tags_related] DS fallback error: {e}")
@@ -392,39 +600,126 @@ async def _ds_fallback_related(settings: Settings, anchor_tags: list[str], limit
 # ---- request models ----
 
 
-class TagsSearchRequest(BaseModel):
-    query: str
-    limit: int = 30
-    top_k: int = 50
+class _StrictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+TagValue = Annotated[str, Field(min_length=1, max_length=_TAG_MAX_LENGTH, strict=True)]
+CategoryValue = Annotated[str, Field(min_length=1, max_length=64, strict=True)]
+
+
+class TagsVerifyRequest(_StrictRequest):
+    tags: list[TagValue] = Field(default_factory=list, max_length=_VERIFY_TAGS_MAX)
+
+    @field_validator("tags")
+    @classmethod
+    def strip_tags(cls, values: list[str]) -> list[str]:
+        return _strip_nonempty_values(values, "tags")
+
+
+class TagsWikiExistsRequest(_StrictRequest):
+    tags: list[TagValue] = Field(default_factory=list, max_length=_WIKI_BATCH_MAX)
+
+    @field_validator("tags")
+    @classmethod
+    def strip_tags(cls, values: list[str]) -> list[str]:
+        return _strip_nonempty_values(values, "tags")
+
+
+class TagsSearchRequest(_StrictRequest):
+    query: str = Field(min_length=1, max_length=_SEMANTIC_QUERY_MAX_LENGTH, strict=True)
+    limit: int = Field(default=30, ge=1, le=200, strict=True)
+    top_k: int = Field(default=50, ge=1, le=50, strict=True)
     show_nsfw: bool = True
 
+    @field_validator("query")
+    @classmethod
+    def strip_query(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("query must not be blank")
+        return stripped
 
-class TagsRelatedRequest(BaseModel):
-    tags: list[str]
-    limit: int = 30
+
+class TagsRelatedRequest(_StrictRequest):
+    tags: list[TagValue] = Field(min_length=1, max_length=_RELATED_TAGS_MAX)
+    limit: int = Field(default=30, ge=1, le=100, strict=True)
     show_nsfw: bool = True
-    categories: Optional[list[str]] = None
+    categories: list[CategoryValue] | None = Field(
+        default=None,
+        max_length=_RELATED_CATEGORIES_MAX,
+    )
+
+    @field_validator("tags")
+    @classmethod
+    def strip_tags(cls, values: list[str]) -> list[str]:
+        return _strip_nonempty_values(values, "tags")
+
+    @field_validator("categories")
+    @classmethod
+    def strip_categories(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        return _strip_nonempty_values(values, "categories")
 
 
-def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
-    # Most tag routes only hit external Danbooru and are left open (they are fetched
-    # directly by the browser). The two that reach the user's LLM key via
-    # chat_completion (related / wiki-preview-summary-zh) are gated on the sidecar
-    # auth token so a local/drive-by caller cannot spend the key.
+def _strip_nonempty_values(values: list[str], field_name: str) -> list[str]:
+    stripped = [value.strip() for value in values]
+    if any(not value for value in stripped):
+        raise ValueError(f"{field_name} must not contain blank values")
+    return stripped
+
+
+def _bounded_csv_tags(raw: str, *, max_items: int) -> list[str]:
+    tags: list[str] = []
+    seen: set[str] = set()
+    for value in raw.split(","):
+        tag = value.strip()
+        if not tag:
+            continue
+        if len(tag) > _TAG_MAX_LENGTH:
+            raise HTTPException(status_code=422, detail="tag is too long")
+        if tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+        if len(tags) >= max_items:
+            break
+    return tags
+
+
+def register_tag_routes(
+    app,
+    settings: Settings | Callable[[], Settings],
+    auth: Any = None,
+    http: HttpClientPool | None = None,
+) -> None:
+    """Register authenticated compatibility routes against live settings."""
+
+    current_settings = settings if callable(settings) else lambda: settings
     llm_deps = [auth] if auth is not None else []
 
     @app.get("/api/tags/autocomplete")
-    async def tags_autocomplete(query: str, limit: int = 10) -> Any:
+    async def tags_autocomplete(
+        query: Annotated[str, Query(max_length=_TAG_MAX_LENGTH)],
+        limit: Annotated[int, Query(ge=1, le=_AUTOCOMPLETE_LIMIT_MAX)] = 10,
+    ) -> Any:
         if not query or len(query) < 2:
+            return []
+        normalized_query = query.strip()
+        if len(normalized_query) < 2:
             return []
 
         def _fetch():
-            session = _get_danbooru_session(settings)
-            url = (
-                f"{DANBOORU}/autocomplete.json"
-                f"?search%5Bquery%5D={query}&search%5Btype%5D=tag_query&limit={limit}"
+            session = _get_danbooru_session(current_settings())
+            resp = session.get(
+                f"{DANBOORU}/autocomplete.json",
+                params={
+                    "search[query]": normalized_query,
+                    "search[type]": "tag_query",
+                    "limit": limit,
+                },
+                timeout=10,
             )
-            resp = session.get(url, timeout=10)
             return resp.json() if resp.status_code == 200 else []
 
         try:
@@ -434,19 +729,25 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
             return []
 
     @app.post("/api/tags/verify")
-    async def tags_verify(req: dict) -> dict[str, Any]:
-        tags = req.get("tags", [])
-        if not tags:
+    async def tags_verify(req: TagsVerifyRequest) -> dict[str, Any]:
+        if not req.tags:
             return {}
-        tags = [t.strip().lower().replace(" ", "_").replace("-", "_") for t in tags[:20] if t.strip()]
+        tags = [
+            tag.strip().lower().replace(" ", "_").replace("-", "_")
+            for tag in req.tags
+            if tag.strip()
+        ]
         if not tags:
             return {}
 
         def _fetch():
-            session = _get_danbooru_session(settings)
+            session = _get_danbooru_session(current_settings())
             names_param = ",".join(tags)
-            url = f"{DANBOORU}/tags.json?search[name_comma]={names_param}&limit={len(tags)}"
-            resp = session.get(url, timeout=10)
+            resp = session.get(
+                f"{DANBOORU}/tags.json",
+                params={"search[name_comma]": names_param, "limit": len(tags)},
+                timeout=10,
+            )
             if resp.status_code != 200:
                 return {}
             result: dict[str, int] = {}
@@ -463,8 +764,11 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
             return {}
 
     @app.get("/api/tags/wiki")
-    async def tags_wiki(tags: str) -> dict[str, Any]:
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()][:10]
+    async def tags_wiki(
+        tags: Annotated[str, Query(max_length=_WIKI_QUERY_MAX_LENGTH)],
+    ) -> dict[str, Any]:
+        _prune_wiki_caches()
+        tag_list = _bounded_csv_tags(tags, max_items=10)
         if not tag_list:
             return {}
 
@@ -473,17 +777,17 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
         now = time.time()
 
         # 1) in-memory cache, 2) tag-translation DB, 3) Danbooru
-        stored = lookup_tag_translations(settings, tag_list)
+        stored = lookup_tag_translations(current_settings(), tag_list)
         for tag in tag_list:
-            if tag in _wiki_cache and (now - _wiki_cache_time.get(tag, 0)) < WIKI_CACHE_TTL:
-                if _wiki_cache[tag]:
-                    result[tag] = _wiki_cache[tag]
+            cached_names = _timed_cache_get(_wiki_cache, _wiki_cache_time, tag)
+            if cached_names is not None:
+                if cached_names:
+                    result[tag] = cached_names
                 continue
             zh = stored.get(tag) or stored.get(_normalize_tag(tag))
             if zh:
                 result[tag] = [zh]
-                _wiki_cache[tag] = [zh]
-                _wiki_cache_time[tag] = now
+                _timed_cache_put(_wiki_cache, _wiki_cache_time, tag, [zh], now=now)
                 continue
             tags_to_fetch.append(tag)
 
@@ -492,24 +796,34 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
 
         def _fetch_all():
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                return list(executor.map(lambda t: _fetch_wiki_chinese(settings, t), tags_to_fetch))
+                return list(
+                    executor.map(
+                        lambda t: _fetch_wiki_chinese(current_settings(), t),
+                        tags_to_fetch,
+                    )
+                )
 
         for tag, chinese_names in await asyncio.to_thread(_fetch_all):
-            _wiki_cache[tag] = chinese_names
-            _wiki_cache_time[tag] = now
+            _timed_cache_put(
+                _wiki_cache,
+                _wiki_cache_time,
+                tag,
+                chinese_names,
+                now=now,
+            )
             if chinese_names:
                 result[tag] = chinese_names
 
         return result
 
     @app.post("/api/tags/wiki-exists-batch")
-    async def tags_wiki_exists_batch(req: dict) -> dict[str, bool]:
-        raw_tags = req.get("tags", [])
-        if not raw_tags:
+    async def tags_wiki_exists_batch(req: TagsWikiExistsRequest) -> dict[str, bool]:
+        _prune_wiki_caches()
+        if not req.tags:
             return {}
         tags = []
         seen = set()
-        for raw_tag in raw_tags[:50]:
+        for raw_tag in req.tags:
             tag = _normalize_tag(str(raw_tag))
             if tag and tag not in seen:
                 seen.add(tag)
@@ -521,18 +835,21 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
         tags_to_fetch: list[str] = []
         now = time.time()
         for tag in tags:
-            if tag in _wiki_preview_cache and _wiki_cache_fresh(_wiki_preview_cache_time.get(tag, 0)):
+            preview = _timed_cache_get(_wiki_preview_cache, _wiki_preview_cache_time, tag)
+            exists = _timed_cache_get(_wiki_exists_cache, _wiki_exists_cache_time, tag)
+            if preview is not None:
                 result[tag] = True
-            elif tag in _wiki_exists_cache and _wiki_cache_fresh(_wiki_exists_cache_time.get(tag, 0)):
-                result[tag] = _wiki_exists_cache[tag]
+            elif exists is not None:
+                result[tag] = bool(exists)
             else:
                 tags_to_fetch.append(tag)
 
-        def _check(tag: str) -> tuple[str, Optional[bool]]:
-            ok, has_wiki = _check_wiki_page_exists(settings, tag)
+        def _check(tag: str) -> tuple[str, bool | None]:
+            ok, has_wiki = _check_wiki_page_exists(current_settings(), tag)
             return tag, (has_wiki if ok else None)
 
         if tags_to_fetch:
+
             def _fetch_all():
                 with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                     return list(executor.map(_check, tags_to_fetch))
@@ -540,30 +857,43 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
             for tag, has_wiki in await asyncio.to_thread(_fetch_all):
                 if has_wiki is None:
                     continue
-                _wiki_exists_cache[tag] = has_wiki
-                _wiki_exists_cache_time[tag] = now
+                _timed_cache_put(
+                    _wiki_exists_cache,
+                    _wiki_exists_cache_time,
+                    tag,
+                    has_wiki,
+                    now=now,
+                )
                 result[tag] = has_wiki
 
         return result
 
     @app.get("/api/tags/wiki-preview")
-    async def tags_wiki_preview(tag: str) -> dict[str, Any]:
+    async def tags_wiki_preview(
+        tag: Annotated[str, Query(max_length=_TAG_MAX_LENGTH)],
+    ) -> dict[str, Any]:
+        _prune_wiki_caches()
         normalized = _normalize_tag(tag)
         if not normalized:
             return {"hasWiki": False}
 
-        if normalized in _wiki_preview_cache and _wiki_cache_fresh(_wiki_preview_cache_time.get(normalized, 0)):
-            cached = _wiki_preview_cache[normalized]
-            if normalized in _wiki_summary_zh_cache and _wiki_cache_fresh(_wiki_summary_zh_cache_time.get(normalized, 0)):
-                cached["summaryZh"] = _wiki_summary_zh_cache[normalized]
+        cached = _timed_cache_get(_wiki_preview_cache, _wiki_preview_cache_time, normalized)
+        if cached is not None:
+            cached_summary = _timed_cache_get(
+                _wiki_summary_zh_cache,
+                _wiki_summary_zh_cache_time,
+                normalized,
+            )
+            if cached_summary is not None:
+                cached["summaryZh"] = cached_summary
             return cached
 
-        def _fetch():
-            page = _fetch_wiki_page(settings, normalized)
+        def _fetch() -> dict[str, Any]:
+            page = _fetch_wiki_page(current_settings(), normalized)
             if not page:
                 return {"hasWiki": False}
             body = page.get("body") or ""
-            session = _get_danbooru_session(settings)
+            session = _get_danbooru_session(current_settings())
             examples: list[dict] = []
             seen_examples = set()
             for ref_type, ref_id in _wiki_example_refs(body):
@@ -598,36 +928,60 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
         try:
             payload = await asyncio.to_thread(_fetch)
             now = time.time()
-            _wiki_exists_cache[normalized] = bool(payload.get("hasWiki"))
-            _wiki_exists_cache_time[normalized] = now
+            _timed_cache_put(
+                _wiki_exists_cache,
+                _wiki_exists_cache_time,
+                normalized,
+                bool(payload.get("hasWiki")),
+                now=now,
+            )
             if payload.get("hasWiki"):
-                if normalized in _wiki_summary_zh_cache and _wiki_cache_fresh(_wiki_summary_zh_cache_time.get(normalized, 0)):
-                    payload["summaryZh"] = _wiki_summary_zh_cache[normalized]
-                _wiki_preview_cache[normalized] = payload
-                _wiki_preview_cache_time[normalized] = now
+                cached_summary = _timed_cache_get(
+                    _wiki_summary_zh_cache,
+                    _wiki_summary_zh_cache_time,
+                    normalized,
+                )
+                if cached_summary is not None:
+                    payload["summaryZh"] = cached_summary
+                _timed_cache_put(
+                    _wiki_preview_cache,
+                    _wiki_preview_cache_time,
+                    normalized,
+                    payload,
+                    now=now,
+                )
             return payload
         except Exception as e:
             print(f"Wiki preview fetch error for {normalized}: {e}")
             return {"hasWiki": False}
 
     @app.get("/api/tags/wiki-preview-summary-zh", dependencies=llm_deps)
-    async def tags_wiki_preview_summary_zh(tag: str) -> dict[str, Any]:
+    async def tags_wiki_preview_summary_zh(
+        tag: Annotated[str, Query(max_length=_TAG_MAX_LENGTH)],
+    ) -> dict[str, Any]:
+        _prune_wiki_caches()
         normalized = _normalize_tag(tag)
         if not normalized:
             return {"hasWiki": False, "summaryZh": ""}
 
-        if normalized in _wiki_summary_zh_cache and _wiki_cache_fresh(_wiki_summary_zh_cache_time.get(normalized, 0)):
-            return {"hasWiki": True, "summaryZh": _wiki_summary_zh_cache[normalized]}
+        cached_summary = _timed_cache_get(
+            _wiki_summary_zh_cache,
+            _wiki_summary_zh_cache_time,
+            normalized,
+        )
+        if cached_summary is not None:
+            return {"hasWiki": True, "summaryZh": cached_summary}
 
         body = ""
         summary = ""
-        cached = _wiki_preview_cache.get(normalized)
-        if cached and _wiki_cache_fresh(_wiki_preview_cache_time.get(normalized, 0)):
+        cached = _timed_cache_get(_wiki_preview_cache, _wiki_preview_cache_time, normalized)
+        if cached:
             body = cached.get("body") or ""
             summary = cached.get("summary") or ""
         else:
+
             def _fetch_page_for_translation():
-                page = _fetch_wiki_page(settings, normalized)
+                page = _fetch_wiki_page(current_settings(), normalized)
                 return (page.get("body") or "") if page else ""
 
             body = await asyncio.to_thread(_fetch_page_for_translation) or ""
@@ -636,29 +990,43 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
         if not body and not summary:
             return {"hasWiki": False, "summaryZh": ""}
 
-        summary_zh = await _translate_wiki_preview_summary(settings, normalized, body, summary)
+        summary_zh = await _translate_wiki_preview_summary(
+            current_settings(),
+            normalized,
+            body,
+            summary,
+            http,
+        )
         now = time.time()
         if summary_zh:
-            _wiki_summary_zh_cache[normalized] = summary_zh
-            _wiki_summary_zh_cache_time[normalized] = now
+            _timed_cache_put(
+                _wiki_summary_zh_cache,
+                _wiki_summary_zh_cache_time,
+                normalized,
+                summary_zh,
+                now=now,
+            )
             if cached:
                 cached["summaryZh"] = summary_zh
-                _wiki_preview_cache[normalized] = cached
+                _timed_cache_put(
+                    _wiki_preview_cache,
+                    _wiki_preview_cache_time,
+                    normalized,
+                    cached,
+                    now=now,
+                )
         return {"hasWiki": True, "summaryZh": summary_zh}
 
     @app.post("/api/tags/search")
     async def tags_search(req: TagsSearchRequest) -> dict[str, Any]:
-        query = (req.query or "").strip()
-        if not query:
-            return {"results": []}
-        safe_limit = max(1, min(req.limit, 200))
-        safe_top_k = max(1, min(req.top_k, 50))
+        query = req.query
+        safe_limit = req.limit
+        safe_top_k = req.top_k
         cache_key = (query, req.show_nsfw, safe_limit, safe_top_k)
         now = time.time()
-        if cache_key in _search_cache:
-            ts, cached = _search_cache[cache_key]
-            if now - ts < _SEARCH_CACHE_TTL:
-                return {"results": cached, "cached": True}
+        cached = _result_cache_get(_search_cache, cache_key, ttl=_SEARCH_CACHE_TTL)
+        if cached is not None:
+            return {"results": cached, "cached": True}
 
         payload = {
             "query": query,
@@ -668,10 +1036,22 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
             "target_categories": ["General"],
         }
         results: list[dict] = []
-        upstream_error: Optional[str] = None
+        upstream_error: str | None = None
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(f"{DANBOORU_SEARCH_BASE}/api/search", json=payload)
+            if http is None:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(
+                        f"{DANBOORU_SEARCH_BASE}/api/search",
+                        json=payload,
+                    )
+            else:
+                resp = await http.request(
+                    OutboundPolicy("public"),
+                    "POST",
+                    f"{DANBOORU_SEARCH_BASE}/api/search",
+                    json=payload,
+                    timeout=30,
+                )
             if resp.status_code != 200:
                 upstream_error = f"upstream_{resp.status_code}"
             else:
@@ -683,24 +1063,30 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
                     tag = str(item.get("tag", "") or "").strip()
                     if not tag:
                         continue
-                    results.append({
-                        "tag": tag,
-                        "cn_name": item.get("cn_name", "") or "",
-                        "category": item.get("category", "") or "",
-                        "nsfw": item.get("nsfw", "") or "",
-                        "count": int(item.get("count", 0) or 0),
-                        "score": float(item.get("final_score", 0.0) or 0.0),
-                    })
+                    results.append(
+                        {
+                            "tag": tag,
+                            "cn_name": item.get("cn_name", "") or "",
+                            "category": item.get("category", "") or "",
+                            "nsfw": item.get("nsfw", "") or "",
+                            "count": int(item.get("count", 0) or 0),
+                            "score": float(item.get("final_score", 0.0) or 0.0),
+                        }
+                    )
         except httpx.TimeoutException:
             upstream_error = "timeout"
         except Exception as e:
             print(f"[tags_search] fetch error: {e}")
             upstream_error = "fetch_failed"
 
-        _search_cache[cache_key] = (now, results)
-        if len(_search_cache) > _SEARCH_CACHE_MAX:
-            oldest = min(_search_cache, key=lambda k: _search_cache[k][0])
-            del _search_cache[oldest]
+        _result_cache_put(
+            _search_cache,
+            cache_key,
+            results,
+            max_entries=_SEARCH_CACHE_MAX,
+            ttl=_SEARCH_CACHE_TTL,
+            now=now,
+        )
 
         body: dict = {"results": results}
         if upstream_error and not results:
@@ -709,29 +1095,42 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
 
     @app.post("/api/tags/related", dependencies=llm_deps)
     async def tags_related(req: TagsRelatedRequest) -> dict[str, Any]:
-        if not req.tags:
-            return {"results": []}
-        norm_tags = tuple(sorted(t.lower().strip().replace(" ", "_") for t in req.tags if t.strip()))
-        if not norm_tags:
-            return {"results": []}
-        norm_categories = tuple(sorted(req.categories)) if req.categories else None
-        safe_limit = max(1, min(req.limit, 100))
+        norm_tags = tuple(sorted({_normalize_tag(tag) for tag in req.tags}))
+        norm_categories = tuple(sorted(set(req.categories))) if req.categories else None
+        safe_limit = req.limit
         cache_key = (norm_tags, req.show_nsfw, safe_limit, norm_categories)
 
         now = time.time()
-        if cache_key in _related_cache:
-            ts, cached_results = _related_cache[cache_key]
-            if now - ts < _RELATED_CACHE_TTL:
-                return {"results": cached_results, "cached": True}
+        cached_results = _result_cache_get(
+            _related_cache,
+            cache_key,
+            ttl=_RELATED_CACHE_TTL,
+        )
+        if cached_results is not None:
+            return {"results": cached_results, "cached": True}
 
         upstream_limit = max(safe_limit * 4, 100) if norm_categories else safe_limit
         results: list[dict] = []
-        upstream_error: Optional[str] = None
+        upstream_error: str | None = None
         try:
-            async with httpx.AsyncClient(timeout=90) as client:
-                resp = await client.post(
+            related_payload = {
+                "tags": list(norm_tags),
+                "limit": upstream_limit,
+                "show_nsfw": req.show_nsfw,
+            }
+            if http is None:
+                async with httpx.AsyncClient(timeout=90) as client:
+                    resp = await client.post(
+                        f"{DANBOORU_SEARCH_BASE}/api/related",
+                        json=related_payload,
+                    )
+            else:
+                resp = await http.request(
+                    OutboundPolicy("public"),
+                    "POST",
                     f"{DANBOORU_SEARCH_BASE}/api/related",
-                    json={"tags": list(norm_tags), "limit": upstream_limit, "show_nsfw": req.show_nsfw},
+                    json=related_payload,
+                    timeout=90,
                 )
             if resp.status_code != 200:
                 upstream_error = f"upstream_{resp.status_code}"
@@ -754,7 +1153,12 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
 
         fallback_used = False
         if not results:
-            ds_results = await _ds_fallback_related(settings, list(norm_tags), safe_limit)
+            ds_results = await _ds_fallback_related(
+                current_settings(),
+                list(norm_tags),
+                safe_limit,
+                http,
+            )
             if norm_categories:
                 cat_set = set(norm_categories)
                 ds_results = [r for r in ds_results if r.get("category") in cat_set]
@@ -762,10 +1166,14 @@ def register_tag_routes(app, settings: Settings, auth: Any = None) -> None:
                 results = ds_results[:safe_limit]
                 fallback_used = True
 
-        _related_cache[cache_key] = (now, results)
-        if len(_related_cache) > _RELATED_CACHE_MAX:
-            oldest = min(_related_cache, key=lambda k: _related_cache[k][0])
-            del _related_cache[oldest]
+        _result_cache_put(
+            _related_cache,
+            cache_key,
+            results,
+            max_entries=_RELATED_CACHE_MAX,
+            ttl=_RELATED_CACHE_TTL,
+            now=now,
+        )
 
         body: dict = {"results": results}
         if fallback_used:

@@ -8,6 +8,7 @@ import {
   User,
   X,
 } from 'lucide-react';
+import { appBackendApi } from '../../api/appBackendApi';
 import { renderPromptSummary, PromptToolButton } from './prompt-summary/PromptSummaryParts';
 
 interface MobilePromptSummaryCardProps {
@@ -45,6 +46,8 @@ export function MobilePromptSummaryCard({
   isTranslating,
   onTranslate,
 }: MobilePromptSummaryCardProps) {
+  const agentAvailability = appBackendApi.desktopAgentAvailability();
+
   return (
     <>
       <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
@@ -127,11 +130,23 @@ export function MobilePromptSummaryCard({
         </div>
 
         <div className="flex items-center gap-2 px-3 py-2">
-          <PromptToolButton label="AI助手" tone="purple" onClick={openAIAssistant} icon={<Bot className="w-3.5 h-3.5" />} />
+          <PromptToolButton
+            label="AI助手"
+            tone="purple"
+            onClick={openAIAssistant}
+            icon={<Bot className="w-3.5 h-3.5" />}
+            disabled={!agentAvailability.available}
+            title={agentAvailability.reason}
+          />
           <PromptToolButton label="画师串" tone="amber" onClick={openArtistModal} icon={<Brush className="w-3.5 h-3.5" />} />
           <PromptToolButton label="灵感" tone="pink" onClick={openInspirationModal} icon={<Lightbulb className="w-3.5 h-3.5" />} />
           <PromptToolButton label="OC" tone="cyan" onClick={openOCModal} icon={<User className="w-3.5 h-3.5" />} />
         </div>
+        {!agentAvailability.available && (
+          <p className="border-t border-gray-700/30 px-3 py-2 text-[11px] leading-4 text-gray-500">
+            {agentAvailability.reason}
+          </p>
+        )}
       </div>
 
       {hasChinesePrompt && (

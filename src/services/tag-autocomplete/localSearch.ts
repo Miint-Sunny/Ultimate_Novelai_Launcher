@@ -3,9 +3,8 @@
 // 以及登录后预加载、角色中文名查询、数据更新后的缓存清理。
 // 打分阈值与排序保持不变。
 
-import { sidecarApi } from '../../api/sidecar';
+import { appBackendApi } from '../../api/appBackendApi';
 import type { AutocompleteSourceConfig } from '../localLibrary';
-import { botService } from '../botService';
 import { getSrcCfg } from './ranking';
 import { clearTagCache } from './suggestionCache';
 import type { TagSuggestion } from './types';
@@ -45,7 +44,7 @@ async function loadRoleTagMapping() {
   if (roleTagMapping) return roleTagMapping;
 
   try {
-    roleTagMapping = await sidecarApi.getJson<typeof roleTagMapping>('/api/data/role_tag_mapping.json');
+    roleTagMapping = await appBackendApi.getJson<typeof roleTagMapping>('/api/data/role_tag_mapping.json');
     console.log('Loaded role_tag_mapping.json, entries:', Object.keys(roleTagMapping || {}).length);
   } catch (e) {
     console.warn('Failed to load role_tag_mapping.json:', e);
@@ -60,9 +59,8 @@ async function loadArtistData(): Promise<ArtistData[]> {
 
   artistDataLoading = (async () => {
     try {
-      const sessionId = botService.getAuthState().sessionId || '';
-      const data = await sidecarApi.getJson<{ artists?: any[] }>(
-        `/api/artists/list?session_id=${encodeURIComponent(sessionId)}`,
+      const data = await appBackendApi.getJson<{ artists?: any[] }>(
+        '/api/artists/list',
       );
       const artists: ArtistData[] = (data.artists || []).map((a: any) => ({
         id: a.id,
@@ -91,9 +89,8 @@ async function loadOCData(): Promise<OCData[]> {
 
   ocDataLoading = (async () => {
     try {
-      const sessionId = botService.getAuthState().sessionId || '';
-      const data = await sidecarApi.getJson<{ ocs?: any[] }>(
-        `/api/oc/list?session_id=${encodeURIComponent(sessionId)}`,
+      const data = await appBackendApi.getJson<{ ocs?: any[] }>(
+        '/api/oc/list',
       );
       const ocs: OCData[] = (data.ocs || []).map((oc: any) => ({
         id: oc.id,

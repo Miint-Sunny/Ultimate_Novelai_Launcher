@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import base64
-import binascii
+import os
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .security.payloads import decode_base64_payload
 
 SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
-DATA_URL_RE = re.compile(r"^data:(?P<mime>[-\w.]+/[-\w+.]+);base64,(?P<data>.+)$", re.S)
 
 
 def ensure_asset_dirs(settings: Settings) -> None:
@@ -25,28 +25,56 @@ def asset_dir(settings: Settings, kind: str) -> Path:
 def save_base64_asset(settings: Settings, kind: str, key: str, value: Any) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         return None
-    try:
-        payload, ext = decode_base64_asset(value)
-    except ValueError:
-        return None
+    payload, ext = decode_base64_asset(value)
     path = asset_dir(settings, kind) / f"{safe_name(key)}.{ext}"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(payload)
+    atomic_write_bytes(path, payload)
     return path
 
 
-def decode_base64_asset(value: str) -> tuple[bytes, str]:
-    text = value.strip()
-    match = DATA_URL_RE.match(text)
-    mime = "image/png"
-    if match:
-        mime = match.group("mime")
-        text = match.group("data")
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    """Durably replace *path* without exposing a partial file."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.part")
     try:
-        payload = base64.b64decode(text, validate=False)
-    except (binascii.Error, ValueError) as exc:
-        raise ValueError("invalid base64 asset") from exc
-    ext = "jpg" if mime in {"image/jpeg", "image/jpg"} else "png"
+        with temporary.open("xb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_text(path: Path, value: str) -> None:
+    atomic_write_bytes(path, value.encode("utf-8"))
+
+
+def _fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError:
+            # Some supported filesystems do not allow fsync on directory FDs.
+            # The file itself has already been fsynced and atomically replaced.
+            return
+    finally:
+        os.close(descriptor)
+
+
+def decode_base64_asset(value: str) -> tuple[bytes, str]:
+    payload, mime = decode_base64_payload(value)
+    ext = {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/webp": "webp",
+    }.get(mime or "image/png", "png")
     return payload, ext
 
 
@@ -77,7 +105,7 @@ def delete_file_if_safe(settings: Settings, kind: str, value: str) -> None:
 def unique_filename(settings: Settings, name: str, item_id: str) -> str:
     del settings
     stem = safe_name(slug(name) or f"vibe-{item_id[:8]}")
-    return f"{stem}-{item_id[:8]}.json"
+    return f"{stem}-{safe_name(item_id)}.json"
 
 
 def slug(value: str) -> str:

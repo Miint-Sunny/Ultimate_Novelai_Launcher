@@ -1,4 +1,5 @@
 const APP_SETTINGS_KEY = 'novelai_app_settings';
+export const APP_SETTINGS_CHANGED_EVENT = 'app-settings-changed';
 
 export const THEME_OPTIONS = [
   { id: 'default', name: '默认主题', color: '#ebd576' },
@@ -82,6 +83,7 @@ const sanitizeAppSettings = (settings: AppSettings): AppSettings => ({
 
 export const saveAppSettings = (settings: AppSettings): void => {
   localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(sanitizeAppSettings(settings)));
+  window.dispatchEvent(new Event(APP_SETTINGS_CHANGED_EVENT));
 };
 
 export const getAppSettings = (): AppSettings => {

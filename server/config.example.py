@@ -8,11 +8,34 @@ Web 后端独立配置（去敏模板）
    真实部署时复制为 config.py 并填入你自己的值，切勿把真实密钥提交到仓库。
 """
 
-from pathlib import Path
-
 # Bot端数据目录（通过环境变量配置，默认相对路径）
 import os
-BOT_DATA_DIR = Path(os.environ.get("BOT_DATA_DIR", str(Path(__file__).parent.parent.parent / "data")))
+from pathlib import Path
+
+BOT_DATA_DIR = Path(
+    os.environ.get("BOT_DATA_DIR", str(Path(__file__).parent.parent.parent / "data"))
+)
+# Browser/Bot sessions are server state. Keep them in the deployment data
+# directory rather than beside application source files.
+BOT_SESSIONS_FILE = Path(
+    os.environ.get("BOT_SESSIONS_FILE", str(BOT_DATA_DIR / "sessions.json"))
+)
+
+# Exact browser origins allowed to call the legacy/private-cloud backend.
+# Same-origin deployments need no entry. Wildcards and origins containing URL
+# paths, credentials, query strings or fragments are rejected at startup.
+LEGACY_CORS_ORIGINS = tuple(
+    origin.strip()
+    for origin in os.environ.get(
+        "LEGACY_CORS_ORIGINS",
+        (
+            "http://127.0.0.1:1420,http://localhost:1420,"
+            "http://127.0.0.1:5173,http://localhost:5173,"
+            "http://tauri.localhost,https://tauri.localhost,tauri://localhost"
+        ),
+    ).split(",")
+    if origin.strip()
+)
 
 # NovelAI Token 列表（支持多 Token 并发）
 NOVELAI_TOKENS = [
@@ -227,7 +250,7 @@ MODEL_REGISTRY: dict[str, dict] = {
         "base_url": "https://aiplatform.googleapis.com/v1beta1/publishers/google",
         "api_key": "REPLACE_WITH_YOUR_VERTEX_API_KEY",
         "proxy": PROXY_URL,
-        # 低温度提升人格 + schema 遵循度（原 assist tier 的 temperature=0.3，tier 移除后下沉到此 model）
+        # 低温度提升人格 + schema 遵循度；原 assist tier 的配置下沉到此 model。
         "model_settings": {"temperature": 0.3, "thinking": False},
         "supports_tools": True,
         "supports_vision": True,
@@ -453,7 +476,8 @@ GENSPARK_MODEL_MAP = {
     "gpt-image": {"model": "fal-ai/gpt-image-1.5", "image_size": "auto"},
 }
 
-# ============ 大GPT 图像工坊配置（OpenAI 兼容 /chat/completions + image_generation 工具） ============
+# ============ 大GPT 图像工坊配置 ============
+# OpenAI 兼容 /chat/completions + image_generation 工具。
 # 与 Bot 端 BIG_GPT_* 同源；Web 端独立可调。
 BIG_GPT_BASE_URL = "http://YOUR_PROXY_HOST:8317/v1"
 BIG_GPT_API_KEY = "REPLACE_WITH_API_KEY"
@@ -493,7 +517,9 @@ CAPSOLVER_HOST = "https://api.capsolver.com"
 NAI_RECAPTCHA_TOKEN_API_URL = os.environ.get("NAI_RECAPTCHA_TOKEN_API_URL", "http://YOUR_API_HOST:7022/novelai-token")
 NAI_RECAPTCHA_TOKEN_API_KEY = os.environ.get("NAI_RECAPTCHA_TOKEN_API_KEY", "REPLACE_WITH_API_KEY")
 NAI_RECAPTCHA_TOKEN_API_TIMEOUT = float(os.environ.get("NAI_RECAPTCHA_TOKEN_API_TIMEOUT", "10"))
-NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT = float(os.environ.get("NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT", "180"))
+NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT = float(
+    os.environ.get("NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT", "180")
+)
 NAI_RECAPTCHA_TOKEN_API_FALLBACK_CAPSOLVER = os.environ.get(
     "NAI_RECAPTCHA_TOKEN_API_FALLBACK_CAPSOLVER", "1"
 ) != "0"
@@ -509,8 +535,12 @@ NAI_BOOST_GLOBAL_COOLDOWN_SEC = 1800               # 触发全局冷却的时长
 NAI_BOOST_403_WINDOW = 50                          # 滑动窗口大小
 NAI_BOOST_403_THRESHOLD = 20                       # 窗口内失败次数阈值
 NAI_BOOST_TOKEN_REFRESH_AHEAD_SEC = 86400         # token 临到期多少秒前主动续期（默认 1 天）
-NAI_BOOST_ACTIVE_ACCOUNTS = int(os.environ.get("NAI_BOOST_ACTIVE_ACCOUNTS", "4"))  # 同时激活的 trial 账号上限；0=按实际 boost 并发动态启用
-NAI_BOOST_QUOTA_REFRESH_SEC = int(os.environ.get("NAI_BOOST_QUOTA_REFRESH_SEC", "21600"))  # 全量刷新所有 trial 账号余额的间隔（秒，默认 6h）；捕获 NAI 端 trial reset / 外部消耗
+# 同时激活的 trial 账号上限；0=按实际 boost 并发动态启用。
+NAI_BOOST_ACTIVE_ACCOUNTS = int(os.environ.get("NAI_BOOST_ACTIVE_ACCOUNTS", "4"))
+# 全量刷新余额的间隔（秒，默认 6h）；捕获 trial reset / 外部消耗。
+NAI_BOOST_QUOTA_REFRESH_SEC = int(
+    os.environ.get("NAI_BOOST_QUOTA_REFRESH_SEC", "21600")
+)
 
 # ==================== 计费分摊 ====================
 
@@ -523,7 +553,7 @@ BILLING_CYCLE_DAY = 27               # 每月结算分界日
 
 
 # ==================== 访问控制（可选，默认全空 = 安全默认）====================
-# 全站账单报表 / 任意用户查询只对"管理员"开放；Bot 轮询端点可选加共享密钥。
+# 全站账单报表 / 任意用户查询只对"管理员"开放；Bot 服务端操作必须使用独立密钥。
 # 这些字段可以不定义（app.py 用 getattr 兜底），老 config.py 无需改动即可运行。
 
 # 管理员 QQ 号列表：这些用户的会话可查看 /api/billing/report 全站报表，
@@ -534,10 +564,55 @@ ADMIN_USER_IDS: list[str] = []
 # 留空 = 不启用该通道。仅供你在后台机器上直接拉报表，切勿下发给前端。
 ADMIN_TOKEN = ""
 
-# Bot 轮询端点（/api/bot/tasks/pending、/task/update、/anlas/update）共享密钥：
-# 请求头 X-Bot-Secret。留空 = 不校验（保持原行为，不会断开你现有的 QQ 机器人）。
-# 配置后需让你的 Bot 端在这些请求上带同一个密钥。
+# Bot 服务端点（授权码验证、任务进度、额度更新等）共享密钥：请求头
+# X-Bot-Secret。留空时相关端点返回 503，不再静默公开部署级操作。
 BOT_SHARED_SECRET = ""
+
+# 仅用于隔离开发环境的显式逃生阀；生产环境必须保持 False。
+ALLOW_UNAUTHENTICATED_BOT_SERVICE = False
+
+# legacy 云后端统一租户边界。任务 owner 始终由已验证 Bot session 解出，客户端
+# 传入的 user_id 不参与授权。
+CLOUD_TENANT_ID = os.environ.get("CLOUD_TENANT_ID", "default")
+
+# 单任务 capability 的独立签名密钥。不要复用 ADMIN_TOKEN/BOT_SHARED_SECRET。
+# 留空时在 JOB_CAPABILITY_KEY_PATH 创建权限 0600 的持久随机密钥，确保重启后
+# 仍可读取持久任务；也可由部署环境直接提供 secret 以便轮换/备份。
+JOB_CAPABILITY_SECRET = os.environ.get("JOB_CAPABILITY_SECRET", "")
+JOB_CAPABILITY_KEY_PATH = Path(
+    os.environ.get(
+        "JOB_CAPABILITY_KEY_PATH",
+        str(Path(__file__).parent / "data" / "job_capability.key"),
+    )
+)
+
+# 可选 SQLite/WAL 额度账本。启用前须通过运维流程预置各 owner 的额度账户；
+# 开启后 /api/bot/generate 强制要求 Idempotency-Key，避免崩溃/重试双扣。
+CLOUD_QUOTA_ENABLED = os.environ.get("CLOUD_QUOTA_ENABLED", "0") == "1"
+CLOUD_QUOTA_DB_PATH = Path(
+    os.environ.get(
+        "CLOUD_QUOTA_DB_PATH",
+        str(Path(__file__).parent / "data" / "cloud_quota.db"),
+    )
+)
+
+# 私域生成任务及大结果的持久化位置。任务元数据/事件进入 SQLite WAL，图片本体
+# 原子落盘，事件里只保存有界元数据。
+CLOUD_JOBS_DB_PATH = Path(
+    os.environ.get(
+        "CLOUD_JOBS_DB_PATH",
+        str(Path(__file__).parent / "data" / "cloud_jobs.db"),
+    )
+)
+CLOUD_JOB_RESULTS_DIR = Path(
+    os.environ.get(
+        "CLOUD_JOB_RESULTS_DIR",
+        str(Path(__file__).parent / "data" / "cloud_job_results"),
+    )
+)
+LEGACY_GENERATION_QUEUE_CAPACITY = int(
+    os.environ.get("LEGACY_GENERATION_QUEUE_CAPACITY", "32")
+)
 
 
 # ==================== Anima（cnb ComfyUI 二次元出图后端）====================
@@ -582,7 +657,7 @@ ANIMA_CNB_READY_TIMEOUT = 1200                # workspace 启动 + ComfyUI 就�
 
 # 队列调度 + 巡检（M2 通用池用）。
 ANIMA_PATROL_INTERVAL_SECONDS = 60            # 巡检循环间隔(s)
-ANIMA_IDLE_SHUTDOWN_SECONDS = 1800            # 账户空闲超 N 秒自动关 workspace 省 cnb 配额（30 分钟）
+ANIMA_IDLE_SHUTDOWN_SECONDS = 1800            # 空闲超 N 秒关 workspace（30 分钟）
 ANIMA_ACCOUNT_MAX_RUNNING_SECONDS = 3600      # workspace 单次连跑超 N 秒强制重启
 ANIMA_LOCAL_ACTIVE_STALE_SECONDS = 180        # 本地占用标记 stale 阈值
 ANIMA_SCALE_QUEUE_PER_ACCOUNT = 2             # 动态扩容：每 N 个等待任务追加 1 个账户

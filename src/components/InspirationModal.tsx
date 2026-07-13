@@ -7,7 +7,8 @@ import { OCGalleryTab } from './inspiration/OCGalleryTab';
 import { getPublicOCs, getOCPreviewUrl } from '../services/publicLibrary';
 import { countTokens } from '../services/tokenizer';
 import { getKktList, getKktRecord, resolveKktImageUrl, type KktRecord, type KktListParams } from '../services/kktService';
-import { buildApiUrl, API_PATHS } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
+import { API_PATHS } from '../utils/apiConfig';
 
 // 模型名称映射
 const MODEL_NAME_MAP: Record<string, string> = {
@@ -553,7 +554,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
     }
     // 角色数据独立加载（不依赖OC条件）
     if (isOpen && characterData.length === 0) {
-      fetch(buildApiUrl(API_PATHS.DATA_ROLE_TAG_MAPPING))
+      appBackendApi.request(API_PATHS.DATA_ROLE_TAG_MAPPING)
         .then(res => res.ok ? res.json() : {})
         .then(data => {
           const chars: { en: string, zh: string }[] = [];

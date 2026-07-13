@@ -1,5 +1,4 @@
-import { sidecarApi } from '../../api/sidecar';
-import { getOptionalSessionId, getPublicLibraryOwnerId } from './session';
+import { appBackendApi } from '../../api/appBackendApi';
 
 export interface PublicOCData {
   id: string;
@@ -40,6 +39,7 @@ export interface UpdateOCParams {
 
 const PUBLIC_OC_CACHE_KEY = 'public_oc_cache';
 const PUBLIC_OC_CACHE_TTL = 10 * 60 * 1000;
+const ocPreviewUrls = new Map<string, string>();
 
 interface PublicOCCache {
   data: PublicOCData[];
@@ -74,19 +74,18 @@ export async function getPublicOCs(forceRefresh = false): Promise<PublicOCData[]
     const cache = getPublicOCCache();
     if (cache) {
       console.log('[公共OC] 使用缓存数据');
-      return cache.data;
+      return hydrateOCPreviews(cache.data);
     }
   }
 
   try {
-    const sessionId = getOptionalSessionId();
-    const data = await sidecarApi.getJson<PublicOCListResponse>(
-      `/api/oc/list?session_id=${encodeURIComponent(sessionId)}`,
+    const data = await appBackendApi.getJson<PublicOCListResponse>(
+      '/api/oc/list',
     );
     const ocs = data.ocs || [];
     setPublicOCCache(ocs);
     console.log(`[公共OC] 已从服务器获取 ${ocs.length} 个OC`);
-    return ocs;
+    return hydrateOCPreviews(ocs);
   } catch (error) {
     console.error('获取公共OC列表失败:', error);
     try {
@@ -94,7 +93,7 @@ export async function getPublicOCs(forceRefresh = false): Promise<PublicOCData[]
       if (cached) {
         const cache: PublicOCCache = JSON.parse(cached);
         console.log('[公共OC] 使用过期缓存作为fallback');
-        return cache.data;
+        return hydrateOCPreviews(cache.data);
       }
     } catch { }
     return [];
@@ -103,20 +102,36 @@ export async function getPublicOCs(forceRefresh = false): Promise<PublicOCData[]
 
 export function clearPublicOCCache(): void {
   localStorage.removeItem(PUBLIC_OC_CACHE_KEY);
+  ocPreviewUrls.clear();
+  appBackendApi.revokeObjectUrls('/api/oc/preview/');
 }
 
 export function getOCPreviewUrl(ocName: string): string {
-  return sidecarApi.url(`/api/oc/preview/${encodeURIComponent(ocName)}`);
+  return ocPreviewUrls.get(ocName) || '';
+}
+
+async function hydrateOCPreviews(ocs: PublicOCData[]): Promise<PublicOCData[]> {
+  return Promise.all(ocs.map(async oc => {
+    if (!oc.preview_url) return oc;
+    const path = `/api/oc/preview/${encodeURIComponent(oc.en_name)}`;
+    try {
+      const preview = await appBackendApi.objectUrl(path);
+      ocPreviewUrls.set(oc.en_name, preview);
+      return { ...oc, preview_url: preview };
+    } catch {
+      return { ...oc, preview_url: null };
+    }
+  }));
 }
 
 export async function createPublicOC(
   params: CreateOCParams
 ): Promise<{ success: boolean; message: string; oc?: PublicOCData }> {
   try {
-    const data = await sidecarApi.postJson<{ message?: string; oc?: PublicOCData }>('/api/oc/create', {
-      ...params,
-      created_by: params.created_by || getPublicLibraryOwnerId(),
-    });
+    const data = await appBackendApi.postJson<{ message?: string; oc?: PublicOCData }>(
+      '/api/oc/create',
+      params,
+    );
     clearPublicOCCache();
     return {
       success: true,
@@ -134,7 +149,7 @@ export async function updatePublicOC(
   params: UpdateOCParams
 ): Promise<{ success: boolean; message: string; oc?: PublicOCData }> {
   try {
-    const data = await sidecarApi.putJson<{ message?: string; oc?: PublicOCData }>(
+    const data = await appBackendApi.putJson<{ message?: string; oc?: PublicOCData }>(
       `/api/oc/${encodeURIComponent(ocName)}`,
       params,
     );
@@ -152,7 +167,7 @@ export async function updatePublicOC(
 
 export async function deletePublicOC(ocName: string): Promise<{ success: boolean; message: string }> {
   try {
-    const data = await sidecarApi.deleteJson<{ message?: string }>(`/api/oc/${encodeURIComponent(ocName)}`);
+    const data = await appBackendApi.deleteJson<{ message?: string }>(`/api/oc/${encodeURIComponent(ocName)}`);
     clearPublicOCCache();
     return { success: true, message: data.message || '删除成功' };
   } catch (error) {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { appBackendApi } from '../../api/appBackendApi';
 import { agentService, type AgentState } from '../../services/agentService';
 import { AssistantHeader } from './ai-assistant/AssistantHeader';
 import { AssistantInputBar } from './ai-assistant/AssistantInputBar';
@@ -36,6 +37,7 @@ export const MobileAIAssistantSheet: React.FC<MobileAIAssistantSheetProps> = ({
   onAIRegenerate,
   onRestoreSnapshot,
 }) => {
+  const agentAvailability = appBackendApi.desktopAgentAvailability();
   const {
     aiInput,
     setAiInput,
@@ -49,6 +51,10 @@ export const MobileAIAssistantSheet: React.FC<MobileAIAssistantSheetProps> = ({
     isGeneratingPrompt,
     logs: agentState.logs,
   });
+
+  React.useEffect(() => {
+    if (isOpen && !agentAvailability.available) onClose();
+  }, [agentAvailability.available, isOpen, onClose]);
 
   const handleAISend = () => {
     if (aiInput.trim() && onAIGenerate && !isGeneratingPrompt) {

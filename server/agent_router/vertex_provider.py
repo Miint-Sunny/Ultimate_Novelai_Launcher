@@ -29,11 +29,10 @@ SDK 拼出来的 URL 是:
     else:
         provider = GoogleProvider(api_key=key, base_url=base_url)
 """
+
 from __future__ import annotations
 
-from typing import Optional
 import httpx
-
 
 # Vertex Express 的固定 host
 _VERTEX_HOST = "aiplatform.googleapis.com"
@@ -70,7 +69,7 @@ class _VertexURLRewriteTransport(httpx.AsyncHTTPTransport):
 
 
 def build_vertex_http_client(
-    proxy_url: Optional[str] = None,
+    proxy_url: str | None = None,
     timeout: float = 120.0,
 ) -> httpx.AsyncClient:
     """

@@ -11,7 +11,7 @@ import { ToolsModal } from './ToolsModal';
 import { SettingsModal } from './SettingsModal';
 import { ProfileModal } from './ProfileModal';
 import { saveAISettings, getAISettings, DEFAULT_AI_SETTINGS, getAppSettings, getCodexFilterSettings, saveCodexFilterSettings, type CodexFilterSettings } from '../services/localLibrary';
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 import { useGeneration, type HistoryItemMetadata } from '../contexts/GenerationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useDragDrop } from '../contexts/DragDropContext';
@@ -259,6 +259,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const aiInputRef = useRef<HTMLTextAreaElement>(null);
   const promptAreaRef = useRef<HTMLDivElement>(null);
   const [aiAssistantInitialRect, setAiAssistantInitialRect] = useState<DOMRect | null>(null);
+  const desktopAgentAvailable = appBackendApi.desktopAgentAvailability().available;
   const [agentState, setAgentState] = useState<AgentState>(() => ({
     status: 'idle',
     logs: loadCurrentLogs(),
@@ -279,8 +280,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   useEffect(() => {
     const loadRoleTags = async () => {
       try {
-        const backendUrl = getBackendUrl();
-        const response = await fetch(`${backendUrl}/api/data/role_tag_mapping.json`);
+        const response = await appBackendApi.request('/api/data/role_tag_mapping.json');
         if (response.ok) {
           const data = await response.json();
           setRoleTagMap(data);
@@ -314,6 +314,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   useEffect(() => {
     saveCurrentLogs(agentState.logs);
   }, [agentState.logs]);
+
+  useEffect(() => {
+    if (desktopAgentAvailable) return;
+    setIsFloatingAIOpen(false);
+    agentService.cancel();
+  }, [desktopAgentAvailable]);
 
   // 上一次的日志数量（用于检测新日志）
   const prevLogCountRef = useRef(0);

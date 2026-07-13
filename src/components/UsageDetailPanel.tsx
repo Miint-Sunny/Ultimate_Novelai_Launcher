@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BarChart3, Zap, Clock, ChevronDown, ChevronUp } from 'lucide-react';
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 import { botService } from '../services/botService';
 
 /* ---------- Types ---------- */
@@ -87,7 +87,7 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
       } else {
         params.set('period', period);
       }
-      const res = await fetch(`${getBackendUrl()}/api/billing/user/details?${params}`);
+      const res = await appBackendApi.request(`/api/billing/user/details?${params}`);
       if (res.ok) {
         setData(await res.json());
         setLoaded(true);

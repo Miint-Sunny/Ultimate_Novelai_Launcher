@@ -18,24 +18,25 @@ API:
     get_active_channel_info()             - /health 用：列出 registry + choices
     list_model_keys()                     - 列出所有 MODEL_CHOICES key
 """
+
 from __future__ import annotations
 
 import os
-from typing import Optional, Tuple
 
-from .llm.models import Model, OpenAIModel, GoogleModel, AnthropicModel
-from .llm.providers import OpenAIProvider, GoogleProvider, AnthropicProvider
+from .llm.models import AnthropicModel, GoogleModel, Model, OpenAIModel
 from .llm.output import PromptedOutput
-
+from .llm.providers import AnthropicProvider, GoogleProvider, OpenAIProvider
 
 # ============================================================
 # 配置读取
 # ============================================================
 
-def _load_registry_and_choices() -> Tuple[dict, dict, str, str]:
+
+def _load_registry_and_choices() -> tuple[dict, dict, str, str]:
     """从 server/config.py 加载 (MODEL_REGISTRY, MODEL_CHOICES, AI_PROTOCOL, ACTIVE_MODEL)。"""
     try:
-        from config import MODEL_REGISTRY, MODEL_CHOICES, AI_PROTOCOL, ACTIVE_MODEL  # type: ignore
+        from config import ACTIVE_MODEL, AI_PROTOCOL, MODEL_CHOICES, MODEL_REGISTRY  # type: ignore
+
         return MODEL_REGISTRY, MODEL_CHOICES, AI_PROTOCOL, ACTIVE_MODEL
     except ImportError:
         pass
@@ -46,8 +47,11 @@ def _load_registry_and_choices() -> Tuple[dict, dict, str, str]:
     model = os.environ.get("CPA_FALLBACK_MODEL", "claude-sonnet-4-6")
     fallback_registry = {
         model: {
-            "base_url": base_url, "api_key": api_key, "proxy": "",
-            "supports_tools": True, "supports_vision": True,
+            "base_url": base_url,
+            "api_key": api_key,
+            "proxy": "",
+            "supports_tools": True,
+            "supports_vision": True,
         }
     }
     fallback_choices = {"default": {"label": "default", "model": model, "aliases": []}}
@@ -58,12 +62,13 @@ def _load_registry_and_choices() -> Tuple[dict, dict, str, str]:
 # 协议适配
 # ============================================================
 
+
 def _normalize_base_url(url: str, protocol: str) -> str:
     """协议自适应:
-        openai    要求 /v1 路径；若配置写的是 /v1beta，自动改 /v1
-        gemini    要求 /v1beta 路径；若配置写的是 /v1，自动改 /v1beta
-        anthropic 不带版本后缀（AnthropicProvider 内部拼 /v1/messages）；
-                  若配置写了 /v1 或 /v1beta 自动剥掉，避免拼成 /v1/v1/messages
+    openai    要求 /v1 路径；若配置写的是 /v1beta，自动改 /v1
+    gemini    要求 /v1beta 路径；若配置写的是 /v1，自动改 /v1beta
+    anthropic 不带版本后缀（AnthropicProvider 内部拼 /v1/messages）；
+              若配置写了 /v1 或 /v1beta 自动剥掉，避免拼成 /v1/v1/messages
     """
     if protocol == "openai":
         if url.endswith("/v1beta"):
@@ -86,6 +91,7 @@ def _normalize_base_url(url: str, protocol: str) -> str:
 # model_key 解析
 # ============================================================
 
+
 def _normalize_model_key(model_key: str | None) -> str:
     """
     把请求里的 model 标识规范成 MODEL_CHOICES 的 key。
@@ -101,6 +107,7 @@ def _normalize_model_key(model_key: str | None) -> str:
         return model_key
     try:
         from config import resolve_model  # type: ignore
+
         key, _ch = resolve_model(model_key)
         return key
     except Exception:
@@ -125,6 +132,7 @@ def _resolve_model_meta(model_key: str | None) -> tuple[str, dict, str] | None:
 # ============================================================
 # 主要 API
 # ============================================================
+
 
 def get_model(model_key: str = "") -> Model:
     """
@@ -152,25 +160,27 @@ def get_model(model_key: str = "") -> Model:
 
     if model_protocol == "openai":
         # NAI text API 必须挂适配 transport：非流式响应缺 message.content + tools 不兼容
-        from .novelai_provider import is_novelai_text_url, build_novelai_http_client
+        from .novelai_provider import build_novelai_http_client, is_novelai_text_url
+
         if is_novelai_text_url(base_url):
             http_client = build_novelai_http_client(proxy_url=meta.get("proxy") or None)
             provider = OpenAIProvider(base_url=base_url, api_key=api_key, http_client=http_client)
         else:
             provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-        return OpenAIModel(real_model, provider=provider, supports_vision=meta.get("supports_vision", True))
+        return OpenAIModel(
+            real_model, provider=provider, supports_vision=meta.get("supports_vision", True)
+        )
 
     if model_protocol == "gemini":
         # Vertex Express 路径修正（raw-httpx 下 URL 已天然正确，transport 仅用于带 proxy）
-        from .vertex_provider import is_vertex_express_url, build_vertex_http_client
+        from .vertex_provider import build_vertex_http_client, is_vertex_express_url
+
         http_client = None
         if is_vertex_express_url(base_url):
             http_client = build_vertex_http_client(proxy_url=meta.get("proxy") or None)
 
         if http_client is not None:
-            provider = GoogleProvider(
-                api_key=api_key, base_url=base_url, http_client=http_client
-            )
+            provider = GoogleProvider(api_key=api_key, base_url=base_url, http_client=http_client)
         else:
             provider = GoogleProvider(api_key=api_key, base_url=base_url)
         return GoogleModel(real_model, provider=provider)
@@ -180,7 +190,8 @@ def get_model(model_key: str = "") -> Model:
         return AnthropicModel(real_model, provider=provider)
 
     raise ValueError(
-        f"模型 '{registry_key}' 的 protocol={model_protocol!r} 不支持（仅: openai / gemini / anthropic）"
+        f"模型 '{registry_key}' 的 protocol={model_protocol!r} 不支持"
+        "（仅: openai / gemini / anthropic）"
     )
 
 
@@ -289,7 +300,7 @@ def _google_safety_settings_for_model(model_key: str | None) -> list[dict[str, s
     return settings
 
 
-def get_model_settings(model_key: str = "") -> Optional[dict]:
+def get_model_settings(model_key: str = "") -> dict | None:
     """
     返回该 model 的 ModelSettings 字典（可为空 dict 或 None）。
     传给 agent.run(..., model_settings=...)。
@@ -338,9 +349,7 @@ def get_prefilter_model() -> Model:
 
     registry_key = str(PREFILTER_MODEL)
     if registry_key not in registry:
-        raise ValueError(
-            f"PREFILTER_MODEL '{registry_key}' 未在 MODEL_REGISTRY 中登记"
-        )
+        raise ValueError(f"PREFILTER_MODEL '{registry_key}' 未在 MODEL_REGISTRY 中登记")
     meta = registry[registry_key]
     model_protocol = meta.get("protocol") or default_protocol
     base_url = _normalize_base_url(meta["base_url"], model_protocol)
@@ -348,15 +357,19 @@ def get_prefilter_model() -> Model:
     real_model = meta.get("model_name") or registry_key
 
     if model_protocol == "openai":
-        from .novelai_provider import is_novelai_text_url, build_novelai_http_client
+        from .novelai_provider import build_novelai_http_client, is_novelai_text_url
+
         if is_novelai_text_url(base_url):
             http_client = build_novelai_http_client(proxy_url=meta.get("proxy") or None)
             provider = OpenAIProvider(base_url=base_url, api_key=api_key, http_client=http_client)
         else:
             provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-        return OpenAIModel(real_model, provider=provider, supports_vision=meta.get("supports_vision", True))
+        return OpenAIModel(
+            real_model, provider=provider, supports_vision=meta.get("supports_vision", True)
+        )
     if model_protocol == "gemini":
-        from .vertex_provider import is_vertex_express_url, build_vertex_http_client
+        from .vertex_provider import build_vertex_http_client, is_vertex_express_url
+
         http_client = None
         if is_vertex_express_url(base_url):
             http_client = build_vertex_http_client(proxy_url=meta.get("proxy") or None)
@@ -371,7 +384,7 @@ def get_prefilter_model() -> Model:
     raise ValueError(f"prefilter model protocol={model_protocol!r} 不支持")
 
 
-def get_prefilter_model_settings() -> Optional[dict]:
+def get_prefilter_model_settings() -> dict | None:
     """PrefilterAgent 的 ModelSettings：从 registry 取 + extra_body/google_safety + 低温度。"""
     try:
         from config import PREFILTER_MODEL  # type: ignore
@@ -386,7 +399,10 @@ def get_prefilter_model_settings() -> Optional[dict]:
         settings.update(registry_settings)
     # 低温度让筛选结果稳定
     settings.setdefault("temperature", 0.1)
-    if _should_disable_google_safety_filters() and (meta.get("protocol") or default_protocol) == "gemini":
+    if (
+        _should_disable_google_safety_filters()
+        and (meta.get("protocol") or default_protocol) == "gemini"
+    ):
         settings["google_safety_settings"] = list(_GOOGLE_SAFETY_SETTINGS_OFF)
         settings.setdefault("thinking", False)
     extra_body = meta.get("extra_body")
@@ -425,13 +441,14 @@ def uses_prompted_output_for_model(model_key: str) -> bool:
 # 健康检查 / info 支持
 # ============================================================
 
+
 def list_model_keys() -> list[str]:
     """列出所有 MODEL_CHOICES key（/health 遍历探测用）。"""
     _, choices, _, _ = _load_registry_and_choices()
     return list(choices.keys())
 
 
-def resolve_choice_to_model_name(model_key: str) -> Optional[str]:
+def resolve_choice_to_model_name(model_key: str) -> str | None:
     """给 /health 用：把 model_key 解析回实际模型名。"""
     resolved = _resolve_model_meta(model_key)
     if resolved is None:
@@ -457,7 +474,9 @@ def get_active_channel_info() -> dict:
                 ),
                 "supports_tools": meta.get("supports_tools", True),
                 "supports_vision": meta.get("supports_vision", True),
-                "extra_body": meta.get("extra_body") if isinstance(meta.get("extra_body"), dict) else {},
+                "extra_body": meta.get("extra_body")
+                if isinstance(meta.get("extra_body"), dict)
+                else {},
             }
             for name, meta in registry.items()
         },

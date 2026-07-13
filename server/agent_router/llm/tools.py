@@ -7,25 +7,32 @@
          必填项 = 没有默认值的参；docstring 整段作 description（含 Args 段，模型够用）。
     2. 运行时把 RunContext 作为第一个位置参注入、模型给的 kwargs 按名传入、缺省走 Python 默认值。
     3. 结果序列化：list[BaseModel] -> [item.model_dump()] 发给模型；**原始返回值**另存，
-       挂到 ToolReturnPart.content（router._extract_used_resources 直接 duck-type 读 .name/.tags/.prompt）。
+       挂到 ToolReturnPart.content（router._extract_used_resources
+       直接 duck-type 读 .name/.tags/.prompt）。
 
-注意：本项目工具均 `@agent.tool(strict=True)`，故 OpenAI 协议下走 strict（转换在 models/openai.py）。
+注意：本项目工具均 `@agent.tool(strict=True)`，故 OpenAI 协议下走 strict
+（转换在 models/openai.py）。
 """
+
 from __future__ import annotations
 
 import inspect
 import json
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Union, get_args, get_origin, get_type_hints
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
 from .messages import ToolDefinition
 
+logger = logging.getLogger("agent_router.llm.tools")
 
 # ============================================================
 # 类型注解 -> JSON Schema
 # ============================================================
+
 
 def _py_type_to_schema(tp: Any) -> dict:
     """把一个 Python 类型注解映射成（普通、非 strict 的）JSON Schema 片段。"""
@@ -46,7 +53,8 @@ def _py_type_to_schema(tp: Any) -> dict:
     if origin is Union:
         non_none = [a for a in args if a is not type(None)]
         if non_none:
-            # Optional[X] / Union[...]：取首个非 None 分支的形态（可空性由 required 列表 + strict 渲染处理）
+            # Optional[X] / Union[...]：取首个非 None 分支的形态。
+            # 可空性由 required 列表 + strict 渲染处理。
             return _py_type_to_schema(non_none[0])
         return {"type": "null"}
 
@@ -60,6 +68,7 @@ def _py_type_to_schema(tp: Any) -> dict:
     if isinstance(tp, type) and issubclass(tp, BaseModel):
         # 入参极少用嵌套模型；真要用就走内联 schema（避免 $ref）
         from .output import build_inlined_json_schema
+
         return build_inlined_json_schema(tp)
 
     # 兜底当字符串
@@ -119,6 +128,7 @@ def build_param_schema(
 # 已注册工具
 # ============================================================
 
+
 @dataclass
 class RegisteredTool:
     """一个挂在 Agent 上的工具：函数 + 元数据 + 入参 schema。"""
@@ -151,7 +161,8 @@ class RegisteredTool:
                 kwargs[name] = _coerce_arg_for_schema(args[name], properties.get(name))
             elif name in self.defaults:
                 kwargs[name] = self.defaults[name]
-            # 既没给又没默认值 -> 不传，让函数自身报错（与 pydantic_ai 行为一致：模型应补齐 required）
+            # 既没给又没默认值 -> 不传，让函数自身报错。
+            # 与 pydantic_ai 行为一致：模型应补齐 required。
         result = self.func(ctx, **kwargs)
         if inspect.isawaitable(result):
             result = await result
@@ -175,8 +186,8 @@ def _coerce_arg_for_schema(value: Any, schema: Any) -> Any:
                 parsed = json.loads(s)
                 if isinstance(parsed, list):
                     return parsed
-            except Exception:
-                pass
+            except (json.JSONDecodeError, TypeError):
+                logger.debug("工具数组参数不是有效 JSON", exc_info=True)
             return [part.strip() for part in s.split(",") if part.strip()]
         return [value]
 
@@ -188,8 +199,8 @@ def _coerce_arg_for_schema(value: Any, schema: Any) -> Any:
             parsed = json.loads(s)
             if isinstance(parsed, dict):
                 return parsed
-        except Exception:
-            pass
+        except (json.JSONDecodeError, TypeError):
+            logger.debug("工具对象参数不是有效 JSON", exc_info=True)
     return value
 
 
@@ -211,6 +222,7 @@ def build_registered_tool(func: Callable, *, strict: bool = False) -> Registered
 # ============================================================
 # 工具结果序列化
 # ============================================================
+
 
 def serialize_tool_result(value: Any) -> tuple[Any, Any]:
     """

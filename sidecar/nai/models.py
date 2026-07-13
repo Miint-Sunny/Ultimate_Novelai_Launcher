@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from sidecar.security.payloads import (
+    MAX_GENERATION_DECODED_BYTES,
+    MAX_SINGLE_ASSET_BYTES,
+    enforce_json_decoded_budget,
+    enforce_text_budget,
+)
 
 AVAILABLE_MODELS = {
     "nai-diffusion-3",
@@ -27,7 +33,7 @@ AVAILABLE_NOISE_SCHEDULES = {"karras", "native", "exponential", "polyexponential
 
 
 class GenerationParams(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     model: str = "nai-diffusion-4-5-full"
     width: int = 832
@@ -99,14 +105,30 @@ class GenerationParams(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
-    input: str = Field(min_length=1)
+    input: str = Field(min_length=1, max_length=4 * 1024 * 1024)
     mode: Literal["natural", "tags"] = "tags"
-    tags: str | None = None
-    negative: str | None = None
+    tags: str | None = Field(default=None, max_length=4 * 1024 * 1024)
+    negative: str | None = Field(default=None, max_length=4 * 1024 * 1024)
     params: GenerationParams = Field(default_factory=GenerationParams)
     legacy_payload: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_decoded_budgets(self) -> GenerateRequest:
+        text_bytes = enforce_text_budget((self.input, self.tags, self.negative))
+        payload_bytes = 0
+        if self.legacy_payload is not None:
+            payload_bytes = enforce_json_decoded_budget(
+                self.legacy_payload,
+                maximum=MAX_GENERATION_DECODED_BYTES,
+                maximum_single_asset=MAX_SINGLE_ASSET_BYTES,
+            )
+        if text_bytes + payload_bytes > MAX_GENERATION_DECODED_BYTES:
+            raise ValueError(
+                f"decoded generation request exceeds {MAX_GENERATION_DECODED_BYTES} bytes"
+            )
+        return self
 
 
 class ResolvedPrompt(BaseModel):

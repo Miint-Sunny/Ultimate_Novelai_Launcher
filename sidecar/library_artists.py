@@ -7,7 +7,13 @@ from typing import Any
 
 from .config import Settings
 from .db import connect, utc_now
-from .library_assets import format_ms, now_ms, save_base64_asset, string_or_none
+from .library_assets import (
+    delete_file_if_safe,
+    format_ms,
+    now_ms,
+    save_base64_asset,
+    string_or_none,
+)
 from .library_tables import delete_by_key, fetch_all, find_one
 
 
@@ -35,20 +41,25 @@ def create_artist(settings: Settings, data: dict[str, Any]) -> dict[str, Any]:
         "created_time": created_time,
         "updated_at": utc_now(),
     }
-    with closing(connect(settings.db_path)) as conn:
-        conn.execute(
-            """
-            INSERT INTO artists (
-                id, name, artist_string, negative, preview_path, usage_count,
-                added_by, created_time, updated_at
-            ) VALUES (
-                :id, :name, :artist_string, :negative, :preview_path, :usage_count,
-                :added_by, :created_time, :updated_at
+    try:
+        with closing(connect(settings.db_path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO artists (
+                    id, name, artist_string, negative, preview_path, usage_count,
+                    added_by, created_time, updated_at
+                ) VALUES (
+                    :id, :name, :artist_string, :negative, :preview_path, :usage_count,
+                    :added_by, :created_time, :updated_at
+                )
+                """,
+                row,
             )
-            """,
-            row,
-        )
-        conn.commit()
+            conn.commit()
+    except Exception:
+        if preview_path:
+            delete_file_if_safe(settings, "artists", str(preview_path))
+        raise
     return _artist_to_api(row)
 
 
@@ -56,7 +67,12 @@ def update_artist(settings: Settings, key: str, data: dict[str, Any]) -> dict[st
     row = find_one(settings, "artists", key, "name")
     if not row:
         return None
-    preview_path = save_base64_asset(settings, "artists", row["id"], data.get("preview_base64"))
+    preview_path = save_base64_asset(
+        settings,
+        "artists",
+        f"{row['id']}-{uuid.uuid4().hex}",
+        data.get("preview_base64"),
+    )
     updates = {
         "artist_string": data.get("artist_string", row["artist_string"]),
         "negative": data.get("negative", row["negative"]),
@@ -65,20 +81,27 @@ def update_artist(settings: Settings, key: str, data: dict[str, Any]) -> dict[st
         "updated_at": utc_now(),
         "id": row["id"],
     }
-    with closing(connect(settings.db_path)) as conn:
-        conn.execute(
-            """
-            UPDATE artists SET
-                artist_string = :artist_string,
-                negative = :negative,
-                preview_path = :preview_path,
-                added_by = :added_by,
-                updated_at = :updated_at
-            WHERE id = :id
-            """,
-            updates,
-        )
-        conn.commit()
+    try:
+        with closing(connect(settings.db_path)) as conn:
+            conn.execute(
+                """
+                UPDATE artists SET
+                    artist_string = :artist_string,
+                    negative = :negative,
+                    preview_path = :preview_path,
+                    added_by = :added_by,
+                    updated_at = :updated_at
+                WHERE id = :id
+                """,
+                updates,
+            )
+            conn.commit()
+    except Exception:
+        if preview_path:
+            delete_file_if_safe(settings, "artists", str(preview_path))
+        raise
+    if preview_path and row["preview_path"]:
+        delete_file_if_safe(settings, "artists", row["preview_path"])
     return get_artist(settings, row["id"])
 
 

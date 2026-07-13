@@ -8,14 +8,19 @@ AgentDeps —— PydanticAI 运行时依赖注入容器。
     - 给 SSE 编组器一个事件 emit 回调
     - 缓存 prompts / 配置等只读资源
 """
+
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Awaitable, Any
+from typing import Any
+
 import httpx
 
 from .schemas import Scene, SseEvent
 
+logger = logging.getLogger("agent_router.deps")
 
 # SSE 事件发射器类型：调用方传入一个 async 回调
 SseEmitter = Callable[[SseEvent], Awaitable[None]]
@@ -27,11 +32,11 @@ class AgentDeps:
 
     # === 调用方身份 ===
     user_id: str
-    user_key: str = ""                     # 历史 key，如 qq_p_123 / web_anon_xxx
+    user_key: str = ""  # 历史 key，如 qq_p_123 / web_anon_xxx
     platform: str = "qq"
     scene: Scene = "private"
-    group_id: Optional[str] = None
-    session_id: str = ""                   # Bot/Web 授权 session，调本机带授权 API 时透传
+    group_id: str | None = None
+    session_id: str = ""  # Bot/Web 授权 session，调本机带授权 API 时透传
 
     # === 选用的 model（MODEL_CHOICES 的 key；空 = 全局 ACTIVE_MODEL）===
     selected_model: str = ""
@@ -43,10 +48,10 @@ class AgentDeps:
 
     # === 内部服务 ===
     http_client: httpx.AsyncClient = field(default=None)  # type: ignore[assignment]
-    internal_base_url: str = "http://127.0.0.1:8765"     # 本机 server 自身，调 /api/cr 等
+    internal_base_url: str = "http://127.0.0.1:8765"  # 本机 server 自身，调 /api/cr 等
 
     # === SSE（chat_agent 在 Web 端 SSE 入口下使用，Bot 端一次性返回不用） ===
-    sse_emitter: Optional[SseEmitter] = None
+    sse_emitter: SseEmitter | None = None
 
     # === Web 端开关 ===
     use_codex: bool = False
@@ -73,4 +78,4 @@ class AgentDeps:
                 await self.sse_emitter(event)
             except Exception:
                 # SSE 通道断开不应中断 agent 主流程
-                pass
+                logger.debug("SSE 事件接收方已断开", exc_info=True)

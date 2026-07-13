@@ -10,12 +10,16 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+build
+.coverage
+coverage.xml
 .venv
 __pycache__
 .pytest_cache
 target
 src-tauri/target
 src-tauri/gen
+src-tauri/binaries/
 *.local
 
 # Editor directories and files

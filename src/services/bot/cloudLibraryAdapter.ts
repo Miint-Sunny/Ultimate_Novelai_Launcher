@@ -1,11 +1,11 @@
 /**
- * 云端库适配器 - 对接 Bot/队列后端（getBackendUrl）的用户云数据：
+ * 云端库适配器 - 对接用户配置的 Bot/私有云后端：
  * Vibe 云同步、墓碑、标签池、备份记录、画师串与 tag-manager 四类备份。
  *
  * 所有请求都走传统云后端（不是本地 sidecar），由 botService.ts 门面统一导出。
  */
 
-import { getBackendUrl } from '../../utils/apiConfig';
+import { cloudBackendApi } from '../../api/cloudBackendApi';
 import { botService } from './botSession';
 
 // ==================== 用户 Vibe 云同步 API ====================
@@ -90,9 +90,10 @@ export async function getCloudVibes(forceRefresh = false): Promise<CloudVibeMeta
     if (cached) return cached.data;
   }
 
-  const backendUrl = getBackendUrl();
   try {
-    const resp = await fetch(`${backendUrl}/api/user-vibes/list?session_id=${encodeURIComponent(auth.sessionId)}`);
+    const resp = await cloudBackendApi.request('/api/user-vibes/list', undefined, {
+      session_id: auth.sessionId,
+    });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     const vibes: CloudVibeMeta[] = (data.vibes || []).map((v: Record<string, unknown>) => ({
@@ -124,10 +125,11 @@ export async function getCloudVibes(forceRefresh = false): Promise<CloudVibeMeta
 export async function getCloudVibeFile(filename: string): Promise<Record<string, unknown> | null> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return null;
-  const backendUrl = getBackendUrl();
   try {
-    const resp = await fetch(
-      `${backendUrl}/api/user-vibes/file/${encodeURIComponent(filename)}?session_id=${encodeURIComponent(auth.sessionId)}`
+    const resp = await cloudBackendApi.request(
+      `/api/user-vibes/file/${encodeURIComponent(filename)}`,
+      undefined,
+      { session_id: auth.sessionId },
     );
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return await resp.json();
@@ -147,10 +149,8 @@ export async function uploadCloudVibe(
 ): Promise<{ success: boolean; filename?: string; message?: string; imageHash?: string; metaHash?: string }> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return { success: false, message: '未Bot授权' };
-  const backendUrl = getBackendUrl();
-
   try {
-    const resp = await fetch(`${backendUrl}/api/user-vibes/upload`, {
+    const resp = await cloudBackendApi.request('/api/user-vibes/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -184,10 +184,8 @@ export async function updateCloudVibeMeta(
 ): Promise<{ success: boolean; message?: string; imageHash?: string; metaHash?: string }> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return { success: false, message: '未Bot授权' };
-  const backendUrl = getBackendUrl();
-
   try {
-    const resp = await fetch(`${backendUrl}/api/user-vibes/file/${encodeURIComponent(filename)}`, {
+    const resp = await cloudBackendApi.request(`/api/user-vibes/file/${encodeURIComponent(filename)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -218,12 +216,11 @@ export async function updateCloudVibeMeta(
 export async function deleteCloudVibe(filename: string): Promise<{ success: boolean; message?: string }> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return { success: false, message: '未Bot授权' };
-  const backendUrl = getBackendUrl();
-
   try {
-    const resp = await fetch(
-      `${backendUrl}/api/user-vibes/file/${encodeURIComponent(filename)}?session_id=${encodeURIComponent(auth.sessionId)}`,
-      { method: 'DELETE' }
+    const resp = await cloudBackendApi.request(
+      `/api/user-vibes/file/${encodeURIComponent(filename)}`,
+      { method: 'DELETE' },
+      { session_id: auth.sessionId },
     );
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
@@ -251,8 +248,9 @@ export async function getCloudVibesStrict(): Promise<CloudVibeMeta[]> {
   if (!auth.isAuthorized || !auth.sessionId || !auth.botUserId) {
     throw new Error('未Bot授权');
   }
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-vibes/list?session_id=${encodeURIComponent(auth.sessionId)}`);
+  const resp = await cloudBackendApi.request('/api/user-vibes/list', undefined, {
+    session_id: auth.sessionId,
+  });
   if (!resp.ok) throw new Error(`getCloudVibesStrict HTTP ${resp.status}`);
   const data = await resp.json();
   if (!data || !Array.isArray(data.vibes)) {
@@ -281,9 +279,10 @@ export async function getCloudVibesStrict(): Promise<CloudVibeMeta[]> {
 export async function getCloudVibeFileStrict(filename: string): Promise<Record<string, unknown>> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(
-    `${backendUrl}/api/user-vibes/file/${encodeURIComponent(filename)}?session_id=${encodeURIComponent(auth.sessionId)}`
+  const resp = await cloudBackendApi.request(
+    `/api/user-vibes/file/${encodeURIComponent(filename)}`,
+    undefined,
+    { session_id: auth.sessionId },
   );
   if (!resp.ok) throw new Error(`getCloudVibeFileStrict HTTP ${resp.status}`);
   const data = await resp.json();
@@ -299,8 +298,7 @@ export async function getCloudVibeFileStrict(filename: string): Promise<Record<s
 export const REQUIRED_SYNC_PROTOCOL_VERSION = 2;
 
 export async function getServerSyncVersion(): Promise<number> {
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/sync/version`);
+  const resp = await cloudBackendApi.request('/api/sync/version');
   if (!resp.ok) throw new Error(`getServerSyncVersion HTTP ${resp.status}`);
   const data = await resp.json();
   if (typeof data?.version !== 'number') {
@@ -314,8 +312,9 @@ export async function getServerSyncVersion(): Promise<number> {
 export async function getCloudTombstones(): Promise<CloudTombstone[]> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-vibes/tombstones?session_id=${encodeURIComponent(auth.sessionId)}`);
+  const resp = await cloudBackendApi.request('/api/user-vibes/tombstones', undefined, {
+    session_id: auth.sessionId,
+  });
   if (!resp.ok) throw new Error(`getCloudTombstones HTTP ${resp.status}`);
   const data = await resp.json();
   if (!data || !Array.isArray(data.tombstones)) {
@@ -329,8 +328,7 @@ export async function getCloudTombstones(): Promise<CloudTombstone[]> {
 export async function addCloudTombstone(vibeId: string): Promise<void> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-vibes/tombstones`, {
+  const resp = await cloudBackendApi.request('/api/user-vibes/tombstones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: auth.sessionId, vibe_id: vibeId }),
@@ -346,8 +344,9 @@ export async function addCloudTombstone(vibeId: string): Promise<void> {
 export async function getCloudTagPool(): Promise<string[]> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-vibes/tag-pool?session_id=${encodeURIComponent(auth.sessionId)}`);
+  const resp = await cloudBackendApi.request('/api/user-vibes/tag-pool', undefined, {
+    session_id: auth.sessionId,
+  });
   if (!resp.ok) throw new Error(`getCloudTagPool HTTP ${resp.status}`);
   const data = await resp.json();
   if (!data || !Array.isArray(data.tags)) {
@@ -359,8 +358,7 @@ export async function getCloudTagPool(): Promise<string[]> {
 export async function putCloudTagPool(tags: string[]): Promise<void> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-vibes/tag-pool`, {
+  const resp = await cloudBackendApi.request('/api/user-vibes/tag-pool', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: auth.sessionId, tags }),
@@ -403,9 +401,10 @@ export function getDeviceName(): string {
 export async function getBackupLog(): Promise<BackupLogEntry[]> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return [];
-  const backendUrl = getBackendUrl();
   try {
-    const resp = await fetch(`${backendUrl}/api/user-vibes/backup-log?session_id=${encodeURIComponent(auth.sessionId)}`);
+    const resp = await cloudBackendApi.request('/api/user-vibes/backup-log', undefined, {
+      session_id: auth.sessionId,
+    });
     if (!resp.ok) return [];
     const data = await resp.json();
     return (data.log || []) as BackupLogEntry[];
@@ -415,9 +414,8 @@ export async function getBackupLog(): Promise<BackupLogEntry[]> {
 export async function recordBackup(action: 'backup' | 'restore', vibeCount: number, detail: string): Promise<void> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return;
-  const backendUrl = getBackendUrl();
   try {
-    await fetch(`${backendUrl}/api/user-vibes/backup-log`, {
+    await cloudBackendApi.request('/api/user-vibes/backup-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -442,8 +440,9 @@ export interface ArtistBackupData {
 export async function getArtistsBackup(): Promise<ArtistBackupData> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-artists/backup?session_id=${encodeURIComponent(auth.sessionId)}`);
+  const resp = await cloudBackendApi.request('/api/user-artists/backup', undefined, {
+    session_id: auth.sessionId,
+  });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return await resp.json();
 }
@@ -451,8 +450,7 @@ export async function getArtistsBackup(): Promise<ArtistBackupData> {
 export async function uploadArtistsBackup(artists: Array<Record<string, unknown>>): Promise<{ count: number; updated_at: number }> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-artists/backup`, {
+  const resp = await cloudBackendApi.request('/api/user-artists/backup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: auth.sessionId, artists }),
@@ -476,8 +474,9 @@ export interface TagBackupAllData {
 export async function getTagBackupAll(): Promise<TagBackupAllData> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-tag-backup?session_id=${encodeURIComponent(auth.sessionId)}`);
+  const resp = await cloudBackendApi.request('/api/user-tag-backup', undefined, {
+    session_id: auth.sessionId,
+  });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return await resp.json();
 }
@@ -487,8 +486,7 @@ export async function uploadTagBackupAll(
 ): Promise<{ updated_at: number; counts: Record<TagBackupCategoryId, number> }> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) throw new Error('未Bot授权');
-  const backendUrl = getBackendUrl();
-  const resp = await fetch(`${backendUrl}/api/user-tag-backup`, {
+  const resp = await cloudBackendApi.request('/api/user-tag-backup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: auth.sessionId, categories }),
@@ -504,10 +502,10 @@ export async function uploadTagBackupAll(
 export async function getCloudVibeState(): Promise<{ count: number; updated_at: number } | null> {
   const auth = botService.getAuthState();
   if (!auth.sessionId) return null;
-  const backendUrl = getBackendUrl();
-
   try {
-    const resp = await fetch(`${backendUrl}/api/user-vibes/state?session_id=${encodeURIComponent(auth.sessionId)}`);
+    const resp = await cloudBackendApi.request('/api/user-vibes/state', undefined, {
+      session_id: auth.sessionId,
+    });
     if (!resp.ok) return null;
     return await resp.json();
   } catch {

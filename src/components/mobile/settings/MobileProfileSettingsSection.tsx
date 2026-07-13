@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BarChart3, Coins, Image as ImageIcon, MessageSquare, Receipt } from 'lucide-react';
 import { botService } from '../../../services/botService';
-import { getBackendUrl } from '../../../utils/apiConfig';
+import { appBackendApi } from '../../../api/appBackendApi';
 import { BillingSettlementModal } from '../../BillingSettlementModal';
 
 interface StatsSummary {
@@ -42,10 +42,9 @@ export const MobileProfileSettingsSection: React.FC = () => {
     if (!sessionId) return;
     setProfileLoading(true);
     try {
-      const backendUrl = getBackendUrl();
       const [summaryRes, dailyRes] = await Promise.all([
-        fetch(`${backendUrl}/api/user/stats?session_id=${sessionId}&time_range=${range}`),
-        fetch(`${backendUrl}/api/user/stats/daily?session_id=${sessionId}&time_range=${range}`),
+        appBackendApi.request('/api/user/stats', undefined, { session_id: sessionId, time_range: range }),
+        appBackendApi.request('/api/user/stats/daily', undefined, { session_id: sessionId, time_range: range }),
       ]);
       if (summaryRes.ok) setProfileSummary(await summaryRes.json());
       if (dailyRes.ok) {

@@ -7,6 +7,13 @@ from .config import Settings
 from .db import connect
 from .library_assets import delete_file_if_safe, ensure_asset_dirs
 
+_LOOKUP_COLUMNS = {
+    "artists": "name",
+    "crs": "name",
+    "ocs": "en_name",
+    "vibes": "filename",
+}
+
 
 def init_library(settings: Settings) -> None:
     ensure_asset_dirs(settings)
@@ -82,22 +89,29 @@ def fetch_all(settings: Settings, query: str) -> list[sqlite3.Row]:
 
 
 def find_one(settings: Settings, table: str, key: str, alt_column: str) -> sqlite3.Row | None:
+    if _LOOKUP_COLUMNS.get(table) != alt_column:
+        raise ValueError("unsupported library table lookup")
     with closing(connect(settings.db_path)) as conn:
         return conn.execute(
-            f"SELECT * FROM {table} WHERE id = ? OR {alt_column} = ?",
+            f"SELECT * FROM {table} WHERE id = ? OR {alt_column} = ?",  # noqa: S608
             (key, key),
         ).fetchone()
 
 
 def delete_by_key(settings: Settings, table: str, key: str, alt_column: str) -> bool:
+    if _LOOKUP_COLUMNS.get(table) != alt_column:
+        raise ValueError("unsupported library table deletion")
     row = find_one(settings, table, key, alt_column)
     if not row:
         return False
     preview = row["preview_path"] if "preview_path" in row.keys() else None
+    with closing(connect(settings.db_path)) as conn:
+        conn.execute(
+            f"DELETE FROM {table} WHERE id = ?",  # noqa: S608
+            (row["id"],),
+        )
+        conn.commit()
     if preview:
         asset_kind = {"ocs": "oc", "artists": "artists", "crs": "cr"}[table]
         delete_file_if_safe(settings, asset_kind, preview)
-    with closing(connect(settings.db_path)) as conn:
-        conn.execute(f"DELETE FROM {table} WHERE id = ?", (row["id"],))
-        conn.commit()
     return True

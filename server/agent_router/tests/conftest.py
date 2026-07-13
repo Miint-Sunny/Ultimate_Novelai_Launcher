@@ -4,6 +4,7 @@ pytest 公共 fixture & 路径配置。
 让测试可以从仓库根目录直接跑：
     cd <repo> && pytest novelai_web_ui/server/agent_router/tests
 """
+
 from __future__ import annotations
 
 import sys
@@ -14,6 +15,9 @@ import pytest
 # 把 server 目录加入 sys.path，这样 `from agent_router...` 与 `from config import ...` 都能 import
 _THIS_DIR = Path(__file__).resolve().parent
 _SERVER_DIR = _THIS_DIR.parents[1]
+_PROJECT_ROOT = _SERVER_DIR.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 if str(_SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(_SERVER_DIR))
 
@@ -33,7 +37,7 @@ def _merged_yaml(persona_text: str) -> str:
         "planner:\n"
         "  system_prompts:\n"
         "    - role: user\n"
-        "      content: \"{random_string}\"\n"
+        '      content: "{random_string}"\n'
         "    - role: system\n"
         "      content: 你是绘图助手\n"
     )
@@ -59,6 +63,7 @@ def tmp_data_dir(tmp_path, monkeypatch):
 
     # 让 prompts._data_dir() 指向这里
     from agent_router import prompts as p
+
     monkeypatch.setattr(p, "_data_dir", lambda: data_dir)
     # 清除 lru_cache，避免不同测试串扰（被缓存的是 _load_yaml_cached，不是 _load_yaml）
     p._load_yaml_cached.cache_clear()

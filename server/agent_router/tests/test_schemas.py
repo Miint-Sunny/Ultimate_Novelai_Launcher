@@ -1,17 +1,20 @@
 """
 pydantic 模型 round-trip 测试 —— 与 PydanticAI 无关，可在任何环境跑。
 """
+
 from __future__ import annotations
 
 import pytest
 
 from agent_router.schemas import (
-    DrawSpec, DrawCharacter,
-    ChatRequest, ChatResponse, ChatImage,
     AgentResult,
-    WebPromptRequest,
-    SseEvent,
+    ChatImage,
+    ChatRequest,
+    ChatResponse,
+    DrawSpec,
     HistoryMessage,
+    SseEvent,
+    WebPromptRequest,
 )
 
 
@@ -28,13 +31,15 @@ def test_draw_spec_minimal():
 
 def test_draw_spec_with_characters():
     # DrawSpec 简化后字段只剩 positive/negative/characters/size
-    spec = DrawSpec(
-        positive="2girls",
-        characters=[
-            {"name": "A", "positive": "1girl, blonde", "negative": ""},
-            {"name": "B", "positive": "1girl, black hair", "negative": "hat"},
-        ],
-        size="Portrait",
+    spec = DrawSpec.model_validate(
+        {
+            "positive": "2girls",
+            "characters": [
+                {"name": "A", "positive": "1girl, blonde", "negative": ""},
+                {"name": "B", "positive": "1girl, black hair", "negative": "hat"},
+            ],
+            "size": "Portrait",
+        }
     )
     assert len(spec.characters) == 2
     # characters 现为具名 DrawCharacter；生产代码统一经 model_dump() 取 dict 形态消费。
@@ -90,7 +95,9 @@ def test_agent_result_matches_frontend_schema():
 
 
 def test_sse_event_serialization():
-    evt = SseEvent(event="tool_call", data={"name": "search_artist", "arguments": {"keyword": "k1"}})
+    evt = SseEvent(
+        event="tool_call", data={"name": "search_artist", "arguments": {"keyword": "k1"}}
+    )
     raw = evt.model_dump()
     assert raw["event"] == "tool_call"
     assert raw["data"]["name"] == "search_artist"
@@ -128,7 +135,9 @@ async def test_web_prequery_context_matches_bot_style(monkeypatch):
     monkeypatch.setattr(
         knowledge,
         "_load_ocs_for_deps",
-        lambda deps: [{"en_name": "oc_plana", "zh_name": "普拉娜", "zh_aliases": [], "tag_group": "plana_oc"}],
+        lambda deps: [
+            {"en_name": "oc_plana", "zh_name": "普拉娜", "zh_aliases": [], "tag_group": "plana_oc"}
+        ],
     )
 
     async def fake_role_mapping(deps):
@@ -158,7 +167,9 @@ async def test_web_prequery_context_matches_bot_style(monkeypatch):
 
 def test_history_message_alias():
     """HistoryMessage 字段 alias: _is_generated_image → is_generated_image"""
-    m = HistoryMessage(role="assistant", content="hi", _is_generated_image=True)
+    m = HistoryMessage.model_validate(
+        {"role": "assistant", "content": "hi", "_is_generated_image": True}
+    )
     assert m.is_generated_image is True
 
     # 反过来：用 python 名字写
@@ -205,7 +216,10 @@ def test_web_agent_result_wraps_artist_markers_only_for_web():
     assert _chat_output_to_agent_result(output, web_deps).positive == (
         "1girl, <<artist:A1:artist:test_style>>, masterpiece"
     )
-    assert _chat_output_to_agent_result(output, bot_deps).positive == "1girl, artist:test_style, masterpiece"
+    assert (
+        _chat_output_to_agent_result(output, bot_deps).positive
+        == "1girl, artist:test_style, masterpiece"
+    )
 
 
 def test_requested_character_prompts_are_restored_from_prequery_resources():
@@ -216,11 +230,13 @@ def test_requested_character_prompts_are_restored_from_prequery_resources():
         "plana_(blue_archive) → 中文: 普拉娜、星奈 / 出处: blue_archive\n"
         "arona_(blue_archive) → 中文: 阿罗娜、彩奈 / 出处: blue_archive"
     )
-    draw_specs = [{
-        "positive": "2girls, plana_(blue_archive), arona_(blue_archive), simple background",
-        "negative": "",
-        "characters": [],
-    }]
+    draw_specs = [
+        {
+            "positive": "2girls, plana_(blue_archive), arona_(blue_archive), simple background",
+            "negative": "",
+            "characters": [],
+        }
+    ]
 
     out = _ensure_requested_character_prompts(
         draw_specs,
@@ -245,11 +261,13 @@ def test_web_current_prompt_context_tells_agent_to_edit_existing_prompt():
         user_request="给她换成冬装",
         current_positive="1girl, blue eyes, school uniform",
         current_negative="lowres",
-        current_characters=[{
-            "name": "角色A",
-            "positive": "long hair",
-            "negative": "bad hands",
-        }],
+        current_characters=[
+            {
+                "name": "角色A",
+                "positive": "long hair",
+                "negative": "bad hands",
+            }
+        ],
     )
 
     context = _build_current_prompt_context(req)

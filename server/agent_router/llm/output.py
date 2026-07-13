@@ -1,5 +1,6 @@
 """
-自研 LLM 框架 —— 输出策略层（替代 pydantic_ai.output.PromptedOutput + 内部 final_result 工具合成 + schema 生成）。
+自研 LLM 框架 —— 输出策略层（替代 pydantic_ai.output.PromptedOutput
++ 内部 final_result 工具合成 + schema 生成）。
 
 三种输出策略（由 Agent 在构造时按 output_type 解析）：
 
@@ -21,16 +22,16 @@ schema 生成关键契约：
     - Field(description=...) 文本**逐字保留**进 schema 的 "description"——它是发给模型的指令内容。
     - required 由 pydantic 默认值精确决定，不擅自增删。
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
 from .messages import ToolDefinition
-
 
 OUTPUT_TOOL_NAME = "final_result"
 
@@ -39,18 +40,21 @@ OUTPUT_TOOL_NAME = "final_result"
 # PromptedOutput marker（等价 pydantic_ai.output.PromptedOutput）
 # ============================================================
 
+
 @dataclass
 class PromptedOutput:
     """
     标记：让 Agent 用「prompt 注入 JSON schema + 文本里解析 JSON」而非 final_result 工具。
     用法：Agent(model, output_type=PromptedOutput(MyModel))。
     """
+
     output_type: type
 
 
 # ============================================================
 # 内联 JSON schema 生成（解引用 + 去 $defs/$ref，保留 description）
 # ============================================================
+
 
 def build_inlined_json_schema(model_cls: type[BaseModel]) -> dict:
     """
@@ -93,6 +97,7 @@ def build_inlined_json_schema(model_cls: type[BaseModel]) -> dict:
 # 从自由文本里抠出 JSON 对象
 # ============================================================
 
+
 def extract_json_object(text: str) -> str:
     """
     从模型自由文本里提取最外层 JSON 对象字符串。
@@ -108,7 +113,7 @@ def extract_json_object(text: str) -> str:
     # 剥 ``` / ```json 代码围栏
     if "```" in s:
         fence_start = s.find("```")
-        after = s[fence_start + 3:]
+        after = s[fence_start + 3 :]
         if after[:4].lower() == "json":
             after = after[4:]
         elif after[:1] == "\n":
@@ -143,7 +148,7 @@ def extract_json_object(text: str) -> str:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return s[start:i + 1]
+                return s[start : i + 1]
     return s[start:]
 
 
@@ -151,17 +156,22 @@ def extract_json_object(text: str) -> str:
 # 输出策略
 # ============================================================
 
-class OutputStrategy:
-    """输出策略基类。Agent.run 据此决定挂不挂 final_result 工具、注不注 schema 指令、如何解析终态。"""
 
-    #: 最终结果是否来自「助手文本」（StrOutput / PromptedJsonOutput=True；NativeStructuredOutput=False）
+class OutputStrategy:
+    """输出策略基类。
+
+    Agent.run 据此决定是否挂 final_result 工具、注入 schema 指令，以及如何解析终态。
+    """
+
+    #: 最终结果是否来自助手文本。StrOutput / PromptedJsonOutput=True；
+    #: NativeStructuredOutput=False。
     wants_text_output: bool = True
 
-    def output_tool(self) -> Optional[ToolDefinition]:
+    def output_tool(self) -> ToolDefinition | None:
         """需要合成的 final_result 工具（仅 native 返回非 None）。"""
         return None
 
-    def system_instruction(self) -> Optional[str]:
+    def system_instruction(self) -> str | None:
         """需要追加到 system 的 schema 指令（仅 prompted 返回非 None）。"""
         return None
 
@@ -240,7 +250,8 @@ def resolve_output_strategy(output_type: Any) -> OutputStrategy:
     if isinstance(output_type, type) and issubclass(output_type, BaseModel):
         return NativeStructuredOutput(output_type)
     raise TypeError(
-        f"不支持的 output_type: {output_type!r}（仅 str / BaseModel 子类 / PromptedOutput(BaseModel)）"
+        f"不支持的 output_type: {output_type!r}"
+        "（仅 str / BaseModel 子类 / PromptedOutput(BaseModel)）"
     )
 
 

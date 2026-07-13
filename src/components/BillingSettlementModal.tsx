@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Wallet, Layers, CheckCircle, QrCode, Download } from 'lucide-react';
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 import { botService } from '../services/botService';
 import { UsageDetailPanel } from './UsageDetailPanel';
 
@@ -78,6 +78,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
   const [payMethod, setPayMethod] = useState<PaymentMethod>('wechat');
+  const [paymentQrUrl, setPaymentQrUrl] = useState('');
 
   const sessionId = botService.getAuthState().sessionId;
 
@@ -87,7 +88,9 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${getBackendUrl()}/api/billing/settlement?session_id=${sessionId}`);
+        const res = await appBackendApi.request('/api/billing/settlement', undefined, {
+          session_id: sessionId,
+        });
         if (!cancelled && res.ok) {
           setReport(await res.json());
         }
@@ -101,11 +104,37 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
     return () => { cancelled = true; };
   }, [isOpen, sessionId]);
 
+  useEffect(() => {
+    const amount = report?.current_user?.total_fee ?? 0;
+    if (!isOpen || report?.payment_status !== 'unpaid' || amount <= 0) {
+      setPaymentQrUrl('');
+      return;
+    }
+    let objectUrl = '';
+    let cancelled = false;
+    setPaymentQrUrl('');
+    void appBackendApi.blob('/api/billing/qrcode', undefined, { type: payMethod })
+      .then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPaymentQrUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentQrUrl('');
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [isOpen, payMethod, report]);
+
   const handleClose = async () => {
     // Dismiss on close
     if (sessionId && report && !report.dismissed) {
       try {
-        await fetch(`${getBackendUrl()}/api/billing/dismiss?session_id=${sessionId}`, { method: 'POST' });
+        await appBackendApi.request('/api/billing/dismiss', { method: 'POST' }, {
+          session_id: sessionId,
+        });
       } catch { /* ignore */ }
     }
     onClose();
@@ -115,7 +144,9 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
     if (!sessionId || marking) return;
     setMarking(true);
     try {
-      const res = await fetch(`${getBackendUrl()}/api/billing/mark_paid?session_id=${sessionId}`, { method: 'POST' });
+      const res = await appBackendApi.request('/api/billing/mark_paid', { method: 'POST' }, {
+        session_id: sessionId,
+      });
       if (res.ok) {
         setReport(prev => prev ? { ...prev, payment_status: 'paid', dismissed: true } : prev);
       }
@@ -316,7 +347,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                     <div className="w-48 rounded-lg overflow-hidden bg-white">
                       <img
                         key={payMethod}
-                        src={`${getBackendUrl()}/api/billing/qrcode?type=${payMethod}`}
+                        src={paymentQrUrl}
                         alt={payMethod === 'wechat' ? '微信收款码' : '支付宝收款码'}
                         className="w-full h-auto"
                         onError={(e) => {
@@ -331,9 +362,9 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                       </div>
                       <button
                         onClick={() => {
-                          const url = `${getBackendUrl()}/api/billing/qrcode?type=${payMethod}`;
+                          if (!paymentQrUrl) return;
                           const a = document.createElement('a');
-                          a.href = url;
+                          a.href = paymentQrUrl;
                           a.download = `payment_qr_${payMethod}.png`;
                           a.target = '_blank';
                           a.click();

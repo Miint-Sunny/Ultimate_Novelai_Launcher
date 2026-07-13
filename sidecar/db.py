@@ -4,11 +4,17 @@ import json
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .persistence.migrations import (
+    assert_database_identity,
+    database_uri,
+    prepare_database_file,
+    require_regular_database,
+)
 from .storage import ensure_storage
 
 
@@ -47,18 +53,38 @@ class GenerationRecord:
 
 
 def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def connect(db_path: Path, *, create: bool = False) -> sqlite3.Connection:
+    """Open the compatibility DB without ever following or creating a path implicitly."""
+
+    path = Path(db_path)
+    if create:
+        _existed, identity = prepare_database_file(path)
+    else:
+        identity = require_regular_database(path)
+    conn = sqlite3.connect(database_uri(path, mode="rw"), uri=True, timeout=10.0)
+    try:
+        assert_database_identity(path, identity)
+        conn.execute("PRAGMA busy_timeout = 10000")
+        journal = conn.execute("PRAGMA journal_mode = WAL").fetchone()
+        conn.execute("PRAGMA synchronous = FULL")
+        conn.execute("PRAGMA foreign_keys = ON")
+        if journal is None or str(journal[0]).lower() != "wal":
+            raise sqlite3.DatabaseError("SQLite WAL journal mode could not be enabled")
+        if int(conn.execute("PRAGMA foreign_keys").fetchone()[0]) != 1:
+            raise sqlite3.DatabaseError("SQLite foreign keys could not be enabled")
+    except BaseException:
+        conn.close()
+        raise
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db(settings: Settings) -> None:
     ensure_storage(settings)
-    with closing(connect(settings.db_path)) as conn:
+    with closing(connect(settings.db_path, create=True)) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS generations (
@@ -189,7 +215,8 @@ def lookup_tag_translations(settings: Settings, tags: list[str]) -> dict[str, st
     placeholders = ",".join("?" for _ in keys)
     with closing(connect(settings.db_path)) as conn:
         rows = conn.execute(
-            f"SELECT tag, zh FROM tag_translations WHERE tag IN ({placeholders})",
+            # Placeholders are generated locally and every tag remains bound.
+            f"SELECT tag, zh FROM tag_translations WHERE tag IN ({placeholders})",  # noqa: S608
             keys,
         ).fetchall()
     return {row["tag"]: row["zh"] for row in rows}

@@ -11,6 +11,7 @@
     translate_tag — 模型自己能做中英翻译，外部工具反而拖慢且依赖本机翻译服务。
     delegate_to_vision — vision_agent 移除后不再需要。
 """
+
 from .knowledge import register_knowledge_tools
 
 __all__ = [

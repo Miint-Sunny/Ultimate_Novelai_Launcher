@@ -13,23 +13,34 @@
     - ToolReturnPart.content 存**原始**工具返回值（router 跨轮提炼直接 duck-type 读字段）。
     - native 结构化输出靠合成的 final_result 工具收尾；str/prompted 用最终助手文本。
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Generic, Optional, TypeVar
+from collections.abc import Callable
+from typing import Any, Generic, TypeVar
 
 from .context import RunContext
+from .exceptions import EMPTY_OUTPUT_MESSAGE, ModelRetry, UnexpectedModelBehavior
 from .messages import (
-    ModelMessage, ModelRequest, ModelResponse,
-    SystemPromptPart, UserPromptPart, ToolReturnPart, RetryPromptPart,
-    TextPart, ToolCallPart, ToolDefinition, BinaryContent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextPart,
+    ToolCallPart,
+    ToolDefinition,
+    ToolReturnPart,
+    UserPromptPart,
 )
 from .output import (
-    resolve_output_strategy, OUTPUT_TOOL_NAME, StrOutput,
+    OUTPUT_TOOL_NAME,
+    StrOutput,
+    resolve_output_strategy,
 )
-from .exceptions import ModelRetry, UnexpectedModelBehavior, EMPTY_OUTPUT_MESSAGE
 from .result import RunResult, Usage
-from .tools import build_registered_tool, serialize_tool_result, RegisteredTool
+from .tools import RegisteredTool, build_registered_tool, serialize_tool_result
 
 DepsT = TypeVar("DepsT")
 OutputT = TypeVar("OutputT")
@@ -43,7 +54,7 @@ class Agent(Generic[DepsT, OutputT]):
         self,
         model: Any = None,
         *,
-        deps_type: Optional[type] = None,
+        deps_type: type | None = None,
         output_type: Any = str,
         retries: int = 1,
     ) -> None:
@@ -60,22 +71,25 @@ class Agent(Generic[DepsT, OutputT]):
     # 注册（@agent.x 装饰器 与 agent.x(fn) 命令式 双形态）
     # ============================================================
 
-    def system_prompt(self, func: Optional[Callable] = None):
+    def system_prompt(self, func: Callable | None = None):
         def deco(fn: Callable) -> Callable:
             self._system_prompt_fns.append(fn)
             return fn
+
         return deco(func) if func is not None else deco
 
-    def output_validator(self, func: Optional[Callable] = None):
+    def output_validator(self, func: Callable | None = None):
         def deco(fn: Callable) -> Callable:
             self._output_validators.append(fn)
             return fn
+
         return deco(func) if func is not None else deco
 
-    def tool(self, func: Optional[Callable] = None, *, strict: bool = False):
+    def tool(self, func: Callable | None = None, *, strict: bool = False):
         def deco(fn: Callable) -> Callable:
             self._tools[fn.__name__] = build_registered_tool(fn, strict=strict)
             return fn
+
         return deco(func) if func is not None else deco
 
     # ============================================================
@@ -115,9 +129,9 @@ class Agent(Generic[DepsT, OutputT]):
         user_input: Any,
         *,
         deps: Any = None,
-        message_history: Optional[list[ModelMessage]] = None,
+        message_history: list[ModelMessage] | None = None,
         model: Any = None,
-        model_settings: Optional[dict] = None,
+        model_settings: dict | None = None,
     ) -> RunResult:
         active_model = model or self._default_model
         if active_model is None:
@@ -190,8 +204,11 @@ class Agent(Generic[DepsT, OutputT]):
                 if retries_left < 0:
                     raise UnexpectedModelBehavior(EMPTY_OUTPUT_MESSAGE)
                 # 若本轮模型已发起 final_result 调用（native），重试必须以 tool_result 回应它，
-                # 否则 assistant(tool_use) 后跟一条纯文本 user 会破坏工具配对（Anthropic/OpenAI 400）。
-                new_msgs.append(self._retry_request(self._retry_instruction(parse_error), final_call))
+                # 否则 assistant(tool_use) 后跟一条纯文本 user 会破坏工具配对
+                # （Anthropic/OpenAI 400）。
+                new_msgs.append(
+                    self._retry_request(self._retry_instruction(parse_error), final_call)
+                )
                 continue
 
             # ---- output_validators 链 ----
@@ -214,11 +231,17 @@ class Agent(Generic[DepsT, OutputT]):
 
             # ---- 完成 ----
             if final_call is not None:
-                new_msgs.append(ModelRequest(parts=[ToolReturnPart(
-                    tool_name=OUTPUT_TOOL_NAME,
-                    content="Final result processed.",
-                    tool_call_id=final_call.tool_call_id,
-                )]))
+                new_msgs.append(
+                    ModelRequest(
+                        parts=[
+                            ToolReturnPart(
+                                tool_name=OUTPUT_TOOL_NAME,
+                                content="Final result processed.",
+                                tool_call_id=final_call.tool_call_id,
+                            )
+                        ]
+                    )
+                )
             transcript = self._build_transcript(history, new_msgs, system_parts)
             return RunResult(candidate, transcript, history_len=history_len, usage=usage)
 
@@ -226,7 +249,9 @@ class Agent(Generic[DepsT, OutputT]):
     # 内部
     # ============================================================
 
-    async def _run_one_tool(self, ctx: RunContext, tc: ToolCallPart) -> ToolReturnPart | RetryPromptPart:
+    async def _run_one_tool(
+        self, ctx: RunContext, tc: ToolCallPart
+    ) -> ToolReturnPart | RetryPromptPart:
         tool = self._tools.get(tc.tool_name)
         if tool is None:
             return ToolReturnPart(
@@ -238,9 +263,13 @@ class Agent(Generic[DepsT, OutputT]):
         try:
             raw = await tool.invoke(ctx, args)
             _json_val, raw_val = serialize_tool_result(raw)
-            return ToolReturnPart(tool_name=tc.tool_name, content=raw_val, tool_call_id=tc.tool_call_id)
+            return ToolReturnPart(
+                tool_name=tc.tool_name, content=raw_val, tool_call_id=tc.tool_call_id
+            )
         except ModelRetry as mr:
-            return RetryPromptPart(content=mr.message, tool_name=tc.tool_name, tool_call_id=tc.tool_call_id)
+            return RetryPromptPart(
+                content=mr.message, tool_name=tc.tool_name, tool_call_id=tc.tool_call_id
+            )
         except Exception as e:  # 工具内部异常不致命，回灌错误让模型自纠
             return ToolReturnPart(
                 tool_name=tc.tool_name,
@@ -253,7 +282,11 @@ class Agent(Generic[DepsT, OutputT]):
         if not self._strategy.wants_text_output:
             # native：靠 final_result 工具
             if final_call is not None:
-                args = final_call.args if isinstance(final_call.args, dict) else _safe_json(final_call.args)
+                args = (
+                    final_call.args
+                    if isinstance(final_call.args, dict)
+                    else _safe_json(final_call.args)
+                )
                 try:
                     return self._strategy.parse_tool_args(args), None
                 except Exception as e:
@@ -285,22 +318,28 @@ class Agent(Generic[DepsT, OutputT]):
           上一条 assistant 是纯文本，没有挂起的 tool_use，重试作为普通 user 文本即可。
         """
         if final_call is not None:
-            return ModelRequest(parts=[RetryPromptPart(
-                content=content,
-                tool_name=OUTPUT_TOOL_NAME,
-                tool_call_id=final_call.tool_call_id,
-            )])
+            return ModelRequest(
+                parts=[
+                    RetryPromptPart(
+                        content=content,
+                        tool_name=OUTPUT_TOOL_NAME,
+                        tool_call_id=final_call.tool_call_id,
+                    )
+                ]
+            )
         return ModelRequest(parts=[RetryPromptPart(content=content)])
 
     def _retry_instruction(self, parse_error: Any) -> str:
         if not self._strategy.wants_text_output:
             return (
                 "你没有调用 final_result 工具，或其参数不合法"
-                f"（{_err_text(parse_error)}）。请调用 final_result 工具，并严格按其参数 schema 填写。"
+                f"（{_err_text(parse_error)}）。请调用 final_result 工具，"
+                "并严格按其参数 schema 填写。"
             )
         return (
             "你的输出不是合法 JSON 或不匹配要求的 schema"
-            f"（{_err_text(parse_error)}）。请**只输出一个**匹配 schema 的 JSON 对象，不要任何额外文字。"
+            f"（{_err_text(parse_error)}）。请**只输出一个**匹配 schema 的 JSON 对象，"
+            "不要任何额外文字。"
         )
 
     def _build_transcript(
@@ -308,7 +347,8 @@ class Agent(Generic[DepsT, OutputT]):
     ) -> list[ModelMessage]:
         """
         组装 all_messages 用的完整 transcript。
-        无 history 时把 system 段并入首条 ModelRequest（与 pydantic_ai 一致，router 据此不重复补 system）。
+        无 history 时把 system 段并入首条 ModelRequest（与 pydantic_ai 一致，
+        router 据此不重复补 system）。
         有 history 时不含 system 段（router 会用 system_prompt_parts() 补回）。
         """
         if history:
@@ -325,6 +365,7 @@ class Agent(Generic[DepsT, OutputT]):
 # ============================================================
 # helpers
 # ============================================================
+
 
 def _collect_text(response: ModelResponse) -> str:
     return "".join(p.content for p in response.parts if isinstance(p, TextPart) and p.content)

@@ -1,0 +1,65 @@
+"""Transport-neutral application contracts for the Ultimate NovelAI backend."""
+
+from .errors import (
+    AppError,
+    ApplicationError,
+    AuthenticationRequiredError,
+    CapacityExceededError,
+    ConflictError,
+    DependencyUnavailableError,
+    ErrorCode,
+    InvalidArgumentError,
+    PermissionDeniedError,
+    ResourceExpiredError,
+    ResourceNotFoundError,
+    RuntimeNotReadyError,
+)
+from .jobs import (
+    TERMINAL_JOB_STATUSES,
+    GenerationJob,
+    JobCreateResult,
+    JobEvent,
+    JobStatus,
+)
+from .protocols import (
+    HealthCheck,
+    JobEventWatchService,
+    JobService,
+    LifecycleResource,
+    RequestAuthenticator,
+    SerializableRecord,
+)
+from .types import JobId, JsonObject, JsonPrimitive, JsonValue, RuntimeState, as_utc, utc_now
+
+__all__ = [
+    "AppError",
+    "ApplicationError",
+    "AuthenticationRequiredError",
+    "CapacityExceededError",
+    "ConflictError",
+    "DependencyUnavailableError",
+    "ErrorCode",
+    "HealthCheck",
+    "GenerationJob",
+    "InvalidArgumentError",
+    "JobId",
+    "JobCreateResult",
+    "JobEvent",
+    "JobEventWatchService",
+    "JobService",
+    "JobStatus",
+    "JsonObject",
+    "JsonPrimitive",
+    "JsonValue",
+    "LifecycleResource",
+    "PermissionDeniedError",
+    "RequestAuthenticator",
+    "ResourceNotFoundError",
+    "ResourceExpiredError",
+    "RuntimeNotReadyError",
+    "RuntimeState",
+    "SerializableRecord",
+    "TERMINAL_JOB_STATUSES",
+    "as_utc",
+    "utc_now",
+]

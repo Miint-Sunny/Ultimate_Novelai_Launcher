@@ -12,32 +12,45 @@
     - 无 $ref schema 生成 / Gemini schema 清洗 / OpenAI strict 转换
     - PromptedJsonOutput 解析 / extract_json_object 健壮性 / 工具入参 schema
 """
+
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import cast
 
 import pytest
 from pydantic import BaseModel, Field
 
 from agent_router.llm import (
-    Agent, RunContext, ModelRetry, PromptedOutput, BinaryContent,
-    ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart,
-    TextPart, ToolCallPart, ToolReturnPart, UnexpectedModelBehavior,
+    Agent,
+    BinaryContent,
+    ModelRequest,
+    ModelResponse,
+    ModelRetry,
+    PromptedOutput,
+    RunContext,
+    SystemPromptPart,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UnexpectedModelBehavior,
+    UserPromptPart,
 )
 from agent_router.llm.models.base import Model
-from agent_router.llm.result import Usage
-from agent_router.llm.output import (
-    build_inlined_json_schema, extract_json_object, OUTPUT_TOOL_NAME,
-)
-from agent_router.llm.tools import build_param_schema, build_registered_tool
-from agent_router.llm.models.openai import _to_openai_strict
 from agent_router.llm.models.google import _to_gemini_schema
-
+from agent_router.llm.models.openai import _to_openai_strict
+from agent_router.llm.output import (
+    OUTPUT_TOOL_NAME,
+    build_inlined_json_schema,
+    extract_json_object,
+)
+from agent_router.llm.result import Usage
+from agent_router.llm.tools import build_param_schema, build_registered_tool
 
 # ============================================================
 # FakeModel
 # ============================================================
+
 
 class FakeModel(Model):
     """按脚本逐条返回 ModelResponse，记录每次请求入参。"""
@@ -48,13 +61,15 @@ class FakeModel(Model):
         self.calls: list[dict] = []
 
     async def request(self, messages, *, system_parts, tools, require_tool, model_settings=None):
-        self.calls.append({
-            "messages": list(messages),
-            "system_parts": list(system_parts),
-            "tools": list(tools),
-            "require_tool": require_tool,
-            "model_settings": model_settings,
-        })
+        self.calls.append(
+            {
+                "messages": list(messages),
+                "system_parts": list(system_parts),
+                "tools": list(tools),
+                "require_tool": require_tool,
+                "model_settings": model_settings,
+            }
+        )
         resp = self._responses.pop(0)
         return resp, Usage(input_tokens=3, output_tokens=5, total_tokens=8, requests=1)
 
@@ -63,12 +78,13 @@ class Sample(BaseModel):
     positive: str = Field(..., description="全局正向 tag")
     negative: str = Field("", description="全局反向 tag")
     characters: list[dict[str, str]] = Field(default_factory=list, description="分角色")
-    size: Optional[str] = Field(None, description="尺寸")
+    size: str | None = Field(None, description="尺寸")
 
 
 # ============================================================
 # StrOutput
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_str_output():
@@ -83,18 +99,27 @@ async def test_str_output():
 # Native 结构化输出 + 工具往返
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_native_with_tool_roundtrip():
-    model = FakeModel([
-        # 第一轮：调用用户工具
-        ModelResponse(parts=[ToolCallPart(tool_name="lookup", args={"q": "x"}, tool_call_id="c1")]),
-        # 第二轮：调用 final_result 收尾
-        ModelResponse(parts=[ToolCallPart(
-            tool_name=OUTPUT_TOOL_NAME,
-            args={"positive": "1girl", "negative": "", "characters": [], "size": None},
-            tool_call_id="c2",
-        )]),
-    ])
+    model = FakeModel(
+        [
+            # 第一轮：调用用户工具
+            ModelResponse(
+                parts=[ToolCallPart(tool_name="lookup", args={"q": "x"}, tool_call_id="c1")]
+            ),
+            # 第二轮：调用 final_result 收尾
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME,
+                        args={"positive": "1girl", "negative": "", "characters": [], "size": None},
+                        tool_call_id="c2",
+                    )
+                ]
+            ),
+        ]
+    )
     agent: Agent = Agent(model, output_type=Sample, retries=3)
 
     captured = {}
@@ -115,8 +140,11 @@ async def test_native_with_tool_roundtrip():
     assert model.calls[0]["require_tool"] is True
     # 工具返回原始结构化值挂在 ToolReturnPart.content
     tool_returns = [
-        p for m in result.all_messages() if isinstance(m, ModelRequest)
-        for p in m.parts if isinstance(p, ToolReturnPart) and p.tool_name == "lookup"
+        p
+        for m in result.all_messages()
+        if isinstance(m, ModelRequest)
+        for p in m.parts
+        if isinstance(p, ToolReturnPart) and p.tool_name == "lookup"
     ]
     assert tool_returns and tool_returns[0].content == [{"name": "n1", "tags": "t1"}]
 
@@ -125,12 +153,27 @@ async def test_native_with_tool_roundtrip():
 # ModelRetry（validator 触发）
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_output_validator_model_retry():
-    model = FakeModel([
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"positive": "bad"}, tool_call_id="c1")]),
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"positive": "good"}, tool_call_id="c2")]),
-    ])
+    model = FakeModel(
+        [
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME, args={"positive": "bad"}, tool_call_id="c1"
+                    )
+                ]
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME, args={"positive": "good"}, tool_call_id="c2"
+                    )
+                ]
+            ),
+        ]
+    )
     agent: Agent = Agent(model, output_type=Sample, retries=3)
 
     @agent.output_validator
@@ -148,6 +191,7 @@ async def test_output_validator_model_retry():
 # 反复空输出 -> UnexpectedModelBehavior（含 router 匹配子串）
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_empty_output_raises_with_router_substrings():
     # native 却只回文本，从不调用 final_result
@@ -163,6 +207,7 @@ async def test_empty_output_raises_with_router_substrings():
 # ============================================================
 # system_prompt 顺序 + system_prompt_parts
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_system_prompt_order_and_parts():
@@ -189,6 +234,7 @@ async def test_system_prompt_order_and_parts():
 # ============================================================
 # all_messages：history 时省略 system，无 history 时并入
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_all_messages_system_omission_with_history():
@@ -236,6 +282,7 @@ async def test_all_messages_system_inlined_without_history():
 # schema 生成 / 清洗
 # ============================================================
 
+
 def test_build_inlined_json_schema_no_ref():
     schema = build_inlined_json_schema(Sample)
     blob = json.dumps(schema)
@@ -267,18 +314,21 @@ def test_openai_strict_transform():
 # 工具入参 schema
 # ============================================================
 
-def _sample_tool_fn(ctx, query: Optional[str] = None, limit: int = 30, must: str = ...):  # noqa: ANN001
+
+def _sample_tool_fn(  # noqa: ANN001
+    ctx, query: str | None = None, limit: int = 30, must: str = cast(str, ...)
+):
     """sample"""
     return []
 
 
 def test_build_param_schema():
-    def fn(ctx, query: Optional[str] = None, limit: int = 30, must=None, *, kw: str = "x"):
+    def fn(ctx, query: str | None = None, limit: int = 30, must=None, *, kw: str = "x"):
         """doc"""
         return []
 
     # 用真实签名：must 无默认 -> required
-    def fn2(ctx, must: str, query: Optional[str] = None, limit: int = 30):
+    def fn2(ctx, must: str, query: str | None = None, limit: int = 30):
         """doc2"""
         return []
 
@@ -321,6 +371,7 @@ async def _list_tool(ctx, ids: list[str]):
 # PromptedJsonOutput / extract_json_object
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_prompted_json_output():
     payload = {"positive": "p", "negative": "", "characters": [], "size": None}
@@ -344,6 +395,7 @@ def test_extract_json_object():
 # BinaryContent 标量/列表归一
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_binary_content_in_user_message():
     model = FakeModel([ModelResponse(parts=[TextPart(content="ok")])])
@@ -361,20 +413,39 @@ async def test_binary_content_in_user_message():
 # 回归：native final_result 解析失败的重试携带 tool_call_id（回应挂起 tool_use）
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_native_parse_error_retry_carries_tool_call_id():
     from agent_router.llm.messages import RetryPromptPart
+
     # attempt1: final_result 缺必填 positive -> 校验失败 -> 重试；attempt2: 合法
-    model = FakeModel([
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"negative": "x"}, tool_call_id="c1")]),
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"positive": "ok"}, tool_call_id="c2")]),
-    ])
+    model = FakeModel(
+        [
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME, args={"negative": "x"}, tool_call_id="c1"
+                    )
+                ]
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME, args={"positive": "ok"}, tool_call_id="c2"
+                    )
+                ]
+            ),
+        ]
+    )
     agent = Agent(model, output_type=Sample, retries=3)
     result = await agent.run("hi")
     assert result.output.positive == "ok"
     retry_parts = [
-        p for m in result.all_messages() if isinstance(m, ModelRequest)
-        for p in m.parts if isinstance(p, RetryPromptPart)
+        p
+        for m in result.all_messages()
+        if isinstance(m, ModelRequest)
+        for p in m.parts
+        if isinstance(p, RetryPromptPart)
     ]
     # 重试必须作为对 final_result(c1) 的 tool_result 回应（带 tool_name + tool_call_id）
     assert retry_parts
@@ -385,10 +456,25 @@ async def test_native_parse_error_retry_carries_tool_call_id():
 @pytest.mark.asyncio
 async def test_validator_retry_carries_tool_call_id():
     from agent_router.llm.messages import RetryPromptPart
-    model = FakeModel([
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"positive": "bad"}, tool_call_id="c1")]),
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"positive": "good"}, tool_call_id="c2")]),
-    ])
+
+    model = FakeModel(
+        [
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME, args={"positive": "bad"}, tool_call_id="c1"
+                    )
+                ]
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=OUTPUT_TOOL_NAME, args={"positive": "good"}, tool_call_id="c2"
+                    )
+                ]
+            ),
+        ]
+    )
     agent = Agent(model, output_type=Sample, retries=3)
 
     @agent.output_validator
@@ -400,8 +486,11 @@ async def test_validator_retry_carries_tool_call_id():
     result = await agent.run("hi")
     assert result.output.positive == "good"
     retry_parts = [
-        p for m in result.all_messages() if isinstance(m, ModelRequest)
-        for p in m.parts if isinstance(p, RetryPromptPart)
+        p
+        for m in result.all_messages()
+        if isinstance(m, ModelRequest)
+        for p in m.parts
+        if isinstance(p, RetryPromptPart)
     ]
     assert retry_parts and retry_parts[0].tool_call_id == "c1"
 
@@ -410,12 +499,17 @@ async def test_validator_retry_carries_tool_call_id():
 # 回归：工具抛 ModelRetry 消耗 retries 预算（不无界重投到 _MAX_ITERATIONS）
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_tool_model_retry_consumes_budget():
-    model = FakeModel([
-        ModelResponse(parts=[ToolCallPart(tool_name="always_retry", args={}, tool_call_id=f"c{i}")])
-        for i in range(12)
-    ])
+    model = FakeModel(
+        [
+            ModelResponse(
+                parts=[ToolCallPart(tool_name="always_retry", args={}, tool_call_id=f"c{i}")]
+            )
+            for i in range(12)
+        ]
+    )
     agent = Agent(model, output_type=Sample, retries=2)
 
     @agent.tool

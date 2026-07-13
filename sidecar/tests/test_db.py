@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sidecar.config import Settings
 from sidecar.db import (
+    connect,
     create_generation,
     init_db,
     list_history,
@@ -14,6 +15,7 @@ from sidecar.db import (
     mark_success,
     upsert_tag_translations,
 )
+from sidecar.persistence import DatabaseIntegrityError
 
 
 def make_settings(path: Path) -> Settings:
@@ -31,6 +33,25 @@ def make_settings(path: Path) -> Settings:
 
 
 class DbTests(unittest.TestCase):
+    def test_compat_connection_never_creates_or_follows_a_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            missing = root / "missing.sqlite3"
+            with self.assertRaises(DatabaseIntegrityError):
+                connect(missing)
+            self.assertFalse(missing.exists())
+
+            target = root / "outside.sqlite3"
+            target.write_bytes(b"sentinel")
+            link = root / "link.sqlite3"
+            try:
+                link.symlink_to(target)
+            except (OSError, NotImplementedError):
+                self.skipTest("symbolic links are unavailable")
+            with self.assertRaises(DatabaseIntegrityError):
+                connect(link)
+            self.assertEqual(target.read_bytes(), b"sentinel")
+
     def test_history_lifecycle(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             settings = make_settings(Path(temp))

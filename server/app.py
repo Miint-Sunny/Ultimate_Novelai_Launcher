@@ -29,21 +29,74 @@ import base64
 import math
 import re
 import html as html_lib
+import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable, List, Tuple
+from typing import Literal, Optional, Dict, Any, Callable, List, Mapping, Protocol, Tuple
+from urllib.parse import urlsplit
 import threading
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Header, Depends
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import aiohttp
 import aiofiles
 import httpx
 import msgpack
+
+# ``server/run.py`` historically starts with ``server/`` as sys.path[0].  Keep
+# that entrypoint compatible while allowing the neutral cloud backend package to
+# remain at the repository root.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from backend_core.jobs import JobStatus
+from cloud_backend.body_limit import StreamingBodyLimitMiddleware
+from cloud_backend.errors import (
+    CloudBackendError,
+    InvalidCapabilityError,
+    InvalidRequestError,
+    JobStateConflictError,
+    ResourceNotFoundError,
+    UsageRecordingError,
+)
+from cloud_backend.identity import Principal, ResourceOwner
+from cloud_backend.library_access import LibraryOwnershipService, OwnerScopedLibraryStorage
+from cloud_backend.infrastructure import (
+    CloudJobResultStore,
+    SecureJsonObjectStore,
+    SQLiteCloudJobRepository,
+    SQLiteWorkshopQuotaRepository,
+    StorageIntegrityError,
+)
+from cloud_backend.jobs import CloudJob
+from cloud_backend.job_events import JobEventSubscriptionSet
+from cloud_backend.legacy_adapter import (
+    LegacyQuotaLedger,
+    LegacyTaskAccess,
+    bearer_token,
+    persistent_capability_key,
+)
+from cloud_backend.outbound import (
+    PublicEndpointPolicy,
+    SafeBinaryHttpClient,
+    SafeBytesHttpClient,
+    SafeJsonHttpClient,
+)
+from cloud_backend.pairing import PairingCapacityError, PairingCodeRegistry
+from cloud_backend.paid_operations import (
+    MAX_PAID_RESULT_BYTES,
+    MAX_TRANSLATE_CONTEXT_BYTES,
+    PaidOperationService,
+    UsageCharge,
+    normalize_image_base64,
+    validate_translate_context,
+)
+from agent_router.access import AgentAccess
 
 from config import (
     BOT_DATA_DIR, NOVELAI_TOKENS, NOVELAI_ANLAS_ONLY_TOKEN, PROXY_URL, IMAGE_GENERATION_PROXY_URL, DANBOORU_PROXY_URL, TOKEN_MAX_CONSECUTIVE_ERRORS,
@@ -65,6 +118,58 @@ from config import (
 # 整模块导入，供访问控制读取"可选、向后兼容"的安全配置项（老 config.py 缺字段时取默认）。
 import config as _appcfg
 
+_CLOUD_TENANT_ID = str(getattr(_appcfg, "CLOUD_TENANT_ID", "default") or "default")
+_DIRECT_TASK_TENANT_ID = f"{_CLOUD_TENANT_ID}:direct"
+_BOT_TASK_TENANT_ID = f"{_CLOUD_TENANT_ID}:bot"
+_task_access = LegacyTaskAccess.from_secret(
+    persistent_capability_key(
+        getattr(_appcfg, "JOB_CAPABILITY_SECRET", ""),
+        Path(
+            getattr(
+                _appcfg,
+                "JOB_CAPABILITY_KEY_PATH",
+                Path(__file__).resolve().parent / "data" / "job_capability.key",
+            )
+        ),
+    )
+)
+_quota_ledger = LegacyQuotaLedger(
+    Path(
+        getattr(
+            _appcfg,
+            "CLOUD_QUOTA_DB_PATH",
+            Path(__file__).resolve().parent / "data" / "cloud_quota.db",
+        )
+    ),
+    enabled=bool(getattr(_appcfg, "CLOUD_QUOTA_ENABLED", False)),
+)
+_cloud_jobs = SQLiteCloudJobRepository(
+    Path(
+        getattr(
+            _appcfg,
+            "CLOUD_JOBS_DB_PATH",
+            Path(__file__).resolve().parent / "data" / "cloud_jobs.db",
+        )
+    )
+)
+_cloud_job_results = CloudJobResultStore(
+    Path(
+        getattr(
+            _appcfg,
+            "CLOUD_JOB_RESULTS_DIR",
+            Path(__file__).resolve().parent / "data" / "cloud_job_results",
+        )
+    )
+)
+_GENERATION_QUEUE_CAPACITY = max(
+    1,
+    int(getattr(_appcfg, "LEGACY_GENERATION_QUEUE_CAPACITY", 32)),
+)
+_safe_outbound_json = SafeJsonHttpClient()
+_safe_outbound_large_json = SafeJsonHttpClient(max_response_bytes=48 * 1024 * 1024)
+_safe_outbound_bytes = SafeBytesHttpClient()
+_safe_outbound_binary = SafeBinaryHttpClient()
+
 # Boost 通道
 from captcha_client import (
     solve_recaptcha_v3 as boost_solve_captcha,
@@ -77,31 +182,6 @@ try:
     from aiohttp_socks import ProxyConnector
 except ImportError:
     ProxyConnector = None
-
-# ==================== 翻译接口全局连接池 ====================
-_translate_session: aiohttp.ClientSession | None = None
-_translate_session_proxy_url: str | None = None  # 记录当前 session 对应的代理配置
-
-
-async def _get_translate_session(proxy_url: str = "") -> aiohttp.ClientSession:
-    """获取或创建翻译专用的全局 aiohttp session（复用 TCP/TLS 连接）"""
-    global _translate_session, _translate_session_proxy_url
-    # 代理配置变了或 session 已关闭，重建
-    if (
-        _translate_session is None
-        or _translate_session.closed
-        or _translate_session_proxy_url != proxy_url
-    ):
-        if _translate_session and not _translate_session.closed:
-            await _translate_session.close()
-        connector = None
-        if proxy_url and ProxyConnector:
-            connector = ProxyConnector.from_url(proxy_url)
-        _translate_session = aiohttp.ClientSession(connector=connector)
-        _translate_session_proxy_url = proxy_url
-    return _translate_session
-
-
 
 class SafeJsonStore:
     """线程安全的 JSON 文件读写，带原子写入和备份机制。
@@ -988,18 +1068,20 @@ _workers_started = False
 _task_counter = 0
 _current_task = 0
 _running_count = 0
+_generation_admitting = 0
 _state_lock = threading.Lock()
 _user_pending: Dict[str, int] = {}
+_generation_upstream_tasks: Dict[str, asyncio.Task] = {}
 
 # WebSocket 连接管理（用于推送生成进度）
-_generation_websockets: Dict[str, WebSocket] = {}  # task_id -> websocket
+_generation_websockets: Dict[str, set[WebSocket]] = {}
 
 
 async def _ensure_queue():
     """确保队列已初始化"""
     global _image_queue, _queue_lock
     if _image_queue is None:
-        _image_queue = asyncio.Queue()
+        _image_queue = asyncio.Queue(maxsize=_GENERATION_QUEUE_CAPACITY)
         _queue_lock = asyncio.Lock()
 
 
@@ -1464,13 +1546,21 @@ async def novelai_worker(worker_id: int, token: str):
             try:
                 # 获取到 Token 后才标记为生成中，避免前端在等待 Token 阶段显示进度条
                 task = _generation_tasks.get(task_id)
+                persisted = await _cloud_jobs.get(task_id)
+                if persisted is None or persisted.status is not JobStatus.QUEUED:
+                    if persisted and persisted.status is JobStatus.CANCELLED and task:
+                        task["status"] = "cancelled"
+                    continue
                 if task:
                     task["status"] = "generating"
                     # 只发一次 generating 通知（不再额外调用 progress_callback(0)）
                     await _notify_task_update(task_id, "generating", 0, params.get("steps", 28))
-                
+
                 # 调用流式生成
-                result_b64 = await generate_novelai_image_stream(params, progress_callback, use_token)
+                result_b64 = await _await_generation_upstream(
+                    task_id,
+                    lambda: generate_novelai_image_stream(params, progress_callback, use_token),
+                )
             
                 elapsed = time.time() - start_time
                 
@@ -1488,7 +1578,7 @@ async def novelai_worker(worker_id: int, token: str):
                     if bot_uid:
                         await _record_web_stats(bot_uid, params)
                         await _record_generation_duration(bot_uid, elapsed)
-                else:
+                elif (_generation_tasks.get(task_id) or {}).get("status") != "cancelled":
                     task = _generation_tasks.get(task_id)
                     if task:
                         task["status"] = "failed"
@@ -1504,11 +1594,13 @@ async def novelai_worker(worker_id: int, token: str):
                 print(f"[{worker_name}] ✗ 任务异常: id={task_id}, user={user_id}, 错误={e}, 耗时={elapsed:.1f}s")
                 print(f"[{worker_name}] 异常堆栈:\n{tb}")
                 task = _generation_tasks.get(task_id)
-                if task:
+                cancelled = await _finish_cancel_if_requested(task_id)
+                if task and not cancelled:
                     task["status"] = "failed"
                     task["error"] = _humanize_nai_error(str(e))
                     await _notify_task_update(task_id, "failed", error=task["error"])
-                await token_manager.record_error(use_token, str(e))
+                if not cancelled:
+                    await token_manager.record_error(use_token, str(e))
             finally:
                 # 任务完成或失败，释放占用的 Token，允许其他 worker 或 vibe 请求使用
                 await token_manager.release_token(use_token)
@@ -1520,7 +1612,8 @@ async def novelai_worker(worker_id: int, token: str):
             elapsed = time.time() - start_time
             print(f"[{worker_name}] ✗ 获取Token/初始化异常: id={task_id}, user={user_id}, 错误={e}, 耗时={elapsed:.1f}s")
             task = _generation_tasks.get(task_id)
-            if task:
+            cancelled = await _finish_cancel_if_requested(task_id)
+            if task and not cancelled:
                 task["status"] = "failed"
                 task["error"] = _humanize_nai_error(str(e))
                 await _notify_task_update(task_id, "failed", error=task["error"])
@@ -1537,6 +1630,8 @@ async def novelai_worker(worker_id: int, token: str):
                                 _user_pending[task_user_id] = cnt - 1
                 # 任务结束后清理大体积的 params 数据，释放内存（保留关键字段用于状态查询）
                 task.pop("params", None)
+
+            await _settle_generation_quota(task_id)
             
             # 清理 WebSocket 订阅
             _generation_websockets.pop(task_id, None)
@@ -1591,6 +1686,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
     start_time = time.time()
     held_email: Optional[str] = None
     fallback_to_queue = False
+    provider_started = False
 
     try:
         # progress_callback（接口跟 paid worker 完全一致）
@@ -1656,16 +1752,27 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
 
         # 3. 标记 generating
         t = _generation_tasks.get(task_id)
+        persisted = await _cloud_jobs.get(task_id)
+        if persisted is None or persisted.status is not JobStatus.QUEUED:
+            if persisted and persisted.status is JobStatus.CANCELLED and t:
+                t["status"] = "cancelled"
+            fallback_to_queue = False
+            return
         if t:
             t["status"] = "generating"
             await _notify_task_update(task_id, "generating", 0, params.get("steps", 28))
 
         # 4. 调用流式生成（带 recaptcha_token = 走 boost 路径）
-        result_b64 = await generate_novelai_image_stream(
-            params, progress_callback,
-            token=acct["bearer"],
-            recaptcha_token=captcha_token,
+        result_b64 = await _await_generation_upstream(
+            task_id,
+            lambda: generate_novelai_image_stream(
+                params,
+                progress_callback,
+                token=acct["bearer"],
+                recaptcha_token=captcha_token,
+            ),
         )
+        provider_started = True
         elapsed = time.time() - start_time
 
         if result_b64:
@@ -1690,7 +1797,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
             # 成功：扣 1 张额度
             await trial_pool.release(held_email, deduct=True)
             held_email = None
-        else:
+        elif (_generation_tasks.get(task_id) or {}).get("status") != "cancelled":
             print(f"[{worker_name}] ✗ 无返回数据: id={task_id}, 号 {held_email}")
             await trial_pool.release(held_email,
                                      cooldown_sec=NAI_BOOST_COOLDOWN_PER_ACCOUNT_SEC)
@@ -1705,6 +1812,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         print(f"[{worker_name}] ✗ 异常: id={task_id}, user={user_id}, "
               f"错误={msg}, 耗时={elapsed:.1f}s")
         print(tb)
+        cancelled = await _finish_cancel_if_requested(task_id)
         # 滑动窗口 403 熔断：最近 N 次任务里失败 ≥ 阈值 → 全局冷却。
         # 兜底，防止服务器 IP 被风控了仍然反复尝试浪费 trial / captcha 钱。
         # 其他类型失败（429 / 网络 / 解析）不入窗口，只统计 NAI 明确的 captcha/403 风控信号。
@@ -1713,7 +1821,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
             or "Recaptcha validation failed" in msg
             or "recaptcha validation failed" in msg.lower()
         )
-        if is_403_or_captcha:
+        if is_403_or_captcha and not cancelled:
             _boost_recent_results.append(True)
             fail_count = _boost_recent_403_count()
             print(f"[{worker_name}] 窗口 403 计数 {fail_count}/{NAI_BOOST_403_THRESHOLD} "
@@ -1733,28 +1841,38 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         if held_email:
             await trial_pool.release(held_email, cooldown_sec=cd)
             held_email = None
-        fallback_to_queue = True
+        fallback_to_queue = not cancelled
 
     finally:
         # 兜底：万一持仓未释放
         if held_email:
             await trial_pool.release(held_email)
 
+        persisted = await _cloud_jobs.get(task_id)
+        provider_started = bool(persisted and persisted.provider_attempted)
+
         # boost 处理失败 → 任务塞回队列让 paid worker 接（不扣 user_pending，
         # 因为任务还在跑，等 paid worker 真的结束时再扣）
         if fallback_to_queue:
             t = _generation_tasks.get(task_id)
             if t and t.get("status") not in ("cancelled", "completed"):
-                t["status"] = "queued"
-                await _notify_task_update(task_id, "queued", 0, params.get("steps", 28))
-                try:
-                    await _image_queue.put((task_id, params, task_seq))
-                    print(f"[{worker_name}] 回退到队列: id={task_id}")
-                except Exception as e:
-                    print(f"[{worker_name}] 回退入队失败: {e}")
+                if provider_started:
                     t["status"] = "failed"
-                    t["error"] = "boost 失败且回退入队失败"
+                    t["error"] = "boost 上游尝试失败"
                     await _notify_task_update(task_id, "failed", error=t["error"])
+                    fallback_to_queue = False
+                else:
+                    t["status"] = "queued"
+                    await _notify_task_update(task_id, "queued", 0, params.get("steps", 28))
+                    try:
+                        _image_queue.put_nowait((task_id, params, task_seq))
+                        print(f"[{worker_name}] 回退到队列: id={task_id}")
+                    except asyncio.QueueFull:
+                        print(f"[{worker_name}] 回退入队失败: queue full")
+                        t["status"] = "failed"
+                        t["error"] = "boost 失败且回退队列已满"
+                        await _notify_task_update(task_id, "failed", error=t["error"])
+                        fallback_to_queue = False
 
         with _state_lock:
             _running_count -= 1
@@ -1773,6 +1891,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
                 t.pop("params", None)
             _generation_websockets.pop(task_id, None)
 
+        await _settle_generation_quota(task_id)
         await _broadcast_queue_position_update()
 
 
@@ -1825,8 +1944,8 @@ async def _broadcast_queue_position_update():
     queued_tasks.sort(key=lambda x: x[1].get("task_seq", 0))
     
     for pos, (tid, task) in enumerate(queued_tasks, start=1):
-        ws = _generation_websockets.get(tid)
-        if ws:
+        sockets = _generation_websockets.get(tid, set()).copy()
+        for ws in sockets:
             try:
                 await ws.send_json({
                     "action": "task_update",
@@ -1834,8 +1953,10 @@ async def _broadcast_queue_position_update():
                     "status": "queued",
                     "queue_position": pos,
                 })
-            except:
-                pass
+            except Exception:
+                subscribers = _generation_websockets.get(tid)
+                if subscribers is not None:
+                    subscribers.discard(ws)
 
 
 class _NaiStreamError(Exception):
@@ -1927,44 +2048,246 @@ def _humanize_nai_error(raw: Optional[str]) -> str:
     return text
 
 
+_LEGACY_TO_JOB_STATUS = {
+    "queued": JobStatus.QUEUED,
+    "generating": JobStatus.RUNNING,
+    "cancelling": JobStatus.CANCELLING,
+    "completed": JobStatus.SUCCEEDED,
+    "failed": JobStatus.FAILED,
+    "cancelled": JobStatus.CANCELLED,
+    "interrupted": JobStatus.INTERRUPTED,
+}
+_JOB_TO_LEGACY_STATUS = {
+    JobStatus.QUEUED: "queued",
+    JobStatus.RUNNING: "generating",
+    JobStatus.CANCELLING: "cancelling",
+    JobStatus.SUCCEEDED: "completed",
+    JobStatus.FAILED: "failed",
+    JobStatus.CANCELLED: "cancelled",
+    JobStatus.INTERRUPTED: "interrupted",
+}
+
+
+def _generation_request_hash(params: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        params,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _persistent_generation_payload(params: dict[str, Any]) -> dict[str, Any]:
+    """Keep useful request metadata without copying base64 source images into SQLite."""
+    prompt = str(params.get("input_text1") or params.get("positivePrompt") or "")
+    negative = str(params.get("input_text2") or params.get("negativePrompt") or "")
+    return {
+        "image_backend": str(params.get("_image_backend") or params.get("image_backend") or "novelai"),
+        "model": str(params.get("model") or ""),
+        "width": int(params.get("width") or 0),
+        "height": int(params.get("height") or 0),
+        "steps": int(params.get("steps") or 0),
+        "seed": int(params.get("seed") or 0),
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "negative_prompt_sha256": hashlib.sha256(negative.encode("utf-8")).hexdigest(),
+    }
+
+
+async def _ensure_cloud_job_storage() -> None:
+    await _cloud_jobs.initialize()
+    await _cloud_job_results.initialize()
+
+
+async def _persist_task_update(
+    task_id: str,
+    status: str,
+    *,
+    step: int,
+    total_steps: int,
+    result: str | None,
+    error: str | None,
+    event_metadata: Mapping[str, Any] | None = None,
+):
+    await _ensure_cloud_job_storage()
+    target = _LEGACY_TO_JOB_STATUS.get(status)
+    if target is None:
+        raise InvalidRequestError("legacy job status is invalid")
+    job = await _cloud_jobs.get(task_id)
+    if job is None:
+        raise ResourceNotFoundError()
+    # Terminal idempotency must short-circuit before touching the result store.
+    # Otherwise a retry carrying different bytes could overwrite or orphan the
+    # already-committed result before the repository rejects the transition.
+    if job.status is target and job.terminal:
+        return job, None
+    if job.terminal:
+        raise JobStateConflictError("terminal job status cannot change")
+    result_metadata = None
+    if result:
+        result_metadata = await _cloud_job_results.save_base64(task_id, result)
+
+    # A running job must pass through cancelling before cancelled.  request_cancel
+    # performs the classification in one BEGIN IMMEDIATE transaction.
+    if target is JobStatus.CANCELLED and job.status is JobStatus.RUNNING:
+        job, _ = await _cloud_jobs.request_cancel(task_id)
+    if target is JobStatus.RUNNING:
+        kind = "progress" if step > 0 else "started"
+    elif target is JobStatus.SUCCEEDED:
+        kind = "succeeded"
+    else:
+        kind = target.value
+    event_data = dict(event_metadata or {})
+    if step > 0:
+        event_data.update({"step": step, "total_steps": total_steps})
+    return await _cloud_jobs.transition(
+        task_id,
+        target,
+        kind=kind,
+        step=step,
+        total_steps=total_steps,
+        result=result_metadata,
+        error=error,
+        data=event_data,
+    )
+
+
+async def _legacy_job_response(job: CloudJob) -> dict[str, Any]:
+    image = None
+    if job.result:
+        try:
+            image = await _cloud_job_results.load_base64(job.result)
+        except ResourceNotFoundError:
+            image = None
+    status = _JOB_TO_LEGACY_STATUS[job.status]
+    return {
+        "task_id": job.id,
+        "status": status,
+        "step": job.step,
+        "total_steps": job.total_steps,
+        "result": {"type": "base64", "imageBase64": image} if image else None,
+        "error": job.error,
+        "queue_position": _get_task_queue_position(job.id) if status == "queued" else 0,
+    }
+
+
 async def _notify_task_update(task_id: str, status: str, step: int = 0, total_steps: int = 0,
                                result: str = None, preview: str = None, error: str = None):
-    """通过 WebSocket 通知任务状态更新"""
+    """Persist one job event, then best-effort mirror it to legacy WebSockets."""
     if error:
         error = _humanize_nai_error(error)
-    ws = _generation_websockets.get(task_id)
-    
-    if not ws:
-        # 没有 WebSocket 连接时静默返回（前端可能用 HTTP 轮询）
+    job, event = await _persist_task_update(
+        task_id,
+        status,
+        step=step,
+        total_steps=total_steps,
+        result=result,
+        error=error,
+    )
+    sockets = _generation_websockets.get(task_id, set()).copy()
+
+    if not sockets:
         return
-        
-    try:
-        # 如果有进度信息且不是最终结果，发送 task_progress 消息
-        if step > 0 and not result:
-            progress_msg = {
-                "action": "task_progress",
-                "task_id": task_id,
-                "step": step,
-                "total_steps": total_steps,
-            }
-            if preview:
-                progress_msg["preview"] = preview
-            await ws.send_json(progress_msg)
-        
-        # 发送 task_update 消息（状态变化或最终结果）
-        update_msg = {
-            "action": "task_update",
+
+    progress_msg = None
+    if step > 0 and not result:
+        progress_msg = {
+            "action": "task_progress",
             "task_id": task_id,
-            "status": status,
-            "queue_position": _get_task_queue_position(task_id) if status == "queued" else 0,
+            "step": step,
+            "total_steps": total_steps,
         }
-        if result:
-            update_msg["result"] = {"type": "base64", "imageBase64": result}
-        if error:
-            update_msg["error"] = error
-        await ws.send_json(update_msg)
-    except Exception as e:
-        print(f"[WebSocket] 发送任务更新失败: {e}")
+        if preview:
+            progress_msg["preview"] = preview
+    update_msg = {
+        "action": "task_update",
+        "task_id": task_id,
+        "status": status,
+        "queue_position": _get_task_queue_position(task_id) if status == "queued" else 0,
+        "sequence": event.sequence if event else await _cloud_jobs.latest_sequence(task_id),
+    }
+    if result:
+        update_msg["result"] = {"type": "base64", "imageBase64": result}
+    if error:
+        update_msg["error"] = error
+    for ws in sockets:
+        try:
+            if progress_msg:
+                await ws.send_json(progress_msg)
+            await ws.send_json(update_msg)
+        except Exception as e:
+            print(f"[WebSocket] 发送任务更新失败: {e}")
+            subscribers = _generation_websockets.get(task_id)
+            if subscribers is not None:
+                subscribers.discard(ws)
+
+
+async def _finish_cancel_if_requested(task_id: str) -> bool:
+    job = await _cloud_jobs.get(task_id)
+    if job is None or job.status not in {JobStatus.CANCELLING, JobStatus.CANCELLED}:
+        return False
+    if job.status is JobStatus.CANCELLING:
+        job, _ = await _cloud_jobs.transition(
+            task_id,
+            JobStatus.CANCELLED,
+            kind="cancelled",
+            error="用户取消",
+        )
+    task = _generation_tasks.get(task_id)
+    if task:
+        task["status"] = "cancelled"
+        task["error"] = "用户取消"
+    await _notify_task_update(task_id, "cancelled", error="用户取消")
+    return True
+
+
+async def _await_generation_upstream(task_id: str, factory):
+    """Register a gated provider task before atomically claiming its cost boundary."""
+    start_provider = asyncio.Event()
+
+    async def gated_provider():
+        await start_provider.wait()
+        return await factory()
+
+    upstream = asyncio.create_task(gated_provider())
+    _generation_upstream_tasks[task_id] = upstream
+    try:
+        try:
+            job, _ = await _cloud_jobs.mark_provider_attempted(task_id)
+        except JobStateConflictError:
+            upstream.cancel()
+            await asyncio.gather(upstream, return_exceptions=True)
+            if await _finish_cancel_if_requested(task_id):
+                return None
+            raise
+        start_provider.set()
+        if job.quota_reservation_id:
+            principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
+            record = {
+                "tenant_id": job.resource.tenant_id,
+                "owner_id": job.resource.owner_id,
+                "quota_reservation_id": job.quota_reservation_id,
+            }
+            await _quota_ledger.settle(
+                record,
+                principal,
+                succeeded=True,
+                job_id=task_id,
+            )
+            await _cloud_jobs.mark_cost_committed(task_id)
+        return await upstream
+    except asyncio.CancelledError:
+        if not await _finish_cancel_if_requested(task_id):
+            raise
+        return None
+    except BaseException:
+        if not upstream.done():
+            upstream.cancel()
+            await asyncio.gather(upstream, return_exceptions=True)
+        raise
+    finally:
+        if _generation_upstream_tasks.get(task_id) is upstream:
+            _generation_upstream_tasks.pop(task_id, None)
 
 
 async def start_novelai_workers():
@@ -2021,33 +2344,138 @@ async def start_novelai_workers():
 _generation_tasks: Dict[str, Dict[str, Any]] = {}
 
 
-async def enqueue_generation(params: dict, user_id: str = "", allow_boost: bool = True) -> tuple[str, int]:
+class _DuplicateGenerationTaskError(RuntimeError):
+    pass
+
+
+def _principal_for_task_record(task: dict[str, Any]) -> Principal:
+    resource = _task_access.owner_of(task)
+    if resource.owner_id is None:
+        raise ResourceNotFoundError()
+    return Principal.user(resource.owner_id, resource.tenant_id)
+
+
+async def _settle_generation_quota(task_id: str) -> None:
+    """Settle by durable provider-attempt stage, never by optimistic memory state."""
+    await _ensure_cloud_job_storage()
+    job = await _cloud_jobs.get(task_id)
+    if job is None or not job.terminal or job.quota_settled:
+        return
+    if _is_workshop_job(job):
+        return
+    task = _generation_tasks.get(task_id)
+    if not job.quota_reservation_id:
+        return
+    if not _quota_ledger.enabled:
+        print(f"[quota] task={task_id} reservation remains unsettled because ledger is disabled")
+        return
+    try:
+        principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
+        record = {
+            "tenant_id": job.resource.tenant_id,
+            "owner_id": job.resource.owner_id,
+            "quota_reservation_id": job.quota_reservation_id,
+        }
+        await _quota_ledger.settle(
+            record,
+            principal,
+            succeeded=job.provider_attempted,
+            job_id=task_id,
+        )
+        if job.provider_attempted:
+            await _cloud_jobs.mark_cost_committed(task_id)
+        else:
+            await _cloud_jobs.mark_quota_refunded(task_id)
+        if task:
+            task["_quota_settled"] = True
+    except CloudBackendError as exc:
+        # Keep the failure visible for operators without leaking credentials.
+        print(f"[quota] task={task_id} settlement failed: {exc.code}")
+    except Exception as exc:
+        # A transient SQLite/disk failure must not terminate a long-lived worker.
+        # Leave the record unsettled so cancellation/cleanup can retry safely.
+        print(f"[quota] task={task_id} settlement unavailable: {type(exc).__name__}")
+
+
+async def enqueue_generation(
+    params: dict,
+    user_id: str = "",
+    allow_boost: bool = True,
+    *,
+    resource: ResourceOwner,
+    task_id: str | None = None,
+    task_metadata: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+    request_hash: str | None = None,
+) -> tuple[str, int, bool]:
     """
     将生成任务入队
 
     :param allow_boost: 是否允许走 trial 加速通道。默认 True；bot 端调用应传 False
         以避免把有限的 trial 配额耗在 bot 用户上，保留给前端 web 用户。
-    :return: (task_id, queue_position) 或 ("", -1) 表示失败
+    :return: (task_id, queue_position, created) 或 ("", -1, False) 表示容量已满
     """
-    global _task_counter
+    global _task_counter, _generation_admitting
     
     await _ensure_queue()
     await start_novelai_workers()
-    
+    await _ensure_cloud_job_storage()
+
+    task_id = task_id or secrets.token_hex(8)
+    metadata = dict(task_metadata or {})
     with _state_lock:
+        active_count = sum(
+            1
+            for record in _generation_tasks.values()
+            if record.get("status") in {"queued", "generating", "cancelling"}
+        )
+        occupied = active_count + _generation_admitting
+        if occupied >= _GENERATION_QUEUE_CAPACITY:
+            print(f"[队列] 全局容量已满 ({occupied}/{_GENERATION_QUEUE_CAPACITY})")
+            return "", -1, False
         if user_id:
             cnt = _user_pending.get(user_id, 0)
             if cnt >= 10:
                 print(f"[队列] 用户 {user_id} 待处理任务已达上限 ({cnt})")
-                return "", -1
+                return "", -1, False
         
         _task_counter += 1
         task_seq = _task_counter
+        _generation_admitting += 1
         
         if user_id:
             _user_pending[user_id] = _user_pending.get(user_id, 0) + 1
-    
-    task_id = secrets.token_hex(8)
+
+    digest = request_hash or _generation_request_hash(params)
+    try:
+        created = await _cloud_jobs.create(
+            job_id=task_id,
+            resource=resource,
+            request_hash=digest,
+            payload=_persistent_generation_payload(params),
+            idempotency_key=idempotency_key,
+            quota_reservation_id=metadata.get("quota_reservation_id"),
+            cost_units=int(metadata.get("quota_units", 0) or 0),
+            total_steps=int(params.get("steps", 28) or 0),
+        )
+    except BaseException:
+        if user_id:
+            with _state_lock:
+                _user_pending[user_id] = max(0, _user_pending.get(user_id, 1) - 1)
+        raise
+    finally:
+        with _state_lock:
+            _generation_admitting = max(0, _generation_admitting - 1)
+    if not created.created:
+        if user_id:
+            with _state_lock:
+                _user_pending[user_id] = max(0, _user_pending.get(user_id, 1) - 1)
+        existing_status = _JOB_TO_LEGACY_STATUS[created.job.status]
+        queue_pos = _get_task_queue_position(created.job.id) if existing_status == "queued" else 0
+        return created.job.id, queue_pos, False
+
+    if task_id in _generation_tasks:
+        raise _DuplicateGenerationTaskError("generation task id already exists")
     
     # 提取关键参数用于日志
     width = params.get("width", 832)
@@ -2056,7 +2484,7 @@ async def enqueue_generation(params: dict, user_id: str = "", allow_boost: bool 
     prompt_preview = params.get("input_text1", "")[:50]
     
     # 创建任务记录
-    _generation_tasks[task_id] = {
+    task_record = {
         "task_id": task_id,
         "status": "queued",
         "params": params,
@@ -2068,6 +2496,16 @@ async def enqueue_generation(params: dict, user_id: str = "", allow_boost: bool 
         "error": None,
         "task_seq": task_seq,
     }
+    task_record.update(metadata)
+    task_record["request_hash"] = digest
+    task_record["idempotency_key"] = idempotency_key
+    _task_access.bind_record(task_record, resource)
+    _generation_tasks[task_id] = task_record
+
+    # Anima has its own provider runner, but uses this exact admission/persistence
+    # path so it cannot bypass global/user capacity, ownership, quota, or cancel.
+    if params.get("_image_backend") == "anima":
+        return task_id, active_count + 1, True
 
     # 激进调度：付费号全忙 + boost 可用 + 任务能 boost 处理 → 直接派 boost，不入队
     can_boost = False
@@ -2085,14 +2523,21 @@ async def enqueue_generation(params: dict, user_id: str = "", allow_boost: bool 
         queue_pos = 0  # 不在队列里，直接处理中
         print(f"[队列/boost] 直派 boost: id={task_id}, seq={task_seq}, "
               f"size={width}x{height}, steps={steps}, prompt=\"{prompt_preview}...\"")
-        return task_id, queue_pos
+        return task_id, queue_pos, True
 
     # 正常路径：入队等付费 worker
-    await _image_queue.put((task_id, params, task_seq))
+    try:
+        _image_queue.put_nowait((task_id, params, task_seq))
+    except asyncio.QueueFull:
+        task_record["status"] = "failed"
+        task_record["error"] = "队列已满，请稍后再试"
+        await _notify_task_update(task_id, "failed", error=task_record["error"])
+        await _settle_generation_quota(task_id)
+        return "", -1, True
     queue_pos = _image_queue.qsize()
     print(f"[队列] 新任务入队: id={task_id}, seq={task_seq}, pos={queue_pos}, "
           f"size={width}x{height}, steps={steps}, prompt=\"{prompt_preview}...\"")
-    return task_id, queue_pos
+    return task_id, queue_pos, True
 
 
 def calculate_anlas_cost(width: int, height: int, steps: int, model: str,
@@ -2358,6 +2803,42 @@ online_manager = OnlineManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    # Jobs are interrupted first, then their durable provider-attempt stage
+    # decides capture versus refund.  Never infer cost from a reservation alone.
+    await _ensure_cloud_job_storage()
+    succeeded_jobs = await _cloud_jobs.list_succeeded()
+    missing_results, orphaned_results = await _cloud_job_results.reconcile(
+        {job.id: job.result for job in succeeded_jobs}
+    )
+    for missing_job_id in missing_results:
+        await _cloud_jobs.invalidate_missing_result(missing_job_id)
+    if orphaned_results:
+        print(f"[App] 已隔离 {len(orphaned_results)} 个无任务引用的生成结果")
+    recovered_workshop_jobs = await _recover_workshop_jobs()
+    recovered_jobs = await _cloud_jobs.recover_interrupted()
+    await _quota_ledger.initialize()
+    for recovered_job in await _cloud_jobs.list_recovery_settlements():
+        if not _is_workshop_job(recovered_job):
+            await _settle_generation_quota(recovered_job.id)
+    await _workshop_quota.initialize()
+    durable_workshop_jobs = {
+        job.id
+        for job in await _cloud_jobs.list_succeeded()
+        if _is_workshop_job(job) and job.result is not None
+    }
+    workshop_captured, workshop_refunded = await _workshop_quota.recover_jobs(
+        durable_workshop_jobs
+    )
+    if workshop_captured or workshop_refunded:
+        print(
+            "[App] Workshop 额度恢复: "
+            f"captured={workshop_captured}, refunded={workshop_refunded}"
+        )
+    if recovered_jobs:
+        print(f"[App] 已将 {len(recovered_jobs)} 个崩溃遗留任务标记为 interrupted")
+    if recovered_workshop_jobs:
+        print(f"[App] 已恢复 {len(recovered_workshop_jobs)} 个 Workshop 崩溃遗留任务")
+
     # 初始化图片生成队列
     await _ensure_queue()
     await start_novelai_workers()
@@ -2381,6 +2862,17 @@ async def lifespan(app: FastAPI):
         print(f"[App] anima 池巡检启动失败（非致命，anima 路径仍可用）: {e}")
 
     yield
+
+    upstream_tasks = list(_generation_upstream_tasks.values())
+    for upstream_task in upstream_tasks:
+        upstream_task.cancel()
+    if upstream_tasks:
+        await asyncio.gather(*upstream_tasks, return_exceptions=True)
+    workshop_tasks = list(_workshop_background_tasks.values())
+    for workshop_task in workshop_tasks:
+        workshop_task.cancel()
+    if workshop_tasks:
+        await asyncio.gather(*workshop_tasks, return_exceptions=True)
 
     # 关闭全局 NovelAI session
     await _close_nai_session()
@@ -2672,15 +3164,80 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS配置
-# 不开 allow_credentials：本后端用 session_id（body/query）而非 cookie，
-# "* + credentials" 既是无效组合又放大风险。去掉后浏览器仍可跨域调用，
-# 但敏感端点已改为需管理员/会话/Bot 密钥，见下方 _require_admin / _require_bot_secret。
+
+def create_app() -> FastAPI:
+    """Compatibility app factory for modern ASGI process managers."""
+    return app
+
+
+_DEFAULT_LEGACY_CORS_ORIGINS = (
+    "http://127.0.0.1:1420",
+    "http://localhost:1420",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    "tauri://localhost",
+)
+
+
+def _configured_legacy_cors_origins() -> list[str]:
+    """Return exact browser origins; wildcard/URL-like ambiguity fails closed."""
+
+    configured = getattr(_appcfg, "LEGACY_CORS_ORIGINS", ())
+    if isinstance(configured, str):
+        candidates = configured.split(",")
+    elif isinstance(configured, (list, tuple, set, frozenset)):
+        candidates = configured
+    else:
+        raise RuntimeError("LEGACY_CORS_ORIGINS must be a string or a sequence of origins")
+
+    origins = [str(value).strip() for value in candidates if str(value).strip()]
+    if not origins:
+        origins = list(_DEFAULT_LEGACY_CORS_ORIGINS)
+
+    validated: list[str] = []
+    for origin in origins:
+        if "*" in origin or len(origin) > 2048:
+            raise RuntimeError("LEGACY_CORS_ORIGINS must contain exact bounded origins")
+        parsed = urlsplit(origin)
+        try:
+            parsed_port = parsed.port
+        except ValueError as exc:
+            raise RuntimeError(f"invalid CORS origin: {origin!r}") from exc
+        if (
+            parsed.scheme not in {"http", "https", "tauri"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed_port is not None
+            and not (1 <= parsed_port <= 65535)
+        ):
+            raise RuntimeError(f"invalid CORS origin: {origin!r}")
+        if origin not in validated:
+            validated.append(origin)
+    return validated
+
+
+# Credentials are explicit headers/tokens, never ambient cookies. Keep credentials
+# disabled and permit only configured desktop/development origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_configured_legacy_cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "X-Admin-Token",
+        "X-Bot-Secret",
+        "X-Bot-Session",
+    ],
+    expose_headers=["Location", "Retry-After"],
 )
 
 # Gzip 压缩所有 ≥1KB 的 text/json 响应。
@@ -2699,20 +3256,65 @@ class CORPMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
         response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+        if request.url.path.startswith(
+            ("/api/user-vibes", "/api/user-artists/backup", "/api/user-tag-backup")
+        ):
+            # Private library URLs are identical across owners when the modern
+            # session header is used. Shared caches must never reuse one owner's
+            # JSON/image response for another owner.
+            response.headers["Cache-Control"] = "private, no-cache"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            vary = {
+                item.strip()
+                for item in response.headers.get("Vary", "").split(",")
+                if item.strip()
+            }
+            vary.add("X-Bot-Session")
+            response.headers["Vary"] = ", ".join(sorted(vary))
         return response
 
 app.add_middleware(CORPMiddleware)
 
+_MIB = 1024 * 1024
+_LEGACY_DEFAULT_BODY_LIMIT = 72 * _MIB
+_LEGACY_BODY_PATH_LIMITS = {
+    # Credentials/control payloads never contain binary data.
+    "/api/bot/auth": 64 * 1024,
+    "/api/billing": 64 * 1024,
+    "/api/online": 64 * 1024,
+    # Text/context APIs remain well below the process-wide ceiling.
+    "/api/bot/generate": 4 * _MIB,
+    "/api/bot/task": 4 * _MIB,
+    "/api/tags": 4 * _MIB,
+    "/api/translate": 4 * _MIB,
+    # Progress can carry a preview; Agent can carry one base64 reference image.
+    "/api/bot/task/progress": 32 * _MIB,
+    # A completed Bot update can carry one 32 MiB decoded result.  Base64 and
+    # JSON framing fit inside this stricter-than-global wire budget.
+    "/api/bot/task/update": 44 * _MIB,
+    "/api/vibe/encode": 32 * _MIB,
+    "/api/upscale": 32 * _MIB,
+    "/api/agent": 28 * _MIB,
+    # Legacy JSON asset uploads are base64 encoded. These wire limits are at
+    # least as strict as the canonical 32 MiB per-asset policy.
+    "/api/artists": 32 * _MIB,
+    "/api/cr": 32 * _MIB,
+    "/api/oc": 32 * _MIB,
+    "/api/user-artists/backup": 32 * _MIB,
+    "/api/user-tag-backup": 32 * _MIB,
+    "/api/user-vibes": 32 * _MIB,
+    "/api/vibes": 32 * _MIB,
+}
 
-# ==================== PydanticAI Agent 路由组（/api/agent/*）====================
-# 详见 novelai_web_ui/server/agent_router/ 与 .claude/plans/ai-agent-eventual-clover.md
-try:
-    from agent_router.router import router as agent_router
-    app.include_router(agent_router)
-    print("[agent_router] PydanticAI 路由组已挂载: /api/agent/*")
-except Exception as _e:
-    # agent_router 依赖 pydantic-ai；若未安装则跳过，不影响主服务启动
-    print(f"[agent_router] 加载失败，跳过挂载: {_e}")
+# Count bytes from ASGI ``receive`` rather than trusting Content-Length. Base64
+# generation requests retain the 72 MiB process ceiling; tighter prefixes above
+# cover credentials, text/context and single-asset routes.
+app.add_middleware(
+    StreamingBodyLimitMiddleware,
+    default_limit=_LEGACY_DEFAULT_BODY_LIMIT,
+    path_limits=_LEGACY_BODY_PATH_LIMITS,
+)
 
 
 class HealthResponse(BaseModel):
@@ -2818,6 +3420,7 @@ class DirectGenerateRequest(BaseModel):
 class DirectGenerateResponse(BaseModel):
     success: bool
     task_id: Optional[str] = None
+    capability_token: Optional[str] = None
     queue_position: int = 0
     message: str = ""
 
@@ -2828,17 +3431,24 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
     try:
         from agent_router.anima_provider import generate_anima_image
 
+        job = await _cloud_jobs.get(task_id)
+        if job is None or job.status is not JobStatus.QUEUED:
+            return
         _generation_tasks[task_id]["status"] = "generating"
         await _notify_task_update(task_id, "generating", 0, 1)
-
-        image_bytes = await generate_anima_image(
-            positive=req.positivePrompt or "",
-            negative=req.negativePrompt or "",
-            width=int(req.width or 0),
-            height=int(req.height or 0),
-            seed=int(req.seed or -1),
-            task_id=task_id,
+        image_bytes = await _await_generation_upstream(
+            task_id,
+            lambda: generate_anima_image(
+                positive=req.positivePrompt or "",
+                negative=req.negativePrompt or "",
+                width=int(req.width or 0),
+                height=int(req.height or 0),
+                seed=int(req.seed or -1),
+                task_id=task_id,
+            ),
         )
+        if image_bytes is None:
+            return
         result_b64 = _b64.b64encode(image_bytes).decode("ascii")
 
         _generation_tasks[task_id]["result"] = result_b64
@@ -2846,12 +3456,28 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
         _generation_tasks[task_id]["step"] = 1
         await _notify_task_update(task_id, "completed", 1, 1, result_b64)
         print(f"[anima] 任务完成: id={task_id}")
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         err = str(e) or repr(e)
-        _generation_tasks[task_id]["status"] = "failed"
-        _generation_tasks[task_id]["error"] = err
-        await _notify_task_update(task_id, "failed", error=err)
+        current = _generation_tasks.get(task_id)
+        cancelled = await _finish_cancel_if_requested(task_id)
+        if current and current.get("status") != "cancelled" and not cancelled:
+            current["status"] = "failed"
+            current["error"] = err
+            await _notify_task_update(task_id, "failed", error=err)
         print(f"[anima] 任务失败: id={task_id} err={err}")
+    finally:
+        task = _generation_tasks.get(task_id)
+        if task and not task.get("_pending_decremented"):
+            user_id = task.get("user_id", "")
+            if user_id:
+                with _state_lock:
+                    _user_pending[user_id] = max(0, _user_pending.get(user_id, 1) - 1)
+            task["_pending_decremented"] = True
+            task.pop("params", None)
+        await _settle_generation_quota(task_id)
+        await _broadcast_queue_position_update()
 
 
 @app.post("/api/generate", response_model=DirectGenerateResponse)
@@ -2865,32 +3491,38 @@ async def direct_generate(req: DirectGenerateRequest):
       anima         → cnb ComfyUI Anima 后端（agent_router.anima_provider）
     """
     backend = (req.image_backend or "novelai").strip().lower()
+    task_id = secrets.token_hex(8)
+    grant = _task_access.issue_anonymous(
+        job_id=task_id,
+        tenant_id=_DIRECT_TASK_TENANT_ID,
+    )
 
     if backend == "anima":
-        # anima 路径：不走 NAI image_queue，直接生成 task_id + 后台跑
-        task_id = secrets.token_hex(8)
-        _generation_tasks[task_id] = {
-            "task_id": task_id,
-            "status": "queued",
-            "params": req.model_dump(),
-            "user_id": "direct",
-            "created_at": time.time(),
-            "step": 0,
-            "total_steps": 1,
-            "result": None,
-            "error": None,
-            "image_backend": "anima",
-        }
-        asyncio.create_task(_run_anima_task(task_id, req))
+        params = req.model_dump()
+        params["_image_backend"] = "anima"
+        params["steps"] = 1
+        queued_task_id, queue_pos, created = await enqueue_generation(
+            params,
+            "direct",
+            allow_boost=False,
+            resource=grant.resource,
+            task_id=task_id,
+            request_hash=_generation_request_hash(req.model_dump()),
+        )
+        if queue_pos == -1:
+            return DirectGenerateResponse(success=False, message="队列已满，请稍后再试")
+        if created:
+            asyncio.create_task(_run_anima_task(queued_task_id, req))
         print(
-            f"[anima] 任务已入队: id={task_id} "
+            f"[anima] 任务已入队: id={queued_task_id} "
             f"size={req.width}x{req.height} seed={req.seed} "
             f"prompt=\"{(req.positivePrompt or '')[:50]}...\""
         )
         return DirectGenerateResponse(
             success=True,
-            task_id=task_id,
-            queue_position=0,
+            task_id=queued_task_id,
+            capability_token=grant.capability_token,
+            queue_position=queue_pos,
             message="anima 任务已提交",
         )
 
@@ -2898,7 +3530,13 @@ async def direct_generate(req: DirectGenerateRequest):
     params = req.model_dump()
     stream_params = convert_web_params_to_stream(params)
 
-    task_id, queue_pos = await enqueue_generation(stream_params, "direct", allow_boost=False)
+    task_id, queue_pos, _ = await enqueue_generation(
+        stream_params,
+        "direct",
+        allow_boost=False,
+        resource=grant.resource,
+        task_id=task_id,
+    )
 
     if queue_pos == -1:
         return DirectGenerateResponse(success=False, message="队列已满，请稍后再试")
@@ -2906,58 +3544,246 @@ async def direct_generate(req: DirectGenerateRequest):
     return DirectGenerateResponse(
         success=True,
         task_id=task_id,
+        capability_token=grant.capability_token,
         queue_position=queue_pos,
         message=f"任务已提交，队列位置: {queue_pos}"
     )
 
 
-@app.get("/api/task/{task_id}")
-async def get_task_status(task_id: str):
-    """获取任务状态（GET 方式，方便轮询）"""
-    task = _generation_tasks.get(task_id)
-    if not task:
+def _principal_from_bot_session(session_id: str) -> Principal:
+    session = bot_auth_manager.get_session(session_id) if session_id else None
+    if not session:
+        raise HTTPException(status_code=401, detail="未登录或会话已过期")
+    return Principal.user(str(session.bot_user_id), _BOT_TASK_TENANT_ID)
+
+
+def _library_principal_from_request(request: Request, compat_session_id: str = "") -> Principal:
+    """Authenticate one public/private library caller during the compat window.
+
+    New clients use ``X-Bot-Session``. Existing body/query credentials remain
+    accepted only when they are the sole credential or exactly match the header;
+    conflicting identities are rejected instead of choosing one implicitly.
+    """
+    header_values = request.headers.getlist("X-Bot-Session")
+    if len(header_values) > 1:
+        raise HTTPException(status_code=401, detail="未登录或会话已过期")
+    header_session = header_values[0].strip() if header_values else ""
+    legacy_session = compat_session_id.strip()
+    if header_session and legacy_session and not _secure_eq(header_session, legacy_session):
+        raise HTTPException(status_code=401, detail="未登录或会话已过期")
+    return _principal_from_bot_session(header_session or legacy_session)
+
+
+def _require_library_record_owner(
+    principal: Principal,
+    record: Dict[str, Any],
+    *,
+    legacy_owner_fields: Tuple[str, ...],
+) -> None:
+    """Authorize a contributed public record and obscure cross-owner mutation."""
+    try:
+        _library_ownership.require_record(
+            principal,
+            record,
+            legacy_owner_fields=legacy_owner_fields,
+            legacy_tenant_id=_BOT_TASK_TENANT_ID,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="资源不存在") from exc
+
+
+async def _authorize_generation_task(
+    task_id: str,
+    *,
+    session_id: str = "",
+    authorization: str = "",
+) -> CloudJob:
+    await _ensure_cloud_job_storage()
+    job = await _cloud_jobs.get(task_id)
+    record = (
+        {"tenant_id": job.resource.tenant_id, "owner_id": job.resource.owner_id}
+        if job is not None
+        else None
+    )
+    try:
+        if session_id and authorization:
+            raise HTTPException(status_code=400, detail="请勿同时提供两种任务凭据")
+        if session_id:
+            _task_access.require_principal(record, _principal_from_bot_session(session_id))
+        else:
+            token = bearer_token(authorization)
+            _task_access.require_capability(record, job_id=task_id, token=token)
+    except ResourceNotFoundError as exc:
+        # Missing and cross-owner resources are intentionally indistinguishable.
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    except InvalidCapabilityError as exc:
+        raise HTTPException(status_code=401, detail="任务凭据无效或已过期") from exc
+    if job is None:  # guarded above; keeps the return type explicit
         raise HTTPException(status_code=404, detail="任务不存在")
+    return job
+
+
+@app.get("/api/task/{task_id}")
+async def get_task_status(
+    task_id: str,
+    session_id: str = "",
+    authorization: str = Header(default=""),
+):
+    """获取任务状态（GET 方式，方便轮询）"""
+    job = await _authorize_generation_task(
+        task_id,
+        session_id=session_id,
+        authorization=authorization,
+    )
     
-    return {
-        "task_id": task_id,
-        "status": task["status"],
-        "step": task.get("step", 0),
-        "total_steps": task.get("total_steps", 28),
-        "result": {"type": "base64", "imageBase64": task["result"]} if task.get("result") else None,
-        "error": task.get("error"),
-        "queue_position": _get_task_queue_position(task_id) if task["status"] == "queued" else 0,
-    }
+    return await _legacy_job_response(job)
 
 
 @app.delete("/api/task/{task_id}")
-async def cancel_task(task_id: str):
+async def cancel_task(
+    task_id: str,
+    session_id: str = "",
+    authorization: str = Header(default=""),
+):
     """取消排队中的任务"""
+    job = await _authorize_generation_task(
+        task_id,
+        session_id=session_id,
+        authorization=authorization,
+    )
+    
+    try:
+        job, _ = await _cloud_jobs.request_cancel(task_id)
+    except JobStateConflictError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"任务状态为 {_JOB_TO_LEGACY_STATUS[job.status]}，无法取消",
+        ) from exc
+
     task = _generation_tasks.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    
-    if task["status"] != "queued":
-        raise HTTPException(status_code=400, detail=f"任务状态为 {task['status']}，无法取消")
-    
-    # 标记任务为已取消
-    task["status"] = "cancelled"
-    task["error"] = "用户取消"
+    if task:
+        task["status"] = _JOB_TO_LEGACY_STATUS[job.status]
+        task["error"] = "用户取消"
     
     # 减少用户待处理计数，并标记已减，防止 Worker 重复减
-    task_user_id = task.get("user_id", "")
-    if task_user_id:
+    task_user_id = task.get("user_id", "") if task else ""
+    if task_user_id and job.status is JobStatus.CANCELLED:
         with _state_lock:
             cnt = _user_pending.get(task_user_id, 0)
             if cnt > 0:
                 _user_pending[task_user_id] = cnt - 1
-    task["_pending_decremented"] = True
-    
+    if task and job.status is JobStatus.CANCELLED:
+        task["_pending_decremented"] = True
+
+    if job.status is JobStatus.CANCELLING:
+        upstream = _generation_upstream_tasks.get(task_id)
+        if upstream is not None:
+            upstream.cancel()
+
     # 通知前端
-    await _notify_task_update(task_id, "cancelled", error="用户取消")
+    await _notify_task_update(
+        task_id,
+        _JOB_TO_LEGACY_STATUS[job.status],
+        error="用户取消",
+    )
+    await _settle_generation_quota(task_id)
     
     print(f"[队列] 任务已取消: id={task_id}")
     
     return {"success": True, "message": "任务已取消"}
+
+
+@app.websocket("/ws/task/{task_id}")
+async def websocket_generation_task(
+    websocket: WebSocket,
+    task_id: str,
+    after_sequence: int = 0,
+):
+    """Single-task progress stream authenticated before accepting the socket.
+
+    Browser WebSocket APIs cannot set Authorization.  The capability is therefore
+    carried in ``Sec-WebSocket-Protocol: job-capability.<token>`` rather than a URL
+    query (which is commonly logged by reverse proxies).
+    """
+    offered = [
+        value.strip()
+        for value in websocket.headers.get("sec-websocket-protocol", "").split(",")
+        if value.strip()
+    ]
+    selected = next((value for value in offered if value.startswith("job-capability.")), "")
+    token = selected.removeprefix("job-capability.") if selected else ""
+    if after_sequence == 0:
+        try:
+            after_sequence = max(0, int(websocket.headers.get("last-event-id", "0")))
+        except (TypeError, ValueError):
+            after_sequence = 0
+    await _ensure_cloud_job_storage()
+    try:
+        snapshot = await _cloud_jobs.snapshot_with_watermark(task_id)
+    except InvalidRequestError:
+        snapshot = None
+    job = snapshot[0] if snapshot is not None else None
+    record = (
+        {"tenant_id": job.resource.tenant_id, "owner_id": job.resource.owner_id}
+        if job is not None
+        else None
+    )
+    try:
+        _task_access.require_capability(record, job_id=task_id, token=token)
+    except ResourceNotFoundError:
+        await websocket.close(code=4404, reason="not found")
+        return
+    except InvalidCapabilityError:
+        await websocket.close(code=4401, reason="authentication required")
+        return
+
+    await websocket.accept(subprotocol=selected)
+    try:
+        if job is None:
+            await websocket.close(code=4404, reason="not found")
+            return
+        if snapshot is None:  # guarded with ``job`` above; keeps types explicit
+            await websocket.close(code=4404, reason="not found")
+            return
+        job, snapshot_sequence = snapshot
+        legacy_snapshot = await _legacy_job_response(job)
+        await websocket.send_json(
+            {
+                "type": "job_snapshot",
+                "sequence": snapshot_sequence,
+                "job": job.to_dict(),
+            }
+        )
+        await websocket.send_json(
+            {
+                "action": "task_update",
+                "sequence": snapshot_sequence,
+                **legacy_snapshot,
+            }
+        )
+        # The fresh snapshot supersedes any client cursor, including an invalidly
+        # high one that would otherwise starve all real future events.
+        cursor = snapshot_sequence
+        async for event in _cloud_jobs.watch_events(task_id, after_sequence=cursor):
+            await websocket.send_json({"type": "job_event", "event": event.to_dict()})
+            cursor = event.sequence
+            if event.status in {
+                JobStatus.SUCCEEDED,
+                JobStatus.FAILED,
+                JobStatus.CANCELLED,
+                JobStatus.INTERRUPTED,
+            }:
+                terminal = await _cloud_jobs.get(task_id)
+                if terminal is not None:
+                    await websocket.send_json(
+                        {
+                            "action": "task_update",
+                            "sequence": cursor,
+                            **(await _legacy_job_response(terminal)),
+                        }
+                    )
+    except WebSocketDisconnect:
+        pass
 
 
 # ==================== Anima CNB 池管理 API ====================
@@ -3186,16 +4012,6 @@ async def websocket_queue(websocket: WebSocket):
 # ==================== Bot 授权系统 ====================
 
 @dataclass
-class AuthCode:
-    """授权码"""
-    code: str
-    created_at: float
-    expires_at: float
-    session_id: Optional[str] = None  # 绑定后的会话ID
-    bot_user_id: Optional[str] = None  # Bot用户ID（QQ号等）
-
-
-@dataclass
 class BotSession:
     """Bot会话"""
     session_id: str
@@ -3218,197 +4034,238 @@ class BotGenerateTask:
     queue_position: int = 0
 
 
+class _JsonSocketSender(Protocol):
+    async def send_json(self, data: Any) -> None: ...
+
+
+class _LockedWebSocketSender:
+    def __init__(self, websocket: WebSocket, lock: asyncio.Lock) -> None:
+        self._websocket = websocket
+        self._lock = lock
+
+    async def send_json(self, data: Any) -> None:
+        async with self._lock:
+            await self._websocket.send_json(data)
+
+
 class BotAuthManager:
     """Bot授权管理器"""
     
     AUTH_CODE_EXPIRE = 300  # 授权码5分钟过期
     SESSION_EXPIRE = 7 * 24 * 60 * 60  # 会话7天过期
-    SESSIONS_FILE = Path(__file__).parent / "sessions.json"
+    SESSIONS_FILE = Path(
+        getattr(_appcfg, "BOT_SESSIONS_FILE", BOT_DATA_DIR / "sessions.json")
+    )
     
-    def __init__(self):
-        self.auth_codes: Dict[str, AuthCode] = {}
+    def __init__(self, sessions_file: Path | None = None):
+        self.pairing = PairingCodeRegistry(ttl_seconds=self.AUTH_CODE_EXPIRE)
         self.sessions: Dict[str, BotSession] = {}
         self.tasks: Dict[str, BotGenerateTask] = {}
-        self.session_websockets: Dict[str, WebSocket] = {}  # session_id -> websocket
+        self.session_websockets: Dict[str, _JsonSocketSender] = {}
         self.lock = asyncio.Lock()
-        self._file_lock = asyncio.Lock()  # 文件操作锁
+        self._state_lock = threading.RLock()
+        self._session_store = SecureJsonObjectStore(sessions_file or self.SESSIONS_FILE)
         self._load_sessions()
     
     def _load_sessions(self):
         """从文件加载会话"""
-        import json
-        if not self.SESSIONS_FILE.exists():
-            return
-        try:
-            with open(self.SESSIONS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            now = time.time()
-            for sid, s in data.items():
-                # 跳过过期会话（连续7天未活跃才过期）
-                if now - s["last_active"] > self.SESSION_EXPIRE:
-                    continue
-                self.sessions[sid] = BotSession(
-                    session_id=s["session_id"],
-                    auth_code=s["auth_code"],
-                    bot_user_id=s["bot_user_id"],
-                    created_at=s["created_at"],
-                    last_active=s["last_active"]
-                )
+        data = self._session_store.load()
+        now = time.time()
+        expired = False
+        for sid, value in data.items():
+            if not isinstance(sid, str) or not isinstance(value, dict):
+                raise StorageIntegrityError("Bot session store contains an invalid record")
+            stored_id = value.get("session_id")
+            bot_user_id = value.get("bot_user_id")
+            created_at = value.get("created_at")
+            last_active = value.get("last_active")
+            if (
+                not re.fullmatch(r"[0-9a-f]{32}", sid)
+                or stored_id != sid
+                or not isinstance(bot_user_id, str)
+                or not bot_user_id
+                or len(bot_user_id) > 128
+                or not isinstance(created_at, (int, float))
+                or not isinstance(last_active, (int, float))
+                or not math.isfinite(created_at)
+                or not math.isfinite(last_active)
+                or created_at < 0
+                or last_active < created_at
+            ):
+                raise StorageIntegrityError("Bot session store contains an invalid record")
+            if now - last_active > self.SESSION_EXPIRE:
+                expired = True
+                continue
+            self.sessions[sid] = BotSession(
+                session_id=sid,
+                # Pairing codes are ephemeral and are never persisted.
+                auth_code="",
+                bot_user_id=bot_user_id,
+                created_at=float(created_at),
+                last_active=float(last_active),
+            )
+        if expired:
+            self._save_sessions()
+        if data:
             print(f"[BotAuth] 已加载 {len(self.sessions)} 个会话")
-        except Exception as e:
-            print(f"[BotAuth] 加载会话失败: {e}")
     
     def _save_sessions(self):
         """保存会话到文件（同步版本，内部使用）"""
-        import json
-        try:
+        with self._state_lock:
             data = {}
-            for sid, s in self.sessions.items():
+            for sid, session in self.sessions.items():
                 data[sid] = {
-                    "session_id": s.session_id,
-                    "auth_code": s.auth_code,
-                    "bot_user_id": s.bot_user_id,
-                    "created_at": s.created_at,
-                    "last_active": s.last_active
+                    "session_id": session.session_id,
+                    "bot_user_id": session.bot_user_id,
+                    "created_at": session.created_at,
+                    "last_active": session.last_active,
                 }
-            # 先写入临时文件，再原子替换
-            temp_file = self.SESSIONS_FILE.with_suffix('.tmp')
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            temp_file.replace(self.SESSIONS_FILE)
-        except Exception as e:
-            print(f"[BotAuth] 保存会话失败: {e}")
-    
-    def generate_auth_code(self) -> str:
-        """生成6位授权码"""
-        code = secrets.token_hex(3).upper()  # 6位十六进制
-        auth = AuthCode(
-            code=code,
-            created_at=time.time(),
-            expires_at=time.time() + self.AUTH_CODE_EXPIRE
-        )
-        self.auth_codes[code] = auth
-        return code
+            self._session_store.save(data)
+
+    def generate_auth_code(self):
+        """生成展示码及仅签发浏览器持有的高熵轮询凭据。"""
+        return self.pairing.issue()
     
     async def verify_auth_code(self, code: str, bot_user_id: str) -> Optional[str]:
         """验证授权码，返回session_id"""
         async with self.lock:
-            auth = self.auth_codes.get(code.upper())
-            if not auth:
-                return None
-            if time.time() > auth.expires_at:
-                del self.auth_codes[code.upper()]
-                return None
-            if auth.session_id:
-                return None  # 已被使用
-            
-            # 创建会话
             session_id = secrets.token_hex(16)
-            auth.session_id = session_id
-            auth.bot_user_id = bot_user_id
-            
+            if not self.pairing.bind(code, session_id):
+                return None
+
             session = BotSession(
                 session_id=session_id,
-                auth_code=code,
+                auth_code="",
                 bot_user_id=bot_user_id,
                 created_at=time.time(),
                 last_active=time.time()
             )
-            self.sessions[session_id] = session
-            self._save_sessions()
-            
+            with self._state_lock:
+                self.sessions[session_id] = session
+                try:
+                    self._save_sessions()
+                except BaseException:
+                    self.sessions.pop(session_id, None)
+                    self.pairing.rollback_bind(code, session_id)
+                    raise
+
             return session_id
     
     def get_session(self, session_id: str) -> Optional[BotSession]:
         """获取会话，自动续期"""
-        session = self.sessions.get(session_id)
-        if not session:
-            return None
-        # 连续7天未活跃才过期
-        if time.time() - session.last_active > self.SESSION_EXPIRE:
-            del self.sessions[session_id]
-            self._save_sessions()
-            return None
-        # 自动续期：更新最后活跃时间（每小时最多保存一次，避免频繁写文件）
-        now = time.time()
-        if now - session.last_active > 3600:  # 超过1小时才更新
-            session.last_active = now
-            self._save_sessions()
-        return session
-    
-    def check_auth_code_status(self, code: str) -> Optional[str]:
-        """检查授权码状态，返回session_id（如果已验证）"""
-        auth = self.auth_codes.get(code.upper())
-        if not auth:
-            return None
-        if time.time() > auth.expires_at:
-            return None
-        return auth.session_id
-    
-    async def create_task(self, session_id: str, params: Dict[str, Any]) -> Optional[BotGenerateTask]:
-        """创建生成任务"""
+        with self._state_lock:
+            session = self.sessions.get(session_id)
+            if not session:
+                return None
+            # 连续7天未活跃才过期
+            if time.time() - session.last_active > self.SESSION_EXPIRE:
+                del self.sessions[session_id]
+                self._save_sessions()
+                return None
+            # 自动续期：更新最后活跃时间（每小时最多保存一次，避免频繁写文件）
+            now = time.time()
+            if now - session.last_active > 3600:  # 超过1小时才更新
+                session.last_active = now
+                self._save_sessions()
+            return session
+
+    def check_auth_code_status(self, code: str, poll_token: str) -> Optional[str]:
+        """仅向签发该挑战的浏览器一次性返回绑定后的 session。"""
+        return self.pairing.consume(code, poll_token)
+
+    async def create_task(
+        self,
+        session_id: str,
+        params: Dict[str, Any],
+        *,
+        task_id: str,
+    ) -> Optional[BotGenerateTask]:
+        """Mirror an existing owner-bound cloud job for legacy Bot polling."""
+
         session = self.get_session(session_id)
         if not session:
             return None
-        
-        task_id = secrets.token_hex(8)
-        task = BotGenerateTask(
-            task_id=task_id,
-            session_id=session_id,
-            params=params,
-            created_at=time.time()
-        )
-        self.tasks[task_id] = task
-        session.last_active = time.time()
-        return task
+        await _ensure_cloud_job_storage()
+        job = await _cloud_jobs.get(task_id)
+        if job is None:
+            raise ResourceNotFoundError()
+        principal = Principal.user(str(session.bot_user_id), _BOT_TASK_TENANT_ID)
+        _task_access.policy.require_access(principal, job.resource)
+
+        with self._state_lock:
+            session = self.get_session(session_id)
+            if not session:
+                return None
+
+            task = BotGenerateTask(
+                task_id=task_id,
+                session_id=session_id,
+                params=params,
+                created_at=time.time()
+            )
+            self.tasks[task_id] = task
+            session.last_active = time.time()
+            return task
     
     def get_task(self, task_id: str) -> Optional[BotGenerateTask]:
         """获取任务"""
-        return self.tasks.get(task_id)
-    
-    async def update_task(self, task_id: str, status: str, result: Optional[Dict] = None, queue_position: int = 0):
+        with self._state_lock:
+            return self.tasks.get(task_id)
+
+    async def update_task(
+        self,
+        task_id: str,
+        status: str,
+        result: Optional[Dict] = None,
+        queue_position: int = 0,
+        error: str | None = None,
+    ):
         """更新任务状态"""
-        task = self.tasks.get(task_id)
+        ws: _JsonSocketSender | None = None
+        with self._state_lock:
+            task = self.tasks.get(task_id)
+            if task:
+                task.status = status
+                task.queue_position = queue_position
+                if result is not None:
+                    task.result = result
+                ws = self.session_websockets.get(task.session_id)
         if task:
-            task.status = status
-            task.queue_position = queue_position
-            if result:
-                task.result = result
             # 通知WebSocket客户端
-            ws = self.session_websockets.get(task.session_id)
             if ws:
                 try:
-                    await ws.send_json({
+                    message = {
                         "action": "task_update",
                         "task_id": task_id,
                         "status": status,
                         "queue_position": queue_position,
-                        "result": result
-                    })
+                        "result": result,
+                    }
+                    if error is not None:
+                        message["error"] = error
+                    await ws.send_json(message)
                 except:
                     pass
     
     def cleanup_expired(self):
         """清理过期数据"""
         now = time.time()
-        # 清理过期授权码
-        expired_codes = [k for k, v in self.auth_codes.items() if now > v.expires_at]
-        for k in expired_codes:
-            del self.auth_codes[k]
-        # 清理过期会话（连续7天未活跃）
-        expired_sessions = [k for k, v in self.sessions.items() if now - v.last_active > self.SESSION_EXPIRE]
-        for k in expired_sessions:
-            del self.sessions[k]
-        if expired_sessions:
-            self._save_sessions()
-        # 清理旧任务（1小时）
-        expired_tasks = [k for k, v in self.tasks.items() if now - v.created_at > 3600]
-        for k in expired_tasks:
-            del self.tasks[k]
-        # 释放已完成任务的 result 数据（5分钟后），减少内存占用
-        for v in self.tasks.values():
-            if v.status in ("completed", "failed") and v.result and now - v.created_at > 300:
-                v.result = None
+        self.pairing.prune()
+        with self._state_lock:
+            # 清理过期会话（连续7天未活跃）
+            expired_sessions = [k for k, v in self.sessions.items() if now - v.last_active > self.SESSION_EXPIRE]
+            for k in expired_sessions:
+                del self.sessions[k]
+            if expired_sessions:
+                self._save_sessions()
+            # 清理旧任务（1小时）
+            expired_tasks = [k for k, v in self.tasks.items() if now - v.created_at > 3600]
+            for k in expired_tasks:
+                del self.tasks[k]
+            # 释放已完成任务的 result 数据（5分钟后），减少内存占用
+            for v in self.tasks.values():
+                if v.status in ("completed", "failed") and v.result and now - v.created_at > 300:
+                    v.result = None
 
 
 # 全局Bot授权管理器
@@ -3419,7 +4276,7 @@ bot_auth_manager = BotAuthManager()
 # 均为可选、向后兼容：老 config.py 未定义这些字段时取安全默认。
 #   ADMIN_USER_IDS   : 管理员 QQ 号列表（可查全站报表 / 任意用户），默认空 = 无人。
 #   ADMIN_TOKEN      : 后台/curl 用的管理员密钥（请求头 X-Admin-Token），默认空 = 不启用。
-#   BOT_SHARED_SECRET: Bot 轮询端点共享密钥（请求头 X-Bot-Secret），默认空 = 不强制（不改行为）。
+#   BOT_SHARED_SECRET: Bot 服务端凭据（请求头 X-Bot-Secret）；默认空会使相关端点返回 503。
 
 def _admin_user_ids() -> set:
     return {str(x) for x in (getattr(_appcfg, "ADMIN_USER_IDS", None) or [])}
@@ -3470,9 +4327,13 @@ def _resolve_billing_target(session_id: str, requested_user_id: str, admin_token
 
 
 def _require_bot_secret(x_bot_secret: str = Header(default="")) -> None:
-    """Bot 轮询端点依赖：仅当配置了 BOT_SHARED_SECRET 时才强制（可选式，默认不改行为）。"""
+    """Bot 服务端点必须使用独立服务凭据，缺配置时失败关闭。"""
     secret = _bot_shared_secret_value()
-    if secret and not _secure_eq(x_bot_secret, secret):
+    if not secret:
+        if bool(getattr(_appcfg, "ALLOW_UNAUTHENTICATED_BOT_SERVICE", False)):
+            return
+        raise HTTPException(status_code=503, detail="Bot 服务鉴权尚未配置")
+    if not _secure_eq(x_bot_secret, secret):
         raise HTTPException(status_code=401, detail="bot unauthorized")
 
 
@@ -3480,6 +4341,122 @@ def _require_session(session_id: str = "") -> None:
     """需要有效登录会话（不要求管理员）。用于聚合但非公开的端点，如全平台统计。"""
     if not session_id or not bot_auth_manager.get_session(session_id):
         raise HTTPException(status_code=401, detail="未登录或会话已过期")
+
+
+def _agent_not_found() -> HTTPException:
+    """Keep missing, invalid, and cross-owner Agent credentials indistinguishable."""
+    return HTTPException(status_code=404, detail="resource was not found")
+
+
+def _agent_header(request: Request, name: str) -> str:
+    values = request.headers.getlist(name)
+    if len(values) > 1:
+        raise _agent_not_found()
+    return values[0].strip() if values else ""
+
+
+def _agent_session_credential(request: Request) -> str:
+    candidates: list[str] = []
+    header_session = _agent_header(request, "X-Bot-Session")
+    if header_session:
+        candidates.append(header_session)
+    authorization = _agent_header(request, "Authorization")
+    if authorization:
+        try:
+            candidates.append(bearer_token(authorization))
+        except InvalidCapabilityError as exc:
+            raise _agent_not_found() from exc
+    query_sessions = [value.strip() for value in request.query_params.getlist("session_id")]
+    if any(not value for value in query_sessions) or len(query_sessions) > 1:
+        raise _agent_not_found()
+    candidates.extend(query_sessions)
+    if len(candidates) > 1:
+        # Never let two adapters interpret an ambiguous request differently, even
+        # when the supplied values happen to be identical.
+        raise _agent_not_found()
+    return candidates[0] if candidates else ""
+
+
+async def _authenticate_agent_request(request: Request) -> AgentAccess:
+    """Map verified deployment credentials to one transport-neutral Principal."""
+    admin_token = _agent_header(request, "X-Admin-Token")
+    bot_secret = _agent_header(request, "X-Bot-Secret")
+    session_id = _agent_session_credential(request)
+    credential_families = sum(bool(value) for value in (admin_token, bot_secret, session_id))
+    if credential_families != 1:
+        raise _agent_not_found()
+
+    if admin_token:
+        if not _is_admin("", admin_token):
+            raise _agent_not_found()
+        try:
+            return AgentAccess(
+                Principal.admin("agent-admin-token", _BOT_TASK_TENANT_ID),
+                administrator=True,
+            )
+        except InvalidRequestError as exc:
+            raise _agent_not_found() from exc
+
+    if bot_secret:
+        expected = _bot_shared_secret_value()
+        if not expected or not _secure_eq(bot_secret, expected):
+            raise _agent_not_found()
+        try:
+            return AgentAccess(
+                Principal.bot("legacy-agent-bot", _BOT_TASK_TENANT_ID),
+                trusted_service=True,
+            )
+        except InvalidRequestError as exc:
+            raise _agent_not_found() from exc
+
+    session = bot_auth_manager.get_session(session_id)
+    if session is None:
+        raise _agent_not_found()
+    owner_id = str(session.bot_user_id)
+    try:
+        if owner_id in _admin_user_ids():
+            return AgentAccess(
+                Principal.admin(owner_id, _BOT_TASK_TENANT_ID),
+                administrator=True,
+            )
+        return AgentAccess(Principal.user(owner_id, _BOT_TASK_TENANT_ID))
+    except InvalidRequestError as exc:
+        raise _agent_not_found() from exc
+
+
+async def _authorize_agent_paid(access: AgentAccess) -> bool:
+    """Require an internal Bot caller, an admin, or a user with live quota."""
+    if access.administrator or access.trusted_service:
+        return True
+    owner_id = access.owner_id
+    if owner_id is None:
+        return False
+    try:
+        await _workshop_quota.initialize()
+        quota_date = datetime.now(_BEIJING_TZ).strftime("%Y-%m-%d")
+        balance = await _workshop_quota.balance(owner_id, quota_date=quota_date)
+    except ResourceNotFoundError:
+        return False
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Agent quota validation is unavailable",
+        ) from exc
+    return balance.total_available > 0
+
+
+# Agent routes are mounted only after the concrete identity/quota adapters exist.
+# The router itself also has a fail-closed dependency, so mounting it in another
+# process without these state hooks returns 503 rather than exposing a paid route.
+app.state.agent_authenticator = _authenticate_agent_request
+app.state.agent_paid_authorizer = _authorize_agent_paid
+try:
+    from agent_router.router import router as agent_router
+
+    app.include_router(agent_router)
+    print("[agent_router] PydanticAI 路由组已挂载: /api/agent/*")
+except Exception as _agent_router_error:
+    print(f"[agent_router] 加载失败，跳过挂载: {_agent_router_error}")
 
 
 # 授权码校验限速：只统计"失败"尝试的滑动窗口，防止对短授权码（6 位十六进制）的暴力爆破。
@@ -3519,22 +4496,37 @@ def _verify_record_failure(user_key: str) -> None:
 # ==================== Bot API 端点 ====================
 
 class GenerateAuthCodeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     code: str
+    poll_token: str
     expires_in: int
 
 
 @app.post("/api/bot/auth/generate", response_model=GenerateAuthCodeResponse)
 async def generate_auth_code():
     """生成授权码"""
-    code = bot_auth_manager.generate_auth_code()
-    return GenerateAuthCodeResponse(code=code, expires_in=BotAuthManager.AUTH_CODE_EXPIRE)
+    try:
+        challenge = bot_auth_manager.generate_auth_code()
+    except PairingCapacityError as exc:
+        raise HTTPException(status_code=429, detail="授权请求过多，请稍后重试") from exc
+    return GenerateAuthCodeResponse(
+        code=challenge.code,
+        poll_token=challenge.poll_token,
+        expires_in=challenge.expires_in,
+    )
 
 
 class CheckAuthCodeRequest(BaseModel):
-    code: str
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9A-Fa-f]{6}$")
+    poll_token: str = Field(min_length=32, max_length=256, pattern=r"^\S+$")
 
 
 class CheckAuthCodeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     verified: bool
     session_id: Optional[str] = None
 
@@ -3542,16 +4534,20 @@ class CheckAuthCodeResponse(BaseModel):
 @app.post("/api/bot/auth/check", response_model=CheckAuthCodeResponse)
 async def check_auth_code(req: CheckAuthCodeRequest):
     """检查授权码状态"""
-    session_id = bot_auth_manager.check_auth_code_status(req.code)
+    session_id = bot_auth_manager.check_auth_code_status(req.code, req.poll_token)
     return CheckAuthCodeResponse(verified=session_id is not None, session_id=session_id)
 
 
 class VerifyAuthCodeRequest(BaseModel):
-    code: str
-    bot_user_id: str
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9A-Fa-f]{6}$")
+    bot_user_id: str = Field(min_length=1, max_length=128)
 
 
 class VerifyAuthCodeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     success: bool
     session_id: Optional[str] = None
     message: str
@@ -3602,6 +4598,7 @@ class BotGenerateRequest(BaseModel):
 class BotGenerateResponse(BaseModel):
     success: bool
     task_id: Optional[str] = None
+    capability_token: Optional[str] = None
     message: str
 
 
@@ -3737,39 +4734,185 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
 
 
 @app.post("/api/bot/generate", response_model=BotGenerateResponse)
-async def bot_generate(req: BotGenerateRequest):
+async def bot_generate(
+    req: BotGenerateRequest,
+    idempotency_key: str = Header(default="", alias="Idempotency-Key"),
+):
     """提交生成任务（直接使用内置队列，不再依赖 Bot 轮询）"""
-    # 验证会话
+    principal = _principal_from_bot_session(req.session_id)
     session = bot_auth_manager.get_session(req.session_id)
-    if not session:
+    if session is None:  # kept explicit for the type checker and defensive races
         raise HTTPException(status_code=401, detail="会话无效或已过期")
+    resource = ResourceOwner(_BOT_TASK_TENANT_ID, principal.subject_id)
     
     # 转换参数
     stream_params = convert_web_params_to_stream(req.params)
+    request_hash = _generation_request_hash(stream_params)
+    normalized_key = idempotency_key.strip()
+    if _quota_ledger.enabled and not normalized_key:
+        raise HTTPException(status_code=400, detail="启用额度账本时必须提供 Idempotency-Key")
+    if len(normalized_key) > 200:
+        raise HTTPException(status_code=400, detail="Idempotency-Key 无效")
+    task_id = (
+        hashlib.sha256(
+            f"{resource.tenant_id}\0{resource.owner_id}\0{normalized_key}".encode("utf-8")
+        ).hexdigest()[:32]
+        if normalized_key
+        else secrets.token_hex(8)
+    )
+
+    def replay_response(existing: dict[str, Any]) -> BotGenerateResponse:
+        try:
+            _task_access.require_principal(existing, principal)
+        except ResourceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="任务不存在") from exc
+        if existing.get("request_hash") != request_hash:
+            raise HTTPException(status_code=409, detail="Idempotency-Key 已用于不同请求")
+        capability = _task_access.capabilities.issue(
+            principal,
+            job_id=task_id,
+            resource=resource,
+        )
+        queue_position = (
+            _get_task_queue_position(task_id) if existing.get("status") == "queued" else 0
+        )
+        return BotGenerateResponse(
+            success=True,
+            task_id=task_id,
+            capability_token=capability,
+            message=f"任务已存在，队列位置: {queue_position}",
+        )
+
+    existing = _generation_tasks.get(task_id)
+    if existing is not None:
+        return replay_response(existing)
+    await _ensure_cloud_job_storage()
+    persistent_existing = await _cloud_jobs.get(task_id)
+    if persistent_existing is not None:
+        if persistent_existing.resource != resource:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        if persistent_existing.request_hash != request_hash:
+            raise HTTPException(status_code=409, detail="Idempotency-Key 已用于不同请求")
+        capability = _task_access.capabilities.issue(
+            principal,
+            job_id=task_id,
+            resource=resource,
+        )
+        return BotGenerateResponse(
+            success=True,
+            task_id=task_id,
+            capability_token=capability,
+            message="任务已存在",
+        )
+
+    quota_units = calculate_anlas_cost(
+        int(stream_params.get("width", 832)),
+        int(stream_params.get("height", 1216)),
+        int(stream_params.get("steps", 28)),
+        str(stream_params.get("model", "")),
+        stream_params.get("strength") if stream_params.get("image") else None,
+        len(stream_params.get("director_reference_images", []) or []),
+    )
+    task_metadata: dict[str, Any] = {
+        "request_hash": request_hash,
+        "idempotency_key": normalized_key or None,
+        "bot_user_id": session.bot_user_id,
+        "quota_units": max(1, quota_units),
+    }
+    _task_access.bind_record(task_metadata, resource)
+    try:
+        await _quota_ledger.reserve(
+            task_metadata,
+            principal,
+            units=quota_units,
+            idempotency_key=normalized_key or f"job:{task_id}:reserve",
+        )
+    except CloudBackendError as exc:
+        status = 402 if exc.code == "quota_exceeded" else 409
+        if exc.code == "not_found":
+            status = 503
+        raise HTTPException(status_code=status, detail=exc.message) from exc
     
     # 入队生成。这是 web 前端的真实用户（bot 授权后登录 web），保留加速。
     user_id = f"web_{session.bot_user_id}"
-    task_id, queue_pos = await enqueue_generation(stream_params, user_id)
+    try:
+        queued_task_id, queue_pos, created = await enqueue_generation(
+            stream_params,
+            user_id,
+            resource=resource,
+            task_id=task_id,
+            task_metadata=task_metadata,
+            idempotency_key=normalized_key or None,
+            request_hash=request_hash,
+        )
+    except _DuplicateGenerationTaskError:
+        # Two concurrent retries can both reserve the same ledger row before one
+        # publishes the deterministic task id.  Never refund the shared active
+        # reservation; return the winner exactly like a normal replay.
+        existing = _generation_tasks.get(task_id)
+        if existing is not None:
+            return replay_response(existing)
+        await _quota_ledger.settle(
+            task_metadata,
+            principal,
+            succeeded=False,
+            job_id=task_id,
+        )
+        raise
+    except Exception:
+        await _quota_ledger.settle(
+            task_metadata,
+            principal,
+            succeeded=False,
+            job_id=task_id,
+        )
+        raise
     
     if queue_pos == -1:
+        await _quota_ledger.settle(
+            task_metadata,
+            principal,
+            succeeded=False,
+            job_id=task_id,
+        )
         return BotGenerateResponse(success=False, message="队列已满，请稍后再试")
-    
-    # 将 bot_user_id 存入任务记录，供 worker 完成后写入统计
-    gen_task = _generation_tasks.get(task_id)
-    if gen_task:
-        gen_task["bot_user_id"] = session.bot_user_id
+    task_id = queued_task_id
+    if not created:
+        capability = _task_access.capabilities.issue(
+            principal,
+            job_id=task_id,
+            resource=resource,
+        )
+        return BotGenerateResponse(
+            success=True,
+            task_id=task_id,
+            capability_token=capability,
+            message="任务已存在",
+        )
     
     # 同时在 bot_auth_manager 中创建任务记录（用于兼容现有的状态查询接口）
-    bot_task = await bot_auth_manager.create_task(req.session_id, req.params)
-    if bot_task:
-        bot_task.task_id = task_id  # 使用内置队列的 task_id
-        bot_auth_manager.tasks[task_id] = bot_task
-    
-    return BotGenerateResponse(success=True, task_id=task_id, message=f"任务已提交，队列位置: {queue_pos}")
+    await bot_auth_manager.create_task(
+        req.session_id,
+        req.params,
+        task_id=task_id,
+    )
+
+    capability = _task_access.capabilities.issue(
+        principal,
+        job_id=task_id,
+        resource=resource,
+    )
+    return BotGenerateResponse(
+        success=True,
+        task_id=task_id,
+        capability_token=capability,
+        message=f"任务已提交，队列位置: {queue_pos}",
+    )
 
 
 class GetTaskRequest(BaseModel):
     task_id: str
+    session_id: str
 
 
 class GetTaskResponse(BaseModel):
@@ -3784,23 +4927,31 @@ class GetTaskResponse(BaseModel):
 
 @app.post("/api/bot/task", response_model=GetTaskResponse)
 async def get_task(req: GetTaskRequest):
-    """获取任务状态（优先从内置队列查询）"""
-    # 先从内置队列查询
-    task = _generation_tasks.get(req.task_id)
-    if task:
+    """从持久任务权威读取；旧 Bot 记录只作为升级期回退。"""
+    principal = _principal_from_bot_session(req.session_id)
+    await _ensure_cloud_job_storage()
+    job = await _cloud_jobs.get(req.task_id)
+    if job:
+        try:
+            _task_access.policy.require_access(principal, job.resource)
+        except ResourceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="任务不存在") from exc
+        payload = await _legacy_job_response(job)
         return GetTaskResponse(
             success=True,
-            status=task["status"],
-            queue_position=_get_task_queue_position(req.task_id) if task["status"] == "queued" else 0,
-            result={"type": "base64", "imageBase64": task["result"]} if task.get("result") else None,
-            step=task.get("step", 0),
-            total_steps=task.get("total_steps", 28),
-            error=task.get("error"),
+            status=payload["status"],
+            queue_position=payload["queue_position"],
+            result=payload["result"],
+            step=payload["step"],
+            total_steps=payload["total_steps"],
+            error=payload["error"],
         )
     
     # 回退到 bot_auth_manager 查询（兼容旧任务）
     bot_task = bot_auth_manager.get_task(req.task_id)
     if bot_task:
+        if bot_task.session_id != req.session_id:
+            raise HTTPException(status_code=404, detail="任务不存在")
         return GetTaskResponse(
             success=True,
             status=bot_task.status,
@@ -3808,7 +4959,7 @@ async def get_task(req: GetTaskRequest):
             result=bot_task.result
         )
     
-    return GetTaskResponse(success=False)
+    raise HTTPException(status_code=404, detail="任务不存在")
 
 
 class PendingTasksResponse(BaseModel):
@@ -3832,127 +4983,418 @@ async def get_pending_tasks():
     return PendingTasksResponse(tasks=pending)
 
 
+class BotTaskResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal["base64"]
+    image_base64: str = Field(
+        alias="imageBase64",
+        min_length=1,
+        max_length=44 * _MIB,
+        strict=True,
+    )
+
+    @field_validator("image_base64")
+    @classmethod
+    def validate_image(cls, value: str) -> str:
+        try:
+            return normalize_image_base64(value, max_decoded_bytes=MAX_PAID_RESULT_BYTES)
+        except InvalidRequestError as exc:
+            raise ValueError(exc.message) from exc
+
+
 class UpdateTaskRequest(BaseModel):
-    task_id: str
-    status: str
-    queue_position: int = 0
-    result: Optional[Dict[str, Any]] = None
+    model_config = ConfigDict(extra="forbid")
 
+    task_id: str = Field(
+        min_length=1,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        strict=True,
+    )
+    status: Literal[
+        "queued",
+        "generating",
+        "cancelling",
+        "completed",
+        "failed",
+        "cancelled",
+        "interrupted",
+    ]
+    queue_position: int = Field(default=0, ge=0, le=100_000, strict=True)
+    result: BotTaskResult | None = None
+    error: str | None = Field(default=None, min_length=1, max_length=2_000, strict=True)
 
-@app.post("/api/bot/task/update", dependencies=[Depends(_require_bot_secret)])
-async def update_task(req: UpdateTaskRequest):
-    """更新任务状态（由Bot调用）"""
-    await bot_auth_manager.update_task(req.task_id, req.status, req.result, req.queue_position)
-    return {"success": True}
+    @model_validator(mode="after")
+    def validate_result_state(self) -> "UpdateTaskRequest":
+        if self.status == "completed" and self.result is None:
+            raise ValueError("completed task update requires a result")
+        if self.status != "completed" and self.result is not None:
+            raise ValueError("task result is only valid for a completed update")
+        if self.error is not None and self.status not in {
+            "failed",
+            "cancelled",
+            "interrupted",
+        }:
+            raise ValueError("task error is only valid for a failed terminal update")
+        return self
 
 
 class TaskProgressRequest(BaseModel):
-    task_id: str
-    step: int
-    total_steps: int
-    preview: Optional[str] = None  # base64预览图
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(
+        min_length=1,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        strict=True,
+    )
+    step: int = Field(ge=0, le=100_000, strict=True)
+    total_steps: int = Field(ge=1, le=100_000, strict=True)
+    preview: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=28 * _MIB,
+        strict=True,
+    )
+
+    @field_validator("preview")
+    @classmethod
+    def validate_preview(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return normalize_image_base64(value)
+        except InvalidRequestError as exc:
+            raise ValueError(exc.message) from exc
+
+    @model_validator(mode="after")
+    def validate_progress(self) -> "TaskProgressRequest":
+        if self.step > self.total_steps:
+            raise ValueError("step cannot exceed total_steps")
+        return self
 
 
-@app.post("/api/bot/task/progress")
+class BotTaskMutationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    success: Literal[True] = True
+
+
+async def _authorize_bot_adapter_job(task_id: str) -> tuple[BotGenerateTask, CloudJob]:
+    """Resolve the legacy task-to-owner binding without exposing other jobs."""
+
+    task = bot_auth_manager.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    session = bot_auth_manager.get_session(task.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    await _ensure_cloud_job_storage()
+    try:
+        job = await _cloud_jobs.get(task_id)
+        if job is None:
+            raise ResourceNotFoundError()
+        principal = Principal.user(str(session.bot_user_id), _BOT_TASK_TENANT_ID)
+        _task_access.policy.require_access(principal, job.resource)
+    except (InvalidRequestError, ResourceNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    return task, job
+
+
+@app.post(
+    "/api/bot/task/update",
+    response_model=BotTaskMutationResponse,
+    dependencies=[Depends(_require_bot_secret)],
+)
+async def update_task(req: UpdateTaskRequest):
+    """Commit one Bot state transition, then mirror its legacy action once."""
+
+    _task, current = await _authorize_bot_adapter_job(req.task_id)
+    encoded_result = req.result.image_base64 if req.result is not None else None
+    try:
+        # The compatibility Bot adapter only reports a successfully billable
+        # provider boundary together with the completed result.  Failed terminal
+        # updates therefore refund, while completed ones capture exactly once.
+        if req.status == "completed" and not current.provider_attempted:
+            current, _ = await _cloud_jobs.mark_provider_attempted(req.task_id)
+        _job, event = await _persist_task_update(
+            req.task_id,
+            req.status,
+            step=current.step,
+            total_steps=current.total_steps,
+            result=encoded_result,
+            error=req.error,
+            event_metadata={
+                "adapter": "bot",
+                "legacy_update_direct": True,
+                "queue_position": req.queue_position,
+            },
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    except JobStateConflictError as exc:
+        raise HTTPException(status_code=409, detail="任务状态冲突") from exc
+    except InvalidRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    if event is not None:
+        legacy_result = req.result.model_dump(by_alias=True) if req.result is not None else None
+        await bot_auth_manager.update_task(
+            req.task_id,
+            req.status,
+            legacy_result,
+            req.queue_position,
+            req.error,
+        )
+    if req.status in {"completed", "failed", "cancelled", "interrupted"}:
+        await _settle_generation_quota(req.task_id)
+    return BotTaskMutationResponse()
+
+
+@app.post(
+    "/api/bot/task/progress",
+    response_model=BotTaskMutationResponse,
+    dependencies=[Depends(_require_bot_secret)],
+)
 async def update_task_progress(req: TaskProgressRequest):
-    """更新任务生成进度（流式，由Bot调用）"""
-    task = bot_auth_manager.get_task(req.task_id)
-    if task:
-        # 通过WebSocket推送进度给前端
-        ws = bot_auth_manager.session_websockets.get(task.session_id)
+    """Persist Bot progress and mirror the existing preview action once."""
+
+    task, _current = await _authorize_bot_adapter_job(req.task_id)
+    try:
+        _job, event = await _persist_task_update(
+            req.task_id,
+            "generating",
+            step=req.step,
+            total_steps=req.total_steps,
+            result=None,
+            error=None,
+            event_metadata={"adapter": "bot", "legacy_progress_direct": True},
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    except JobStateConflictError as exc:
+        raise HTTPException(status_code=409, detail="任务状态冲突") from exc
+    except InvalidRequestError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    if event is not None:
+        with bot_auth_manager._state_lock:
+            ws = bot_auth_manager.session_websockets.get(task.session_id)
         if ws:
             try:
-                await ws.send_json({
-                    "action": "task_progress",
-                    "task_id": req.task_id,
-                    "step": req.step,
-                    "total_steps": req.total_steps,
-                    "preview": req.preview
-                })
-            except:
+                await ws.send_json(
+                    {
+                        "action": "task_progress",
+                        "task_id": req.task_id,
+                        "step": req.step,
+                        "total_steps": req.total_steps,
+                        "preview": req.preview,
+                    }
+                )
+            except Exception:
                 pass
-    return {"success": True}
+    return BotTaskMutationResponse()
 
 
 @app.websocket("/ws/bot")
 async def websocket_bot(websocket: WebSocket):
-    """Bot模式WebSocket连接 - 支持会话绑定和任务进度订阅"""
-    await websocket.accept()
-    
-    session_id: Optional[str] = None
-    subscribed_tasks: set = set()  # 订阅的任务ID列表
-    
+    """Bot task stream authenticated before accepting the socket.
+
+    Browser WebSocket APIs cannot set ``Authorization``.  Carry the Bot session
+    in a negotiated subprotocol instead of accepting an anonymous connection and
+    trusting a later message to bind its identity.
+    """
+    offered = [
+        value.strip()
+        for value in websocket.headers.get("sec-websocket-protocol", "").split(",")
+        if value.strip()
+    ]
+    session_protocols = [value for value in offered if value.startswith("bot-session.")]
+    selected = session_protocols[0] if len(session_protocols) == 1 else ""
+    session_id = selected.removeprefix("bot-session.") if selected else ""
+    session = bot_auth_manager.get_session(session_id)
+    if session is None:
+        await websocket.close(code=4401, reason="authentication required")
+        return
+
+    await websocket.accept(subprotocol=selected)
+    send_lock = asyncio.Lock()
+    sender = _LockedWebSocketSender(websocket, send_lock)
+    bot_auth_manager.session_websockets[session_id] = sender
+
+    async def forward_event(task_id: str, event: Mapping[str, Any]) -> None:
+        await sender.send_json({"type": "job_event", "event": dict(event)})
+        event_data = event.get("data")
+        if (
+            event.get("kind") == "progress"
+            and isinstance(event_data, dict)
+            and not event_data.get("legacy_progress_direct")
+        ):
+            await sender.send_json(
+                {
+                    "action": "task_progress",
+                    "task_id": task_id,
+                    "step": int(event_data.get("step", 0) or 0),
+                    "total_steps": int(event_data.get("total_steps", 0) or 0),
+                }
+            )
+        if isinstance(event_data, dict) and event_data.get("legacy_update_direct"):
+            return
+        event_status = JobStatus(str(event.get("status", "")))
+        update: dict[str, Any] = {
+            "action": "task_update",
+            "task_id": task_id,
+            "status": _JOB_TO_LEGACY_STATUS[event_status],
+            "sequence": int(event.get("sequence", 0) or 0),
+            "step": int(event_data.get("step", 0) or 0) if isinstance(event_data, dict) else 0,
+            "total_steps": (
+                int(event_data.get("total_steps", 0) or 0)
+                if isinstance(event_data, dict)
+                else 0
+            ),
+            "queue_position": _get_task_queue_position(task_id)
+            if event_status is JobStatus.QUEUED
+            else 0,
+        }
+        if event_status in {
+            JobStatus.SUCCEEDED,
+            JobStatus.FAILED,
+            JobStatus.CANCELLED,
+            JobStatus.INTERRUPTED,
+        }:
+            terminal = await _cloud_jobs.get(task_id)
+            if terminal is not None and terminal.status is event_status:
+                terminal_payload = await _legacy_job_response(terminal)
+                update["result"] = terminal_payload["result"]
+                update["error"] = terminal_payload["error"]
+        await sender.send_json(update)
+
+    async def subscription_error(task_id: str) -> None:
+        await sender.send_json(
+            {
+                "action": "subscription_error",
+                "task_id": task_id,
+                "error": "event_stream_unavailable",
+            }
+        )
+
+    subscriptions = JobEventSubscriptionSet(
+        _cloud_jobs,
+        forward_event,
+        on_error=subscription_error,
+    )
+
     try:
+        # Keep the established client contract: authentication is now performed
+        # during the handshake, but the first application event still confirms it.
+        await sender.send_json({
+            "action": "session_bound",
+            "success": True,
+            "bot_user_id": session.bot_user_id,
+        })
         while True:
             data = await websocket.receive_json()
             action = data.get("action")
-            
+
             if action == "bind_session":
-                # 绑定会话
-                sid = data.get("session_id")
-                session = bot_auth_manager.get_session(sid)
-                if session:
-                    session_id = sid
-                    bot_auth_manager.session_websockets[sid] = websocket
-                    await websocket.send_json({
-                        "action": "session_bound",
-                        "success": True,
-                        "bot_user_id": session.bot_user_id
-                    })
-                else:
-                    await websocket.send_json({
-                        "action": "session_bound",
-                        "success": False,
-                        "message": "会话无效"
-                    })
-            
+                # Identity is immutable for the lifetime of the connection.
+                await websocket.close(code=4403, reason="session rebinding is not allowed")
+                return
+
             elif action == "subscribe_task":
-                # 订阅任务进度
+                # Missing and cross-owner tasks remain indistinguishable.
                 task_id = data.get("task_id")
-                if task_id:
-                    subscribed_tasks.add(task_id)
-                    _generation_websockets[task_id] = websocket
-                    
-                    # 立即发送当前状态
-                    task = _generation_tasks.get(task_id)
-                    if task:
-                        await websocket.send_json({
-                            "action": "task_update",
+                after_sequence = data.get("after_sequence", 0)
+                if (
+                    not isinstance(after_sequence, int)
+                    or isinstance(after_sequence, bool)
+                    or after_sequence < 0
+                ):
+                    await sender.send_json(
+                        {
+                            "action": "subscribed",
                             "task_id": task_id,
-                            "status": task["status"],
-                            "step": task.get("step", 0),
-                            "total_steps": task.get("total_steps", 28),
-                            "queue_position": _get_task_queue_position(task_id) if task["status"] == "queued" else 0,
-                            "result": {"type": "base64", "imageBase64": task["result"]} if task.get("result") else None,
-                            "error": task.get("error"),
-                        })
-                    await websocket.send_json({
+                            "success": False,
+                            "error": "invalid_request",
+                        }
+                    )
+                    continue
+                await _ensure_cloud_job_storage()
+                try:
+                    snapshot = (
+                        await _cloud_jobs.snapshot_with_watermark(task_id)
+                        if isinstance(task_id, str)
+                        else None
+                    )
+                except InvalidRequestError:
+                    snapshot = None
+                try:
+                    if snapshot is None:
+                        raise ResourceNotFoundError()
+                    job, sequence = snapshot
+                    principal = _principal_from_bot_session(session_id)
+                    _task_access.policy.require_access(principal, job.resource)
+                except (ResourceNotFoundError, HTTPException):
+                    await sender.send_json({
                         "action": "subscribed",
                         "task_id": task_id,
-                        "success": True
+                        "success": False,
+                        "error": "not_found",
                     })
-            
+                    continue
+
+                await subscriptions.unsubscribe(task_id)
+
+                await sender.send_json({
+                    "type": "job_snapshot",
+                    "sequence": sequence,
+                    "job": job.to_dict(),
+                })
+                await sender.send_json({
+                    "action": "task_update",
+                    "sequence": sequence,
+                    **(await _legacy_job_response(job)),
+                })
+                # This fresh snapshot covers all prior events and supersedes the
+                # client cursor.  Never trust a cursor above the server watermark:
+                # it would starve real future transitions indefinitely.
+                cursor = sequence
+                for event in await _cloud_jobs.list_events(
+                    task_id,
+                    after_sequence=cursor,
+                ):
+                    await forward_event(task_id, event.to_dict())
+                    cursor = event.sequence
+                await sender.send_json({
+                    "action": "subscribed",
+                    "task_id": task_id,
+                    "success": True,
+                })
+                # Any transition committed after replay is durable and will be
+                # observed from the final cursor when this watcher starts.
+                await subscriptions.replace(task_id, after_sequence=cursor)
+
             elif action == "unsubscribe_task":
-                # 取消订阅
                 task_id = data.get("task_id")
-                if task_id:
-                    subscribed_tasks.discard(task_id)
-                    _generation_websockets.pop(task_id, None)
-            
+                removed = await subscriptions.unsubscribe(task_id) if isinstance(task_id, str) else False
+                await sender.send_json(
+                    {
+                        "action": "unsubscribed",
+                        "task_id": task_id,
+                        "success": removed,
+                    }
+                )
+
             elif action == "heartbeat":
-                await websocket.send_json({"action": "heartbeat_ack"})
-                
+                await sender.send_json({"action": "heartbeat_ack"})
+
     except WebSocketDisconnect:
-        # 清理订阅
-        for task_id in subscribed_tasks:
-            _generation_websockets.pop(task_id, None)
-        if session_id:
-            bot_auth_manager.session_websockets.pop(session_id, None)
+        pass
     except Exception as e:
         print(f"Bot WebSocket error: {e}")
-        for task_id in subscribed_tasks:
-            _generation_websockets.pop(task_id, None)
-        if session_id:
+    finally:
+        await subscriptions.close()
+        if bot_auth_manager.session_websockets.get(session_id) is sender:
             bot_auth_manager.session_websockets.pop(session_id, None)
 
 
@@ -4121,23 +5563,27 @@ async def _record_web_stats_custom(bot_user_id: str, points: int, reason: str):
     """记录自定义点数消耗（vibe 编码、超分辨率等非生图操作）"""
     if not bot_user_id or points <= 0:
         return
-    try:
-        stats_key = f"user_{bot_user_id}"
-        now = datetime.now(_BEIJING_TZ).replace(tzinfo=None).isoformat()
+    stats_key = f"user_{bot_user_id}"
+    now = datetime.now(_BEIJING_TZ).replace(tzinfo=None).isoformat()
 
-        async with aiosqlite.connect(str(_STATS_DB)) as db:
-            await db.execute(
-                "INSERT INTO points_spent(timestamp, stats_key, user_id, group_id, points, reason) VALUES(?,?,?,?,?,?)",
-                (now, stats_key, str(bot_user_id), None, points, f"web_{reason}"),
-            )
-            await db.commit()
-        print(f"[统计] Web自定义统计已记录: user={bot_user_id}, points={points}, reason={reason}")
-    except Exception as e:
-        print(f"[统计] 记录Web自定义统计失败: {e}")
+    # This recorder participates in the paid-operation success boundary.  A DB
+    # failure must propagate so callers cannot report a successful, accounted
+    # operation when no durable usage row exists.
+    async with aiosqlite.connect(str(_STATS_DB)) as db:
+        await db.execute(
+            "INSERT INTO points_spent(timestamp, stats_key, user_id, group_id, points, reason) VALUES(?,?,?,?,?,?)",
+            (now, stats_key, str(bot_user_id), None, points, f"web_{reason}"),
+        )
+        await db.commit()
+    print(f"[统计] Web自定义统计已记录: user={bot_user_id}, points={points}, reason={reason}")
+
+
+_paid_operations = PaidOperationService(_record_web_stats_custom)
 
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
 _STATS_DB = BOT_DATA_DIR / "stats_data.db"
+_workshop_quota = SQLiteWorkshopQuotaRepository(_STATS_DB)
 
 # ---------- 27日结算周期工具函数 ----------
 # 计费参数集中维护于 novelai_web_ui/server/config.py（BILLING_*）
@@ -5159,11 +6605,9 @@ def _check_not_modified(request: StarletteRequest, etag: str):
 
 
 @app.get("/api/oc/list")
-async def get_oc_list(session_id: str = ""):
+async def get_oc_list(request: Request, session_id: str = ""):
     """获取公共OC列表（需要Bot授权）"""
-    # 访问限制：必须提供有效的 Bot session
-    if not session_id or not bot_auth_manager.get_session(session_id):
-        raise HTTPException(status_code=403, detail="需要Bot授权才能访问公共OC库")
+    _library_principal_from_request(request, session_id)
     
     try:
         oc_data = await _load_oc_data()
@@ -5235,6 +6679,7 @@ class CreateOCRequest(BaseModel):
     negative_prompt: Optional[str] = None  # 负面提示词 (bot 端目前仅消费 tag_group)
     preview_base64: Optional[str] = None  # base64编码的预览图
     created_by: Optional[str] = None  # 创建者ID（QQ号等）
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 class UpdateOCRequest(BaseModel):
@@ -5245,6 +6690,7 @@ class UpdateOCRequest(BaseModel):
     preview_base64: Optional[str] = None
     created_by: Optional[str] = None
     created_at: Optional[int] = None
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 async def _load_oc_data() -> dict:
@@ -5410,10 +6856,13 @@ def _save_preview_image(en_name: str, base64_data: str, zh_name: str = "", zh_al
 
 
 @app.post("/api/oc/create")
-async def create_oc(req: CreateOCRequest):
+async def create_oc(req: CreateOCRequest, request: Request):
     """创建新OC"""
     import time
     import re as _re
+
+    principal = _library_principal_from_request(request, req.session_id)
+    ownership = _library_ownership.stamp(principal)
     
     oc_data = await _load_oc_data()
     
@@ -5447,7 +6896,8 @@ async def create_oc(req: CreateOCRequest):
         "negative_prompt": req.negative_prompt or "",
         "images": {},
         "created_at": int(time.time()),  # 创建时间戳
-        "created_by": req.created_by or None  # 创建者ID
+        "created_by": ownership["owner_id"],
+        **ownership,
     }
     
     # 保存预览图（仅纯净版，不再生成带名字版）
@@ -5480,14 +6930,22 @@ async def create_oc(req: CreateOCRequest):
 
 
 @app.put("/api/oc/{oc_name}")
-async def update_oc(oc_name: str, req: UpdateOCRequest):
+async def update_oc(oc_name: str, req: UpdateOCRequest, request: Request):
     """更新OC"""
+    principal = _library_principal_from_request(request, req.session_id)
     oc_data = await _load_oc_data()
     
     if oc_name not in oc_data:
         raise HTTPException(status_code=404, detail="OC不存在")
     
     oc_entry = oc_data[oc_name]
+    _require_library_record_owner(
+        principal,
+        oc_entry,
+        # created_by was historically accepted from an anonymous request body,
+        # so it is not valid authorization evidence for pre-migration records.
+        legacy_owner_fields=(),
+    )
     
     # 记录旧的中文名，用于判断是否需要重新生成带名字的预览图
     old_zh_name = oc_entry.get("zh_name", "")
@@ -5502,10 +6960,8 @@ async def update_oc(oc_name: str, req: UpdateOCRequest):
         oc_entry["tag_group"] = req.tag_group
     if req.negative_prompt is not None:
         oc_entry["negative_prompt"] = req.negative_prompt
-    if req.created_by is not None:
-        oc_entry["created_by"] = req.created_by
-    if req.created_at is not None:
-        oc_entry["created_at"] = req.created_at
+    # created_by/created_at remain accepted for v0 decoding only. Ownership and
+    # creation time are immutable server-derived fields.
     
     # 获取当前或更新后的中文名
     zh_name = oc_entry.get("zh_name", "")
@@ -5544,9 +7000,11 @@ async def update_oc(oc_name: str, req: UpdateOCRequest):
 
 
 @app.delete("/api/oc/{oc_name}")
-async def delete_oc(oc_name: str):
+async def delete_oc(oc_name: str, request: Request, session_id: str = ""):
     """删除OC"""
     import os
+
+    principal = _library_principal_from_request(request, session_id)
     
     oc_data = await _load_oc_data()
     
@@ -5554,6 +7012,11 @@ async def delete_oc(oc_name: str):
         raise HTTPException(status_code=404, detail="OC不存在")
     
     oc_entry = oc_data[oc_name]
+    _require_library_record_owner(
+        principal,
+        oc_entry,
+        legacy_owner_fields=(),
+    )
     images = oc_entry.get("images") or {}
     
     # 删除 oc_images_clean/ 目录下的纯净预览图
@@ -5765,21 +7228,20 @@ async def _ds_fallback_related(anchor_tags: list[str], limit: int) -> list[dict]
         payload.update(cfg["extra_payload"])
 
     try:
-        session = await _get_translate_session(cfg.get("proxy", ""))
-        async with session.post(
+        response = await _safe_outbound_json.post_json(
             f"{cfg['base_url'].rstrip('/')}/chat/completions",
-            json=payload,
             headers={
                 "Authorization": f"Bearer {cfg['api_key']}",
                 "Content-Type": "application/json",
             },
-            timeout=aiohttp.ClientTimeout(total=30),
-        ) as resp:
-            if resp.status != 200:
-                return []
-            data = await resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return _parse_ds_fallback_results(content)[:limit]
+            payload=payload,
+            timeout=30,
+        )
+        if response.status != 200:
+            return []
+        data = response.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return _parse_ds_fallback_results(content)[:limit]
     except Exception as e:
         print(f"[tags_related] DS fallback error: {e}")
         return []
@@ -6483,10 +7945,25 @@ async def tags_wiki(tags: str):
 # ==================== Vibe 编码 API ====================
 
 class EncodeVibeRequest(BaseModel):
-    image: str  # base64 图片
-    information_extracted: float = 0.5
-    model: str = "nai-diffusion-4-5-full"
-    session_id: Optional[str] = None  # 用于统计记录
+    model_config = ConfigDict(extra="forbid")
+
+    image: str = Field(min_length=1, max_length=28 * 1024 * 1024, strict=True)
+    information_extracted: float = Field(default=0.5, ge=0, le=1, strict=True)
+    model: str = Field(
+        default="nai-diffusion-4-5-full",
+        min_length=1,
+        max_length=128,
+        strict=True,
+    )
+    session_id: str | None = Field(default=None, max_length=200, strict=True)
+
+    @field_validator("image")
+    @classmethod
+    def validate_image(cls, value: str) -> str:
+        try:
+            return normalize_image_base64(value)
+        except InvalidRequestError as exc:
+            raise ValueError(exc.message) from exc
 
 
 def _get_anlas_only_token() -> Optional[str]:
@@ -6509,60 +7986,81 @@ async def _get_first_novelai_token() -> str:
     return tokens[0] if tokens else ""
 
 
-@app.post("/api/vibe/encode")
-async def encode_vibe(req: EncodeVibeRequest):
-    """调用 NovelAI encode-vibe 接口编码图片（消耗 2 anlas）
+async def _read_paid_response(response: Any, *, max_bytes: int) -> bytes:
+    payload = bytearray()
+    async for chunk in response.content.iter_chunked(64 * 1024):
+        if not isinstance(chunk, bytes):
+            raise HTTPException(status_code=502, detail="上游返回了无效数据")
+        payload.extend(chunk)
+        if len(payload) > max_bytes:
+            raise HTTPException(status_code=502, detail="上游响应超过安全限制")
+    return bytes(payload)
 
-    不走生图队列，不独占 Token，直接并发请求。
-    encode-vibe 是独立 API，不与生图互相 429。
-    """
 
-    # 配置了纯点数 Token 时强制走它；否则非独占地从主池选（不阻塞生图队列）
-    token = _get_anlas_only_token() or await token_manager.get_best_token(need_anlas=True)
-    if not token:
-        raise HTTPException(status_code=500, detail="NovelAI Token 未配置或全部禁用")
-
-    # 处理图片数据：移除可能的 data URL 前缀
-    image_data = req.image
-    if image_data.startswith('data:'):
-        image_data = image_data.split(',', 1)[1] if ',' in image_data else image_data
-
-    print(f"[Vibe Encode] Model: {req.model}, Image length: {len(image_data)}, Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
-
-    url = 'https://image.novelai.net/ai/encode-vibe'
+async def _encode_vibe_upstream(token: str, req: EncodeVibeRequest) -> str:
+    print(
+        f"[Vibe Encode] Model: {req.model}, Image length: {len(req.image)}, "
+        f"Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}"
+    )
     headers = {
-        'accept': '*/*',
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json',
+        "accept": "*/*",
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
     }
     payload = {
-        "image": image_data,
+        "image": req.image,
         "information_extracted": req.information_extracted,
-        "model": req.model
+        "model": req.model,
     }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://image.novelai.net/ai/encode-vibe",
+            headers=headers,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=300),
+        ) as response:
+            if response.status != 200:
+                error = await _read_paid_response(response, max_bytes=2048)
+                raise HTTPException(
+                    status_code=response.status,
+                    detail=f"NovelAI API 错误: {error.decode('utf-8', errors='replace')}",
+                )
+            content = await _read_paid_response(response, max_bytes=MAX_PAID_RESULT_BYTES)
+            if not content:
+                raise HTTPException(status_code=502, detail="NovelAI 返回了空编码")
+    return base64.b64encode(content).decode("ascii")
 
+
+@app.post("/api/vibe/encode")
+async def encode_vibe(req: EncodeVibeRequest, request: Request):
+    """Encode one image for an authenticated Bot owner (fixed 2-Anlas usage)."""
+
+    principal = _library_principal_from_request(request, req.session_id or "")
+    token = _get_anlas_only_token() or await token_manager.get_best_token(need_anlas=True)
+    if not token:
+        raise HTTPException(status_code=503, detail="NovelAI Token 未配置或全部禁用")
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise HTTPException(status_code=response.status, detail=f"NovelAI API 错误: {error_text}")
-                content = await response.read()
-                vibe_base64 = base64.b64encode(content).decode("utf-8")
-                # 记录 Vibe 编码消耗（固定 2 anlas）
-                if req.session_id:
-                    vibe_session = bot_auth_manager.get_session(req.session_id)
-                    if vibe_session:
-                        await _record_web_stats_custom(
-                            vibe_session.bot_user_id, 2, "vibe编码"
-                        )
-                # 尝试缓存到公共 vibe 文件（异步，不阻塞返回）
-                asyncio.create_task(_try_cache_public_vibe_encoding(
-                    image_data, req.information_extracted, req.model, vibe_base64
-                ))
-                return {"encoding": vibe_base64}
-    except aiohttp.ClientError as e:
-        raise HTTPException(status_code=500, detail=f"网络请求失败: {str(e)}")
+        vibe_base64 = await _paid_operations.execute(
+            principal,
+            lambda: _encode_vibe_upstream(token, req),
+            charge=UsageCharge(2, "vibe编码"),
+        )
+    except aiohttp.ClientError as exc:
+        raise HTTPException(status_code=502, detail="NovelAI 网络请求失败") from exc
+    except UsageRecordingError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="上游操作已完成但用量记录失败，请勿自动重试并联系管理员核对用量",
+        ) from exc
+    asyncio.create_task(
+        _try_cache_public_vibe_encoding(
+            req.image,
+            req.information_extracted,
+            req.model,
+            vibe_base64,
+        )
+    )
+    return {"encoding": vibe_base64}
 
 
 # ==================== 公共 Vibe 编码缓存 ====================
@@ -6706,11 +8204,9 @@ async def get_vibe_encoding(filename: str, model: str, ie: float):
 
 
 @app.get("/api/vibes/list")
-async def get_public_vibes(session_id: str = ""):
+async def get_public_vibes(request: Request, session_id: str = ""):
     """获取公共Vibe列表（需要Bot授权）"""
-    # 访问限制：必须提供有效的 Bot session
-    if not session_id or not bot_auth_manager.get_session(session_id):
-        raise HTTPException(status_code=403, detail="需要Bot授权才能访问公共Vibe库")
+    _library_principal_from_request(request, session_id)
     
     import json
     
@@ -6854,7 +8350,7 @@ async def download_vibe_file(filename: str):
 
 
 @app.delete("/api/vibes/file/{filename}")
-async def delete_vibe_file(filename: str, session_id: str = ""):
+async def delete_vibe_file(filename: str, request: Request, session_id: str = ""):
     """删除Vibe文件（仅上传者本人可删除）"""
     import os
 
@@ -6866,10 +8362,7 @@ async def delete_vibe_file(filename: str, session_id: str = ""):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="无效的文件名")
 
-    # 鉴权：必须提供有效的 Bot session
-    session = bot_auth_manager.get_session(session_id) if session_id else None
-    if not session:
-        raise HTTPException(status_code=403, detail="需要Bot授权才能删除公共Vibe")
+    principal = _library_principal_from_request(request, session_id)
 
     vibe_path = BOT_VIBES_DIR / filename
     if not vibe_path.exists():
@@ -6879,14 +8372,14 @@ async def delete_vibe_file(filename: str, session_id: str = ""):
     try:
         with open(vibe_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        owner = data.get("uploader_id")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取Vibe文件失败: {e}")
 
-    if not owner:
-        raise HTTPException(status_code=403, detail="该公共Vibe无所有者记录，不可删除")
-    if owner != session.bot_user_id:
-        raise HTTPException(status_code=403, detail="只能删除自己上传的Vibe")
+    _require_library_record_owner(
+        principal,
+        data,
+        legacy_owner_fields=("uploader_id",),
+    )
 
     try:
         os.remove(vibe_path)
@@ -6902,23 +8395,21 @@ async def delete_vibe_file(filename: str, session_id: str = ""):
 class UploadVibeRequest(BaseModel):
     vibe_data: Dict[str, Any]  # 完整的vibe JSON数据
     name: Optional[str] = None  # 可选的自定义名称
-    session_id: str  # Bot 授权 session（必填，用于记录上传者）
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 @app.post("/api/vibes/upload")
-async def upload_vibe_to_public(req: UploadVibeRequest):
+async def upload_vibe_to_public(req: UploadVibeRequest, request: Request):
     """上传Vibe到公共目录（需 Bot 授权，自动记录上传者）"""
     import json
 
-    # 鉴权：必须提供有效的 Bot session
-    session = bot_auth_manager.get_session(req.session_id) if req.session_id else None
-    if not session:
-        raise HTTPException(status_code=403, detail="需要Bot授权才能上传公共Vibe")
+    principal = _library_principal_from_request(request, req.session_id)
+    ownership = _library_ownership.stamp(principal)
 
     # 确保目录存在
     BOT_VIBES_DIR.mkdir(parents=True, exist_ok=True)
 
-    vibe_data = req.vibe_data
+    vibe_data = dict(req.vibe_data)
 
     # 确定文件名
     name = req.name or vibe_data.get("name") or f"vibe_{int(time.time())}"
@@ -6939,7 +8430,8 @@ async def upload_vibe_to_public(req: UploadVibeRequest):
 
     # 更新vibe数据中的名称 + 注入上传者元数据
     vibe_data["name"] = safe_name
-    vibe_data["uploader_id"] = session.bot_user_id
+    vibe_data["uploader_id"] = ownership["owner_id"]
+    vibe_data.update(ownership)
     vibe_data["uploaded_at"] = int(time.time())
 
     try:
@@ -6962,14 +8454,18 @@ async def upload_vibe_to_public(req: UploadVibeRequest):
 
 
 class UpdatePublicVibeRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     name: Optional[str] = None
     default_strength: Optional[float] = None
     default_info_extracted: Optional[float] = None
 
 
 @app.put("/api/vibes/file/{filename}")
-async def update_public_vibe_meta(filename: str, req: UpdatePublicVibeRequest):
+async def update_public_vibe_meta(
+    filename: str,
+    req: UpdatePublicVibeRequest,
+    request: Request,
+):
     """更新公共Vibe元数据（仅上传者本人可改）"""
     import json
 
@@ -6979,10 +8475,7 @@ async def update_public_vibe_meta(filename: str, req: UpdatePublicVibeRequest):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="无效的文件名")
 
-    # 鉴权
-    session = bot_auth_manager.get_session(req.session_id) if req.session_id else None
-    if not session:
-        raise HTTPException(status_code=403, detail="需要Bot授权")
+    principal = _library_principal_from_request(request, req.session_id)
 
     vibe_path = BOT_VIBES_DIR / filename
     if not vibe_path.exists():
@@ -6994,12 +8487,11 @@ async def update_public_vibe_meta(filename: str, req: UpdatePublicVibeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取Vibe文件失败: {e}")
 
-    # 校验所有者
-    owner = data.get("uploader_id")
-    if not owner:
-        raise HTTPException(status_code=403, detail="该公共Vibe无所有者记录，不可修改")
-    if owner != session.bot_user_id:
-        raise HTTPException(status_code=403, detail="只能修改自己上传的Vibe")
+    _require_library_record_owner(
+        principal,
+        data,
+        legacy_owner_fields=("uploader_id",),
+    )
 
     # 更新字段
     if req.name is not None:
@@ -7038,17 +8530,13 @@ async def update_public_vibe_meta(filename: str, req: UpdatePublicVibeRequest):
 # 按 bot_user_id 隔离存储，仅本人可见可改
 
 USER_VIBES_DIR = BOT_DATA_DIR / "user_vibes"
+_library_ownership = LibraryOwnershipService()
+_private_library = OwnerScopedLibraryStorage(USER_VIBES_DIR, _library_ownership)
 
 
-def _user_vibes_dir_for(bot_user_id: str) -> Path:
-    """获取某用户的 vibe 存储目录，懒创建"""
-    # bot_user_id 由后端从 session 解出，不会包含路径分隔符，但仍 sanitize 一次
-    safe_id = "".join(c for c in str(bot_user_id) if c.isalnum() or c in "._-")
-    if not safe_id:
-        raise HTTPException(status_code=400, detail="无效的用户ID")
-    user_dir = USER_VIBES_DIR / safe_id
-    user_dir.mkdir(parents=True, exist_ok=True)
-    return user_dir
+def _user_vibes_dir_for(principal: Principal) -> Path:
+    """Resolve a private library namespace from verified owner/tenant identity."""
+    return _private_library.namespace(principal)
 
 
 def _validate_vibe_filename(filename: str) -> None:
@@ -7059,19 +8547,14 @@ def _validate_vibe_filename(filename: str) -> None:
         raise HTTPException(status_code=400, detail="无效的文件名")
 
 
-def _require_session(session_id: str):
-    """校验 session 并返回 BotSession（无效则 403）"""
-    session = bot_auth_manager.get_session(session_id) if session_id else None
-    if not session:
-        raise HTTPException(status_code=403, detail="需要Bot授权")
-    return session
-
-
 @app.get("/api/user-vibes/list")
-async def get_user_vibes(session_id: str = ""):
+async def get_user_vibes(request: Request, session_id: str = ""):
     """列出当前用户云端所有 vibe 的元数据"""
-    session = _require_session(session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    user_dir = _user_vibes_dir_for(principal)
+    thumbnail_credential = (
+        "" if request.headers.get("X-Bot-Session") else f"?session_id={session_id}"
+    )
 
     vibes = []
     for vibe_file in user_dir.glob("*.naiv4vibe"):
@@ -7083,7 +8566,9 @@ async def get_user_vibes(session_id: str = ""):
                 "id": data.get("id") or vibe_file.stem,
                 "name": data.get("name") or vibe_file.stem,
                 "filename": vibe_file.name,
-                "thumbnail": f"/api/user-vibes/thumbnail/{vibe_file.name}?session_id={session_id}",
+                "thumbnail": (
+                    f"/api/user-vibes/thumbnail/{vibe_file.name}{thumbnail_credential}"
+                ),
                 "supportedModels": list(data.get("encodings", {}).keys()),
                 "defaultStrength": (data.get("importInfo") or {}).get("strength"),
                 "defaultInfoExtracted": (data.get("importInfo") or {}).get("information_extracted"),
@@ -7103,10 +8588,10 @@ async def get_user_vibes(session_id: str = ""):
 
 
 @app.get("/api/user-vibes/state")
-async def get_user_vibes_state(session_id: str = ""):
+async def get_user_vibes_state(request: Request, session_id: str = ""):
     """返回用户云端 vibe 的统计信息（用于增量轮询）"""
-    session = _require_session(session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    user_dir = _user_vibes_dir_for(principal)
 
     count = 0
     latest_updated = 0
@@ -7123,11 +8608,11 @@ async def get_user_vibes_state(session_id: str = ""):
 
 
 @app.get("/api/user-vibes/file/{filename}")
-async def get_user_vibe_file(filename: str, session_id: str = ""):
+async def get_user_vibe_file(filename: str, request: Request, session_id: str = ""):
     """获取完整的用户 vibe 文件"""
     _validate_vibe_filename(filename)
-    session = _require_session(session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    user_dir = _user_vibes_dir_for(principal)
 
     vibe_path = user_dir / filename
     if not vibe_path.exists():
@@ -7147,8 +8632,8 @@ async def get_user_vibe_thumbnail(filename: str, request: StarletteRequest, sess
     from fastapi.responses import Response
 
     _validate_vibe_filename(filename)
-    session = _require_session(session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    user_dir = _user_vibes_dir_for(principal)
 
     vibe_path = user_dir / filename
     if not vibe_path.exists():
@@ -7185,17 +8670,17 @@ async def get_user_vibe_thumbnail(filename: str, request: StarletteRequest, sess
 
 
 class UploadUserVibeRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     vibe_data: Dict[str, Any]
     tags: Optional[List[str]] = None
     filename: Optional[str] = None  # 客户端可指定文件名（覆盖更新）
 
 
 @app.post("/api/user-vibes/upload")
-async def upload_user_vibe(req: UploadUserVibeRequest):
+async def upload_user_vibe(req: UploadUserVibeRequest, request: Request):
     """推送本地 vibe 到用户云端目录"""
-    session = _require_session(req.session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, req.session_id)
+    user_dir = _user_vibes_dir_for(principal)
 
     vibe_data = dict(req.vibe_data)
     name = vibe_data.get("name") or f"vibe_{int(time.time())}"
@@ -7255,7 +8740,7 @@ async def upload_user_vibe(req: UploadUserVibeRequest):
 
 
 class UpdateUserVibeRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     name: Optional[str] = None
     tags: Optional[List[str]] = None
     default_strength: Optional[float] = None
@@ -7263,11 +8748,15 @@ class UpdateUserVibeRequest(BaseModel):
 
 
 @app.put("/api/user-vibes/file/{filename}")
-async def update_user_vibe_meta(filename: str, req: UpdateUserVibeRequest):
+async def update_user_vibe_meta(
+    filename: str,
+    req: UpdateUserVibeRequest,
+    request: Request,
+):
     """更新用户云端 vibe 的元数据（标签/名称/默认参数）"""
     _validate_vibe_filename(filename)
-    session = _require_session(req.session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, req.session_id)
+    user_dir = _user_vibes_dir_for(principal)
 
     vibe_path = user_dir / filename
     if not vibe_path.exists():
@@ -7309,12 +8798,12 @@ async def update_user_vibe_meta(filename: str, req: UpdateUserVibeRequest):
 
 
 @app.delete("/api/user-vibes/file/{filename}")
-async def delete_user_vibe(filename: str, session_id: str = ""):
+async def delete_user_vibe(filename: str, request: Request, session_id: str = ""):
     """删除用户云端 vibe"""
     import os as _os
     _validate_vibe_filename(filename)
-    session = _require_session(session_id)
-    user_dir = _user_vibes_dir_for(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    user_dir = _user_vibes_dir_for(principal)
 
     vibe_path = user_dir / filename
     if not vibe_path.exists():
@@ -7336,12 +8825,12 @@ SYNC_PROTOCOL_VERSION = 2
 TOMBSTONE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 
-def _tombstones_path(bot_user_id: str) -> Path:
-    return _user_vibes_dir_for(bot_user_id) / "tombstones.json"
+def _tombstones_path(principal: Principal) -> Path:
+    return _user_vibes_dir_for(principal) / "tombstones.json"
 
 
-def _tag_pool_path(bot_user_id: str) -> Path:
-    return _user_vibes_dir_for(bot_user_id) / "tag_pool.json"
+def _tag_pool_path(principal: Principal) -> Path:
+    return _user_vibes_dir_for(principal) / "tag_pool.json"
 
 
 def _atomic_write_json(path: Path, data: Any) -> None:
@@ -7352,9 +8841,9 @@ def _atomic_write_json(path: Path, data: Any) -> None:
     temp_path.replace(path)
 
 
-def _load_tombstones(bot_user_id: str) -> List[dict]:
+def _load_tombstones(principal: Principal) -> List[dict]:
     """读取墓碑列表，自动过滤过期项；解析失败抛 500，绝不返回错误数据"""
-    path = _tombstones_path(bot_user_id)
+    path = _tombstones_path(principal)
     if not path.exists():
         return []
     try:
@@ -7376,8 +8865,8 @@ def _load_tombstones(bot_user_id: str) -> List[dict]:
         raise HTTPException(status_code=500, detail=f"墓碑文件损坏: {e}")
 
 
-def _save_tombstones(bot_user_id: str, tombstones: List[dict]) -> None:
-    _atomic_write_json(_tombstones_path(bot_user_id), tombstones)
+def _save_tombstones(principal: Principal, tombstones: List[dict]) -> None:
+    _atomic_write_json(_tombstones_path(principal), tombstones)
 
 
 def _compute_vibe_hashes(data: dict) -> Tuple[str, str]:
@@ -7422,32 +8911,32 @@ async def get_sync_version():
 # ── 墓碑 ──────────────────────────────────────────────────────────────────────
 
 class AddTombstoneRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     vibe_id: str
 
 
 @app.get("/api/user-vibes/tombstones")
-async def get_tombstones(session_id: str = ""):
+async def get_tombstones(request: Request, session_id: str = ""):
     """获取当前用户活跃墓碑列表（已自动过滤 30 天前的）"""
-    session = _require_session(session_id)
-    tombstones = _load_tombstones(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    tombstones = _load_tombstones(principal)
     return {"tombstones": tombstones}
 
 
 @app.post("/api/user-vibes/tombstones")
-async def add_tombstone(req: AddTombstoneRequest):
+async def add_tombstone(req: AddTombstoneRequest, request: Request):
     """追加一条墓碑（用户主动删除 vibe 时调用），同时清理过期项"""
-    session = _require_session(req.session_id)
+    principal = _library_principal_from_request(request, req.session_id)
     if not req.vibe_id:
         raise HTTPException(status_code=400, detail="vibe_id 不能为空")
 
     # 读取时已自动过滤过期项 → 写回时顺便清理一次
-    tombstones = _load_tombstones(session.bot_user_id)
+    tombstones = _load_tombstones(principal)
     # 去重：同 id 只保留最新
     tombstones = [t for t in tombstones if t.get("id") != req.vibe_id]
     tombstones.append({"id": req.vibe_id, "deleted_at": int(time.time())})
     try:
-        _save_tombstones(session.bot_user_id, tombstones)
+        _save_tombstones(principal, tombstones)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"写墓碑失败: {e}")
     return {"success": True, "active_count": len(tombstones)}
@@ -7456,12 +8945,12 @@ async def add_tombstone(req: AddTombstoneRequest):
 # ── 标签池 ────────────────────────────────────────────────────────────────────
 
 class PutTagPoolRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     tags: List[str]
 
 
-def _load_tag_pool(bot_user_id: str) -> List[str]:
-    path = _tag_pool_path(bot_user_id)
+def _load_tag_pool(principal: Principal) -> List[str]:
+    path = _tag_pool_path(principal)
     if not path.exists():
         return []
     try:
@@ -7476,20 +8965,20 @@ def _load_tag_pool(bot_user_id: str) -> List[str]:
 
 
 @app.get("/api/user-vibes/tag-pool")
-async def get_tag_pool(session_id: str = ""):
+async def get_tag_pool(request: Request, session_id: str = ""):
     """获取当前用户的云端标签池"""
-    session = _require_session(session_id)
-    return {"tags": _load_tag_pool(session.bot_user_id)}
+    principal = _library_principal_from_request(request, session_id)
+    return {"tags": _load_tag_pool(principal)}
 
 
 @app.put("/api/user-vibes/tag-pool")
-async def put_tag_pool(req: PutTagPoolRequest):
+async def put_tag_pool(req: PutTagPoolRequest, request: Request):
     """整体覆盖云端标签池（云端为真相策略）"""
-    session = _require_session(req.session_id)
+    principal = _library_principal_from_request(request, req.session_id)
     # 严格过滤
     cleaned = sorted(set(t for t in req.tags if isinstance(t, str) and t))
     try:
-        _atomic_write_json(_tag_pool_path(session.bot_user_id), cleaned)
+        _atomic_write_json(_tag_pool_path(principal), cleaned)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"写标签池失败: {e}")
     return {"success": True, "count": len(cleaned)}
@@ -7500,12 +8989,12 @@ async def put_tag_pool(req: PutTagPoolRequest):
 BACKUP_LOG_MAX = 20  # 最多保留 20 条记录
 
 
-def _backup_log_path(bot_user_id: str) -> Path:
-    return _user_vibes_dir_for(bot_user_id) / "backup_log.json"
+def _backup_log_path(principal: Principal) -> Path:
+    return _user_vibes_dir_for(principal) / "backup_log.json"
 
 
-def _load_backup_log(bot_user_id: str) -> List[dict]:
-    path = _backup_log_path(bot_user_id)
+def _load_backup_log(principal: Principal) -> List[dict]:
+    path = _backup_log_path(principal)
     if not path.exists():
         return []
     try:
@@ -7519,7 +9008,7 @@ def _load_backup_log(bot_user_id: str) -> List[dict]:
 
 
 class RecordBackupRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     device: str = "未知设备"
     action: str = "backup"  # "backup" | "restore"
     vibe_count: int = 0
@@ -7527,17 +9016,17 @@ class RecordBackupRequest(BaseModel):
 
 
 @app.get("/api/user-vibes/backup-log")
-async def get_backup_log(session_id: str = ""):
+async def get_backup_log(request: Request, session_id: str = ""):
     """获取备份/恢复操作记录"""
-    session = _require_session(session_id)
-    return {"log": _load_backup_log(session.bot_user_id)}
+    principal = _library_principal_from_request(request, session_id)
+    return {"log": _load_backup_log(principal)}
 
 
 @app.post("/api/user-vibes/backup-log")
-async def record_backup(req: RecordBackupRequest):
+async def record_backup(req: RecordBackupRequest, request: Request):
     """记录一次备份/恢复操作"""
-    session = _require_session(req.session_id)
-    log = _load_backup_log(session.bot_user_id)
+    principal = _library_principal_from_request(request, req.session_id)
+    log = _load_backup_log(principal)
     log.insert(0, {
         "device": req.device[:50],  # 限制长度
         "action": req.action,
@@ -7547,7 +9036,7 @@ async def record_backup(req: RecordBackupRequest):
     })
     log = log[:BACKUP_LOG_MAX]
     try:
-        _atomic_write_json(_backup_log_path(session.bot_user_id), log)
+        _atomic_write_json(_backup_log_path(principal), log)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"写备份记录失败: {e}")
     return {"success": True}
@@ -7555,20 +9044,20 @@ async def record_backup(req: RecordBackupRequest):
 
 # ── 画师串个人备份 ─────────────────────────────────────────────────────────────
 
-def _user_artists_backup_path(bot_user_id: str) -> Path:
-    return _user_vibes_dir_for(bot_user_id) / "artists_backup.json"
+def _user_artists_backup_path(principal: Principal) -> Path:
+    return _user_vibes_dir_for(principal) / "artists_backup.json"
 
 
 class UploadArtistsBackupRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     artists: List[Dict[str, Any]]
 
 
 @app.get("/api/user-artists/backup")
-async def get_artists_backup(session_id: str = ""):
+async def get_artists_backup(request: Request, session_id: str = ""):
     """获取用户云端画师串备份"""
-    session = _require_session(session_id)
-    path = _user_artists_backup_path(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    path = _user_artists_backup_path(principal)
     if not path.exists():
         return {"artists": [], "updated_at": 0}
     try:
@@ -7584,14 +9073,14 @@ async def get_artists_backup(session_id: str = ""):
 
 
 @app.post("/api/user-artists/backup")
-async def upload_artists_backup(req: UploadArtistsBackupRequest):
+async def upload_artists_backup(req: UploadArtistsBackupRequest, request: Request):
     """上传画师串备份（整体覆盖）
 
     向后兼容: 旧客户端 (ArtistCloudManageModal) 仍走此接口。
     为避免与新统一备份 (tag_manager_backup.json) 不同步,这里同时把
     artist-style 槽位写回新文件,保留其它分类数据。
     """
-    session = _require_session(req.session_id)
+    principal = _library_principal_from_request(request, req.session_id)
     now_ts = int(time.time())
     data = {
         "artists": req.artists,
@@ -7599,12 +9088,12 @@ async def upload_artists_backup(req: UploadArtistsBackupRequest):
         "count": len(req.artists),
     }
     try:
-        _atomic_write_json(_user_artists_backup_path(session.bot_user_id), data)
+        _atomic_write_json(_user_artists_backup_path(principal), data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存画师串备份失败: {e}")
     # 同步到新统一备份文件的 artist-style 槽位
     try:
-        new_path = _user_tag_backup_path(session.bot_user_id)
+        new_path = _user_tag_backup_path(principal)
         if new_path.exists():
             with open(new_path, "r", encoding="utf-8") as f:
                 existing = json.load(f)
@@ -7633,8 +9122,8 @@ async def upload_artists_backup(req: UploadArtistsBackupRequest):
 _TAG_BACKUP_CATEGORIES = ("character", "artist-style", "scene", "other")
 
 
-def _user_tag_backup_path(bot_user_id: str) -> Path:
-    return _user_vibes_dir_for(bot_user_id) / "tag_manager_backup.json"
+def _user_tag_backup_path(principal: Principal) -> Path:
+    return _user_vibes_dir_for(principal) / "tag_manager_backup.json"
 
 
 def _empty_tag_categories() -> Dict[str, List[Dict[str, Any]]]:
@@ -7642,18 +9131,18 @@ def _empty_tag_categories() -> Dict[str, List[Dict[str, Any]]]:
 
 
 class UploadTagBackupRequest(BaseModel):
-    session_id: str
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
     categories: Dict[str, List[Dict[str, Any]]]
 
 
 @app.get("/api/user-tag-backup")
-async def get_tag_backup(session_id: str = ""):
+async def get_tag_backup(request: Request, session_id: str = ""):
     """获取用户云端 tag-manager 备份(全 4 类)"""
-    session = _require_session(session_id)
-    path = _user_tag_backup_path(session.bot_user_id)
+    principal = _library_principal_from_request(request, session_id)
+    path = _user_tag_backup_path(principal)
     if not path.exists():
         # 兼容: 把旧画风备份并入返回,首次写入时会自动迁移
-        legacy = _user_artists_backup_path(session.bot_user_id)
+        legacy = _user_artists_backup_path(principal)
         if legacy.exists():
             try:
                 with open(legacy, "r", encoding="utf-8") as f:
@@ -7688,9 +9177,9 @@ async def get_tag_backup(session_id: str = ""):
 
 
 @app.post("/api/user-tag-backup")
-async def upload_tag_backup(req: UploadTagBackupRequest):
+async def upload_tag_backup(req: UploadTagBackupRequest, request: Request):
     """上传 tag-manager 备份(整体覆盖 4 类)"""
-    session = _require_session(req.session_id)
+    principal = _library_principal_from_request(request, req.session_id)
     categories = _empty_tag_categories()
     for cat in _TAG_BACKUP_CATEGORIES:
         items = req.categories.get(cat)
@@ -7701,13 +9190,13 @@ async def upload_tag_backup(req: UploadTagBackupRequest):
         "updated_at": int(time.time()),
     }
     try:
-        _atomic_write_json(_user_tag_backup_path(session.bot_user_id), data)
+        _atomic_write_json(_user_tag_backup_path(principal), data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存 tag 备份失败: {e}")
     # 同步把画风数据写到旧 artists_backup.json,保持向后兼容 (老代码仍能读到)
     try:
         artist_items = categories["artist-style"]
-        _atomic_write_json(_user_artists_backup_path(session.bot_user_id), {
+        _atomic_write_json(_user_artists_backup_path(principal), {
             "artists": artist_items,
             "updated_at": data["updated_at"],
             "count": len(artist_items),
@@ -7739,11 +9228,9 @@ async def _save_artist_data(data: dict) -> bool:
 
 
 @app.get("/api/artists/list")
-async def get_public_artists(session_id: str = ""):
+async def get_public_artists(request: Request, session_id: str = ""):
     """获取公共画师串列表（需要Bot授权）"""
-    # 访问限制：必须提供有效的 Bot session
-    if not session_id or not bot_auth_manager.get_session(session_id):
-        raise HTTPException(status_code=403, detail="需要Bot授权才能访问公共画师串库")
+    _library_principal_from_request(request, session_id)
     
     artist_data = await _load_artist_data()
     
@@ -7837,6 +9324,7 @@ class CreateArtistRequest(BaseModel):
     negative: Optional[str] = None  # 画风负面提示词（可选）
     preview_base64: Optional[str] = None
     added_by: Optional[str] = None
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 class UpdateArtistRequest(BaseModel):
@@ -7844,6 +9332,7 @@ class UpdateArtistRequest(BaseModel):
     negative: Optional[str] = None  # 画风负面提示词（可选）
     preview_base64: Optional[str] = None
     added_by: Optional[str] = None  # 用于转让所有者:传入新用户 ID
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 def _get_next_artist_name(artist_data: dict) -> str:
@@ -7904,8 +9393,10 @@ def _save_artist_preview_image(name: str, base64_data: str) -> Optional[str]:
 
 
 @app.post("/api/artists/create")
-async def create_artist(req: CreateArtistRequest):
+async def create_artist(req: CreateArtistRequest, request: Request):
     """创建新画师串"""
+    principal = _library_principal_from_request(request, req.session_id)
+    ownership = _library_ownership.stamp(principal)
     artist_data = await _load_artist_data()
     
     # 确定名称
@@ -7938,7 +9429,8 @@ async def create_artist(req: CreateArtistRequest):
         "created_time_str": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         "usage_count": 0,
         "last_used": None,
-        "added_by": req.added_by,
+        "added_by": ownership["owner_id"],
+        **ownership,
     }
     
     artist_data[name] = artist_record
@@ -7963,28 +9455,34 @@ async def create_artist(req: CreateArtistRequest):
             "usage_count": 0,
             "created_time": artist_record["created_time"],
             "created_time_str": artist_record["created_time_str"],
-            "added_by": req.added_by,
+            "added_by": artist_record["added_by"],
         }
     }
 
 
 @app.put("/api/artists/{artist_name}")
-async def update_artist(artist_name: str, req: UpdateArtistRequest):
+async def update_artist(artist_name: str, req: UpdateArtistRequest, request: Request):
     """更新画师串"""
+    principal = _library_principal_from_request(request, req.session_id)
     artist_data = await _load_artist_data()
     
     if artist_name not in artist_data:
         raise HTTPException(status_code=404, detail="画师串不存在")
     
     record = artist_data[artist_name]
+    _require_library_record_owner(
+        principal,
+        record,
+        # added_by was historically client supplied and cannot establish owner.
+        legacy_owner_fields=(),
+    )
     
     # 更新字段
     if req.artist_string is not None:
         record["artist_string"] = req.artist_string
     if req.negative is not None:
         record["negative"] = req.negative
-    if req.added_by is not None:
-        record["added_by"] = req.added_by
+    # added_by remains accepted for v0 decoding only; ownership is immutable.
 
     # 更新预览图
     if req.preview_base64:
@@ -8029,9 +9527,11 @@ async def update_artist(artist_name: str, req: UpdateArtistRequest):
 
 
 @app.delete("/api/artists/{artist_name}")
-async def delete_artist_api(artist_name: str):
+async def delete_artist_api(artist_name: str, request: Request, session_id: str = ""):
     """删除画师串"""
     import os
+
+    principal = _library_principal_from_request(request, session_id)
     
     artist_data = await _load_artist_data()
     
@@ -8039,6 +9539,11 @@ async def delete_artist_api(artist_name: str):
         raise HTTPException(status_code=404, detail="画师串不存在")
     
     record = artist_data[artist_name]
+    _require_library_record_owner(
+        principal,
+        record,
+        legacy_owner_fields=(),
+    )
     
     # 删除预览图文件
     preview_image = record.get("preview_image")
@@ -8061,8 +9566,9 @@ async def delete_artist_api(artist_name: str):
 
 
 @app.post("/api/artists/{artist_name}/use")
-async def use_artist(artist_name: str):
+async def use_artist(artist_name: str, request: Request, session_id: str = ""):
     """记录画师串使用（增加使用次数）"""
+    _library_principal_from_request(request, session_id)
     artist_data = await _load_artist_data()
     
     if artist_name not in artist_data:
@@ -8155,14 +9661,18 @@ async def get_cr_preview(cr_id: str, request: StarletteRequest):
 class CreateCRRequest(BaseModel):
     name: str
     image_base64: str  # base64编码的图片
-    zh_names: list[str] = []  # 中文名称列表（用于Bot匹配）
+    zh_names: list[str] = Field(default_factory=list)  # 中文名称列表（用于Bot匹配）
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 @app.post("/api/cr/create")
-async def create_cr(req: CreateCRRequest):
+async def create_cr(req: CreateCRRequest, request: Request):
     """创建新的公共CR"""
     import base64
     import os
+
+    principal = _library_principal_from_request(request, req.session_id)
+    ownership = _library_ownership.stamp(principal)
     
     cr_data = await _load_cr_data()
     
@@ -8193,6 +9703,7 @@ async def create_cr(req: CreateCRRequest):
         "zh_names": req.zh_names,  # 中文名称列表
         "image_file": image_filename,
         "created_time": int(time.time()),
+        **ownership,
     }
     
     if not await _save_cr_data(cr_data):
@@ -8215,9 +9726,11 @@ async def create_cr(req: CreateCRRequest):
 
 
 @app.delete("/api/cr/{cr_id}")
-async def delete_cr_api(cr_id: str):
+async def delete_cr_api(cr_id: str, request: Request, session_id: str = ""):
     """删除公共CR"""
     import os
+
+    principal = _library_principal_from_request(request, session_id)
     
     cr_data = await _load_cr_data()
     
@@ -8225,6 +9738,7 @@ async def delete_cr_api(cr_id: str):
         raise HTTPException(status_code=404, detail="CR不存在")
     
     record = cr_data[cr_id]
+    _require_library_record_owner(principal, record, legacy_owner_fields=())
     
     # 删除图片文件
     image_file = record.get("image_file")
@@ -8251,17 +9765,20 @@ async def delete_cr_api(cr_id: str):
 class UpdateCRRequest(BaseModel):
     name: str | None = None
     zh_names: list[str] | None = None
+    session_id: str = ""  # v0 compatibility; new clients use X-Bot-Session
 
 
 @app.put("/api/cr/{cr_id}")
-async def update_cr(cr_id: str, req: UpdateCRRequest):
+async def update_cr(cr_id: str, req: UpdateCRRequest, request: Request):
     """更新CR信息（名称、中文名称）"""
+    principal = _library_principal_from_request(request, req.session_id)
     cr_data = await _load_cr_data()
     
     if cr_id not in cr_data:
         raise HTTPException(status_code=404, detail="CR不存在")
     
     record = cr_data[cr_id]
+    _require_library_record_owner(principal, record, legacy_owner_fields=())
     
     # 更新字段
     if req.name is not None:
@@ -8339,42 +9856,6 @@ async def translate_proxy(req: TranslateProxyRequest):
     翻译代理接口
     用于解决 HTTPS 页面无法直接请求 HTTP 翻译服务的问题
     """
-    import aiohttp
-    import ipaddress as _ipaddress
-    from urllib.parse import urlparse as _urlparse
-
-    # 校验 base_url，避免被当作 SSRF 跳板：仅允许 http(s)，并拒绝 link-local / 云元数据地址
-    # （含 IPv4-mapped IPv6 [::ffff:169.254.169.254] 及整数/十六进制编码形式）。
-    # 注意：此端点本质是"用户自配翻译代理"，对任意主机名开放，这只是最小加固——
-    # 部署方切勿把该 legacy 后端暴露在不可信网络上。
-    _parsed = _urlparse(req.base_url)
-    _host = (_parsed.hostname or "").lower()
-    if _parsed.scheme not in ("http", "https") or not _host:
-        raise HTTPException(status_code=400, detail="无效的 base_url")
-
-    def _is_link_local_host(h: str) -> bool:
-        c = h[1:-1] if h.startswith("[") and h.endswith("]") else h
-        ip = None
-        try:
-            ip = _ipaddress.ip_address(c)
-        except ValueError:
-            try:
-                if c.startswith("0x"):
-                    ip = _ipaddress.ip_address(int(c, 16) & 0xFFFFFFFF)
-                elif c.isdigit():
-                    ip = _ipaddress.ip_address(int(c) & 0xFFFFFFFF)
-            except (ValueError, OverflowError):
-                ip = None
-        if ip is None:
-            return False
-        if isinstance(ip, _ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-            ip = ip.ipv4_mapped
-        return ip.is_link_local
-
-    if _is_link_local_host(_host):
-        raise HTTPException(status_code=400, detail="无效的 base_url")
-
-    # 构建目标 URL
     target_url = f"{req.base_url.rstrip('/')}/chat/completions"
     
     headers = {
@@ -8390,18 +9871,24 @@ async def translate_proxy(req: TranslateProxyRequest):
     }
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(target_url, json=payload, headers=headers, timeout=60) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise HTTPException(
-                        status_code=response.status,
-                        detail=f"翻译服务返回错误: {error_text}"
-                    )
-                
-                result = await response.json()
-                return result
-                
+        response = await _safe_outbound_json.post_json(
+            target_url,
+            headers=headers,
+            payload=payload,
+            timeout=60,
+        )
+        if response.status != 200:
+            error_text = response.body[:2048].decode("utf-8", errors="replace")
+            raise HTTPException(
+                status_code=response.status,
+                detail=f"翻译服务返回错误: {error_text}",
+            )
+        try:
+            return response.json()
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail="翻译服务返回了无效 JSON") from exc
+    except InvalidRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
     except aiohttp.ClientError as e:
         raise HTTPException(status_code=502, detail=f"无法连接翻译服务: {str(e)}")
     except asyncio.TimeoutError:
@@ -8438,20 +9925,25 @@ async def _call_translate_en2zh_chat(messages: list, temperature: float = 0.2, m
     if cfg.get("extra_payload"):
         payload.update(cfg["extra_payload"])
 
-    session = await _get_translate_session(cfg.get("proxy", ""))
-    async with session.post(
-        target_url,
-        json=payload,
-        headers=headers,
-        timeout=aiohttp.ClientTimeout(total=60),
-    ) as response:
-        if response.status != 200:
-            error_text = await response.text()
-            raise HTTPException(
-                status_code=response.status,
-                detail=f"英译中翻译服务返回错误: {error_text}",
-            )
-        return await response.json()
+    try:
+        response = await _safe_outbound_json.post_json(
+            target_url,
+            payload=payload,
+            headers=headers,
+            timeout=60,
+        )
+    except InvalidRequestError as exc:
+        raise HTTPException(status_code=503, detail="英译中翻译服务地址不安全") from exc
+    if response.status != 200:
+        error_text = response.body[:2048].decode("utf-8", errors="replace")
+        raise HTTPException(
+            status_code=response.status,
+            detail=f"英译中翻译服务返回错误: {error_text}",
+        )
+    try:
+        return response.json()
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="英译中翻译服务返回无效 JSON") from exc
 
 
 def _extract_chat_completion_text(result: dict) -> str:
@@ -8502,22 +9994,53 @@ async def _translate_wiki_preview_summary(tag: str, body: str, fallback_summary:
         return ""
 
 
+class TranslateMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["system", "developer", "user", "assistant"]
+    content: str = Field(
+        min_length=1,
+        max_length=MAX_TRANSLATE_CONTEXT_BYTES,
+        strict=True,
+    )
+
+
 class PublicTranslateEn2ZhRequest(BaseModel):
-    """公共英译中请求（仅需传入messages）"""
-    messages: list
-    temperature: float = 0.3
-    max_tokens: int = 4000
+    """Authenticated server-key translation request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    messages: list[TranslateMessage] = Field(min_length=1, max_length=64)
+    temperature: float = Field(default=0.3, ge=0, le=2, strict=True)
+    max_tokens: int = Field(default=4000, ge=1, le=8192, strict=True)
+    session_id: str | None = Field(default=None, max_length=200, strict=True)
+
+    @model_validator(mode="after")
+    def validate_context_budget(self) -> "PublicTranslateEn2ZhRequest":
+        try:
+            validate_translate_context(
+                [message.model_dump() for message in self.messages],
+            )
+        except InvalidRequestError as exc:
+            raise ValueError(exc.message) from exc
+        return self
 
 
 @app.post("/api/translate/en2zh")
-async def translate_en2zh(req: PublicTranslateEn2ZhRequest):
-    """
-    公共服务端英译中专用接口
-    使用服务端配置的独立翻译API，前端无需传入key/url
-    复用全局 aiohttp session 以避免重复 TCP/TLS 握手
-    """
+async def translate_en2zh(req: PublicTranslateEn2ZhRequest, request: Request):
+    """Use the server translation key for one authenticated Bot owner."""
+
+    principal = _library_principal_from_request(request, req.session_id or "")
+    messages = [message.model_dump() for message in req.messages]
     try:
-        return await _call_translate_en2zh_chat(req.messages, req.temperature, req.max_tokens)
+        return await _paid_operations.execute(
+            principal,
+            lambda: _call_translate_en2zh_chat(
+                messages,
+                req.temperature,
+                req.max_tokens,
+            ),
+        )
     except aiohttp.ClientError as e:
         raise HTTPException(status_code=502, detail=f"无法连接英译中翻译服务: {str(e)}")
     except asyncio.TimeoutError:
@@ -8535,11 +10058,21 @@ async def translate_en2zh(req: PublicTranslateEn2ZhRequest):
 # ==================== 超分辨率 API ====================
 
 class UpscaleRequest(BaseModel):
-    image: str  # base64 编码的图片
-    width: int
-    height: int
-    scale: int = 4
-    session_id: Optional[str] = None  # 用于统计记录
+    model_config = ConfigDict(extra="forbid")
+
+    image: str = Field(min_length=1, max_length=28 * 1024 * 1024, strict=True)
+    width: int = Field(ge=64, le=4096, strict=True)
+    height: int = Field(ge=64, le=4096, strict=True)
+    scale: Literal[2, 4] = 4
+    session_id: str | None = Field(default=None, max_length=200, strict=True)
+
+    @field_validator("image")
+    @classmethod
+    def validate_image(cls, value: str) -> str:
+        try:
+            return normalize_image_base64(value)
+        except InvalidRequestError as exc:
+            raise ValueError(exc.message) from exc
 
 
 class UpscaleResponse(BaseModel):
@@ -8548,94 +10081,115 @@ class UpscaleResponse(BaseModel):
     message: str = ""
 
 
-@app.post("/api/upscale", response_model=UpscaleResponse)
-async def upscale_image(req: UpscaleRequest):
-    """
-    使用 NovelAI 超分辨率 API
-    仅支持特定分辨率: 832x1216, 1216x832, 1024x1024
-    """
-    import aiohttp
+def _extract_upscale_result(payload: bytes) -> str:
     import zipfile
     import io
-    import base64
-    
-    # 配置了纯点数 Token 时强制走它；否则使用主池中的第一个可用 Token
-    token = _get_anlas_only_token() or await _get_first_novelai_token()
 
-    if not token:
-        raise HTTPException(status_code=500, detail="无法加载 NovelAI Token 配置")
-    
-    # 检查分辨率
-    allowed_resolutions = [(832, 1216), (1216, 832), (1024, 1024)]
-    if (req.width, req.height) not in allowed_resolutions:
-        return UpscaleResponse(
-            success=False,
-            message=f"NAI 超分仅支持以下分辨率: 832×1216, 1216×832, 1024×1024\n当前: {req.width}×{req.height}"
-        )
-    
-    url = 'https://api.novelai.net/ai/upscale'
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            members = archive.infolist()
+            if len(members) > 128:
+                raise InvalidRequestError("upscale archive contains too many members")
+            candidates = [
+                member
+                for member in members
+                if not member.is_dir()
+                and member.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+            ]
+            if not candidates:
+                raise InvalidRequestError("upscale archive contains no image")
+            member = candidates[0]
+            if (
+                member.flag_bits & 0x1
+                or member.file_size <= 0
+                or member.file_size > MAX_PAID_RESULT_BYTES
+            ):
+                raise InvalidRequestError("upscale image exceeds the result budget")
+            image = bytearray()
+            with archive.open(member) as source:
+                while chunk := source.read(64 * 1024):
+                    image.extend(chunk)
+                    if len(image) > MAX_PAID_RESULT_BYTES:
+                        raise InvalidRequestError("upscale image exceeds the result budget")
+    except zipfile.BadZipFile as exc:
+        raise InvalidRequestError("upscale response is not a valid ZIP") from exc
+    return normalize_image_base64(
+        base64.b64encode(image).decode("ascii"),
+        max_decoded_bytes=MAX_PAID_RESULT_BYTES,
+    )
+
+
+async def _upscale_upstream(token: str, req: UpscaleRequest) -> UpscaleResponse:
     headers = {
-        'accept': 'application/zip',
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json',
+        "accept": "application/zip",
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
     }
     payload = {
         "image": req.image,
         "height": req.height,
         "width": req.width,
-        "scale": req.scale
+        "scale": req.scale,
     }
-    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://api.novelai.net/ai/upscale",
+            headers=headers,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=300),
+        ) as response:
+            if response.status != 200:
+                error = await _read_paid_response(response, max_bytes=2048)
+                return UpscaleResponse(
+                    success=False,
+                    message=(
+                        f"NAI API 错误 ({response.status}): "
+                        f"{error.decode('utf-8', errors='replace')}"
+                    ),
+                )
+            archive = await _read_paid_response(response, max_bytes=MAX_PAID_RESULT_BYTES)
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload, timeout=300) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    return UpscaleResponse(
-                        success=False,
-                        message=f"NAI API 错误 ({response.status}): {error_text}"
-                    )
-                
-                zip_bytes = io.BytesIO(await response.read())
-                
-                try:
-                    with zipfile.ZipFile(zip_bytes) as z:
-                        image_files = [f for f in z.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-                        if image_files:
-                            img_data = z.read(image_files[0])
-                            img_base64 = base64.b64encode(img_data).decode('utf-8')
-                            # 记录超分消耗统计
-                            if req.session_id:
-                                up_session = bot_auth_manager.get_session(req.session_id)
-                                if up_session:
-                                    # NAI 超分固定消耗：根据 scale 计算
-                                    upscale_cost = 6 if req.scale == 4 else 4
-                                    await _record_web_stats_custom(
-                                        up_session.bot_user_id, upscale_cost,
-                                        f"超分辨率({req.width}x{req.height}, {req.scale}x)"
-                                    )
-                            return UpscaleResponse(
-                                success=True,
-                                image=img_base64,
-                                message="超分完成"
-                            )
-                        else:
-                            return UpscaleResponse(
-                                success=False,
-                                message="ZIP 文件中未找到图片"
-                            )
-                except zipfile.BadZipFile:
-                    return UpscaleResponse(
-                        success=False,
-                        message="返回的不是有效的ZIP文件，可能是API错误或token失效"
-                    )
-                    
-    except aiohttp.ClientError as e:
-        return UpscaleResponse(success=False, message=f"网络错误: {str(e)}")
-    except asyncio.TimeoutError:
-        return UpscaleResponse(success=False, message="请求超时")
-    except Exception as e:
-        return UpscaleResponse(success=False, message=f"超分失败: {str(e)}")
+        image = _extract_upscale_result(archive)
+    except InvalidRequestError as exc:
+        return UpscaleResponse(success=False, message=exc.message)
+    return UpscaleResponse(success=True, image=image, message="超分完成")
+
+
+@app.post("/api/upscale", response_model=UpscaleResponse)
+async def upscale_image(req: UpscaleRequest, request: Request):
+    """Upscale one image for an authenticated Bot owner."""
+
+    principal = _library_principal_from_request(request, req.session_id or "")
+    allowed_resolutions = {(832, 1216), (1216, 832), (1024, 1024)}
+    if (req.width, req.height) not in allowed_resolutions:
+        return UpscaleResponse(
+            success=False,
+            message=(
+                "NAI 超分仅支持以下分辨率: 832×1216, 1216×832, 1024×1024\n"
+                f"当前: {req.width}×{req.height}"
+            ),
+        )
+    token = _get_anlas_only_token() or await _get_first_novelai_token()
+    if not token:
+        raise HTTPException(status_code=503, detail="NovelAI Token 未配置或全部禁用")
+    cost = 6 if req.scale == 4 else 4
+    try:
+        return await _paid_operations.execute(
+            principal,
+            lambda: _upscale_upstream(token, req),
+            charge=UsageCharge(
+                cost,
+                f"超分辨率({req.width}x{req.height}, {req.scale}x)",
+            ),
+            account_when=lambda result: result.success,
+        )
+    except UsageRecordingError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="上游操作已完成但用量记录失败，请勿自动重试并联系管理员核对用量",
+        ) from exc
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        return UpscaleResponse(success=False, message="NovelAI 网络请求失败")
 
 
 # ==================== 香蕉重绘 API ====================
@@ -8754,30 +10308,171 @@ async def get_banana_repaint_status(task_id: str):
 # --- 异步任务存储 ---
 # task_id -> { session_id, model, prompt, aspect_ratio, status, image_url, mime_type, error, elapsed, created_at, completed_at }
 _workshop_tasks: Dict[str, Dict[str, Any]] = {}
+_workshop_background_tasks: Dict[str, asyncio.Task] = {}
 _WORKSHOP_TASK_TTL = 600  # 完成后保留 10 分钟
-
-# 图片输出目录
-_WORKSHOP_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
-os.makedirs(_WORKSHOP_OUTPUT_DIR, exist_ok=True)
-
+_WORKSHOP_JOB_KIND = "workshop"
+_WORKSHOP_JOB_LIST_LIMIT = 200
+_WORKSHOP_MAX_RESULT_BYTES = 32 * 1024 * 1024
 
 def _cleanup_workshop_tasks():
-    """清理过期的已完成任务"""
+    """Drop only stale memory mirrors; durable jobs/results are never auto-deleted."""
+
     now = time.time()
     expired = [
         tid for tid, t in _workshop_tasks.items()
         if t.get("completed_at") and now - t["completed_at"] > _WORKSHOP_TASK_TTL
     ]
     for tid in expired:
-        del _workshop_tasks[tid]
+        _workshop_tasks.pop(tid, None)
+
+
+def _is_workshop_job(job: CloudJob) -> bool:
+    return job.payload.get("kind") == _WORKSHOP_JOB_KIND
+
+
+def _workshop_request_payload(
+    req: "WorkshopGenerateRequest",
+    *,
+    task_id: str,
+    quota_cost: int,
+) -> dict[str, Any]:
+    references: list[dict[str, Any]] = []
+    for image in req.images or []:
+        encoded = image.encode("utf-8")
+        references.append(
+            {
+                "sha256": hashlib.sha256(encoded).hexdigest(),
+                "encoded_size": len(encoded),
+            }
+        )
+    return {
+        "kind": _WORKSHOP_JOB_KIND,
+        "model": req.model,
+        "prompt": req.prompt,
+        "aspect_ratio": req.aspect_ratio,
+        "reference_images": references,
+        "quota": {"reservation_id": task_id, "units": quota_cost},
+    }
+
+
+def _workshop_status(job: CloudJob) -> str:
+    if job.status in {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING}:
+        return "generating"
+    if job.status is JobStatus.SUCCEEDED:
+        return "success"
+    if job.status is JobStatus.CANCELLED:
+        return "cancelled"
+    return "error"
+
+
+def _mirror_workshop_job(job: CloudJob, *, session_id: str | None = None) -> dict[str, Any]:
+    payload = job.payload
+    result = job.result or {}
+    filename = result.get("path") if isinstance(result.get("path"), str) else None
+    record = _workshop_tasks.setdefault(job.id, {})
+    record.update(
+        {
+            "model": str(payload.get("model") or ""),
+            "prompt": str(payload.get("prompt") or ""),
+            "aspect_ratio": str(payload.get("aspect_ratio") or "auto"),
+            "status": _workshop_status(job),
+            "image_url": f"/api/workshop/images/{filename}" if filename else None,
+            "mime_type": result.get("mime_type"),
+            "error": job.error,
+            "elapsed": result.get("elapsed"),
+            "created_at": job.created_at.timestamp(),
+            "completed_at": job.finished_at.timestamp() if job.finished_at else None,
+            "result_filename": filename,
+        }
+    )
+    if session_id is not None:
+        record["session_id"] = session_id
+    _task_access.bind_record(record, job.resource)
+    return record
+
+
+def _workshop_job_response(job: CloudJob, principal: Principal) -> dict[str, Any]:
+    payload = job.payload
+    result = job.result or {}
+    response = {
+        "task_id": job.id,
+        "model": str(payload.get("model") or ""),
+        "prompt": str(payload.get("prompt") or ""),
+        "aspect_ratio": str(payload.get("aspect_ratio") or "auto"),
+        "status": _workshop_status(job),
+        "error": job.error,
+        "elapsed": result.get("elapsed"),
+        "created_at": job.created_at.timestamp(),
+    }
+    if job.status is JobStatus.SUCCEEDED and job.result:
+        filename = job.result.get("path")
+        if isinstance(filename, str):
+            capability = _task_access.capabilities.issue(
+                principal,
+                job_id=job.id,
+                resource=job.resource,
+            )
+            response["image_url"] = (
+                f"/api/workshop/images/{filename}?job_id={job.id}&capability={capability}"
+            )
+            response["mime_type"] = job.result.get("mime_type", "image/png")
+    return response
+
+
+async def _authorize_workshop_job(task_id: str, session_id: str) -> tuple[CloudJob, Principal]:
+    principal = _principal_from_bot_session(session_id)
+    await _ensure_cloud_job_storage()
+    try:
+        job = await _cloud_jobs.get(task_id)
+    except InvalidRequestError as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    record = (
+        {"tenant_id": job.resource.tenant_id, "owner_id": job.resource.owner_id}
+        if job is not None
+        else None
+    )
+    try:
+        _task_access.require_principal(record, principal)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="任务不存在") from exc
+    if job is None or not _is_workshop_job(job):
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return job, principal
+
+
+async def _recover_workshop_jobs() -> list[CloudJob]:
+    """Recover Workshop jobs before the generic active-job recovery pass."""
+
+    recovered: list[CloudJob] = []
+    for job in await _cloud_jobs.list_active():
+        if not _is_workshop_job(job):
+            continue
+        if job.status is JobStatus.QUEUED:
+            updated, _ = await _cloud_jobs.transition(
+                job.id,
+                JobStatus.CANCELLED,
+                kind="cancelled_on_restart",
+                error="服务器重启前任务尚未开始",
+                data={"reason": "process_restart"},
+            )
+        else:
+            updated, _ = await _cloud_jobs.transition(
+                job.id,
+                JobStatus.INTERRUPTED,
+                kind="interrupted",
+                error="服务器重启中断了生成任务",
+                data={"reason": "process_restart"},
+            )
+        recovered.append(updated)
+    return recovered
 
 
 class WorkshopGenerateRequest(BaseModel):
-    session_id: str
-    model: str  # gpt-image (2K) | gpt-image-4k (4K)
-    prompt: str
-    aspect_ratio: str = "auto"
-    images: list[str] | None = None  # base64 data URI 格式的参考图
+    session_id: str = Field(min_length=1, max_length=200)
+    model: str = Field(min_length=1, max_length=80)  # gpt-image (2K) | gpt-image-4k (4K)
+    prompt: str = Field(min_length=1, max_length=32_000)
+    aspect_ratio: str = Field(default="auto", min_length=1, max_length=80)
+    images: list[str] | None = Field(default=None, max_length=8)  # base64 data URI 格式的参考图
 
 class WorkshopGenerateResponse(BaseModel):
     success: bool
@@ -8832,91 +10527,140 @@ async def _workshop_call_genspark(
     print(f"[Workshop] Genspark 请求: model={genspark_model}, aspect_ratio={aspect_ratio}, images={len(images or [])}")
 
     try:
-        timeout = aiohttp.ClientTimeout(total=180)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                f"{api_base}/images/generations",
-                headers=headers,
-                json=payload,
-            ) as resp:
-                status_code = resp.status
-                resp_text = await resp.text()
+        response = await _safe_outbound_large_json.post_json(
+            f"{api_base.rstrip('/')}/images/generations",
+            headers=headers,
+            payload=payload,
+            timeout=180,
+        )
+        status_code = response.status
+        resp_text = response.body.decode("utf-8", errors="replace")
 
-                if status_code != 200:
-                    print(f"[Workshop] Genspark 请求失败: status={status_code}")
-                    err_msg = f"服务异常: {status_code}"
-                    try:
-                        err_data = json.loads(resp_text) if resp_text else {}
-                        if err_data.get("error", {}).get("message"):
-                            err_msg = err_data["error"]["message"]
-                    except Exception:
-                        pass
-                    return {"success": False, "error": err_msg}
+        if status_code != 200:
+            print(f"[Workshop] Genspark 请求失败: status={status_code}")
+            err_msg = f"服务异常: {status_code}"
+            try:
+                err_data = json.loads(resp_text) if resp_text else {}
+                if err_data.get("error", {}).get("message"):
+                    err_msg = err_data["error"]["message"]
+            except Exception:
+                pass
+            return {"success": False, "error": err_msg}
 
-                try:
-                    data = json.loads(resp_text) if resp_text else {}
-                except Exception:
-                    data = {}
+        try:
+            data = json.loads(resp_text) if resp_text else {}
+        except Exception:
+            data = {}
 
-                data_list = data.get("data") or []
-                if not data_list:
-                    return {"success": False, "error": "响应为空"}
+        data_list = data.get("data") or []
+        if not data_list:
+            return {"success": False, "error": "响应为空"}
 
-                first_item = data_list[0]
-                image_url_result = first_item.get("url")
-                b64_json = first_item.get("b64_json")
+        first_item = data_list[0]
+        image_url_result = first_item.get("url")
+        b64_json = first_item.get("b64_json")
 
-                img_bytes = None
-                mime_type = "image/webp"
+        img_bytes = None
+        mime_type = "image/webp"
 
-                # 优先处理 base64
-                if b64_json:
-                    try:
-                        b64_data = b64_json
-                        if "base64," in b64_data:
-                            parts = b64_data.split("base64,")
-                            b64_data = parts[1]
-                            if parts[0]:
-                                m = re.search(r"data:([^;]+)", parts[0])
-                                if m:
-                                    mime_type = m.group(1)
-                        img_bytes = base64.b64decode(b64_data)
-                    except Exception as e:
-                        print(f"[Workshop] 解析 base64 失败: {e}")
+        # 优先处理 base64
+        if b64_json:
+            try:
+                b64_data = b64_json
+                if "base64," in b64_data:
+                    parts = b64_data.split("base64,")
+                    b64_data = parts[1]
+                    if parts[0]:
+                        m = re.search(r"data:([^;]+)", parts[0])
+                        if m:
+                            mime_type = m.group(1)
+                img_bytes = base64.b64decode(b64_data)
+            except Exception as e:
+                print(f"[Workshop] 解析 base64 失败: {e}")
 
-                # 如果没有 base64，尝试下载 URL
-                if not img_bytes and image_url_result:
-                    try:
-                        dl_headers = {
-                            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-                            "Referer": "https://www.genspark.ai/",
-                        }
-                        if gs_cookie:
-                            dl_headers["Cookie"] = gs_cookie
-                        async with session.get(image_url_result, headers=dl_headers) as img_resp:
-                            if img_resp.status == 200:
-                                img_bytes = await img_resp.read()
-                                ct = img_resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
-                                if ct:
-                                    mime_type = ct
-                            else:
-                                print(f"[Workshop] 下载图片失败: status={img_resp.status}")
-                    except Exception as e:
-                        print(f"[Workshop] 下载图片异常: {e}")
+        # 如果没有 base64，尝试下载 URL
+        if not img_bytes and image_url_result:
+            try:
+                dl_headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                    "Referer": "https://www.genspark.ai/",
+                }
+                if gs_cookie:
+                    dl_headers["Cookie"] = gs_cookie
+                img_resp = await _safe_outbound_binary.get(
+                    image_url_result,
+                    headers=dl_headers,
+                    timeout=60,
+                    max_bytes=32 * 1024 * 1024,
+                )
+                if img_resp.status == 200:
+                    img_bytes = img_resp.body
+                    ct = next(
+                        (
+                            value
+                            for key, value in img_resp.headers.items()
+                            if key.lower() == "content-type"
+                        ),
+                        "",
+                    ).split(";", 1)[0].strip().lower()
+                    if ct:
+                        mime_type = ct
+                else:
+                    print(f"[Workshop] 下载图片失败: status={img_resp.status}")
+            except Exception as e:
+                print(f"[Workshop] 下载图片异常: {e}")
 
-                if not img_bytes:
-                    return {"success": False, "error": "未获取到图片数据"}
+        if not img_bytes:
+            return {"success": False, "error": "未获取到图片数据"}
 
-                elapsed = time.time() - t0
-                img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                print(f"[Workshop] 生成完成: model={genspark_model}, elapsed={elapsed:.1f}s, size={len(img_bytes)}")
-                return {"success": True, "image_base64": img_b64, "mime_type": mime_type, "elapsed": elapsed}
+        elapsed = time.time() - t0
+        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+        print(f"[Workshop] 生成完成: model={genspark_model}, elapsed={elapsed:.1f}s, size={len(img_bytes)}")
+        return {"success": True, "image_base64": img_b64, "mime_type": mime_type, "elapsed": elapsed}
 
     except asyncio.TimeoutError:
         return {"success": False, "error": "生成超时"}
     except Exception as e:
         print(f"[Workshop] 异常: {e}")
         return {"success": False, "error": f"生成错误: {e}"}
+
+
+def _encode_workshop_multipart(
+    fields: dict[str, Any],
+    files: list[tuple[bytes, str]],
+) -> tuple[bytes, str]:
+    boundary = f"ultimate-novelai-{secrets.token_hex(16)}"
+    chunks: list[bytes] = []
+    for name, value in fields.items():
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("ascii"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii"),
+                str(value).encode("utf-8"),
+                b"\r\n",
+            ]
+        )
+    for index, (payload, mime_type) in enumerate(files):
+        extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[
+            mime_type
+        ]
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("ascii"),
+                (
+                    'Content-Disposition: form-data; name="image[]"; '
+                    f'filename="ref_{index}.{extension}"\r\n'
+                ).encode("ascii"),
+                f"Content-Type: {mime_type}\r\n\r\n".encode("ascii"),
+                payload,
+                b"\r\n",
+            ]
+        )
+    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
+    body = b"".join(chunks)
+    if len(body) > 64 * 1024 * 1024:
+        raise InvalidRequestError("workshop multipart request is too large")
+    return body, f"multipart/form-data; boundary={boundary}"
 
 
 async def _workshop_call_big_gpt(
@@ -8948,7 +10692,12 @@ async def _workshop_call_big_gpt(
             mime = "image/png"
             if ":" in header and ";" in header:
                 mime = header.split(":")[1].split(";")[0]
-            ref_files.append((base64.b64decode(b64), mime))
+            if mime not in {"image/jpeg", "image/png", "image/webp"}:
+                continue
+            decoded = base64.b64decode(b64, validate=True)
+            if len(decoded) > 20 * 1024 * 1024:
+                continue
+            ref_files.append((decoded, mime))
         except Exception as e:
             print(f"[Workshop] 大GPT 参考图解码失败: {e}")
 
@@ -8964,51 +10713,49 @@ async def _workshop_call_big_gpt(
     headers = {"Authorization": f"Bearer {BIG_GPT_API_KEY}"}
     base_url = BIG_GPT_BASE_URL.rstrip("/")
 
-    if ref_files:
-        url = f"{base_url}/images/edits"
-        payload_bytes = b""
-    else:
-        url = f"{base_url}/images/generations"
-        payload_bytes = json.dumps(common_fields, ensure_ascii=False).encode("utf-8")
+    url = f"{base_url}/images/edits" if ref_files else f"{base_url}/images/generations"
 
     t0 = time.time()
     print(f"[Workshop] 大GPT 请求: model={BIG_GPT_MODEL}, size={size}, aspect_ratio={aspect_ratio}, refs={len(ref_files)}, endpoint={url.rsplit('/', 1)[-1]}")
 
-    timeout = aiohttp.ClientTimeout(total=BIG_GPT_TIMEOUT)
     raw_bytes = b""
     resp_status = 0
     max_attempts = 3  # 400 / 408 / 5xx 自动重试
 
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            for attempt in range(1, max_attempts + 1):
-                if ref_files:
-                    form = aiohttp.FormData()
-                    for k, v in common_fields.items():
-                        form.add_field(k, v)
-                    for i, (b, mt) in enumerate(ref_files):
-                        ext = "png" if "png" in mt else ("jpg" if "jp" in mt else "bin")
-                        form.add_field("image[]", b, filename=f"ref_{i}.{ext}", content_type=mt)
-                    async with session.post(url, headers=headers, data=form) as resp:
-                        raw_bytes = await resp.read()
-                        resp_status = resp.status
-                else:
-                    async with session.post(
-                        url,
-                        headers={**headers, "Content-Type": "application/json"},
-                        data=payload_bytes,
-                    ) as resp:
-                        raw_bytes = await resp.read()
-                        resp_status = resp.status
-                if resp_status == 200:
-                    break
-                retryable = resp_status in (400, 408) or 500 <= resp_status < 600
-                if retryable and attempt < max_attempts:
-                    err_preview = raw_bytes[:300].decode("utf-8", errors="replace")
-                    print(f"[Workshop] 大GPT {resp_status} 错误第{attempt}次重试: {err_preview}")
-                    await asyncio.sleep(1.0)
-                    continue
+        multipart_body = None
+        multipart_type = None
+        if ref_files:
+            multipart_body, multipart_type = _encode_workshop_multipart(
+                common_fields,
+                ref_files,
+            )
+        for attempt in range(1, max_attempts + 1):
+            if multipart_body is not None and multipart_type is not None:
+                response = await _safe_outbound_bytes.post(
+                    url,
+                    headers={**headers, "Content-Type": multipart_type},
+                    body=multipart_body,
+                    timeout=BIG_GPT_TIMEOUT,
+                )
+            else:
+                response = await _safe_outbound_large_json.post_json(
+                    url,
+                    headers={**headers, "Content-Type": "application/json"},
+                    payload=common_fields,
+                    timeout=BIG_GPT_TIMEOUT,
+                )
+            raw_bytes = response.body
+            resp_status = response.status
+            if resp_status == 200:
                 break
+            retryable = resp_status in (400, 408) or 500 <= resp_status < 600
+            if retryable and attempt < max_attempts:
+                err_preview = raw_bytes[:300].decode("utf-8", errors="replace")
+                print(f"[Workshop] 大GPT {resp_status} 错误第{attempt}次重试: {err_preview}")
+                await asyncio.sleep(1.0)
+                continue
+            break
 
         if resp_status != 200:
             err_preview = raw_bytes[:500].decode("utf-8", errors="replace")
@@ -9093,37 +10840,18 @@ async def workshop_quota(session_id: str = ""):
     if not session:
         raise HTTPException(status_code=401, detail="未登录或会话已过期")
 
-    bot_user_id = session.bot_user_id
     today_str = datetime.now(_BEIJING_TZ).strftime("%Y-%m-%d")
-
     try:
-        async with aiosqlite.connect(str(_STATS_DB)) as db:
-            async with db.execute(
-                "SELECT daily_limit, daily_balance, extra_balance, last_refresh_date FROM user_quotas WHERE user_id = ?",
-                (bot_user_id,)
-            ) as cur:
-                row = await cur.fetchone()
-
-            if not row:
-                return {"daily_limit": 0, "daily_balance": 0, "extra_balance": 0, "total_available": 0}
-
-            daily_limit, daily_balance, extra_balance, last_refresh_date = row
-
-            # 跨日刷新
-            if last_refresh_date != today_str:
-                daily_balance = daily_limit
-                await db.execute(
-                    "UPDATE user_quotas SET daily_balance = ?, last_refresh_date = ? WHERE user_id = ?",
-                    (daily_balance, today_str, bot_user_id)
-                )
-                await db.commit()
-
-            return {
-                "daily_limit": daily_limit,
-                "daily_balance": daily_balance,
-                "extra_balance": extra_balance,
-                "total_available": daily_balance + extra_balance,
-            }
+        await _workshop_quota.initialize()
+        balance = await _workshop_quota.balance(session.bot_user_id, quota_date=today_str)
+        return {
+            "daily_limit": balance.daily_limit,
+            "daily_balance": balance.daily_balance,
+            "extra_balance": balance.extra_balance,
+            "total_available": balance.total_available,
+        }
+    except ResourceNotFoundError:
+        return {"daily_limit": 0, "daily_balance": 0, "extra_balance": 0, "total_available": 0}
     except Exception as e:
         print(f"[Workshop] 额度查询失败: {e}")
         return {"daily_limit": 0, "daily_balance": 0, "extra_balance": 0, "total_available": 0}
@@ -9131,86 +10859,167 @@ async def workshop_quota(session_id: str = ""):
 
 @app.post("/api/workshop/generate", response_model=WorkshopGenerateResponse)
 async def workshop_generate(req: WorkshopGenerateRequest):
-    """图像工坊：提交生成任务（异步），立即返回 task_id"""
-    # 1. 鉴权
+    """Persist a user-owned Workshop job before starting provider work."""
+
     session = bot_auth_manager.get_session(req.session_id)
     if not session:
         raise HTTPException(status_code=401, detail="未登录或会话已过期")
 
     bot_user_id = session.bot_user_id
-
-    # 2. 额度预检
+    principal = Principal.user(str(bot_user_id), _BOT_TASK_TENANT_ID)
+    resource = ResourceOwner(_BOT_TASK_TENANT_ID, principal.subject_id)
+    task_id = f"ws_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+    quota_cost = 2 if req.model.endswith("-4k") else 1
     today_str = datetime.now(_BEIJING_TZ).strftime("%Y-%m-%d")
+    payload = _workshop_request_payload(req, task_id=task_id, quota_cost=quota_cost)
+    request_digest = _generation_request_hash(
+        {key: value for key, value in payload.items() if key != "quota"}
+    )
+
     try:
-        async with aiosqlite.connect(str(_STATS_DB)) as db:
-            async with db.execute(
-                "SELECT daily_limit, daily_balance, extra_balance, last_refresh_date FROM user_quotas WHERE user_id = ?",
-                (bot_user_id,)
-            ) as cur:
-                row = await cur.fetchone()
-
-            if not row:
-                return WorkshopGenerateResponse(
-                    success=False,
-                    error="未找到额度信息，请先通过 Bot 使用一次以激活账户",
-                )
-
-            daily_limit, daily_balance, extra_balance, last_refresh_date = row
-
-            # 跨日刷新
-            if last_refresh_date != today_str:
-                daily_balance = daily_limit
-                await db.execute(
-                    "UPDATE user_quotas SET daily_balance = ?, last_refresh_date = ? WHERE user_id = ?",
-                    (daily_balance, today_str, bot_user_id)
-                )
-                await db.commit()
-
-            total_available = daily_balance + extra_balance
-            quota_cost = 2 if req.model.endswith("-4k") else 1
-            if total_available < quota_cost:
-                return WorkshopGenerateResponse(
-                    success=False,
-                    error=f"额度不足（需要{quota_cost}次，剩余{total_available}次），请明日再试",
-                )
+        await _ensure_cloud_job_storage()
+        await _workshop_quota.initialize()
+        await _workshop_quota.reserve(
+            bot_user_id,
+            job_id=task_id,
+            units=quota_cost,
+            quota_date=today_str,
+            result_filename=f"{task_id}.png",
+        )
+    except ResourceNotFoundError:
+        return WorkshopGenerateResponse(
+            success=False,
+            error="未找到额度信息，请先通过 Bot 使用一次以激活账户",
+        )
+    except CloudBackendError as e:
+        available = e.details.get("available_units", 0)
+        return WorkshopGenerateResponse(
+            success=False,
+            error=f"额度不足（需要{quota_cost}次，剩余{available}次），请明日再试",
+        )
     except Exception as e:
         print(f"[Workshop] 额度检查失败: {e}")
         return WorkshopGenerateResponse(success=False, error="额度检查失败，请稍后重试")
 
-    # 3. 创建任务并立即返回
-    task_id = f"ws_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+    try:
+        created = await _cloud_jobs.create(
+            job_id=task_id,
+            resource=resource,
+            request_hash=request_digest,
+            payload=payload,
+            idempotency_key=None,
+            total_steps=1,
+        )
+    except BaseException:
+        await _workshop_quota.refund(task_id)
+        raise
+    if not created.created:  # pragma: no cover - task ids include fresh randomness
+        await _workshop_quota.refund(task_id)
+        raise HTTPException(status_code=409, detail="任务编号冲突")
 
-    _cleanup_workshop_tasks()  # 清理过期任务
+    _cleanup_workshop_tasks()
+    task_record = _mirror_workshop_job(created.job, session_id=req.session_id)
+    task_record["bot_user_id"] = bot_user_id
 
-    _workshop_tasks[task_id] = {
-        "session_id": req.session_id,
-        "bot_user_id": bot_user_id,
-        "model": req.model,
-        "prompt": req.prompt,
-        "aspect_ratio": req.aspect_ratio,
-        "status": "generating",
-        "image_url": None,
-        "mime_type": None,
-        "error": None,
-        "elapsed": None,
-        "created_at": time.time(),
-        "completed_at": None,
-    }
+    try:
+        background = asyncio.create_task(
+            _workshop_process_task(task_id, req, bot_user_id, quota_cost)
+        )
+        _workshop_background_tasks[task_id] = background
 
-    # 启动后台任务
-    asyncio.create_task(_workshop_process_task(task_id, req, bot_user_id, quota_cost))
+        def remove_background(done_task, *, completed_task_id=task_id):
+            if _workshop_background_tasks.get(completed_task_id) is done_task:
+                _workshop_background_tasks.pop(completed_task_id, None)
+
+        background.add_done_callback(remove_background)
+    except BaseException:
+        await _cloud_jobs.transition(
+            task_id,
+            JobStatus.CANCELLED,
+            kind="launch_failed",
+            error="任务启动失败",
+        )
+        await _workshop_quota.refund(task_id)
+        _workshop_tasks.pop(task_id, None)
+        raise
 
     return WorkshopGenerateResponse(success=True, task_id=task_id)
 
 
-async def _workshop_process_task(task_id: str, req: WorkshopGenerateRequest, bot_user_id: int, quota_cost: int):
-    """后台执行图片生成 + 扣额度"""
-    task = _workshop_tasks.get(task_id)
-    if not task:
-        return
+async def _commit_workshop_success(
+    task_id: str,
+    *,
+    encoded: str,
+    mime_type: str,
+    elapsed: float | None,
+) -> CloudJob:
+    """Finish the atomic result/status/quota boundary even if cancellation races it."""
+
+    async def commit() -> CloudJob:
+        padding = 2 if encoded.endswith("==") else int(encoded.endswith("="))
+        decoded_size = (len(encoded) // 4) * 3 - padding if len(encoded) % 4 == 0 else 0
+        if decoded_size <= 0 or decoded_size > _WORKSHOP_MAX_RESULT_BYTES:
+            raise InvalidRequestError("workshop result is empty or too large")
+        metadata = await _cloud_job_results.save_base64(
+            task_id,
+            encoded,
+            mime_type=mime_type,
+        )
+        if elapsed is not None:
+            metadata["elapsed"] = elapsed
+        job, _ = await _cloud_jobs.transition(
+            task_id,
+            JobStatus.SUCCEEDED,
+            kind="succeeded",
+            step=1,
+            total_steps=1,
+            result=metadata,
+        )
+        await _workshop_quota.capture(task_id)
+        return job
+
+    critical = asyncio.create_task(commit())
+    try:
+        return await asyncio.shield(critical)
+    except asyncio.CancelledError:
+        # ``to_thread`` cannot be stopped once the atomic replace begins.  Let the
+        # authoritative commit win and expose its result instead of refunding a
+        # file that may appear moments later.
+        return await critical
+
+
+async def _refund_workshop_quota(task_id: str) -> None:
+    try:
+        await _workshop_quota.refund(task_id)
+    except CloudBackendError as exc:
+        print(f"[Workshop] 额度退款待恢复: task={task_id} code={exc.code}")
+    except Exception as exc:
+        print(f"[Workshop] 额度退款暂不可用: task={task_id} error={type(exc).__name__}")
+
+
+async def _workshop_process_task(
+    task_id: str,
+    req: WorkshopGenerateRequest,
+    bot_user_id: str,
+    quota_cost: int,
+) -> None:
+    """Run one persisted Workshop job and durably publish every transition."""
 
     try:
-        # 工坊统一走大GPT 渠道（OpenAI 兼容 image_generation 工具）
+        job, _ = await _cloud_jobs.transition(
+            task_id,
+            JobStatus.RUNNING,
+            kind="started",
+            total_steps=1,
+        )
+        _mirror_workshop_job(job, session_id=req.session_id)
+
+        await _cloud_jobs.transition(
+            task_id,
+            JobStatus.RUNNING,
+            kind="provider_started",
+            data={"provider": "big_gpt"},
+        )
         if req.model in ("gpt-image", "gpt-image-4k"):
             result = await _workshop_call_big_gpt(
                 model_id=req.model,
@@ -9222,29 +11031,18 @@ async def _workshop_process_task(task_id: str, req: WorkshopGenerateRequest, bot
             result = {"success": False, "error": f"模型已停用: {req.model}"}
 
         if result.get("success"):
-            # 扣减额度 + 记录调用
+            elapsed_raw = result.get("elapsed")
+            elapsed = float(elapsed_raw) if elapsed_raw is not None else None
+            job = await _commit_workshop_success(
+                task_id,
+                encoded=str(result["image_base64"]),
+                mime_type=str(result.get("mime_type") or "image/png"),
+                elapsed=elapsed,
+            )
+            _mirror_workshop_job(job, session_id=req.session_id)
+
             try:
-                today_str = datetime.now(_BEIJING_TZ).strftime("%Y-%m-%d")
                 async with aiosqlite.connect(str(_STATS_DB)) as db:
-                    async with db.execute(
-                        "SELECT daily_balance, extra_balance FROM user_quotas WHERE user_id = ?",
-                        (bot_user_id,)
-                    ) as cur:
-                        row = await cur.fetchone()
-
-                    if row:
-                        d_bal, e_bal = row
-                        for _ in range(quota_cost):
-                            if d_bal > 0:
-                                d_bal -= 1
-                            elif e_bal > 0:
-                                e_bal -= 1
-
-                        await db.execute(
-                            "UPDATE user_quotas SET daily_balance = ?, extra_balance = ? WHERE user_id = ?",
-                            (d_bal, e_bal, bot_user_id)
-                        )
-
                     now_iso = datetime.now(_BEIJING_TZ).replace(tzinfo=None).isoformat()
                     stats_key = f"user_{bot_user_id}"
                     for _ in range(quota_cost):
@@ -9254,81 +11052,167 @@ async def _workshop_process_task(task_id: str, req: WorkshopGenerateRequest, bot
                         )
                     await db.commit()
             except Exception as e:
-                print(f"[Workshop] 额度扣减/记录失败: {e}")
+                print(f"[Workshop] 调用统计记录失败: {e}")
 
-            # 记录耗时统计
-            elapsed_val = result.get("elapsed")
-            if elapsed_val is not None:
-                _record_workshop_elapsed(req.model, float(elapsed_val))
-
-            task["status"] = "success"
-            # 图片存磁盘
-            img_b64 = result["image_base64"]
-            mime_type = result.get("mime_type", "image/webp")
-            ext = "webp" if "webp" in mime_type else "png"
-            img_filename = f"{task_id}.{ext}"
-            img_path = os.path.join(_WORKSHOP_OUTPUT_DIR, img_filename)
-            with open(img_path, "wb") as f:
-                f.write(base64.b64decode(img_b64))
-            task["image_url"] = f"/api/workshop/images/{img_filename}"
-            task["mime_type"] = mime_type
-            task["elapsed"] = elapsed_val
+            if elapsed is not None:
+                _record_workshop_elapsed(req.model, elapsed)
         else:
-            task["status"] = "error"
-            task["error"] = result.get("error", "生成失败")
+            error = str(result.get("error") or "生成失败")[:2_000]
+            job, _ = await _cloud_jobs.transition(
+                task_id,
+                JobStatus.FAILED,
+                kind="failed",
+                error=error,
+            )
+            _mirror_workshop_job(job, session_id=req.session_id)
+            await _refund_workshop_quota(task_id)
+    except asyncio.CancelledError:
+        job = await _cloud_jobs.get(task_id)
+        if job is not None and job.status is JobStatus.SUCCEEDED:
+            try:
+                await _workshop_quota.capture(task_id)
+            except CloudBackendError as exc:
+                print(f"[Workshop] 成功任务额度待恢复: task={task_id} code={exc.code}")
+            _mirror_workshop_job(job, session_id=req.session_id)
+            return
+        if job is not None and not job.terminal:
+            if job.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
+                job, _ = await _cloud_jobs.request_cancel(task_id)
+            if job.status is JobStatus.CANCELLING:
+                job, _ = await _cloud_jobs.transition(
+                    task_id,
+                    JobStatus.CANCELLED,
+                    kind="cancelled",
+                    error="用户取消",
+                )
+            _mirror_workshop_job(job, session_id=req.session_id)
+        await _refund_workshop_quota(task_id)
+        raise
     except Exception as e:
         print(f"[Workshop] 任务异常: {e}")
-        task["status"] = "error"
-        task["error"] = f"生成异常: {e}"
-    finally:
-        task["completed_at"] = time.time()
+        job = await _cloud_jobs.get(task_id)
+        if job is not None and job.status is JobStatus.SUCCEEDED:
+            _mirror_workshop_job(job, session_id=req.session_id)
+            return
+        if job is not None and job.status in {JobStatus.CANCELLING, JobStatus.CANCELLED}:
+            if job.status is JobStatus.CANCELLING:
+                job, _ = await _cloud_jobs.transition(
+                    task_id,
+                    JobStatus.CANCELLED,
+                    kind="cancelled",
+                    error="用户取消",
+                )
+            _mirror_workshop_job(job, session_id=req.session_id)
+            await _refund_workshop_quota(task_id)
+            return
+        if job is not None and not job.terminal:
+            job, _ = await _cloud_jobs.transition(
+                task_id,
+                JobStatus.FAILED,
+                kind="failed",
+                error=f"生成异常: {e}"[:2_000],
+            )
+            _mirror_workshop_job(job, session_id=req.session_id)
+        await _refund_workshop_quota(task_id)
+
+
+@app.delete("/api/workshop/tasks/{task_id}")
+async def workshop_cancel_task(task_id: str, session_id: str):
+    job, _principal = await _authorize_workshop_job(task_id, session_id)
+    if job.terminal:
+        if job.status is not JobStatus.SUCCEEDED:
+            await _refund_workshop_quota(task_id)
+        return {"success": True, "status": _workshop_status(job)}
+    try:
+        job, _ = await _cloud_jobs.request_cancel(task_id)
+    except JobStateConflictError:
+        current = await _cloud_jobs.get(task_id)
+        if current is None or not _is_workshop_job(current):
+            raise HTTPException(status_code=404, detail="任务不存在") from None
+        return {"success": True, "status": _workshop_status(current)}
+    _mirror_workshop_job(job)
+
+    background = _workshop_background_tasks.get(task_id)
+    if background is not None and not background.done():
+        background.cancel()
+        await asyncio.gather(background, return_exceptions=True)
+
+    current = await _cloud_jobs.get(task_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if current.status is JobStatus.CANCELLING:
+        current, _ = await _cloud_jobs.transition(
+            task_id,
+            JobStatus.CANCELLED,
+            kind="cancelled",
+            error="用户取消",
+        )
+    if current.status is JobStatus.CANCELLED:
+        await _refund_workshop_quota(task_id)
+    _mirror_workshop_job(current)
+    return {"success": True, "status": _workshop_status(current)}
 
 
 @app.get("/api/workshop/tasks")
 async def workshop_get_tasks(session_id: str):
-    """获取当前会话的所有活跃任务（用于刷新后恢复）"""
+    """Return the persistent owner view used to recover after refresh/restart."""
+
+    principal = _principal_from_bot_session(session_id)
+    await _ensure_cloud_job_storage()
     _cleanup_workshop_tasks()
-
-    tasks = []
-    for tid, t in _workshop_tasks.items():
-        if t["session_id"] != session_id:
-            continue
-        task_info = {
-            "task_id": tid,
-            "model": t["model"],
-            "prompt": t["prompt"],
-            "aspect_ratio": t.get("aspect_ratio", "auto"),
-            "status": t["status"],
-            "error": t.get("error"),
-            "elapsed": t.get("elapsed"),
-            "created_at": t.get("created_at"),
-        }
-        # 成功时返回图片 URL（而非 base64）
-        if t["status"] == "success" and t.get("image_url"):
-            task_info["image_url"] = t["image_url"]
-            task_info["mime_type"] = t.get("mime_type", "image/webp")
-        tasks.append(task_info)
-
+    resource = ResourceOwner(_BOT_TASK_TENANT_ID, principal.subject_id)
+    jobs = await _cloud_jobs.list_for_owner(
+        resource,
+        limit=_WORKSHOP_JOB_LIST_LIMIT,
+        payload_kind=_WORKSHOP_JOB_KIND,
+    )
+    tasks = [_workshop_job_response(job, principal) for job in jobs]
     return {"tasks": tasks}
 
 
-from fastapi.responses import FileResponse
-
 @app.get("/api/workshop/images/{filename}")
-async def workshop_serve_image(filename: str):
-    """提供生成图片的静态文件服务"""
-    # 防路径穿越：解析后的绝对路径必须仍落在 outputs 目录内（挡住 ../、%2f 等）。
-    base = os.path.realpath(_WORKSHOP_OUTPUT_DIR)
-    filepath = os.path.realpath(os.path.join(base, filename))
-    if not filepath.startswith(base + os.sep) or not os.path.isfile(filepath):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Image not found"}, status_code=404)
-    # 根据扩展名确定 MIME
-    if filepath.endswith(".png"):
-        media_type = "image/png"
-    else:
-        media_type = "image/webp"
-    return FileResponse(filepath, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"})
+async def workshop_serve_image(filename: str, capability: str = "", job_id: str = ""):
+    """Serve a verified result only through its job-bound capability."""
+
+    # Content-addressed result filenames no longer encode their owning job.  The
+    # explicit id is non-secret and is still authenticated by the job-bound
+    # capability.  Keep the old stem fallback for pre-migration metadata/URLs.
+    task_id = job_id or Path(filename).stem
+    await _ensure_cloud_job_storage()
+    try:
+        job = await _cloud_jobs.get(task_id)
+    except InvalidRequestError as exc:
+        raise HTTPException(status_code=404, detail="图片不存在") from exc
+    record = (
+        {"tenant_id": job.resource.tenant_id, "owner_id": job.resource.owner_id}
+        if job is not None
+        else None
+    )
+    try:
+        _task_access.require_capability(
+            record,
+            job_id=task_id,
+            token=capability,
+        )
+    except (InvalidCapabilityError, ResourceNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail="图片不存在") from exc
+    if (
+        job is None
+        or not _is_workshop_job(job)
+        or job.status is not JobStatus.SUCCEEDED
+        or job.result is None
+        or job.result.get("path") != filename
+    ):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    try:
+        payload = await _cloud_job_results.load_bytes(job.result)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="图片不存在") from exc
+    return Response(
+        content=payload,
+        media_type=str(job.result.get("mime_type") or "application/octet-stream"),
+        headers={"Cache-Control": "private, max-age=600"},
+    )
 
 
 # ==================== WD Tagger 反推接口 ====================
@@ -9357,18 +11241,33 @@ async def wd_tagger_predict(req: WDTaggerRequest):
     """调用 pixai-labs/pixai-tagger-demo Space 进行图片标签反推。"""
 
     try:
+        approved_tagger = PublicEndpointPolicy().validate(WD_TAGGER_SPACE_URL)
+        if (
+            approved_tagger.scheme != "https"
+            or approved_tagger.host != "pixai-labs-pixai-tagger-demo.hf.space"
+            or approved_tagger.port != 443
+            or approved_tagger.url.rstrip("/")
+            != "https://pixai-labs-pixai-tagger-demo.hf.space"
+        ):
+            return {"success": False, "error": "WD Tagger 地址不在受信服务列表"}
         # 1. 解码 base64 图片
-        image_bytes = base64.b64decode(req.image)
+        image_bytes = base64.b64decode(req.image, validate=True)
+        if not image_bytes or len(image_bytes) > 20 * 1024 * 1024:
+            return {"success": False, "error": "图片为空或过大"}
 
         try:
             from gradio_client import Client, handle_file
         except ImportError:
-            return {"success": False, "error": "缺少 gradio_client 依赖，请安装 server/requirements.txt"}
+            return {"success": False, "error": "缺少 gradio_client 依赖，请运行 uv sync --frozen"}
 
         loop = asyncio.get_event_loop()
 
         def _predict(file_path: str):
-            client = Client(WD_TAGGER_SPACE_URL.rstrip("/"))
+            client = Client(
+                approved_tagger.url.rstrip("/"),
+                httpx_kwargs={"trust_env": False, "timeout": 120},
+                verbose=False,
+            )
             return client.predict(
                 handle_file(file_path), # image
                 "",                     # url

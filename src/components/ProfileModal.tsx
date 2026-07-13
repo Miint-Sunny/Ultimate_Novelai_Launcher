@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, BarChart3, Coins, Image as ImageIcon, MessageSquare, Activity, Wallet, Layers, Receipt } from 'lucide-react';
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 import { botService } from '../services/botService';
 import { PlatformStatsModal } from './PlatformStatsModal';
 import { BillingSettlementModal } from './BillingSettlementModal';
@@ -80,7 +80,9 @@ function BillingSection({ sessionId }: { sessionId: string | null }) {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${getBackendUrl()}/api/billing/estimate?session_id=${sessionId}`);
+        const res = await appBackendApi.request('/api/billing/estimate', undefined, {
+          session_id: sessionId,
+        });
         if (!cancelled && res.ok) setEstimate(await res.json());
       } catch (e) {
         console.error('Failed to load billing:', e);
@@ -271,10 +273,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     if (!sessionId) return;
     setLoading(true);
     try {
-      const backendUrl = getBackendUrl();
       const [summaryRes, dailyRes] = await Promise.all([
-        fetch(`${backendUrl}/api/user/stats?session_id=${sessionId}&time_range=${range}`),
-        fetch(`${backendUrl}/api/user/stats/daily?session_id=${sessionId}&time_range=${range}`),
+        appBackendApi.request('/api/user/stats', undefined, { session_id: sessionId, time_range: range }),
+        appBackendApi.request('/api/user/stats/daily', undefined, { session_id: sessionId, time_range: range }),
       ]);
       if (summaryRes.ok) setSummary(await summaryRes.json());
       if (dailyRes.ok) {

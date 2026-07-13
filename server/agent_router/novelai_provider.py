@@ -40,14 +40,13 @@ MODEL_REGISTRY[*]["supports_tools"]=False 配合避免给该模型注册任何�
     else:
         provider = OpenAIProvider(base_url=base_url, api_key=key)
 """
+
 from __future__ import annotations
 
 import json
 import time
-from typing import Optional
 
 import httpx
-
 
 _NOVELAI_TEXT_HOST = "text.novelai.net"
 
@@ -176,10 +175,10 @@ class _NovelAIAdapterTransport(httpx.AsyncHTTPTransport):
 
         content_parts: list[str] = []
         finish_reason = "stop"
-        completion_id: Optional[str] = None
-        created: Optional[int] = None
+        completion_id: str | None = None
+        created: int | None = None
         model_name = body.get("model", "unknown")
-        usage: Optional[dict] = None
+        usage: dict | None = None
 
         try:
             async for raw_line in upstream.aiter_lines():
@@ -239,7 +238,7 @@ class _NovelAIAdapterTransport(httpx.AsyncHTTPTransport):
 
 
 def build_novelai_http_client(
-    proxy_url: Optional[str] = None,
+    proxy_url: str | None = None,
     timeout: float = 120.0,
 ) -> httpx.AsyncClient:
     """

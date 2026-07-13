@@ -5,7 +5,6 @@ from pathlib import Path
 
 from .config import Settings
 
-
 _ONE_PIXEL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
@@ -29,4 +28,3 @@ def save_image(settings: Settings, image_id: str, payload: bytes) -> Path:
 
 def write_mock_image(settings: Settings, image_id: str) -> Path:
     return save_image(settings, image_id, _ONE_PIXEL_PNG)
-

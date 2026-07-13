@@ -37,8 +37,10 @@ chat 段（行为层）与 planner 段（知识层）拼成**同一个** agent �
     get_prompts_raw()
     warm_load_all()
 """
+
 from __future__ import annotations
 
+import logging
 import random
 import re
 import string
@@ -48,14 +50,15 @@ from typing import Any
 
 import yaml
 
-
 # ============================================================
 # 文件位置 + 加载
 # ============================================================
 
+
 def _data_dir() -> Path:
     try:
         from config import BOT_DATA_DIR  # type: ignore
+
         return Path(BOT_DATA_DIR)
     except Exception:
         return Path(__file__).resolve().parents[3] / "data"
@@ -80,9 +83,7 @@ def _preset_file(preset: str | None) -> str:
     return _PRESET_FILES.get(preset, _PROMPTS_FILE)
 
 
-import logging as _logging
-
-_prompts_logger = _logging.getLogger("agent_router.prompts")
+_prompts_logger = logging.getLogger("agent_router.prompts")
 
 
 @lru_cache(maxsize=16)
@@ -128,9 +129,8 @@ _RANDOM_STRING_PAT = re.compile(r"\{random_string\}")
 
 
 def _fresh_random_string() -> str:
-    return "测试号: " + "".join(
-        random.choice(string.ascii_letters + string.digits) for _ in range(76)
-    )
+    rng = random.SystemRandom()
+    return "测试号: " + "".join(rng.choice(string.ascii_letters + string.digits) for _ in range(76))
 
 
 def _substitute(content: str) -> str:
@@ -153,6 +153,7 @@ def _flatten_prompts_list(items: list) -> str:
 # ============================================================
 # 新 API（推荐）
 # ============================================================
+
 
 def load_chat_section(name: str, preset: str | None = None) -> str:
     """
@@ -216,6 +217,7 @@ def load_lite_chat_section(name: str = "system_prompt", preset: str | None = Non
 # 兼容旧 API
 # ============================================================
 
+
 def load_static_system_prompts() -> str:
     """旧 API 兼容：等价 load_planner_system_prompts()。"""
     return load_planner_system_prompts()
@@ -253,8 +255,7 @@ def warm_load_all() -> dict:
         "file": _PROMPTS_FILE,
         "chat_sections": list(chat.keys()),
         "chat_missing": [
-            n for n in ("persona", "workflow", "tools_hint", "reply_rules")
-            if n not in chat
+            n for n in ("persona", "workflow", "tools_hint", "reply_rules") if n not in chat
         ],
         "planner_prompts_count": len(planner_prompts),
     }

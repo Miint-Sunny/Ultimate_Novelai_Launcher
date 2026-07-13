@@ -1,0 +1,102 @@
+[project]
+name = "ultimate-novelai-launcher-backend"
+version = "0.1.0"
+description = "Local sidecar and shared backend core for Ultimate Novelai launcher"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+  "aiofiles>=23.2,<26",
+  "aiohttp>=3.10,<4",
+  "aiohttp-socks>=0.10,<1",
+  "aiosqlite>=0.20,<1",
+  "curl-cffi>=0.7,<1",
+  "fastapi>=0.115,<1",
+  "gradio-client>=1.12,<2",
+  "httpcore>=1,<2",
+  "httpx[socks]>=0.27,<1",
+  "msgpack>=1.0,<2",
+  "pillow>=10,<13",
+  "pydantic>=2.10,<3",
+  "pynacl>=1.5,<2",
+  "pyyaml>=6,<7",
+  "uvicorn[standard]>=0.32,<1",
+  "websockets>=12,<17",
+]
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=7.6,<8",
+  "pip-audit>=2.8,<3",
+  "pyinstaller==6.21.0",
+  "pyright>=1.1.400,<2",
+  "pytest>=8,<10",
+  "pytest-asyncio>=0.24,<2",
+  "ruff>=0.12,<1",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.11.18"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["sidecar/tests", "server/agent_router/tests", "tests"]
+
+[tool.coverage.run]
+branch = true
+include = [
+  "backend_core/*",
+  "cloud_backend/*",
+  "sidecar/application/*",
+  "sidecar/persistence/*",
+  "sidecar/process_control.py",
+  "sidecar/runtime.py",
+  "sidecar/security/*",
+  "sidecar/services/assets.py",
+  "sidecar/services/backup.py",
+  "sidecar/services/generation.py",
+  "sidecar/services/jobs.py",
+  "sidecar/services/library.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]
+show_missing = true
+fail_under = 90
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"sidecar/tests/*" = ["S104", "S105", "S106", "S108"]
+"server/agent_router/tests/*" = ["S105", "S106", "S108"]
+# The 10k-line compatibility server predates the typed application layers. Keep
+# its known debt explicit by rule instead of excluding the file wholesale, so
+# every other Ruff rule (including newly enabled security rules) still applies.
+"server/app.py" = [
+  "ASYNC230", "ASYNC240",
+  "B007", "B023", "B904",
+  "E402", "E501", "E722",
+  "F541", "F811", "F841",
+  "I001",
+  "S110", "S112", "S324", "S608",
+  "UP006", "UP012", "UP015", "UP035", "UP045",
+]
+
+[tool.pyright]
+include = ["backend_core", "cloud_backend", "sidecar", "server/agent_router"]
+exclude = ["build", "dist"]
+# Imported compatibility code remains visible to dependency analysis, while its
+# pre-existing dynamic FastAPI surface is tracked as one explicit legacy exception.
+ignore = ["server/app.py"]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false

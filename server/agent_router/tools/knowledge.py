@@ -13,18 +13,20 @@
     from .tools import register_knowledge_tools
     register_knowledge_tools(chat_agent)
 """
+
 from __future__ import annotations
 
 import json
+import logging
 import random
 from pathlib import Path
-from typing import Optional
-
-from ..llm import Agent, RunContext
+from typing import Any
 
 from ..deps import AgentDeps
-from ..schemas import Character, Artist, DanbooruTag, SseEvent
+from ..llm import Agent, RunContext
+from ..schemas import Artist, Character, DanbooruTag, SseEvent
 
+logger = logging.getLogger("agent_router.tools.knowledge")
 
 # search_danbooru 给前 N 热门结果查 wiki 摘要（节省请求）
 _DANBOORU_WIKI_ENRICH_TOP_N = 3
@@ -39,7 +41,7 @@ _DANBOORU_CATEGORY_MAP = {
 }
 
 
-def _internal_get(deps: AgentDeps, path: str, params: Optional[dict] = None):
+def _internal_get(deps: AgentDeps, path: str, params: dict | None = None):
     """便捷封装：拼 URL + 带 session_id"""
     url = f"{deps.internal_base_url.rstrip('/')}{path}"
     final_params = dict(params or {})
@@ -48,7 +50,7 @@ def _internal_get(deps: AgentDeps, path: str, params: Optional[dict] = None):
     return deps.http_client.get(url, params=final_params)
 
 
-def _internal_post(deps: AgentDeps, path: str, json: Optional[dict] = None):
+def _internal_post(deps: AgentDeps, path: str, json: dict | None = None):
     url = f"{deps.internal_base_url.rstrip('/')}{path}"
     return deps.http_client.post(url, json=json or {})
 
@@ -63,6 +65,7 @@ def _bot_data_dir() -> Path:
     """本地库目录。优先 server config 的 BOT_DATA_DIR（响应环境变量），兜底按文件位置上推。"""
     try:
         from config import BOT_DATA_DIR  # type: ignore
+
         return Path(BOT_DATA_DIR)
     except Exception:
         return Path(__file__).resolve().parents[4] / "data"
@@ -73,7 +76,7 @@ def _read_local_json(path: Path):
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        pass
+        logger.debug("读取本地知识文件失败: %s", path, exc_info=True)
     return None
 
 
@@ -86,12 +89,14 @@ def _load_artists_local() -> list[dict]:
     for name, record in raw.items():
         if not isinstance(record, dict):
             continue
-        out.append({
-            "id": name,
-            "name": name,
-            "artist_string": record.get("artist_string", ""),
-            "created_time_str": record.get("created_time_str", ""),
-        })
+        out.append(
+            {
+                "id": name,
+                "name": name,
+                "artist_string": record.get("artist_string", ""),
+                "created_time_str": record.get("created_time_str", ""),
+            }
+        )
     out.sort(key=lambda x: x["name"])
     return out
 
@@ -107,12 +112,16 @@ def _load_artists_from_web(deps: AgentDeps) -> list[dict]:
         prompt = str(item.get("prompt") or item.get("artist_string") or "").strip()
         if not (artist_id or name) or not prompt:
             continue
-        out.append({
-            "id": artist_id or name,
-            "name": name or artist_id,
-            "artist_string": prompt,
-            "created_time_str": str(item.get("description") or item.get("createdTimeStr") or "web"),
-        })
+        out.append(
+            {
+                "id": artist_id or name,
+                "name": name or artist_id,
+                "artist_string": prompt,
+                "created_time_str": str(
+                    item.get("description") or item.get("createdTimeStr") or "web"
+                ),
+            }
+        )
     return out
 
 
@@ -147,12 +156,14 @@ def _load_ocs_local() -> list[dict]:
     for en_name, data in raw.items():
         if not isinstance(data, dict):
             continue
-        out.append({
-            "en_name": en_name,
-            "zh_name": data.get("zh_name"),
-            "zh_aliases": data.get("zh_aliases") or [],
-            "tag_group": data.get("tag_group"),
-        })
+        out.append(
+            {
+                "en_name": en_name,
+                "zh_name": data.get("zh_name"),
+                "zh_aliases": data.get("zh_aliases") or [],
+                "tag_group": data.get("tag_group"),
+            }
+        )
     return out
 
 
@@ -169,13 +180,17 @@ def _load_ocs_from_web(deps: AgentDeps) -> list[dict]:
         if not (name or en_name or zh_name) or not tag_group:
             continue
         aliases_raw = item.get("zh_aliases") or item.get("aliases") or []
-        aliases = [str(a) for a in aliases_raw if str(a).strip()] if isinstance(aliases_raw, list) else []
-        out.append({
-            "en_name": en_name or name,
-            "zh_name": zh_name or name,
-            "zh_aliases": aliases,
-            "tag_group": tag_group,
-        })
+        aliases = (
+            [str(a) for a in aliases_raw if str(a).strip()] if isinstance(aliases_raw, list) else []
+        )
+        out.append(
+            {
+                "en_name": en_name or name,
+                "zh_name": zh_name or name,
+                "zh_aliases": aliases,
+                "tag_group": tag_group,
+            }
+        )
     return out
 
 
@@ -183,11 +198,13 @@ def _dedupe_ocs(items: list[dict]) -> list[dict]:
     seen: set[str] = set()
     out: list[dict] = []
     for item in items:
-        marker = "|".join([
-            str(item.get("en_name") or "").lower(),
-            str(item.get("zh_name") or ""),
-            str(item.get("tag_group") or ""),
-        ])
+        marker = "|".join(
+            [
+                str(item.get("en_name") or "").lower(),
+                str(item.get("zh_name") or ""),
+                str(item.get("tag_group") or ""),
+            ]
+        )
         if marker in seen:
             continue
         seen.add(marker)
@@ -205,7 +222,7 @@ def _load_ocs_for_deps(deps: AgentDeps) -> list[dict]:
 # ============================================================
 # 通用角色（含中英文映射 + origin）来自 data/role_tag_mapping.json，无需鉴权。
 # 每次工具调用都拉全量太重，缓存 5 分钟。
-_ROLE_MAPPING_CACHE: Optional[dict] = None
+_ROLE_MAPPING_CACHE: dict | None = None
 _ROLE_MAPPING_CACHE_AT: float = 0.0
 _ROLE_MAPPING_TTL = 300.0
 
@@ -213,6 +230,7 @@ _ROLE_MAPPING_TTL = 300.0
 async def _get_role_mapping(deps: AgentDeps) -> dict:
     """获取通用角色映射库（中英文 + origin）。带 5 分钟 TTL 缓存。"""
     import time
+
     global _ROLE_MAPPING_CACHE, _ROLE_MAPPING_CACHE_AT
     now = time.time()
     if _ROLE_MAPPING_CACHE is not None and now - _ROLE_MAPPING_CACHE_AT < _ROLE_MAPPING_TTL:
@@ -226,7 +244,7 @@ async def _get_role_mapping(deps: AgentDeps) -> dict:
                 _ROLE_MAPPING_CACHE_AT = now
                 return data
     except Exception:
-        pass
+        logger.debug("读取角色映射失败", exc_info=True)
     return _ROLE_MAPPING_CACHE or {}
 
 
@@ -235,17 +253,19 @@ async def _emit_tool_call(ctx: RunContext[AgentDeps], name: str, args: dict) -> 
 
 
 async def _emit_tool_result(ctx: RunContext[AgentDeps], name: str, result_summary: str) -> None:
-    await ctx.deps.emit(SseEvent(event="tool_result", data={"name": name, "summary": result_summary}))
+    await ctx.deps.emit(
+        SseEvent(event="tool_result", data={"name": name, "summary": result_summary})
+    )
 
 
-def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
+def register_knowledge_tools(agent: Agent[AgentDeps, Any]) -> None:
     """把知识库相关工具集挂到 agent 上"""
 
     @agent.tool(strict=True)
     async def search_character(
         ctx: RunContext[AgentDeps],
-        query: Optional[str] = None,
-        origin: Optional[str] = None,
+        query: str | None = None,
+        origin: str | None = None,
         limit: int = 30,
     ) -> list[Character]:
         """
@@ -275,7 +295,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
             匹配列表。OC 优先排前；总数截断到 limit。两参数都空时返回 []。
         """
         await _emit_tool_call(
-            ctx, "search_character",
+            ctx,
+            "search_character",
             {"query": query, "origin": origin, "limit": limit},
         )
 
@@ -308,14 +329,16 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
                         )
                         if not hit:
                             continue
-                        oc_results.append(Character(
-                            name=oc.get("en_name") or "",
-                            zh_aliases=([zh] if zh else []) + aliases,
-                            tags=oc.get("tag_group") or "",
-                            source="oc",
-                        ))
+                        oc_results.append(
+                            Character(
+                                name=oc.get("en_name") or "",
+                                zh_aliases=([zh] if zh else []) + aliases,
+                                tags=oc.get("tag_group") or "",
+                                source="oc",
+                            )
+                        )
             except Exception:
-                pass  # OC 库读取失败
+                logger.debug("读取 Web OC 知识失败", exc_info=True)
 
         # ===== 2. 查通用角色库（role_tag_mapping.json）=====
         mapping = await _get_role_mapping(ctx.deps)
@@ -334,9 +357,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
 
                 # origin 筛选
                 if has_origin:
-                    origin_hit = (
-                        (origin_en and origin_lower in origin_en.lower())
-                        or any(origin in str(z) for z in origin_zh)
+                    origin_hit = (origin_en and origin_lower in origin_en.lower()) or any(
+                        origin_lower in str(z).lower() for z in origin_zh
                     )
                     if not origin_hit:
                         continue
@@ -352,14 +374,16 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
                     if not name_hit:
                         continue
 
-                role_results.append(Character(
-                    name=role_en or name,
-                    zh_aliases=[str(z) for z in role_zh],
-                    origin_en=origin_en or None,
-                    origin_zh=[str(z) for z in origin_zh],
-                    tags=role_en or name,
-                    source="roleTag",
-                ))
+                role_results.append(
+                    Character(
+                        name=role_en or name,
+                        zh_aliases=[str(z) for z in role_zh],
+                        origin_en=origin_en or None,
+                        origin_zh=[str(z) for z in origin_zh],
+                        tags=role_en or name,
+                        source="roleTag",
+                    )
+                )
                 # 按 limit 收尾：留出 OC 已占的位置，role 最多再填这么多
                 if len(role_results) >= max(limit - len(oc_results), 1):
                     break
@@ -374,16 +398,17 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
         role_n = len(role_results)
         truncated = f" (截断至前 {limit})" if truncated_flag else ""
         await _emit_tool_result(
-            ctx, "search_character",
-            f"OC {oc_n} 个 + 通用 {role_n} 个 = {len(results)} 个{truncated}"
+            ctx,
+            "search_character",
+            f"OC {oc_n} 个 + 通用 {role_n} 个 = {len(results)} 个{truncated}",
         )
         return results
 
     @agent.tool(strict=True)
     async def search_artist(
         ctx: RunContext[AgentDeps],
-        artist_ids: Optional[list[str]] = None,
-        keyword: Optional[str] = None,
+        artist_ids: list[str] | None = None,
+        keyword: str | None = None,
     ) -> list[Artist]:
         """
         搜索画师串。两种用法二选一：
@@ -397,7 +422,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
         Returns:
             匹配的画师串列表，prompt 字段是可直接使用的完整 tag 串。
             使用方法：把 prompt 字段的 tag 串原样放入 draw_specs[*].positive 靠前位置。
-            不要输出 Web 前端芯片包装语法（例如 <<artist:画师名:tag串>>）；Web 端需要折叠时会在返回前自动包装。
+            不要输出 Web 前端芯片包装语法（例如 <<artist:画师名:tag串>>）；
+            Web 端需要折叠时会在返回前自动包装。
         """
         await _emit_tool_call(ctx, "search_artist", {"artist_ids": artist_ids, "keyword": keyword})
         all_artists = _load_artists_for_deps(ctx.deps)
@@ -406,26 +432,30 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
         if artist_ids:
             id_set = {i.strip().upper() for i in artist_ids if i}
             for a in all_artists:
-                if str(a.get("id", "")).upper() in id_set or str(a.get("name", "")).upper() in id_set:
-                    out.append(Artist(
-                        id=str(a.get("id", "")),
-                        name=str(a.get("name", "")),
-                        prompt=str(a.get("artist_string", "")),
-                        description=str(a.get("created_time_str") or ""),
-                    ))
+                if (
+                    str(a.get("id", "")).upper() in id_set
+                    or str(a.get("name", "")).upper() in id_set
+                ):
+                    out.append(
+                        Artist(
+                            id=str(a.get("id", "")),
+                            name=str(a.get("name", "")),
+                            prompt=str(a.get("artist_string", "")),
+                            description=str(a.get("created_time_str") or ""),
+                        )
+                    )
         elif keyword:
             k = keyword.lower().strip()
             for a in all_artists:
-                hay = (
-                    str(a.get("name", "")) + " "
-                    + str(a.get("artist_string", ""))
-                ).lower()
+                hay = (str(a.get("name", "")) + " " + str(a.get("artist_string", ""))).lower()
                 if k in hay:
-                    out.append(Artist(
-                        id=str(a.get("id", "")),
-                        name=str(a.get("name", "")),
-                        prompt=str(a.get("artist_string", "")),
-                    ))
+                    out.append(
+                        Artist(
+                            id=str(a.get("id", "")),
+                            name=str(a.get("name", "")),
+                            prompt=str(a.get("artist_string", "")),
+                        )
+                    )
         await _emit_tool_result(ctx, "search_artist", f"匹配 {len(out)} 个画师串")
         return out
 
@@ -462,7 +492,7 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
     async def search_danbooru(
         ctx: RunContext[AgentDeps],
         query: str,
-        category: Optional[str] = None,
+        category: str | None = None,
         limit: int = 10,
     ) -> list[DanbooruTag]:
         """
@@ -475,7 +505,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
           - "Y 角色是什么作品的 / 这角色的背景"
 
         **禁止使用的场景：**
-          - 绘图流程里 search_character / search_artist 没命中 → 跳过 Danbooru，直接按用户原话和已有资料产出 draw_specs
+          - 绘图流程里 search_character / search_artist 没命中 → 跳过 Danbooru，
+            直接按用户原话和已有资料产出 draw_specs
           - 替用户"先了解了解"再画 → 用户没主动问就别查
           - 绘图时去"查证"常见 tag → 自己会写就直接写
           - 任何与"用户在画图"挂钩的场景 → 一律不调
@@ -494,7 +525,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
             list[DanbooruTag]，每条含 name / category / post_count；前 3 条额外含 wiki_summary_zh。
         """
         await _emit_tool_call(
-            ctx, "search_danbooru",
+            ctx,
+            "search_danbooru",
             {"query": query, "category": category, "limit": limit},
         )
 
@@ -508,7 +540,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
         # ===== 1. autocomplete 主查询 =====
         try:
             resp = await _internal_get(
-                ctx.deps, "/api/tags/autocomplete",
+                ctx.deps,
+                "/api/tags/autocomplete",
                 params={"query": q, "limit": limit},
             )
             items = resp.json() if resp.status_code == 200 else []
@@ -523,15 +556,18 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
             name = str(it.get("value") or it.get("label") or "").strip()
             if not name:
                 continue
-            cat_num = it.get("category")
+            raw_category = it.get("category")
+            cat_num = raw_category if isinstance(raw_category, int) else -1
             cat_str = _DANBOORU_CATEGORY_MAP.get(cat_num, "unknown")
             if category and cat_str != category.lower().strip():
                 continue
-            out.append(DanbooruTag(
-                name=name,
-                category=cat_str,  # type: ignore[arg-type]
-                post_count=int(it.get("post_count") or 0),
-            ))
+            out.append(
+                DanbooruTag(
+                    name=name,
+                    category=cat_str,  # type: ignore[arg-type]
+                    post_count=int(it.get("post_count") or 0),
+                )
+            )
 
         # 按 post_count 降序
         out.sort(key=lambda x: x.post_count, reverse=True)
@@ -542,7 +578,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
         async def _fetch_summary(tag_name: str) -> str:
             try:
                 r = await _internal_get(
-                    ctx.deps, "/api/tags/wiki-preview-summary-zh",
+                    ctx.deps,
+                    "/api/tags/wiki-preview-summary-zh",
                     params={"tag": tag_name},
                 )
                 if r.status_code == 200:
@@ -550,7 +587,7 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
                     if data.get("hasWiki"):
                         return str(data.get("summaryZh") or "")
             except Exception:
-                pass
+                logger.debug("读取 tag wiki 摘要失败", exc_info=True)
             return ""
 
         top = out[:_DANBOORU_WIKI_ENRICH_TOP_N]
@@ -559,7 +596,7 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
                 *[_fetch_summary(t.name) for t in top],
                 return_exceptions=False,
             )
-            for tag, summary in zip(top, summaries):
+            for tag, summary in zip(top, summaries, strict=True):
                 summary = (summary or "").strip()
                 if summary:
                     tag.has_wiki = True
@@ -572,8 +609,8 @@ def register_knowledge_tools(agent: Agent[AgentDeps, ...]) -> None:
             by_cat[t.category] = by_cat.get(t.category, 0) + 1
         cat_summary = ", ".join(f"{k}:{v}" for k, v in by_cat.items()) or "0"
         await _emit_tool_result(
-            ctx, "search_danbooru",
+            ctx,
+            "search_danbooru",
             f"匹配 {len(out)} 条 ({cat_summary}), wiki 摘要附带 {wiki_hits} 条",
         )
         return out
-

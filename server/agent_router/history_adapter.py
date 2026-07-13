@@ -2,7 +2,8 @@
 对话历史适配器 —— 现有 user_chat_history.json ↔ PydanticAI ModelMessage 互转。
 
 为什么需要这一层:
-    - 现有格式（Gemini 风格）: {role, content: str | [{text} | {inline_data}], _is_generated_image?, generated_params?}
+    - 现有格式（Gemini 风格）:
+      {role, content: str | [{text} | {inline_data}], _is_generated_image?, generated_params?}
     - PydanticAI 原生格式: ModelMessage（ModelRequest / ModelResponse 的并集）
     - 本次重构不迁移文件 schema，只在 agent 进出口加薄薄一层互转
 
@@ -16,24 +17,29 @@
     - 生成图片不保留图像本体，只保留文本参数
     - 超出的转纯文本
 """
+
 from __future__ import annotations
 
-from typing import Any, Optional
+import asyncio as _asyncio
 import base64
+import json as _json
 import time
+from collections.abc import Sequence
+from pathlib import Path as _Path
+from typing import Any
 
+import aiofiles as _aiofiles
+
+# 自研框架的多模态附件（顶层与 messages 子模块均可导出）
+from .llm import BinaryContent
 from .llm.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
-    UserPromptPart,
-    TextPart,
     SystemPromptPart,
+    TextPart,
+    UserPromptPart,
 )
-
-# 自研框架的多模态附件（顶层与 messages 子模块均可导出）
-from .llm import BinaryContent
-
 
 # ============================================================
 # 图片张数裁剪（与 nai_agent.py 现有策略一致）
@@ -47,7 +53,7 @@ MAX_USER_IMAGES = 3
 # ============================================================
 # 私聊 / 群聊历史统一使用纯 token 滑窗，丢弃最早的轮次。
 
-HISTORY_BUDGET_TOKENS = 100000     # 私聊/群聊滑动窗口 token 预算
+HISTORY_BUDGET_TOKENS = 100000  # 私聊/群聊滑动窗口 token 预算
 WEB_HISTORY_BUDGET_TOKENS = 100000  # Web 端滑动窗口 token 预算（无持久化）
 # 注：按接入的大上下文模型（~1M）放宽。token 为粗估值（中文偏保守），
 # 实际真实 token 通常略低于此。想更省成本调小，想更激进（吃满几百 k）调大。
@@ -66,7 +72,8 @@ def _touch_group_history(user_key: str) -> None:
 def _cleanup_group_memory() -> None:
     now = time.time()
     stale = [
-        key for key, last_access in list(_GROUP_MEMORY_LAST_ACCESS.items())
+        key
+        for key, last_access in list(_GROUP_MEMORY_LAST_ACCESS.items())
         if now - last_access > GROUP_MEMORY_INACTIVE_SECONDS
     ]
     for key in stale:
@@ -78,9 +85,7 @@ def _has_image(entry: dict) -> bool:
     content = entry.get("content")
     if not isinstance(content, list):
         return False
-    return any(
-        isinstance(item, dict) and "inline_data" in item for item in content
-    )
+    return any(isinstance(item, dict) and "inline_data" in item for item in content)
 
 
 def trim_history_images(history: list[dict]) -> list[dict]:
@@ -115,7 +120,8 @@ def trim_history_images(history: list[dict]) -> list[dict]:
         else:
             # 剥离 inline_data，只留 text
             new_content = [
-                item for item in entry.get("content", [])
+                item
+                for item in entry.get("content", [])
                 if not (isinstance(item, dict) and "inline_data" in item)
             ]
             if not new_content:
@@ -129,6 +135,7 @@ def trim_history_images(history: list[dict]) -> list[dict]:
 # ============================================================
 # 现有格式 → ModelMessage
 # ============================================================
+
 
 def _strip_runtime_context_from_text(text: str) -> str:
     """
@@ -205,7 +212,8 @@ def to_model_messages(history: list[dict], trim: bool = True) -> list[ModelMessa
         parts = _content_to_parts(entry.get("content"))
 
         if role == "user":
-            # PydanticAI 多模态约定：单个 UserPromptPart 的 content 字段持有 list[str|BinaryContent]，
+            # PydanticAI 多模态约定：单个 UserPromptPart 的 content 字段
+            # 持有 list[str|BinaryContent]，
             # 这样图片+文本属于"同一条用户消息"，而不是被拆成多个 UserPromptPart。
             if parts:
                 content_value: Any = parts[0] if len(parts) == 1 else parts
@@ -223,7 +231,8 @@ def to_model_messages(history: list[dict], trim: bool = True) -> list[ModelMessa
 # ModelMessage → 现有格式
 # ============================================================
 
-def from_model_messages(messages: list[ModelMessage]) -> list[dict]:
+
+def from_model_messages(messages: Sequence[ModelMessage]) -> list[dict]:
     """
     把 ModelMessage 列表转回现有 history_dict 格式。
 
@@ -246,12 +255,14 @@ def from_model_messages(messages: list[ModelMessage]) -> list[dict]:
                             if isinstance(sub, str):
                                 text_chunks.append(sub)
                             elif isinstance(sub, BinaryContent):
-                                content_items.append({
-                                    "inline_data": {
-                                        "mime_type": sub.media_type or "image/png",
-                                        "data": base64.b64encode(sub.data).decode("ascii"),
+                                content_items.append(
+                                    {
+                                        "inline_data": {
+                                            "mime_type": sub.media_type or "image/png",
+                                            "data": base64.b64encode(sub.data).decode("ascii"),
+                                        }
                                     }
-                                })
+                                )
             if text_chunks:
                 text = _strip_runtime_context_from_text("\n".join(text_chunks))
                 if text:
@@ -282,6 +293,7 @@ def from_model_messages(messages: list[ModelMessage]) -> list[dict]:
 # ============================================================
 # token 预算 / 滑动窗口
 # ============================================================
+
 
 def _estimate_tokens(text: str) -> int:
     """粗估 token 数（不依赖 tiktoken，对 Gemini/Claude 都够用）。
@@ -327,6 +339,7 @@ def apply_token_budget(history: list[dict], budget_tokens: int) -> list[dict]:
 # 高层便利方法（router 用）
 # ============================================================
 
+
 async def load_history_for_agent(
     user_key: str,
     *,
@@ -356,7 +369,9 @@ def _is_selected_resource_memory(entry: dict) -> bool:
         return content.strip().startswith("[chat_agent 筛选资料记忆]")
     if isinstance(content, list):
         for item in content:
-            if isinstance(item, dict) and str(item.get("text", "")).strip().startswith("[chat_agent 筛选资料记忆]"):
+            if isinstance(item, dict) and str(item.get("text", "")).strip().startswith(
+                "[chat_agent 筛选资料记忆]"
+            ):
                 return True
     return False
 
@@ -366,7 +381,7 @@ async def append_to_history(
     new_messages: list[ModelMessage],
     *,
     persistent: bool = True,
-    extra_entries: Optional[list[dict]] = None,
+    extra_entries: list[dict] | None = None,
 ) -> None:
     """
     把 agent.run() 产出的新消息追加到现有历史，并持久化（私聊场景）。
@@ -396,13 +411,8 @@ async def append_to_history(
 
 # ----- 与 Bot 端 history_manager 解耦的薄包装 -----
 # server 进程独立运行，不能直接 import nonebot 插件 core 模块。
-# 退而求其次：直接读写 data/user_chat_history.json 文件，schema 与 core/history_manager.py 完全一致。
-
-import json as _json
-import asyncio as _asyncio
-from pathlib import Path as _Path
-import aiofiles as _aiofiles
-
+# 退而求其次：直接读写 data/user_chat_history.json 文件，
+# schema 与 core/history_manager.py 完全一致。
 
 _HISTORY_LOCK = _asyncio.Lock()
 
@@ -410,6 +420,7 @@ _HISTORY_LOCK = _asyncio.Lock()
 def _history_file_path() -> _Path:
     try:
         from config import BOT_DATA_DIR  # type: ignore
+
         return _Path(BOT_DATA_DIR) / "user_chat_history.json"
     except Exception:
         return _Path(__file__).resolve().parents[3] / "data" / "user_chat_history.json"
@@ -420,7 +431,7 @@ async def _load_user_history(user_key: str) -> list[dict]:
     path = _history_file_path()
     if not path.exists():
         return []
-    async with _aiofiles.open(path, "r", encoding="utf-8") as f:
+    async with _aiofiles.open(path, encoding="utf-8") as f:
         text = await f.read()
     if not text.strip():
         return []
@@ -438,7 +449,7 @@ async def _save_user_history(user_key: str, history: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     async with _HISTORY_LOCK:
         if path.exists():
-            async with _aiofiles.open(path, "r", encoding="utf-8") as f:
+            async with _aiofiles.open(path, encoding="utf-8") as f:
                 text = await f.read()
             try:
                 full = _json.loads(text) if text.strip() else {}
@@ -467,7 +478,7 @@ async def clear_history(user_key: str, *, persistent: bool = True) -> bool:
     if not path.exists():
         return False
     async with _HISTORY_LOCK:
-        async with _aiofiles.open(path, "r", encoding="utf-8") as f:
+        async with _aiofiles.open(path, encoding="utf-8") as f:
             text = await f.read()
         try:
             full = _json.loads(text) if text.strip() else {}

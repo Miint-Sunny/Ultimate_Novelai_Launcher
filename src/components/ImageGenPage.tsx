@@ -17,7 +17,7 @@ import {
     Trash2,
 } from 'lucide-react';
 import { botService } from '../services/botService';
-import { getQueueServerUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 import { useTaskStore } from '../stores/taskStore';
 import type { Task, TaskStatus } from '../stores/taskStore';
 import { getAppSettings } from '../services/localLibrary';
@@ -291,8 +291,9 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
         try {
             const authState = botService.getAuthState();
             if (!authState.isAuthorized || !authState.sessionId) return;
-            const serverUrl = getQueueServerUrl();
-            const resp = await fetch(`${serverUrl}/api/workshop/quota?session_id=${encodeURIComponent(authState.sessionId)}`);
+            const resp = await appBackendApi.request('/api/workshop/quota', undefined, {
+                session_id: authState.sessionId,
+            });
             if (resp.ok) {
                 const data = await resp.json();
                 setQuotaInfo(data);
@@ -398,17 +399,19 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
     const startPolling = useCallback((taskId: string) => {
         const authState = botService.getAuthState();
         if (!authState.sessionId) return;
-        const serverUrl = getQueueServerUrl();
         const pollInterval = setInterval(async () => {
             try {
-                const pollResp = await fetch(`${serverUrl}/api/workshop/tasks?session_id=${authState.sessionId}`);
+                const pollResp = await appBackendApi.request('/api/workshop/tasks', undefined, {
+                    session_id: authState.sessionId,
+                });
                 if (!pollResp.ok) return;
                 const pollData = await pollResp.json();
                 const task = (pollData.tasks || []).find((t: any) => t.task_id === taskId);
                 if (!task) return;
                 if (task.status === 'success' && task.image_url) {
                     clearInterval(pollInterval);
-                    updateTask(taskId, { status: 'success', imageUrl: `${serverUrl}${task.image_url}` });
+                    const imageUrl = await appBackendApi.objectUrl(task.image_url);
+                    updateTask(taskId, { status: 'success', imageUrl });
                     fetchQuota().catch(() => { });
                 } else if (task.status === 'error') {
                     clearInterval(pollInterval);
@@ -425,8 +428,7 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
         let estimated: number | null = null;
         const model = MODELS.find(m => m.id === genModelId) || MODELS[0];
         try {
-            const serverUrl = getQueueServerUrl();
-            const statsResp = await fetch(`${serverUrl}/api/workshop/models/stats`);
+            const statsResp = await appBackendApi.request('/api/workshop/models/stats');
             if (statsResp.ok) {
                 const statsData = await statsResp.json();
                 const modelStat = statsData[genModelId];
@@ -453,7 +455,6 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
                 }
             }
 
-            const serverUrl = getQueueServerUrl();
             let finalAspectRatio = genAspectRatio;
             if (finalAspectRatio === 'auto' && uploadedImages.length > 0) {
                 const first = uploadedImages[0];
@@ -468,7 +469,7 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
                 updateTask(taskId, { refImages: imageBase64List });
             }
 
-            const submitResp = await fetch(`${serverUrl}/api/workshop/generate`, {
+            const submitResp = await appBackendApi.request('/api/workshop/generate', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody),
             });
             const submitData = await submitResp.json();
@@ -493,8 +494,6 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
             setIsRestoringTasks(false);
             return;
         }
-        const serverUrl = getQueueServerUrl();
-
         // 恢复 store 中正在生成的任务的轮询
         for (const t of tasks) {
             if (t.status === 'generating') startPolling(t.id);
@@ -504,7 +503,9 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
         const restoreTasks = async () => {
             if (tasks.length === 0) setIsRestoringTasks(true);
             try {
-                const resp = await fetch(`${serverUrl}/api/workshop/tasks?session_id=${authState.sessionId}`);
+                const resp = await appBackendApi.request('/api/workshop/tasks', undefined, {
+                    session_id: authState.sessionId,
+                });
                 if (!resp.ok) return;
                 const data = await resp.json();
                 const serverTasks = data.tasks || [];
@@ -512,7 +513,7 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
 
                 let modelStats: Record<string, any> = {};
                 try {
-                    const statsResp = await fetch(`${serverUrl}/api/workshop/models/stats`);
+                    const statsResp = await appBackendApi.request('/api/workshop/models/stats');
                     if (statsResp.ok) modelStats = await statsResp.json();
                 } catch { /* ignore */ }
 
@@ -524,7 +525,7 @@ export const ImageGenPage: React.FC<{ onBack?: () => void; initialImageUrl?: str
                     const t: Task = {
                         id: task.task_id,
                         status: task.status === 'success' ? 'success' : task.status === 'error' ? 'error' : 'generating',
-                        imageUrl: task.image_url ? `${serverUrl}${task.image_url}` : '',
+                        imageUrl: task.image_url ? await appBackendApi.objectUrl(task.image_url) : '',
                         modelId: task.model,
                         prompt: task.prompt || '',
                         timestamp: task.created_at ? task.created_at * 1000 : Date.now(),

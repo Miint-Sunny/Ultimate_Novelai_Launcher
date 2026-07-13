@@ -24,20 +24,23 @@
     - SystemPromptPart.content                     （router._debug_serialize_model_messages）
     - UserPromptPart.content（str | list）          （history_adapter.from_model_messages）
     - TextPart.content                             （history_adapter / router）
-    - ToolCallPart.tool_name（+ getattr content）   （router._debug_serialize_model_messages 兜底分支）
-    - ToolReturnPart.tool_name / .content           （router._extract_used_resources：content 为 list[结构化项]）
+    - ToolCallPart.tool_name（+ getattr content）
+      （router._debug_serialize_model_messages 兜底分支）
+    - ToolReturnPart.tool_name / .content
+      （router._extract_used_resources：content 为 list[结构化项]）
     - ModelRequest.parts / ModelResponse.parts      （随处 isinstance + 遍历）
 """
+
 from __future__ import annotations
 
 import base64 as _base64
 from dataclasses import dataclass, field
-from typing import Any, Union
-
+from typing import Any
 
 # ============================================================
 # 多模态附件
 # ============================================================
+
 
 @dataclass
 class BinaryContent:
@@ -47,6 +50,7 @@ class BinaryContent:
     现有代码构造方式：BinaryContent(data=<bytes>, media_type="image/png")
     读取方式：part.data / part.media_type
     """
+
     data: bytes
     media_type: str = "image/png"
 
@@ -68,9 +72,11 @@ class BinaryContent:
 # 请求侧 Part（role:system / role:user / role:tool）
 # ============================================================
 
+
 @dataclass
 class SystemPromptPart:
     """一条 system 段。多个 SystemPromptPart 会被各家 provider 合并成 system 指令。"""
+
     content: str
 
 
@@ -81,7 +87,8 @@ class UserPromptPart:
         - str
         - list[str | BinaryContent]   （图文混排，属于同一条 user 消息）
     """
-    content: Union[str, list]
+
+    content: str | list
 
 
 @dataclass
@@ -92,6 +99,7 @@ class ToolReturnPart:
     content 保留**原始 Python 返回值**（通常是 list[Character|Artist|dict]），
     既给 provider 层 JSON 序列化，也给 router._extract_used_resources 直接读结构化项。
     """
+
     tool_name: str
     content: Any
     tool_call_id: str = ""
@@ -106,6 +114,7 @@ class RetryPromptPart:
     - tool_name 非空：该重试针对某次工具调用（作为 role:tool 的错误返回）。
     - tool_name 为空：泛重试指令（作为 role:user 追加）。
     """
+
     content: str
     tool_name: str = ""
     tool_call_id: str = ""
@@ -115,9 +124,11 @@ class RetryPromptPart:
 # 响应侧 Part（role:assistant）
 # ============================================================
 
+
 @dataclass
 class TextPart:
     """助手输出的纯文本。"""
+
     content: str
 
 
@@ -127,6 +138,7 @@ class ThinkingPart:
     助手的思考/推理段（Gemini includeThoughts、DeepSeek reasoning、Anthropic thinking）。
     仅用于调试可见性，不写入对话历史、不参与 reply_text。
     """
+
     content: str
 
 
@@ -138,39 +150,44 @@ class ToolCallPart:
     content 字段恒为 None，仅为兼容 router._debug_serialize_model_messages 里
     `getattr(p, "content", None)` 的兜底分支（它对未知 part 统一读 content/tool_name）。
     """
+
     tool_name: str
-    args: Union[dict, str] = field(default_factory=dict)
+    args: dict | str = field(default_factory=dict)
     tool_call_id: str = ""
     content: Any = None
 
 
 # 类型别名（供 isinstance / 注解）
-RequestPart = Union[SystemPromptPart, UserPromptPart, ToolReturnPart, RetryPromptPart]
-ResponsePart = Union[TextPart, ThinkingPart, ToolCallPart]
+RequestPart = SystemPromptPart | UserPromptPart | ToolReturnPart | RetryPromptPart
+ResponsePart = TextPart | ThinkingPart | ToolCallPart
 
 
 # ============================================================
 # 一轮消息（ModelRequest = 发给模型；ModelResponse = 模型产出）
 # ============================================================
 
+
 @dataclass
 class ModelRequest:
     """发给模型的一轮（含 system / user / tool-return parts）。"""
+
     parts: list = field(default_factory=list)
 
 
 @dataclass
 class ModelResponse:
     """模型产出的一轮（含 text / thinking / tool-call parts）。"""
+
     parts: list = field(default_factory=list)
 
 
-ModelMessage = Union[ModelRequest, ModelResponse]
+ModelMessage = ModelRequest | ModelResponse
 
 
 # ============================================================
 # 工具定义（发给 provider 的 function schema）
 # ============================================================
+
 
 @dataclass
 class ToolDefinition:
@@ -181,12 +198,16 @@ class ToolDefinition:
     description              工具说明（取自 Python 函数 docstring，逐字不截断）
     parameters_json_schema   入参 JSON Schema（object 形态，必填项由 required 列表给出）
     strict                   是否走 OpenAI strict function calling（True 时 OpenAI provider 会
-                             转成 additionalProperties:false + required=全字段 + 可选字段 nullable）。
+                             转成 additionalProperties:false + required=全字段
+                             + 可选字段 nullable）。
                              仅影响 OpenAI 协议；Gemini/Anthropic 忽略此标志。
     """
+
     name: str
     description: str
-    parameters_json_schema: dict = field(default_factory=lambda: {"type": "object", "properties": {}})
+    parameters_json_schema: dict = field(
+        default_factory=lambda: {"type": "object", "properties": {}}
+    )
     strict: bool = False
 
 

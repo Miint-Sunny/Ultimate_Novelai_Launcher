@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
-import random
+import secrets
 import zipfile
-import base64
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 
 from ..config import Settings
+from ..infrastructure import HttpClientPool, request_with_policy
+from ..security import OutboundPolicy
 from .models import GenerationParams
 
 logger = logging.getLogger(__name__)
@@ -43,7 +46,7 @@ def _sanitize_for_log(value: Any) -> Any:
 
 
 def build_official_payload(tags: str, negative: str, params: GenerationParams) -> dict[str, Any]:
-    seed = params.seed if params.seed is not None else random.randint(0, 2**32 - 1)
+    seed = params.seed if params.seed is not None else secrets.randbits(32)
     parameters = {
         "params_version": 3,
         "width": params.width,
@@ -100,12 +103,28 @@ async def generate_image(
     tags: str,
     negative: str,
     params: GenerationParams,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> bytes:
     payload = build_official_payload(tags, negative, params)
-    return await generate_image_from_payload(settings=settings, payload=payload)
+    return await generate_image_from_payload(
+        settings=settings,
+        payload=payload,
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
+    )
 
 
-async def generate_image_from_payload(*, settings: Settings, payload: dict[str, Any]) -> bytes:
+async def generate_image_from_payload(
+    *,
+    settings: Settings,
+    payload: dict[str, Any],
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
+) -> bytes:
     if not settings.nai_token:
         raise NovelAIError("NAI token is not configured")
 
@@ -119,6 +138,9 @@ async def generate_image_from_payload(*, settings: Settings, payload: dict[str, 
         payload=payload,
         accept="application/zip",
         read_timeout=180.0,
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
     )
     return await _extract_image_from_zip(response.content)
 
@@ -129,6 +151,9 @@ async def encode_vibe(
     image: str,
     information_extracted: float,
     model: str,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> str:
     if not settings.nai_token:
         raise NovelAIError("NAI token is not configured")
@@ -143,6 +168,9 @@ async def encode_vibe(
         },
         accept="*/*",
         read_timeout=120.0,
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
     )
     return base64.b64encode(response.content).decode("ascii")
 
@@ -154,6 +182,9 @@ async def upscale_image(
     width: int,
     height: int,
     scale: int | float,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> bytes:
     if not settings.nai_token:
         raise NovelAIError("NAI token is not configured")
@@ -169,6 +200,9 @@ async def upscale_image(
         },
         accept="application/zip",
         read_timeout=180.0,
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
     )
     return await _extract_image_from_zip(response.content)
 
@@ -189,7 +223,13 @@ def parse_anlas_subscription(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def fetch_anlas(settings: Settings) -> dict[str, Any]:
+async def fetch_anlas(
+    settings: Settings,
+    *,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
+) -> dict[str, Any]:
     if not settings.nai_token:
         raise NovelAIError("NAI token is not configured")
 
@@ -200,14 +240,16 @@ async def fetch_anlas(settings: Settings) -> dict[str, Any]:
         "Origin": "https://novelai.net",
         "Referer": "https://novelai.net",
     }
-    async with httpx.AsyncClient(
-        headers={key: value for key, value in headers.items() if key != "Authorization"},
+    response = await _request_with_runtime_client(
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
+        method="GET",
+        url=SUBSCRIPTION_URL,
+        headers=headers,
         timeout=httpx.Timeout(10.0, read=20.0),
-    ) as client:
-        response = await client.get(
-            SUBSCRIPTION_URL,
-            headers={"Authorization": headers["Authorization"]},
-        )
+        long_running=False,
+    )
 
     if response.status_code != 200:
         message = f"NovelAI subscription request failed with HTTP {response.status_code}"
@@ -234,6 +276,9 @@ async def _post_nai_json(
     payload: dict[str, Any],
     accept: str,
     read_timeout: float,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
 ) -> httpx.Response:
     headers = {
         "Authorization": f"Bearer {settings.nai_token}",
@@ -244,16 +289,18 @@ async def _post_nai_json(
         "Referer": "https://novelai.net",
     }
     timeout = httpx.Timeout(20.0, read=read_timeout)
-    async with httpx.AsyncClient(
-        base_url=settings.nai_base_url,
-        headers={key: value for key, value in headers.items() if key != "Authorization"},
+    base_url = settings.nai_base_url.rstrip("/") + "/"
+    response = await _request_with_runtime_client(
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
+        method="POST",
+        url=urljoin(base_url, path.lstrip("/")),
+        headers=headers,
+        json=payload,
         timeout=timeout,
-    ) as client:
-        response = await client.post(
-            path,
-            json=payload,
-            headers={"Authorization": headers["Authorization"]},
-        )
+        long_running=True,
+    )
 
     if response.status_code not in {200, 201}:
         message = f"NovelAI request failed with HTTP {response.status_code}"
@@ -264,6 +311,56 @@ async def _post_nai_json(
             body = response.text[:500]
         raise NovelAIError(message, response.status_code, str(body))
     return response
+
+
+async def _request_with_runtime_client(
+    *,
+    http: HttpClientPool | None,
+    client: httpx.AsyncClient | None,
+    outbound_policy: OutboundPolicy | None,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    timeout: httpx.Timeout,
+    long_running: bool,
+    json: Any = None,
+) -> httpx.Response:
+    if http is not None and client is not None:
+        raise ValueError("pass either http or client, not both")
+    policy = outbound_policy or OutboundPolicy("public")
+    if http is not None:
+        return await http.request(
+            policy,
+            method,
+            url,
+            long_running=long_running,
+            headers=headers,
+            json=json,
+            timeout=timeout,
+        )
+    if client is not None:
+        return await request_with_policy(
+            client,
+            policy,
+            method,
+            url,
+            headers=headers,
+            json=json,
+            timeout=timeout,
+        )
+
+    # Compatibility for direct library callers. Runtime routes inject the
+    # lifespan-owned pool; this branch deliberately owns and closes its client.
+    async with httpx.AsyncClient(follow_redirects=False) as owned_client:
+        return await request_with_policy(
+            owned_client,
+            policy,
+            method,
+            url,
+            headers=headers,
+            json=json,
+            timeout=timeout,
+        )
 
 
 async def _extract_image_from_zip(payload: bytes) -> bytes:

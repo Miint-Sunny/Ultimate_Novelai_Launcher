@@ -6,30 +6,57 @@
               strict schema（additionalProperties:false + required 全字段）/
               extra_body 覆盖计算出的 tool_choice / temperature·max_tokens·parallel_tool_calls
     - Gemini：systemInstruction / user·model 交替 / inlineData 图 / functionCall·functionResponse /
-              functionDeclarations + schema 清洗（无 anyOf/additionalProperties，Optional->nullable）/
+              functionDeclarations + schema 清洗
+              （无 anyOf/additionalProperties，Optional->nullable）/
               toolConfig mode ANY / thinkingConfig / safetySettings
-    - Anthropic：system text blocks / tool_use·tool_result / input_schema / tool_choice any / max_tokens
+    - Anthropic：system text blocks / tool_use·tool_result / input_schema /
+                 tool_choice any / max_tokens
 """
+
 from __future__ import annotations
 
 import json
 
 from agent_router.llm.messages import (
-    ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart,
-    ToolReturnPart, ToolCallPart, ToolDefinition, BinaryContent,
+    BinaryContent,
+    ModelRequest,
+    ModelResponse,
+    SystemPromptPart,
+    ToolCallPart,
+    ToolDefinition,
+    ToolReturnPart,
+    UserPromptPart,
 )
-from agent_router.llm.providers import OpenAIProvider, GoogleProvider, AnthropicProvider
-from agent_router.llm.models.openai import OpenAIModel
-from agent_router.llm.models.google import GoogleModel
 from agent_router.llm.models.anthropic import AnthropicModel
+from agent_router.llm.models.google import GoogleModel
+from agent_router.llm.models.openai import OpenAIModel
+from agent_router.llm.providers import AnthropicProvider, GoogleProvider, OpenAIProvider
 
 
 def _sample_inputs():
     system_parts = [SystemPromptPart(content="S1"), SystemPromptPart(content="S2")]
     messages = [
-        ModelRequest(parts=[UserPromptPart(content=["看图", BinaryContent(data=b"\x89PNG", media_type="image/png")])]),
-        ModelResponse(parts=[ToolCallPart(tool_name="search_artist", args={"keyword": "x"}, tool_call_id="t1")]),
-        ModelRequest(parts=[ToolReturnPart(tool_name="search_artist", content=[{"id": "A1", "prompt": "p"}], tool_call_id="t1")]),
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=["看图", BinaryContent(data=b"\x89PNG", media_type="image/png")]
+                )
+            ]
+        ),
+        ModelResponse(
+            parts=[
+                ToolCallPart(tool_name="search_artist", args={"keyword": "x"}, tool_call_id="t1")
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="search_artist",
+                    content=[{"id": "A1", "prompt": "p"}],
+                    tool_call_id="t1",
+                )
+            ]
+        ),
     ]
     tools = [
         ToolDefinition(
@@ -37,7 +64,10 @@ def _sample_inputs():
             description="搜画师",
             parameters_json_schema={
                 "type": "object",
-                "properties": {"keyword": {"type": "string"}, "artist_ids": {"type": "array", "items": {"type": "string"}}},
+                "properties": {
+                    "keyword": {"type": "string"},
+                    "artist_ids": {"type": "array", "items": {"type": "string"}},
+                },
                 "required": [],
             },
             strict=True,
@@ -50,7 +80,10 @@ def _sample_inputs():
                 "properties": {
                     "positive": {"type": "string", "description": "正向"},
                     "size": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                    "characters": {"type": "array", "items": {"type": "object", "additionalProperties": {"type": "string"}}},
+                    "characters": {
+                        "type": "array",
+                        "items": {"type": "object", "additionalProperties": {"type": "string"}},
+                    },
                 },
                 "required": ["positive"],
             },
@@ -64,11 +97,14 @@ def _sample_inputs():
 # OpenAI
 # ============================================================
 
+
 def test_openai_wire():
     system_parts, messages, tools = _sample_inputs()
     model = OpenAIModel("deepseek-v4-pro", OpenAIProvider(base_url="http://x/v1", api_key="k"))
     settings = {
-        "temperature": 0.3, "max_tokens": 4096, "parallel_tool_calls": False,
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "parallel_tool_calls": False,
         "extra_body": {"thinking": {"type": "disabled"}, "tool_choice": "auto"},
     }
     body = model._build_body(messages, system_parts, tools, require_tool=True, settings=settings)
@@ -131,11 +167,17 @@ def test_openai_text_only_model_strips_images():
 # Gemini
 # ============================================================
 
+
 def test_gemini_wire():
     system_parts, messages, tools = _sample_inputs()
-    model = GoogleModel("gemini-3.5-flash", GoogleProvider(api_key="k", base_url="https://h/v1beta1/publishers/google"))
+    model = GoogleModel(
+        "gemini-3.5-flash",
+        GoogleProvider(api_key="k", base_url="https://h/v1beta1/publishers/google"),
+    )
     settings = {
-        "temperature": 0.3, "max_tokens": 2048, "thinking": True,
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "thinking": True,
         "google_safety_settings": [{"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF"}],
     }
     body = model._build_body(messages, system_parts, tools, require_tool=True, settings=settings)
@@ -143,7 +185,11 @@ def test_gemini_wire():
     assert body["systemInstruction"]["parts"] == [{"text": "S1"}, {"text": "S2"}]
 
     roles = [c["role"] for c in body["contents"]]
-    assert roles == ["user", "model", "user"]  # user(图) / model(functionCall) / user(functionResponse)
+    assert roles == [
+        "user",
+        "model",
+        "user",
+    ]  # user(图) / model(functionCall) / user(functionResponse)
     # 图：inlineData
     assert any("inlineData" in p for p in body["contents"][0]["parts"])
     # functionCall
@@ -168,6 +214,7 @@ def test_gemini_wire():
 # ============================================================
 # Anthropic
 # ============================================================
+
 
 def test_anthropic_wire():
     system_parts, messages, tools = _sample_inputs()
@@ -206,10 +253,11 @@ def test_anthropic_default_max_tokens():
 # 回归：DrawSpec.characters 的 Gemini schema 必须带 properties（修 Vertex 400）
 # ============================================================
 
+
 def test_drawspec_gemini_characters_has_properties():
-    from agent_router.schemas import DrawSpec
-    from agent_router.llm.output import build_inlined_json_schema
     from agent_router.llm.models.google import _to_gemini_schema
+    from agent_router.llm.output import build_inlined_json_schema
+    from agent_router.schemas import DrawSpec
 
     s = build_inlined_json_schema(DrawSpec)
     blob = json.dumps(s)
@@ -232,6 +280,7 @@ def test_drawspec_gemini_characters_has_properties():
 # 回归：native final_result 解析失败后的重试必须以 tool_result 回应 tool_use（修 400）
 # ============================================================
 
+
 def test_anthropic_retry_after_tool_use_renders_tool_result():
     from agent_router.llm.messages import ModelRequest, ModelResponse, RetryPromptPart
     from agent_router.llm.output import OUTPUT_TOOL_NAME
@@ -239,8 +288,16 @@ def test_anthropic_retry_after_tool_use_renders_tool_result():
     model = AnthropicModel("c", AnthropicProvider(base_url="http://h", api_key="k"))
     messages = [
         ModelRequest(parts=[UserPromptPart(content="hi")]),
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"bad": 1}, tool_call_id="c1")]),
-        ModelRequest(parts=[RetryPromptPart(content="参数错误，请重填", tool_name=OUTPUT_TOOL_NAME, tool_call_id="c1")]),
+        ModelResponse(
+            parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"bad": 1}, tool_call_id="c1")]
+        ),
+        ModelRequest(
+            parts=[
+                RetryPromptPart(
+                    content="参数错误，请重填", tool_name=OUTPUT_TOOL_NAME, tool_call_id="c1"
+                )
+            ]
+        ),
     ]
     wire, _sys = model._build_messages(messages, [])
     last = wire[-1]
@@ -252,14 +309,20 @@ def test_anthropic_retry_after_tool_use_renders_tool_result():
 
 def test_openai_retry_after_tool_call_renders_tool_role():
     from agent_router.llm.messages import ModelRequest, ModelResponse, RetryPromptPart
-    from agent_router.llm.output import OUTPUT_TOOL_NAME
     from agent_router.llm.models.openai import OpenAIModel
+    from agent_router.llm.output import OUTPUT_TOOL_NAME
 
     model = OpenAIModel("m", OpenAIProvider(base_url="http://x/v1", api_key="k"))
     messages = [
         ModelRequest(parts=[UserPromptPart(content="hi")]),
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"bad": 1}, tool_call_id="c1")]),
-        ModelRequest(parts=[RetryPromptPart(content="参数错误", tool_name=OUTPUT_TOOL_NAME, tool_call_id="c1")]),
+        ModelResponse(
+            parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"bad": 1}, tool_call_id="c1")]
+        ),
+        ModelRequest(
+            parts=[
+                RetryPromptPart(content="参数错误", tool_name=OUTPUT_TOOL_NAME, tool_call_id="c1")
+            ]
+        ),
     ]
     wire = model._messages_to_wire(messages, [])
     last = wire[-1]
@@ -272,11 +335,19 @@ def test_gemini_retry_after_function_call_renders_function_response():
     from agent_router.llm.messages import ModelRequest, ModelResponse, RetryPromptPart
     from agent_router.llm.output import OUTPUT_TOOL_NAME
 
-    model = GoogleModel("g", GoogleProvider(api_key="k", base_url="https://h/v1beta1/publishers/google"))
+    model = GoogleModel(
+        "g", GoogleProvider(api_key="k", base_url="https://h/v1beta1/publishers/google")
+    )
     messages = [
         ModelRequest(parts=[UserPromptPart(content="hi")]),
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"bad": 1}, tool_call_id="c1")]),
-        ModelRequest(parts=[RetryPromptPart(content="参数错误", tool_name=OUTPUT_TOOL_NAME, tool_call_id="c1")]),
+        ModelResponse(
+            parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args={"bad": 1}, tool_call_id="c1")]
+        ),
+        ModelRequest(
+            parts=[
+                RetryPromptPart(content="参数错误", tool_name=OUTPUT_TOOL_NAME, tool_call_id="c1")
+            ]
+        ),
     ]
     body = model._build_body(messages, [], [], require_tool=True, settings={})
     contents = body["contents"]

@@ -11,6 +11,7 @@
 （与 pydantic_ai 1.x 一致）——这是在 Agent.run 组装消息时就保证的（system 段只在
 无 history 时并入首条 ModelRequest），本类只是忠实持有那份列表。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,7 +27,7 @@ class Usage:
     total_tokens: int = 0
     requests: int = 0
 
-    def incorporate(self, other: "Usage | None") -> None:
+    def incorporate(self, other: Usage | None) -> None:
         """把单次请求的用量累加进来。"""
         if other is None:
             return
@@ -62,7 +63,7 @@ class RunResult:
 
     def new_messages(self) -> list:
         """仅本轮新增的消息（不含传入 history），含工具返回的 ModelRequest。"""
-        return list(self._messages[self._history_len:])
+        return list(self._messages[self._history_len :])
 
     @property
     def usage(self) -> Usage:

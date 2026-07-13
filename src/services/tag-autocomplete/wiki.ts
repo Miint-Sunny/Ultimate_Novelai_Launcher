@@ -2,7 +2,7 @@
 // 包含 wiki 存在性 / 中文名 / 预览 / 中文摘要四类查询，
 // 各自带 per-tag 缓存 + in-flight 去重注册表。行为与缓存 key 保持不变。
 
-import { sidecarApi, sidecarAuthHeaders } from '../../api/sidecar';
+import { appBackendApi } from '../../api/appBackendApi';
 import type { TagWikiPreview } from './types';
 
 // 缓存
@@ -54,15 +54,14 @@ export async function fetchWikiChineseNames(tags: string[]): Promise<Record<stri
   if (missing.length > 0) {
     const promise = (async (): Promise<Record<string, string[]>> => {
       try {
-        const res = await fetch(sidecarApi.url(`/api/tags/wiki?tags=${encodeURIComponent(missing.join(','))}`));
-        if (res.ok) {
-          const data = await res.json() as Record<string, string[]>;
-          for (const tag of missing) {
-            const names = data?.[tag];
-            wikiNamesCache.set(tag, Array.isArray(names) && names.length > 0 ? names : null);
-          }
-          return data || {};
+        const data = await appBackendApi.getJson<Record<string, string[]>>(
+          `/api/tags/wiki?tags=${encodeURIComponent(missing.join(','))}`,
+        );
+        for (const tag of missing) {
+          const names = data?.[tag];
+          wikiNamesCache.set(tag, Array.isArray(names) && names.length > 0 ? names : null);
         }
+        return data || {};
       } catch (e) {
         console.warn('Failed to fetch wiki names:', e);
       }
@@ -114,21 +113,17 @@ export async function fetchWikiExistsBatch(tags: string[]): Promise<Record<strin
   if (missing.length > 0) {
     const promise = (async (): Promise<Record<string, boolean>> => {
       try {
-        const res = await fetch(sidecarApi.url('/api/tags/wiki-exists-batch'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tags: missing }),
+        const data = await appBackendApi.postJson<Record<string, boolean>>(
+          '/api/tags/wiki-exists-batch',
+          { tags: missing },
+        );
+        const normalizedData: Record<string, boolean> = {};
+        Object.entries(data || {}).forEach(([tag, hasWiki]) => {
+          const normalizedTag = normalizeWikiTag(tag);
+          wikiExistsCache.set(normalizedTag, !!hasWiki);
+          normalizedData[normalizedTag] = !!hasWiki;
         });
-        if (res.ok) {
-          const data = await res.json() as Record<string, boolean>;
-          const normalizedData: Record<string, boolean> = {};
-          Object.entries(data || {}).forEach(([tag, hasWiki]) => {
-            const normalizedTag = normalizeWikiTag(tag);
-            wikiExistsCache.set(normalizedTag, !!hasWiki);
-            normalizedData[normalizedTag] = !!hasWiki;
-          });
-          return normalizedData;
-        }
+        return normalizedData;
       } catch (e) {
         console.warn('Failed to fetch wiki existence batch:', e);
       }
@@ -165,9 +160,9 @@ export async function fetchTagWikiPreview(tag: string): Promise<TagWikiPreview |
 
   const promise = (async (): Promise<TagWikiPreview | null> => {
     try {
-      const res = await fetch(sidecarApi.url(`/api/tags/wiki-preview?tag=${encodeURIComponent(normalized)}`));
-      if (!res.ok) return null;
-      const data = await res.json() as TagWikiPreview;
+      const data = await appBackendApi.getJson<TagWikiPreview>(
+        `/api/tags/wiki-preview?tag=${encodeURIComponent(normalized)}`,
+      );
       wikiExistsCache.set(normalized, !!data?.hasWiki);
       if (!data?.hasWiki) return null;
       wikiPreviewCache.set(normalized, data);
@@ -194,11 +189,9 @@ export async function fetchTagWikiSummaryZh(tag: string): Promise<string> {
 
   const promise = (async (): Promise<string> => {
     try {
-      const res = await fetch(sidecarApi.url(`/api/tags/wiki-preview-summary-zh?tag=${encodeURIComponent(normalized)}`), {
-        headers: await sidecarAuthHeaders(),
-      });
-      if (!res.ok) return '';
-      const data = await res.json() as { hasWiki?: boolean; summaryZh?: string };
+      const data = await appBackendApi.getJson<{ hasWiki?: boolean; summaryZh?: string }>(
+        `/api/tags/wiki-preview-summary-zh?tag=${encodeURIComponent(normalized)}`,
+      );
       const summaryZh = data?.hasWiki && data.summaryZh ? data.summaryZh : '';
       if (summaryZh) {
         wikiSummaryZhCache.set(normalized, summaryZh);

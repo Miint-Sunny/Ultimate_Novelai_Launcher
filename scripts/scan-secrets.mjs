@@ -15,8 +15,14 @@ const ignoredFiles = new Set([
 ]);
 
 const patterns = [
-  { name: 'NovelAI token', re: new RegExp('p' + 'st-[A-Za-z0-9_-]{8,}') },
-  { name: 'OpenAI-compatible key', re: new RegExp('s' + 'k-[A-Za-z0-9_-]{8,}') },
+  {
+    name: 'NovelAI token',
+    re: new RegExp('(?<![A-Za-z0-9_])p' + 'st-[A-Za-z0-9_-]{8,}'),
+  },
+  {
+    name: 'OpenAI-compatible key',
+    re: new RegExp('(?<![A-Za-z0-9_])s' + 'k-[A-Za-z0-9_-]{8,}'),
+  },
   { name: 'legacy NovelAI proxy host', re: new RegExp('novelai\\.' + 'sora214\\.top') },
   { name: 'Genspark cookie value', re: new RegExp("GENSPARK_" + "COOKIE\\s*=\\s*[\"'][^\"']{8,}") },
   { name: 'Cloudflare clearance cookie', re: new RegExp('cf_' + 'clearance=') },

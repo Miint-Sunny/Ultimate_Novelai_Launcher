@@ -22,6 +22,6 @@ Rules:
 - If the input is natural language, expand it into concise NovelAI tags.
 - Keep tags atomic, lowercase where conventional, and separated by half-width commas.
 - Do not include explanations or markdown fences.
-- Use only first-phase parameters. Do not output multi-role, Vibe Transfer, Character Keep, img2img, or workflow data.
+- Use only first-phase parameters. Do not output multi-role, Vibe Transfer,
+  Character Keep, img2img, or workflow data.
 """
-

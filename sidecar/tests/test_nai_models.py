@@ -2,19 +2,12 @@ from __future__ import annotations
 
 import unittest
 
-try:
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
-    from sidecar.nai.client import build_official_payload, parse_anlas_subscription
-    from sidecar.nai.models import GenerationParams
-except ModuleNotFoundError as exc:  # pragma: no cover - dependency bootstrap guard
-    ValidationError = None  # type: ignore[assignment]
-    _IMPORT_ERROR = exc
-else:
-    _IMPORT_ERROR = None
+from sidecar.nai.client import build_official_payload, parse_anlas_subscription
+from sidecar.nai.models import GenerationParams
 
 
-@unittest.skipIf(_IMPORT_ERROR is not None, f"missing dependency: {_IMPORT_ERROR}")
 class NaiModelTests(unittest.TestCase):
     def test_rejects_invalid_size(self) -> None:
         with self.assertRaises(ValidationError):
@@ -26,8 +19,14 @@ class NaiModelTests(unittest.TestCase):
         self.assertEqual(payload["action"], "generate")
         self.assertEqual(payload["input"], "1girl, smile")
         self.assertEqual(payload["parameters"]["seed"], 123)
-        self.assertEqual(payload["parameters"]["v4_prompt"]["caption"]["base_caption"], "1girl, smile")
-        self.assertEqual(payload["parameters"]["v4_negative_prompt"]["caption"]["base_caption"], "bad anatomy")
+        self.assertEqual(
+            payload["parameters"]["v4_prompt"]["caption"]["base_caption"],
+            "1girl, smile",
+        )
+        self.assertEqual(
+            payload["parameters"]["v4_negative_prompt"]["caption"]["base_caption"],
+            "bad anatomy",
+        )
 
     def test_parses_subscription_anlas_balance(self) -> None:
         parsed = parse_anlas_subscription(

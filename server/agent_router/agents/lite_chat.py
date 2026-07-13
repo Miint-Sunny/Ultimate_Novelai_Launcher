@@ -15,18 +15,20 @@ lite_chat_agent —— 前置 Lite agent：回复 + 意图判断 + 资料筛选�
 不挂工具：lite 只做决策 + 筛选 + 短回复，需要 search_* 的场景由 planner 自己调。
 看短历史：路由层裁剪到最近 ~10 轮再喂给 lite，覆盖多轮延续指代场景。
 """
+
 from __future__ import annotations
 
-from ..llm import Agent, RunContext
-
 from ..deps import AgentDeps
-from ..schemas import LiteResponse
+from ..llm import Agent, RunContext
 from ..model_provider import get_prefilter_model, get_prefilter_model_settings
 from ..prompts import load_lite_chat_section
-
+from ..schemas import LiteResponse
 
 lite_chat_agent: Agent[AgentDeps, LiteResponse] = Agent(
-    get_prefilter_model(),    # 复用 PREFILTER_MODEL 配置
+    # Resolve the request-scoped prefilter model in ``run_lite_chat``.  Keeping
+    # module import configuration-free also lets health checks and tests import
+    # the Agent when the optional Bot ``config.py`` is not installed.
+    None,
     deps_type=AgentDeps,
     output_type=LiteResponse,
     retries=3,
@@ -42,6 +44,7 @@ async def _lite_system_prompt(ctx: RunContext[AgentDeps]) -> str:
 async def _anti_marker(ctx: RunContext[AgentDeps]) -> str:
     """防上游指纹标记（env CPA_ENABLE_ANTI_MARKER=true 时启用，每次生成新噪声）"""
     from .anti_marker import make_anti_marker_noise
+
     return make_anti_marker_noise()
 
 
@@ -49,7 +52,7 @@ def _trim_history(history: list, max_turns: int = 10) -> list:
     """裁剪 message_history 到最近 max_turns 轮（user + assistant 算 1 轮）。"""
     if not history:
         return []
-    return history[-(max_turns * 2):]
+    return history[-(max_turns * 2) :]
 
 
 async def run_lite_chat(
@@ -82,10 +85,7 @@ async def run_lite_chat(
 
     # 组装 user prompt：原话 + 候选资料（如有）
     if candidates.strip():
-        prompt = (
-            f"用户原话：{user_text.strip()}\n\n"
-            f"[预查询资源]\n{candidates.strip()}"
-        )
+        prompt = f"用户原话：{user_text.strip()}\n\n[预查询资源]\n{candidates.strip()}"
     else:
         prompt = f"用户原话：{user_text.strip()}"
 

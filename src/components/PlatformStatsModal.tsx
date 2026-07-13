@@ -3,14 +3,13 @@ import {
     X, Coins, Image as ImageIcon, MessageSquare,
     Users, Calendar, TrendingUp, Clock, Activity
 } from 'lucide-react';
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 import { botService } from '../services/botService';
 
-// 全平台统计端点现在要求有效登录会话，这里给请求 URL 附上 session_id。
-function withSession(url: string): string {
+// 全平台统计端点现在要求有效登录会话，这里给请求 query 附上 session_id。
+function withSession(query: Record<string, string | number>): Record<string, string | number> {
     const sid = botService.getAuthState().sessionId;
-    if (!sid) return url;
-    return url + (url.includes('?') ? '&' : '?') + `session_id=${encodeURIComponent(sid)}`;
+    return sid ? { ...query, session_id: sid } : query;
 }
 
 interface PlatformStatsModalProps {
@@ -87,8 +86,11 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
 
     const fetchHeatmap = useCallback(async (days: number) => {
         try {
-            const backendUrl = getBackendUrl();
-            const res = await fetch(withSession(`${backendUrl}/api/platform/stats/hourly-heatmap?days=${days}`));
+            const res = await appBackendApi.request(
+                '/api/platform/stats/hourly-heatmap',
+                undefined,
+                withSession({ days }),
+            );
             if (res.ok) {
                 const h = await res.json();
                 setHeatmap(h.heatmap || []);
@@ -101,8 +103,11 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
 
     const fetchUserHeatmap = useCallback(async (days: number) => {
         try {
-            const backendUrl = getBackendUrl();
-            const res = await fetch(withSession(`${backendUrl}/api/platform/stats/hourly-users?days=${days}`));
+            const res = await appBackendApi.request(
+                '/api/platform/stats/hourly-users',
+                undefined,
+                withSession({ days }),
+            );
             if (res.ok) {
                 const h = await res.json();
                 setUserHeatmap(h.heatmap || []);
@@ -115,8 +120,11 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
 
     const fetchDurationHeatmap = useCallback(async (days: number) => {
         try {
-            const backendUrl = getBackendUrl();
-            const res = await fetch(withSession(`${backendUrl}/api/platform/stats/hourly-duration?days=${days}`));
+            const res = await appBackendApi.request(
+                '/api/platform/stats/hourly-duration',
+                undefined,
+                withSession({ days }),
+            );
             if (res.ok) {
                 const h = await res.json();
                 setDurationHeatmap(h.heatmap || []);
@@ -130,10 +138,9 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
     const fetchStats = useCallback(async (range: TimeRange) => {
         setLoading(true);
         try {
-            const backendUrl = getBackendUrl();
             const [summaryRes, allTimeRes] = await Promise.all([
-                fetch(withSession(`${backendUrl}/api/platform/stats?time_range=${range}`)),
-                fetch(withSession(`${backendUrl}/api/platform/stats/all`)),
+                appBackendApi.request('/api/platform/stats', undefined, withSession({ time_range: range })),
+                appBackendApi.request('/api/platform/stats/all', undefined, withSession({})),
             ]);
             if (summaryRes.ok) setSummary(await summaryRes.json());
             if (allTimeRes.ok) setAllTime(await allTimeRes.json());

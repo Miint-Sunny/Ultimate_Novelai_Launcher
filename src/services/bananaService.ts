@@ -2,7 +2,7 @@
  * 香蕉重绘服务
  */
 
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 
 export interface BananaRepaintResult {
   success: boolean;
@@ -36,10 +36,8 @@ export interface BananaEstimate {
  * 获取香蕉重绘预估时间
  */
 export async function getBananaEstimate(): Promise<BananaEstimate> {
-  const backendUrl = getBackendUrl();
-
   try {
-    const response = await fetch(`${backendUrl}/api/banana/estimate`);
+    const response = await appBackendApi.request('/api/banana/estimate');
     if (response.ok) {
       const data = await response.json();
       return {
@@ -63,10 +61,8 @@ export async function submitBananaRepaint(
   imageBase64: string,
   prompt: string
 ): Promise<BananaRepaintResult> {
-  const backendUrl = getBackendUrl();
-
   try {
-    const response = await fetch(`${backendUrl}/api/banana/repaint`, {
+    const response = await appBackendApi.request('/api/banana/repaint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -103,10 +99,8 @@ export async function submitBananaRepaint(
  * 获取香蕉重绘任务状态
  */
 export async function getBananaRepaintStatus(taskId: string): Promise<BananaRepaintStatus> {
-  const backendUrl = getBackendUrl();
-
   try {
-    const response = await fetch(`${backendUrl}/api/banana/status/${taskId}`);
+    const response = await appBackendApi.request(`/api/banana/status/${encodeURIComponent(taskId)}`);
     const data = await response.json();
 
     return {

@@ -1,5 +1,4 @@
-import { sidecarApi } from '../../api/sidecar';
-import { getOptionalSessionId, getPublicLibraryOwnerId } from './session';
+import { appBackendApi } from '../../api/appBackendApi';
 
 export interface PublicArtistData {
   id: string;
@@ -35,6 +34,7 @@ export interface UpdateArtistParams {
 
 const PUBLIC_ARTIST_CACHE_KEY = 'public_artist_cache';
 const PUBLIC_ARTIST_CACHE_TTL = 10 * 60 * 1000;
+const artistPreviewUrls = new Map<string, string>();
 
 interface PublicArtistCache {
   data: PublicArtistData[];
@@ -69,19 +69,18 @@ export async function getPublicArtists(forceRefresh = false): Promise<PublicArti
     const cache = getPublicArtistCache();
     if (cache) {
       console.log('[公共画师串] 使用缓存数据');
-      return cache.data;
+      return hydrateArtistPreviews(cache.data);
     }
   }
 
   try {
-    const sessionId = getOptionalSessionId();
-    const data = await sidecarApi.getJson<PublicArtistListResponse>(
-      `/api/artists/list?session_id=${encodeURIComponent(sessionId)}`,
+    const data = await appBackendApi.getJson<PublicArtistListResponse>(
+      '/api/artists/list',
     );
     const artists = data.artists || [];
     setPublicArtistCache(artists);
     console.log(`[公共画师串] 已从服务器获取 ${artists.length} 个画师串`);
-    return artists;
+    return hydrateArtistPreviews(artists);
   } catch (error) {
     console.error('获取公共画师串列表失败:', error);
     try {
@@ -89,7 +88,7 @@ export async function getPublicArtists(forceRefresh = false): Promise<PublicArti
       if (cached) {
         const cache: PublicArtistCache = JSON.parse(cached);
         console.log('[公共画师串] 使用过期缓存作为fallback');
-        return cache.data;
+        return hydrateArtistPreviews(cache.data);
       }
     } catch { }
     return [];
@@ -98,20 +97,36 @@ export async function getPublicArtists(forceRefresh = false): Promise<PublicArti
 
 export function clearPublicArtistCache(): void {
   localStorage.removeItem(PUBLIC_ARTIST_CACHE_KEY);
+  artistPreviewUrls.clear();
+  appBackendApi.revokeObjectUrls('/api/artists/preview/');
 }
 
 export function getArtistPreviewUrl(filename: string): string {
-  return sidecarApi.url(`/api/artists/preview/${encodeURIComponent(filename)}`);
+  return artistPreviewUrls.get(filename) || '';
+}
+
+async function hydrateArtistPreviews(artists: PublicArtistData[]): Promise<PublicArtistData[]> {
+  return Promise.all(artists.map(async artist => {
+    if (!artist.preview_url) return artist;
+    const path = `/api/artists/preview/${encodeURIComponent(artist.name)}`;
+    try {
+      const preview = await appBackendApi.objectUrl(path);
+      artistPreviewUrls.set(artist.name, preview);
+      return { ...artist, preview_url: preview };
+    } catch {
+      return { ...artist, preview_url: null };
+    }
+  }));
 }
 
 export async function createPublicArtist(
   params: CreateArtistParams
 ): Promise<{ success: boolean; message: string; artist?: PublicArtistData }> {
   try {
-    const data = await sidecarApi.postJson<{ message?: string; artist?: PublicArtistData }>('/api/artists/create', {
-      ...params,
-      added_by: params.added_by || getPublicLibraryOwnerId(),
-    });
+    const data = await appBackendApi.postJson<{ message?: string; artist?: PublicArtistData }>(
+      '/api/artists/create',
+      params,
+    );
     clearPublicArtistCache();
     return { success: true, message: data.message || '创建成功', artist: data.artist };
   } catch (error) {
@@ -125,7 +140,7 @@ export async function updatePublicArtist(
   params: UpdateArtistParams
 ): Promise<{ success: boolean; message: string; artist?: PublicArtistData }> {
   try {
-    const data = await sidecarApi.putJson<{ message?: string; artist?: PublicArtistData }>(
+    const data = await appBackendApi.putJson<{ message?: string; artist?: PublicArtistData }>(
       `/api/artists/${encodeURIComponent(artistName)}`,
       params,
     );
@@ -139,7 +154,7 @@ export async function updatePublicArtist(
 
 export async function deletePublicArtist(artistName: string): Promise<{ success: boolean; message: string }> {
   try {
-    const data = await sidecarApi.deleteJson<{ message?: string }>(`/api/artists/${encodeURIComponent(artistName)}`);
+    const data = await appBackendApi.deleteJson<{ message?: string }>(`/api/artists/${encodeURIComponent(artistName)}`);
     clearPublicArtistCache();
     return { success: true, message: data.message || '删除成功' };
   } catch (error) {
@@ -150,7 +165,7 @@ export async function deletePublicArtist(artistName: string): Promise<{ success:
 
 export async function usePublicArtist(artistName: string): Promise<boolean> {
   try {
-    await sidecarApi.postJson<{ success?: boolean }>(`/api/artists/${encodeURIComponent(artistName)}/use`);
+    await appBackendApi.postJson<{ success?: boolean }>(`/api/artists/${encodeURIComponent(artistName)}/use`);
     return true;
   } catch (error) {
     console.error('记录画师串使用失败:', error);

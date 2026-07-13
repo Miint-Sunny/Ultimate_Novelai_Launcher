@@ -5,6 +5,7 @@ description = "Ultimate Novelai launcher desktop shell over the refactored refer
 authors = ["Ultimate Novelai launcher Contributors"]
 license = "GPL-3.0-only"
 edition = "2021"
+rust-version = "1.88"
 
 [lib]
 name = "ultimate_novelai_launcher_lib"
@@ -15,4 +16,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
 getrandom = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

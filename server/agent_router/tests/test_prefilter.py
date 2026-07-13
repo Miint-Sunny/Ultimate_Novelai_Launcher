@@ -8,25 +8,26 @@ Prefilter / B3 / carryover 路径单测。
     - _extract_used_resources
     - _LAST_USED_RESOURCES 读写契约
 """
+
 from __future__ import annotations
 
 from agent_router.router import (
-    _split_prequery_from_env,
-    _merge_resources,
-    _build_prequery_env_block,
-    _rebuild_env_info,
-    _line_keys_for_match,
-    _extract_used_resources,
-    _draw_specs_haystack,
-    _dewrap_tag_text,
-    _count_prequery_sections,
     _LAST_USED_RESOURCES,
+    _build_prequery_env_block,
+    _count_prequery_sections,
+    _dewrap_tag_text,
+    _draw_specs_haystack,
+    _extract_used_resources,
+    _line_keys_for_match,
+    _merge_resources,
+    _rebuild_env_info,
+    _split_prequery_from_env,
 )
-
 
 # ============================================================
 # _count_prequery_sections（仅用于 debug 计数，不再做触发判定）
 # ============================================================
+
 
 def _make_section(title: str, lines: list[str]) -> str:
     return title + "\n" + "\n".join(lines)
@@ -79,6 +80,7 @@ def test_count_sections_empty():
 # _split_prequery_from_env
 # ============================================================
 
+
 def test_split_prequery_basic():
     env = (
         "[预查询资源]（说明）\n\n"
@@ -105,7 +107,7 @@ def test_split_prequery_with_stego_section():
     )
     pq, other = _split_prequery_from_env(env)
     assert "ciloranko" in pq
-    assert "stego" not in pq      # stego 段不能漏到 prequery
+    assert "stego" not in pq  # stego 段不能漏到 prequery
     assert "[回复图片 stego 元数据]" in other
     assert "global_positive" in other
 
@@ -126,10 +128,14 @@ def test_split_prequery_only_other():
 # _merge_resources
 # ============================================================
 
+
 def test_merge_basic_dedup():
     """完全相同行只保留一次，carryover 在前。"""
     raw = "## search_artist 结果\nA1 -> artist:ciloranko\nB2 -> artist:wlop"
-    carry = "## search_artist 结果\nA1 -> artist:ciloranko\n## search_character 结果\nfl -> flandre_scarlet"
+    carry = (
+        "## search_artist 结果\nA1 -> artist:ciloranko\n"
+        "## search_character 结果\nfl -> flandre_scarlet"
+    )
     merged = _merge_resources(raw, carry)
     lines = merged.split("\n")
     # 期望：## search_artist / A1 / ## search_character / fl / B2
@@ -169,6 +175,7 @@ def test_merge_skips_blank_lines():
 # _build_prequery_env_block / _rebuild_env_info
 # ============================================================
 
+
 def test_build_prequery_env_block_empty():
     assert _build_prequery_env_block("") == ""
     assert _build_prequery_env_block("   ") == ""
@@ -195,6 +202,7 @@ def test_rebuild_env_info_skips_empty():
 # ============================================================
 # _line_keys_for_match
 # ============================================================
+
 
 def test_line_key_strips_artist_prefix():
     assert _line_keys_for_match("A1 -> artist:ciloranko, masterpiece") == ["ciloranko"]
@@ -233,6 +241,7 @@ def test_line_key_no_arrow():
 # _dewrap_tag_text
 # ============================================================
 
+
 def test_dewrap_weight_syntax():
     assert _dewrap_tag_text("1.5::artist:wlop::") == "artist:wlop"
     assert _dewrap_tag_text("{tag}") == "tag"
@@ -244,6 +253,7 @@ def test_dewrap_weight_syntax():
 # _draw_specs_haystack
 # ============================================================
 
+
 def test_haystack_lowercases_and_dewraps():
     specs = [{"positive": "1girl, Flandre_Scarlet, 1.5::artist:Wlop::, masterpiece"}]
     hay = _draw_specs_haystack(specs)
@@ -252,10 +262,15 @@ def test_haystack_lowercases_and_dewraps():
 
 
 def test_haystack_includes_character_positives():
-    specs = [{"positive": "2girls", "characters": [
-        {"name": "A", "positive": "flandre_scarlet"},
-        {"name": "B", "positive": "remilia_scarlet"},
-    ]}]
+    specs = [
+        {
+            "positive": "2girls",
+            "characters": [
+                {"name": "A", "positive": "flandre_scarlet"},
+                {"name": "B", "positive": "remilia_scarlet"},
+            ],
+        }
+    ]
     hay = _draw_specs_haystack(specs)
     assert "flandre_scarlet" in hay
     assert "remilia_scarlet" in hay
@@ -270,12 +285,15 @@ def test_haystack_empty():
 # _extract_used_resources (B3 核心)
 # ============================================================
 
+
 def test_b3_extracts_only_adopted():
     """draw_specs 用了 wlop + flandre_scarlet；A1/ciloranko 和 remilia 没用 → 排除。"""
-    draw_specs = [{
-        "positive": "1girl, solo, flandre_scarlet, touhou, 1.5::artist:wlop::, masterpiece",
-        "characters": [],
-    }]
+    draw_specs = [
+        {
+            "positive": "1girl, solo, flandre_scarlet, touhou, 1.5::artist:wlop::, masterpiece",
+            "characters": [],
+        }
+    ]
     pref_out = (
         "## search_artist 结果\n"
         "A1 -> artist:ciloranko, masterpiece\n"
@@ -327,11 +345,7 @@ def test_b3_no_hits():
 def test_b3_dedup_lines():
     """同样的行重复出现只算一次。"""
     draw_specs = [{"positive": "flandre_scarlet"}]
-    pref_out = (
-        "## search_character 结果\n"
-        "fl -> flandre_scarlet\n"
-        "fl -> flandre_scarlet"
-    )
+    pref_out = "## search_character 结果\nfl -> flandre_scarlet\nfl -> flandre_scarlet"
     used = _extract_used_resources(
         ctx_messages=[], draw_specs=draw_specs, prefilter_output=pref_out
     )
@@ -351,6 +365,7 @@ def test_b3_handles_weight_wrapped_haystack():
 # ============================================================
 # _LAST_USED_RESOURCES 契约
 # ============================================================
+
 
 def test_carryover_dict_read_default_empty():
     """未设置过的 user_key 取出来是空字符串。"""
@@ -376,6 +391,7 @@ def test_carryover_dict_overwrite_each_turn():
 # ============================================================
 # 整合：模拟 3 轮流程的 merge 行为
 # ============================================================
+
 
 def test_three_turn_flow():
     """
@@ -424,6 +440,6 @@ def test_three_turn_flow():
     # 轮 3: carryover = used_t2 → 不再有 A1
     raw_t3 = ""  # 用户没说专有名词，preprocess 空
     merged_t3 = _merge_resources(raw_t3, used_t2)
-    assert "ciloranko" not in merged_t3   # ← A1 自然消失
+    assert "ciloranko" not in merged_t3  # ← A1 自然消失
     assert "wlop" in merged_t3
     assert "flandre_scarlet" in merged_t3

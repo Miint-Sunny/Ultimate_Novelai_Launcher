@@ -11,6 +11,8 @@ from .config import Settings
 from .db import connect, utc_now
 from .library_assets import (
     asset_dir,
+    atomic_write_bytes,
+    atomic_write_text,
     delete_file_if_safe,
     model_to_encoding_key,
     now_ms,
@@ -29,17 +31,36 @@ def list_vibes(settings: Settings) -> list[dict[str, Any]]:
     return [_vibe_to_api(row) for row in rows]
 
 
-def create_vibe(settings: Settings, vibe_data: dict[str, Any], name: str | None, uploader_id: str | None = None) -> dict[str, Any]:
+def create_vibe(
+    settings: Settings,
+    vibe_data: dict[str, Any],
+    name: str | None,
+    uploader_id: str | None = None,
+) -> dict[str, Any]:
     vibe_id = uuid.uuid4().hex
     created_at = to_int(vibe_data.get("createdAt")) or now_ms()
     display_name = str(name or vibe_data.get("name") or f"vibe-{vibe_id[:8]}").strip()
     filename = unique_filename(settings, display_name, vibe_id)
     file_path = asset_dir(settings, "vibes") / filename
-    thumbnail_path = save_base64_asset(settings, "vibes", f"{vibe_id}_thumb", vibe_data.get("thumbnail"))
-    file_path.write_text(json.dumps({**vibe_data, "name": display_name}, ensure_ascii=False), encoding="utf-8")
+    thumbnail_path = save_base64_asset(
+        settings,
+        "vibes",
+        f"{vibe_id}_thumb",
+        vibe_data.get("thumbnail"),
+    )
+    try:
+        atomic_write_text(
+            file_path,
+            json.dumps({**vibe_data, "name": display_name}, ensure_ascii=False),
+        )
+    except Exception:
+        if thumbnail_path:
+            delete_file_if_safe(settings, "vibes", str(thumbnail_path))
+        raise
     encodings = vibe_data.get("encodings")
     supported_models = list(encodings.keys()) if isinstance(encodings, dict) else []
-    import_info = vibe_data.get("importInfo") if isinstance(vibe_data.get("importInfo"), dict) else {}
+    raw_import_info = vibe_data.get("importInfo")
+    import_info: dict[str, Any] = raw_import_info if isinstance(raw_import_info, dict) else {}
     row = {
         "id": vibe_id,
         "name": display_name,
@@ -47,30 +68,40 @@ def create_vibe(settings: Settings, vibe_data: dict[str, Any], name: str | None,
         "file_path": str(file_path),
         "thumbnail_path": str(thumbnail_path) if thumbnail_path else None,
         "supported_models_json": json.dumps(supported_models, ensure_ascii=False),
-        "default_strength": to_float(import_info.get("strength") or vibe_data.get("defaultStrength")),
-        "default_info_extracted": to_float(import_info.get("information_extracted") or vibe_data.get("defaultInfoExtracted")),
+        "default_strength": to_float(
+            import_info.get("strength") or vibe_data.get("defaultStrength")
+        ),
+        "default_info_extracted": to_float(
+            import_info.get("information_extracted") or vibe_data.get("defaultInfoExtracted")
+        ),
         "created_at": created_at,
         "uploader_id": uploader_id or "local",
         "uploaded_at": now_ms(),
         "has_image": 1 if vibe_data.get("image") else 0,
         "updated_at": utc_now(),
     }
-    with closing(connect(settings.db_path)) as conn:
-        conn.execute(
-            """
-            INSERT INTO vibes (
-                id, name, filename, file_path, thumbnail_path, supported_models_json,
-                default_strength, default_info_extracted, created_at, uploader_id,
-                uploaded_at, has_image, updated_at
-            ) VALUES (
-                :id, :name, :filename, :file_path, :thumbnail_path, :supported_models_json,
-                :default_strength, :default_info_extracted, :created_at, :uploader_id,
-                :uploaded_at, :has_image, :updated_at
+    try:
+        with closing(connect(settings.db_path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO vibes (
+                    id, name, filename, file_path, thumbnail_path, supported_models_json,
+                    default_strength, default_info_extracted, created_at, uploader_id,
+                    uploaded_at, has_image, updated_at
+                ) VALUES (
+                    :id, :name, :filename, :file_path, :thumbnail_path, :supported_models_json,
+                    :default_strength, :default_info_extracted, :created_at, :uploader_id,
+                    :uploaded_at, :has_image, :updated_at
+                )
+                """,
+                row,
             )
-            """,
-            row,
-        )
-        conn.commit()
+            conn.commit()
+    except Exception:
+        delete_file_if_safe(settings, "vibes", str(file_path))
+        if thumbnail_path:
+            delete_file_if_safe(settings, "vibes", str(thumbnail_path))
+        raise
     return _vibe_to_api(row)
 
 
@@ -89,14 +120,17 @@ def update_vibe(settings: Settings, filename: str, data: dict[str, Any]) -> dict
     vibe_json = get_vibe_file(settings, filename) or {}
     if data.get("name"):
         vibe_json["name"] = data["name"]
-    import_info = vibe_json.get("importInfo") if isinstance(vibe_json.get("importInfo"), dict) else {}
+    raw_import_info = vibe_json.get("importInfo")
+    import_info: dict[str, Any] = raw_import_info if isinstance(raw_import_info, dict) else {}
     if "default_strength" in data and data["default_strength"] is not None:
         import_info["strength"] = data["default_strength"]
     if "default_info_extracted" in data and data["default_info_extracted"] is not None:
         import_info["information_extracted"] = data["default_info_extracted"]
     if import_info:
         vibe_json["importInfo"] = import_info
-    Path(row["file_path"]).write_text(json.dumps(vibe_json, ensure_ascii=False), encoding="utf-8")
+    file_path = safe_existing_path(settings, "vibes", row["file_path"])
+    previous_payload = file_path.read_bytes()
+    atomic_write_text(file_path, json.dumps(vibe_json, ensure_ascii=False))
     updates = {
         "name": str(vibe_json.get("name") or row["name"]),
         "default_strength": to_float(import_info.get("strength")),
@@ -104,19 +138,23 @@ def update_vibe(settings: Settings, filename: str, data: dict[str, Any]) -> dict
         "updated_at": utc_now(),
         "id": row["id"],
     }
-    with closing(connect(settings.db_path)) as conn:
-        conn.execute(
-            """
-            UPDATE vibes SET
-                name = :name,
-                default_strength = :default_strength,
-                default_info_extracted = :default_info_extracted,
-                updated_at = :updated_at
-            WHERE id = :id
-            """,
-            updates,
-        )
-        conn.commit()
+    try:
+        with closing(connect(settings.db_path)) as conn:
+            conn.execute(
+                """
+                UPDATE vibes SET
+                    name = :name,
+                    default_strength = :default_strength,
+                    default_info_extracted = :default_info_extracted,
+                    updated_at = :updated_at
+                WHERE id = :id
+                """,
+                updates,
+            )
+            conn.commit()
+    except Exception:
+        atomic_write_bytes(file_path, previous_payload)
+        raise
     return get_vibe(settings, filename)
 
 
@@ -124,12 +162,12 @@ def delete_vibe(settings: Settings, filename: str) -> bool:
     row = find_vibe(settings, filename)
     if not row:
         return False
-    delete_file_if_safe(settings, "vibes", row["file_path"])
-    if row["thumbnail_path"]:
-        delete_file_if_safe(settings, "vibes", row["thumbnail_path"])
     with closing(connect(settings.db_path)) as conn:
         conn.execute("DELETE FROM vibes WHERE id = ?", (row["id"],))
         conn.commit()
+    delete_file_if_safe(settings, "vibes", row["file_path"])
+    if row["thumbnail_path"]:
+        delete_file_if_safe(settings, "vibes", row["thumbnail_path"])
     return True
 
 
@@ -138,7 +176,12 @@ def get_vibe(settings: Settings, filename: str) -> dict[str, Any] | None:
     return _vibe_to_api(row) if row else None
 
 
-def get_vibe_encoding(settings: Settings, filename: str, model: str, information_extracted: float) -> str | None:
+def get_vibe_encoding(
+    settings: Settings,
+    filename: str,
+    model: str,
+    information_extracted: float,
+) -> str | None:
     data = get_vibe_file(settings, filename)
     if not data:
         return None
@@ -150,7 +193,11 @@ def get_vibe_encoding(settings: Settings, filename: str, model: str, information
         if isinstance(value, str):
             return value
         if isinstance(value, dict):
-            for ie_key in (str(information_extracted), f"{information_extracted:.2f}", f"{information_extracted:.1f}"):
+            for ie_key in (
+                str(information_extracted),
+                f"{information_extracted:.2f}",
+                f"{information_extracted:.1f}",
+            ):
                 encoded = value.get(ie_key)
                 if isinstance(encoded, str):
                     return encoded
@@ -169,7 +216,10 @@ def find_vibe(settings: Settings, filename: str) -> sqlite3.Row | None:
         raise ValueError("invalid vibe filename")
     safe = safe_name(filename)
     with closing(connect(settings.db_path)) as conn:
-        return conn.execute("SELECT * FROM vibes WHERE filename = ? OR id = ?", (safe, safe)).fetchone()
+        return conn.execute(
+            "SELECT * FROM vibes WHERE filename = ? OR id = ?",
+            (safe, safe),
+        ).fetchone()
 
 
 def _vibe_to_api(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:

@@ -203,17 +203,23 @@ export function ChipModeToggle({ chipMode, onChange }: { chipMode: boolean; onCh
 export function FloatingAgentButton({
   isOpen,
   isGenerating,
+  disabled = false,
+  disabledReason,
   onClick,
 }: {
   isOpen: boolean;
   isGenerating: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
   onClick: () => void;
 }) {
   return (
     <button
-      className={`relative p-1.5 -mr-1.5 rounded-lg transition-colors shrink-0 flex items-center justify-center ${isOpen ? 'bg-nai-accent/20 text-nai-accent' : isGenerating ? 'text-nai-accent bg-nai-accent/10 shadow-[0_0_0_1px_rgba(252,237,164,0.18)]' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+      aria-label={disabled ? `AI 助手不可用：${disabledReason || '当前后端不支持'}` : 'AI 助手'}
+      className={`relative p-1.5 -mr-1.5 rounded-lg transition-colors shrink-0 flex items-center justify-center ${disabled ? 'text-gray-600 cursor-not-allowed' : isOpen ? 'bg-nai-accent/20 text-nai-accent' : isGenerating ? 'text-nai-accent bg-nai-accent/10 shadow-[0_0_0_1px_rgba(252,237,164,0.18)]' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+      disabled={disabled}
       onClick={onClick}
-      title={isOpen ? '关闭AI助手' : isGenerating ? 'AI 正在思考，点击查看' : '唤起AI助手'}
+      title={disabled ? disabledReason : isOpen ? '关闭AI助手' : isGenerating ? 'AI 正在思考，点击查看' : '唤起AI助手'}
     >
       <Bot className="w-[22px] h-[22px]" />
       {isGenerating && !isOpen && (

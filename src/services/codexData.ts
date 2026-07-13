@@ -3,7 +3,7 @@
  * 从后端 API 加载 NAI_NSFW.json 和 NAI_Common.json（Bot端data目录）
  */
 
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 
 export interface CodexItem {
   id: string;
@@ -43,13 +43,10 @@ export async function loadCodexData(): Promise<CodexItem[]> {
   isLoading = true;
   loadPromise = (async () => {
     try {
-      // 从设置中获取后端地址
-      const backendUrl = getBackendUrl();
-      
       // 并行加载两个数据文件（从后端API获取Bot端data目录）
       const [nsfwResponse, commonResponse] = await Promise.all([
-        fetch(`${backendUrl}/api/data/NAI_NSFW.json`),
-        fetch(`${backendUrl}/api/data/NAI_Common.json`)
+        appBackendApi.request('/api/data/NAI_NSFW.json'),
+        appBackendApi.request('/api/data/NAI_Common.json'),
       ]);
 
       const nsfwData: RawCodexItem[] = nsfwResponse.ok ? await nsfwResponse.json() : [];

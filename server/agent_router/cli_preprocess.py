@@ -14,22 +14,22 @@ CLI 预匹配模拟器 —— 给 cli.py 调试用，复刻 bot 端 preprocess_u
 
 输出格式与 nai_agent.py 的 env_info 完全一致，AI 看到的内容跟生产路径无差异。
 """
+
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
-from typing import Optional
-
 
 # 与 nai_agent.py 第 47 行保持一致
-_ARTIST_PATTERN = re.compile(r'(?<![a-zA-Z])([a-zA-Z])(\d{1,2})(?!\d)', re.IGNORECASE)
+_ARTIST_PATTERN = re.compile(r"(?<![a-zA-Z])([a-zA-Z])(\d{1,2})(?!\d)", re.IGNORECASE)
 
 
 def _data_dir() -> Path:
     """优先用 server config 的 BOT_DATA_DIR（与 agent_router/prompts.py 同源）"""
     try:
         from config import BOT_DATA_DIR  # type: ignore
+
         return Path(BOT_DATA_DIR)
     except Exception:
         # 兜底：以本文件位置往上推 3 层 + data
@@ -48,6 +48,7 @@ def _read_json(path: Path) -> dict | list | None:
 # ============================================================
 # 三段预匹配
 # ============================================================
+
 
 def _build_artist_context(msg: str, data_dir: Path) -> str:
     """正则匹配 A1/B2 等画师编号 → 查本地 artist_strings.json"""
@@ -84,7 +85,7 @@ def _build_oc_context(msg: str, data_dir: Path, max_items: int = 10) -> str:
         zh_name = data.get("zh_name") or ""
         zh_aliases = data.get("zh_aliases") or []
         check_list = [zh_name] + list(zh_aliases)
-        en_stripped = re.sub(r'^(?i)oc_', '', en or '')
+        en_stripped = re.sub(r"^(?i)oc_", "", en or "")
         if en_stripped and en_stripped not in check_list:
             check_list.append(en_stripped)
 
@@ -102,7 +103,7 @@ def _build_oc_context(msg: str, data_dir: Path, max_items: int = 10) -> str:
     ranked = sorted(matched, key=lambda x: sum(len(a) for a in x[1]), reverse=True)[:max_items]
 
     lines = []
-    for en, aliases, tag_group in ranked:
+    for _en, aliases, tag_group in ranked:
         cn_text = "、".join(aliases)
         tg = str(tag_group or "")
         if cn_text and tg:
@@ -153,7 +154,9 @@ def _build_role_context(msg: str, data_dir: Path, max_lines: int = 10) -> str:
     if not matched:
         return ""
 
-    ranked = sorted(matched.items(), key=lambda kv: max(len(a) for a in kv[1]), reverse=True)[:max_lines]
+    ranked = sorted(matched.items(), key=lambda kv: max(len(a) for a in kv[1]), reverse=True)[
+        :max_lines
+    ]
 
     lines = []
     for en, _hits in ranked:
@@ -163,7 +166,9 @@ def _build_role_context(msg: str, data_dir: Path, max_lines: int = 10) -> str:
         origin_zh_list = info.get("origin_zh") or []
         cn_text = "、".join([s for s in cn_list if s])
         origin_zh_text = "、".join([s for s in origin_zh_list if s]) if origin_zh_list else ""
-        origin_part = origin_en + (f" ({origin_zh_text})" if origin_zh_text and origin_zh_text != origin_en else "")
+        origin_part = origin_en + (
+            f" ({origin_zh_text})" if origin_zh_text and origin_zh_text != origin_en else ""
+        )
         lines.append(f"{en} → 中文: {cn_text} / 出处: {origin_part}")
 
     return "## search_character 结果（source=roleTag）\n" + "\n".join(lines)
@@ -172,6 +177,7 @@ def _build_role_context(msg: str, data_dir: Path, max_lines: int = 10) -> str:
 # ============================================================
 # 主入口
 # ============================================================
+
 
 def build_env_info_for_cli(msg: str) -> str:
     """
@@ -199,7 +205,6 @@ def build_env_info_for_cli(msg: str) -> str:
     if not parts:
         return ""
 
-    return (
-        "[预查询资源]（chat_agent 已用对应工具预查过，结果如下可直接使用）\n\n"
-        + "\n\n".join(parts)
+    return "[预查询资源]（chat_agent 已用对应工具预查过，结果如下可直接使用）\n\n" + "\n\n".join(
+        parts
     )

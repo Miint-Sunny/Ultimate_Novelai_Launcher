@@ -1,12 +1,10 @@
 """
 Helpers for turning provider-side errors into user-facing messages.
 """
+
 from __future__ import annotations
 
-
-GOOGLE_PROHIBITED_CONTENT_MESSAGE = (
-    "请求被 Gemini/Vertex 安全系统拒绝（PROHIBITED_CONTENT）。"
-)
+GOOGLE_PROHIBITED_CONTENT_MESSAGE = "请求被 Gemini/Vertex 安全系统拒绝（PROHIBITED_CONTENT）。"
 
 
 def _exception_text(error: BaseException | str) -> str:
@@ -27,9 +25,7 @@ def is_google_prohibited_content_error(error: BaseException | str) -> bool:
     text = _exception_text(error)
     upper = text.upper()
     return "PROHIBITED_CONTENT" in upper or (
-        "PROMPTFEEDBACK" in upper
-        and "BLOCKREASON" in upper
-        and "PROHIBITED" in upper
+        "PROMPTFEEDBACK" in upper and "BLOCKREASON" in upper and "PROHIBITED" in upper
     )
 
 

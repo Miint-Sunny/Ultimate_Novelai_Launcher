@@ -4,7 +4,7 @@
  * - 中译英：用于将提示词中的中文替换为英文
  */
 
-import { sidecarApi } from '../api/sidecar';
+import { appBackendApi } from '../api/appBackendApi';
 
 export interface ChatMessage {
   role: string;
@@ -16,7 +16,7 @@ export async function requestSidecarChatCompletion(
   temperature = 0.3,
   maxTokens = 1000
 ): Promise<any> {
-  return sidecarApi.postJson('/api/translate/en2zh', {
+  return appBackendApi.postJson('/api/translate/en2zh', {
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -45,7 +45,7 @@ async function lookupTagTranslations(tags: string[]): Promise<Record<string, str
     normalizedMap.get(key)!.push(tag);
   }
   try {
-    const data = await sidecarApi.postJson<Record<string, string>>('/api/tags/translations/lookup', {
+    const data = await appBackendApi.postJson<Record<string, string>>('/api/tags/translations/lookup', {
       tags: [...normalizedMap.keys()],
     });
     // 将结果映射回所有原始 tag 形式
@@ -68,7 +68,7 @@ async function lookupTagTranslations(tags: string[]): Promise<Record<string, str
  */
 function submitTagTranslations(entries: { tag: string; zh: string; source: 'ai' | 'wiki' }[]): void {
   if (entries.length === 0) return;
-  sidecarApi.postJson('/api/tags/translations/submit', { entries }).catch(() => {});
+  appBackendApi.postJson('/api/tags/translations/submit', { entries }).catch(() => {});
 }
 
 // 导出供 tagAutocomplete 使用

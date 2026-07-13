@@ -300,12 +300,12 @@ export function useVibeCrudActions({
     }
   };
 
-  const handlePublicVibeDownload = (file: VibeFile, event: MouseEvent) => {
+  const handlePublicVibeDownload = async (file: VibeFile, event: MouseEvent) => {
     event.stopPropagation();
     const fileName = file.fileName || `${file.name}.naiv4vibe`;
 
     const a = document.createElement('a');
-    a.href = getPublicVibeDownloadUrl(fileName);
+    a.href = await getPublicVibeDownloadUrl(fileName);
     a.download = fileName;
     a.click();
   };

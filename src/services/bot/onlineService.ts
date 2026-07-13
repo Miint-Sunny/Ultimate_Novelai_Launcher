@@ -3,7 +3,7 @@
  * 由 botService.ts 门面统一导出。
  */
 
-import { sidecarApi } from '../../api/sidecar';
+import { appBackendApi } from '../../api/appBackendApi';
 
 type OnlineCountListener = (count: number) => void;
 
@@ -59,7 +59,7 @@ class OnlineService {
 
   private async sendHeartbeat() {
     try {
-      const data = await sidecarApi.postJson<{ count: number }>('/api/online/heartbeat', { user_id: this.userId });
+      const data = await appBackendApi.postJson<{ count: number }>('/api/online/heartbeat', { user_id: this.userId });
       this.emit(data.count);
     } catch (e) {
       // 静默失败，不影响用户体验
@@ -71,7 +71,7 @@ class OnlineService {
    */
   async fetchCount() {
     try {
-      const data = await sidecarApi.getJson<{ count: number }>('/api/online/count');
+      const data = await appBackendApi.getJson<{ count: number }>('/api/online/count');
       this.emit(data.count);
     } catch (e) {
       // 静默失败

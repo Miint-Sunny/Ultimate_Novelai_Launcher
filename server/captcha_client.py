@@ -11,16 +11,15 @@ Fallback path:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 import httpx
-
 from config import (
     CAPSOLVER_CLIENT_KEY,
     CAPSOLVER_HOST,
+    NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT,
     NAI_RECAPTCHA_TOKEN_API_FALLBACK_CAPSOLVER,
     NAI_RECAPTCHA_TOKEN_API_KEY,
-    NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT,
     NAI_RECAPTCHA_TOKEN_API_TIMEOUT,
     NAI_RECAPTCHA_TOKEN_API_URL,
 )
@@ -31,7 +30,7 @@ NAI_WEBSITE_URL = "https://novelai.net/"
 SOLVE_TIMEOUT = 90
 POLL_INTERVAL = 1.5
 
-_token_api_client: Optional[httpx.AsyncClient] = None
+_token_api_client: httpx.AsyncClient | None = None
 
 
 class CaptchaError(RuntimeError):
@@ -60,7 +59,7 @@ async def _token_client() -> httpx.AsyncClient:
     return _token_api_client
 
 
-async def solve_recaptcha_v3(action: str, account: Optional[dict[str, Any]] = None) -> str:
+async def solve_recaptcha_v3(action: str, account: dict[str, Any] | None = None) -> str:
     """
     Solve NovelAI reCAPTCHA V3 and return a gRecaptchaResponse token.
 
@@ -81,7 +80,7 @@ async def solve_recaptcha_v3(action: str, account: Optional[dict[str, Any]] = No
     return await solve_recaptcha_v3_capsolver(action)
 
 
-async def solve_recaptcha_v3_token_api(action: str, account: Optional[dict[str, Any]] = None) -> str:
+async def solve_recaptcha_v3_token_api(action: str, account: dict[str, Any] | None = None) -> str:
     if action != "ai_generation":
         print(f"[captcha] token API requested with non-standard action={action!r}")
 
@@ -99,7 +98,11 @@ async def solve_recaptcha_v3_token_api(action: str, account: Optional[dict[str, 
                 "bearer": account.get("bearer") or "",
             }
         )
-    timeout = NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT if account else NAI_RECAPTCHA_TOKEN_API_TIMEOUT
+    timeout = (
+        NAI_RECAPTCHA_TOKEN_API_ACCOUNT_TIMEOUT
+        if account
+        else NAI_RECAPTCHA_TOKEN_API_TIMEOUT
+    )
     r = await cli.post(NAI_RECAPTCHA_TOKEN_API_URL, headers=headers, json=payload, timeout=timeout)
     r.raise_for_status()
     body = r.json()

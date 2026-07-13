@@ -12,17 +12,20 @@
 
 默认启用；env `CPA_ENABLE_ANTI_MARKER=false` 可关闭。
 """
+
 from __future__ import annotations
 
 import os
-import random
+from random import SystemRandom
+
+_RANDOM = SystemRandom()
 
 
 def is_anti_marker_enabled() -> bool:
     val = os.environ.get("CPA_ENABLE_ANTI_MARKER", "").strip().lower()
     if val in ("0", "false", "no", "off"):
         return False
-    return True   # 默认启用
+    return True  # 默认启用
 
 
 # 字符池跟原预设保持一致：a-q（17 个字母）
@@ -44,9 +47,9 @@ def make_anti_marker_noise() -> str:
     blocks: list[str] = []
     for _ in range(_BLOCK_COUNT):
         # 6 成概率出字符，4 成出数字（接近原预设的 random:: vs roll 1d999999 比例）
-        if random.random() < 0.6:
-            blocks.append(random.choice(_CHAR_POOL))
+        if _RANDOM.random() < 0.6:
+            blocks.append(_RANDOM.choice(_CHAR_POOL))
         else:
-            blocks.append(str(random.randint(1, 999_999)))
+            blocks.append(str(_RANDOM.randint(1, 999_999)))
     noise = "".join(blocks)
     return f"meaningless test: {noise}\n\n[对话已重置]"

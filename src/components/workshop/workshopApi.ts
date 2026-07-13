@@ -3,7 +3,7 @@
 
 import { useTaskStore, type Task } from '../../stores/taskStore';
 import { botService } from '../../services/botService';
-import { getQueueServerUrl } from '../../utils/apiConfig';
+import { appBackendApi } from '../../api/appBackendApi';
 import { MODELS, getClosestRatio, compressImageFile, type UploadedImage } from './models';
 
 const activeIntervals = new Map<string, ReturnType<typeof setInterval>>();
@@ -29,8 +29,9 @@ export async function fetchQuota(): Promise<void> {
     try {
         const auth = botService.getAuthState();
         if (!auth.isAuthorized || !auth.sessionId) return;
-        const url = `${getQueueServerUrl()}/api/workshop/quota?session_id=${encodeURIComponent(auth.sessionId)}`;
-        const resp = await fetch(url);
+        const resp = await appBackendApi.request('/api/workshop/quota', undefined, {
+            session_id: auth.sessionId,
+        });
         if (!resp.ok) return;
         const data = await resp.json();
         lastQuotaInfo = data;
@@ -42,18 +43,20 @@ function startPolling(taskId: string) {
     if (activeIntervals.has(taskId)) return;
     const auth = botService.getAuthState();
     if (!auth.sessionId) return;
-    const serverUrl = getQueueServerUrl();
     const sessionId = auth.sessionId;
     const interval = setInterval(async () => {
         try {
-            const resp = await fetch(`${serverUrl}/api/workshop/tasks?session_id=${encodeURIComponent(sessionId)}`);
+            const resp = await appBackendApi.request('/api/workshop/tasks', undefined, {
+                session_id: sessionId,
+            });
             if (!resp.ok) return;
             const data = await resp.json();
             const task = (data.tasks || []).find((t: any) => t.task_id === taskId);
             if (!task) return;
             if (task.status === 'success' && task.image_url) {
                 stopPolling(taskId);
-                useTaskStore.getState().updateTask(taskId, { status: 'success', imageUrl: `${serverUrl}${task.image_url}` });
+                const imageUrl = await appBackendApi.objectUrl(task.image_url);
+                useTaskStore.getState().updateTask(taskId, { status: 'success', imageUrl });
                 fetchQuota();
             } else if (task.status === 'error') {
                 stopPolling(taskId);
@@ -76,7 +79,7 @@ function stopPolling(taskId: string) {
 async function fetchEstimatedSeconds(modelId: string): Promise<number> {
     const fallback = MODELS.find(m => m.id === modelId)?.speed ?? 30;
     try {
-        const resp = await fetch(`${getQueueServerUrl()}/api/workshop/models/stats`);
+        const resp = await appBackendApi.request('/api/workshop/models/stats');
         if (!resp.ok) return fallback;
         const data = await resp.json();
         const stat = data?.[modelId];
@@ -133,7 +136,7 @@ async function postGenerate(taskId: string, params: GenerateParams) {
             store.updateTask(taskId, { refImages: imageBase64List });
         }
 
-        const resp = await fetch(`${getQueueServerUrl()}/api/workshop/generate`, {
+        const resp = await appBackendApi.request('/api/workshop/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(reqBody),
@@ -221,15 +224,15 @@ export async function restoreTasks(): Promise<void> {
 
     const auth = botService.getAuthState();
     if (!auth.isAuthorized || !auth.sessionId) return;
-    const serverUrl = getQueueServerUrl();
-
     // 先恢复 store 中正在生成的任务的轮询
     for (const t of useTaskStore.getState().tasks) {
         if (t.status === 'generating') startPolling(t.id);
     }
 
     try {
-        const resp = await fetch(`${serverUrl}/api/workshop/tasks?session_id=${encodeURIComponent(auth.sessionId)}`);
+        const resp = await appBackendApi.request('/api/workshop/tasks', undefined, {
+            session_id: auth.sessionId,
+        });
         if (!resp.ok) return;
         const data = await resp.json();
         const serverTasks = data.tasks || [];
@@ -237,7 +240,7 @@ export async function restoreTasks(): Promise<void> {
 
         let modelStats: Record<string, any> = {};
         try {
-            const statsResp = await fetch(`${serverUrl}/api/workshop/models/stats`);
+            const statsResp = await appBackendApi.request('/api/workshop/models/stats');
             if (statsResp.ok) modelStats = await statsResp.json();
         } catch { /* ignore */ }
 
@@ -249,7 +252,7 @@ export async function restoreTasks(): Promise<void> {
             const t: Task = {
                 id: task.task_id,
                 status: task.status === 'success' ? 'success' : task.status === 'error' ? 'error' : 'generating',
-                imageUrl: task.image_url ? `${serverUrl}${task.image_url}` : '',
+                imageUrl: task.image_url ? await appBackendApi.objectUrl(task.image_url) : '',
                 modelId: task.model,
                 prompt: task.prompt || '',
                 timestamp: task.created_at ? task.created_at * 1000 : Date.now(),

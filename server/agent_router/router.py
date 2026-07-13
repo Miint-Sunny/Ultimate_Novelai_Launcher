@@ -13,42 +13,56 @@ Endpoints（合并版，简化后）:
 
 旧版 /draw-plan / /vision/describe 已下线（功能合并进 chat_agent）。
 """
+
 from __future__ import annotations
 
 import asyncio
-import time
-import logging
 import hashlib
-import random
+import logging
 import re
-from typing import Optional
+import time
+from random import SystemRandom
+from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .llm import BinaryContent
-
-from .schemas import (
-    ChatRequest, ChatResponse, ChatOutput,
-    WebPromptRequest, AgentResult,
-    PromptsResponse,
-    HistoryResponse, HistoryMessage,
-    HealthResponse, HealthTierStatus,
-    SseEvent,
+from .access import (
+    AgentAccess,
+    authorize_history_key,
+    authorize_paid_agent_access,
+    bind_chat_identity,
+    require_agent_access,
+    require_agent_admin,
+    require_paid_agent_access,
 )
 from .deps import AgentDeps
-from .sse import SseChannel
-from .prompts import get_prompts_raw, warm_load_all
 from .history_adapter import (
-    load_history_for_agent,
+    _load_user_history,
     append_to_history,
     clear_history,
-    _load_user_history,
+    load_history_for_agent,
 )
+from .llm import BinaryContent
 from .model_provider import get_model, get_model_settings
+from .prompts import get_prompts_raw, warm_load_all
 from .provider_errors import humanize_provider_error, is_google_prohibited_content_error
+from .schemas import (
+    AgentResult,
+    ChatOutput,
+    ChatRequest,
+    ChatResponse,
+    HealthResponse,
+    HealthTierStatus,
+    HistoryMessage,
+    HistoryResponse,
+    PromptsResponse,
+    SseEvent,
+    WebPromptRequest,
+)
+from .sse import SseChannel
 
 # 注：vision/draw-plan / web_prompt 子模块已下线。
 # - draw_planner_agent 已与 chat_agent 合并：绘图参数由 chat_agent 直接写进 draw_specs
@@ -56,22 +70,29 @@ from .provider_errors import humanize_provider_error, is_google_prohibited_conte
 #   web_generate_prompt endpoint 内部跑 chat_agent，输出再转成前端期望的 AgentResult 格式
 
 logger = logging.getLogger("agent_router")
+_RANDOM = SystemRandom()
 
-router = APIRouter(prefix="/api/agent", tags=["agent"])
+router = APIRouter(
+    prefix="/api/agent",
+    tags=["agent"],
+    # Future Agent endpoints inherit the same fail-closed identity boundary even
+    # if a handler forgets to request the resolved principal explicitly.
+    dependencies=[Depends(require_agent_access)],
+)
 
-_WEB_ARTIST_ID_RE = re.compile(r'(?<![A-Za-z])([A-Za-z])(\d{1,2})(?!\d)', re.IGNORECASE)
+_WEB_ARTIST_ID_RE = re.compile(r"(?<![A-Za-z])([A-Za-z])(\d{1,2})(?!\d)", re.IGNORECASE)
 
 
 class ModelSwitchRequest(BaseModel):
-    target: Optional[str] = None
-    current: Optional[str] = None
+    target: str | None = None
+    current: str | None = None
 
 
 # ============================================================
 # 共享 httpx.AsyncClient（agent tools 调本机 API 时复用连接池）
 # ============================================================
 
-_shared_http_client: Optional[httpx.AsyncClient] = None
+_shared_http_client: httpx.AsyncClient | None = None
 
 
 def _get_http_client() -> httpx.AsyncClient:
@@ -91,6 +112,7 @@ def _use_pure_planner() -> bool:
     只产 DrawSpec，用来验证"嵌套深度 + 任务分离"对约束力的影响。
     """
     import os
+
     return os.environ.get("CPA_USE_PURE_PLANNER", "").strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -164,7 +186,7 @@ def _find_artist_prompt_span(positive: str, prompt: str) -> tuple[int, int] | No
         tags = _split_artist_prompt_tags(m.group(0))
         normalized_positive.append(tags[0] if tags else "")
     for i in range(0, len(normalized_positive) - len(prompt_tags) + 1):
-        if normalized_positive[i:i + len(prompt_tags)] == prompt_tags:
+        if normalized_positive[i : i + len(prompt_tags)] == prompt_tags:
             return positive_tags[i].start(), positive_tags[i + len(prompt_tags) - 1].end()
     return None
 
@@ -248,7 +270,7 @@ async def _build_web_prequery_context(req: WebPromptRequest, deps: AgentDeps) ->
         return ""
 
     try:
-        from .tools.knowledge import _load_artists_for_deps, _load_ocs_for_deps, _get_role_mapping
+        from .tools.knowledge import _get_role_mapping, _load_artists_for_deps, _load_ocs_for_deps
     except Exception:
         return ""
 
@@ -276,7 +298,7 @@ async def _build_web_prequery_context(req: WebPromptRequest, deps: AgentDeps) ->
         if "随机画师串" in text and all_artists:
             candidates = [a for a in all_artists if str(a.get("artist_string") or "").strip()]
             if candidates:
-                artist = random.choice(candidates)
+                artist = _RANDOM.choice(candidates)
                 aid = str(artist.get("id") or artist.get("name") or "").strip()
                 prompt = str(artist.get("artist_string") or "").strip()
                 marker = aid.upper()
@@ -325,10 +347,12 @@ async def _build_web_prequery_context(req: WebPromptRequest, deps: AgentDeps) ->
             origin_part = origin_en
             if origin_zh_text and origin_zh_text != origin_en:
                 origin_part += f" ({origin_zh_text})" if origin_part else origin_zh_text
-            role_hits.append((
-                max(len(h) for h in hits),
-                f"{role_en or key} → 中文: {'、'.join(role_zh)} / 出处: {origin_part}",
-            ))
+            role_hits.append(
+                (
+                    max(len(h) for h in hits),
+                    f"{role_en or key} → 中文: {'、'.join(role_zh)} / 出处: {origin_part}",
+                )
+            )
         if role_hits:
             ranked = [line for _, line in sorted(role_hits, key=lambda x: x[0], reverse=True)[:10]]
             sections.append("## search_character 结果（source=roleTag）\n" + "\n".join(ranked))
@@ -337,9 +361,8 @@ async def _build_web_prequery_context(req: WebPromptRequest, deps: AgentDeps) ->
 
     if not sections:
         return ""
-    return (
-        "[预查询资源]（chat_agent 已用对应工具预查过，结果如下可直接使用）\n\n"
-        + "\n\n".join(sections)
+    return "[预查询资源]（chat_agent 已用对应工具预查过，结果如下可直接使用）\n\n" + "\n\n".join(
+        sections
     )
 
 
@@ -348,6 +371,7 @@ async def _build_web_prequery_context(req: WebPromptRequest, deps: AgentDeps) ->
 # ============================================================
 
 CHAT_MAX_ATTEMPTS = 3
+
 
 def _has_binary_content(parts: list) -> bool:
     """检查 parts 列表里是否含图片字节"""
@@ -397,7 +421,11 @@ def _debug_serialize_model_messages(
     避免重复。
     """
     from .llm.messages import (
-        ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart, TextPart,
+        ModelRequest,
+        ModelResponse,
+        SystemPromptPart,
+        TextPart,
+        UserPromptPart,
     )
 
     out: list[dict] = []
@@ -413,10 +441,12 @@ def _debug_serialize_model_messages(
         if not first_has_system:
             sys_parts_out: list[dict] = []
             for p in system_prompt_parts:
-                sys_parts_out.append({
-                    "type": "system_prompt",
-                    "text": getattr(p, "content", "") or "",
-                })
+                sys_parts_out.append(
+                    {
+                        "type": "system_prompt",
+                        "text": getattr(p, "content", "") or "",
+                    }
+                )
             if sys_parts_out:
                 out.append({"role": "system", "parts": sys_parts_out})
 
@@ -742,7 +772,9 @@ def _extract_artist_resources(prequery_output: str) -> list[tuple[str, str]]:
     return resources
 
 
-def _complete_artist_prompts_in_positive(positive: str, artist_resources: list[tuple[str, str]]) -> str:
+def _complete_artist_prompts_in_positive(
+    positive: str, artist_resources: list[tuple[str, str]]
+) -> str:
     if not positive or not artist_resources:
         return positive
 
@@ -768,7 +800,9 @@ def _complete_artist_prompts_in_positive(positive: str, artist_resources: list[t
     return positive
 
 
-def _complete_artist_prompts_in_draw_specs(draw_specs: list[dict], prequery_output: str) -> list[dict]:
+def _complete_artist_prompts_in_draw_specs(
+    draw_specs: list[dict], prequery_output: str
+) -> list[dict]:
     artist_resources = _extract_artist_resources(prequery_output)
     if not draw_specs or not artist_resources:
         return draw_specs
@@ -817,8 +851,8 @@ def _extract_character_resources(prequery_output: str) -> list[tuple[str, str]]:
         if not match:
             continue
 
-        left = line[:match.start()].strip()
-        right = line[match.end():].strip()
+        left = line[: match.start()].strip()
+        right = line[match.end() :].strip()
         source_tag = right.split(",", 1)[0].strip()
 
         if "source=roleTag" in line or re.match(r"^[a-z0-9_().-]+$", left, re.IGNORECASE):
@@ -875,7 +909,9 @@ def _ensure_requested_character_prompts(
         if not isinstance(spec, dict):
             continue
         chars = spec.get("characters")
-        if isinstance(chars, list) and any(isinstance(c, dict) and str(c.get("positive") or "").strip() for c in chars):
+        if isinstance(chars, list) and any(
+            isinstance(c, dict) and str(c.get("positive") or "").strip() for c in chars
+        ):
             continue
 
         selected = resources[:6]
@@ -936,7 +972,7 @@ def _line_keys_for_match(line: str) -> list[str]:
     if not line.strip():
         return []
     m = _ARROW_RE.search(line)
-    tail = line[m.end():].strip() if m else line.strip()
+    tail = line[m.end() :].strip() if m else line.strip()
     first_tag = tail.split(",", 1)[0].strip()
     if not first_tag:
         return []
@@ -944,7 +980,7 @@ def _line_keys_for_match(line: str) -> list[str]:
     low = first_tag.lower()
     for prefix in ("artist:", "by_"):
         if low.startswith(prefix):
-            first_tag = first_tag[len(prefix):]
+            first_tag = first_tag[len(prefix) :]
             low = first_tag.lower()
     # 剥权重壳
     first_tag = _dewrap_tag_text(first_tag).strip()
@@ -993,6 +1029,7 @@ def _extract_used_resources(
     # 扫 ctx.messages 里 search_* 工具返回（合并 agent 自调的 search_character/search_artist 等）
     try:
         from .llm.messages import ModelRequest, ToolReturnPart
+
         for msg in ctx_messages or []:
             if not isinstance(msg, ModelRequest):
                 continue
@@ -1020,7 +1057,7 @@ def _extract_used_resources(
                             if name and tags:
                                 candidates.append((section_title, f"{name} → {tags}"))
     except Exception:
-        pass  # ctx_messages 解析失败不致命
+        logger.debug("无法解析模型上下文中的已用资源", exc_info=True)
 
     # 对每条候选，检查关键 token 是否出现在 haystack
     sections: dict[str, list[str]] = {}
@@ -1097,8 +1134,15 @@ def _sanitized_chat_history_entries(
 # 注意：401/403/400 这种鉴权/参数错误不在列，重试也无效，要让它直接冒上去
 _TRANSIENT_STATUS = {408, 425, 429, 500, 502, 503, 504}
 _TRANSIENT_EXC_NAMES = {
-    "TimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout",
-    "WriteTimeout", "PoolTimeout", "ConnectError", "ReadError", "RemoteProtocolError",
+    "TimeoutError",
+    "TimeoutException",
+    "ReadTimeout",
+    "ConnectTimeout",
+    "WriteTimeout",
+    "PoolTimeout",
+    "ConnectError",
+    "ReadError",
+    "RemoteProtocolError",
 }
 
 
@@ -1154,8 +1198,13 @@ def _is_empty_model_output_error(e: Exception) -> bool:
 # POST /api/agent/chat —— Bot 主入口
 # ============================================================
 
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest) -> ChatResponse:
+async def chat(
+    request: Request,
+    req: ChatRequest,
+    access: Annotated[AgentAccess, Depends(require_agent_access)],
+) -> ChatResponse:
     """
     Bot 端主对话入口（一次性 JSON 返回）。
 
@@ -1165,6 +1214,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
         3. 持久化新消息
         4. 返回 reply_text + draw_specs；Bot 端自己用 enqueue_image_generation 出图
     """
+    req = bind_chat_identity(req, access)
+    await authorize_paid_agent_access(request, access)
     user_key = _build_user_key(req)
 
     # 按 req.image_model 解析 prompt 预设 + 图像后端（与 LLM 渠道 req.model 正交）。
@@ -1189,11 +1240,15 @@ async def chat(req: ChatRequest) -> ChatResponse:
     for img in req.images:
         try:
             import base64 as _b64
-            parts.append(BinaryContent(
-                data=_b64.b64decode(img.base64),
-                media_type=img.mime_type or "image/png",
-            ))
+
+            parts.append(
+                BinaryContent(
+                    data=_b64.b64decode(img.base64),
+                    media_type=img.mime_type or "image/png",
+                )
+            )
         except Exception:
+            logger.debug("忽略无法解码的聊天图片", exc_info=True)
             continue
     if not parts:
         parts = ["（用户没发任何内容）"]
@@ -1244,6 +1299,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
         artist_source = merged if merged.strip() else ""
 
         from .agents.lite_chat import run_lite_chat
+
         lite_result, lite_messages, lite_sys_parts = await run_lite_chat(
             user_text=req.text or "",
             candidates=merged,
@@ -1276,7 +1332,10 @@ async def chat(req: ChatRequest) -> ChatResponse:
             if req.scene in ("private", "group"):
                 try:
                     fake_output = ChatOutput(
-                        reply_text=lite_reply, draw_spec=None, should_draw=False
+                        reply_text=lite_reply,
+                        draw_spec=None,
+                        should_draw=False,
+                        mood=None,
                     )
                     history_entries = _sanitized_chat_history_entries(
                         parts=parts,
@@ -1301,7 +1360,9 @@ async def chat(req: ChatRequest) -> ChatResponse:
                 image_backend=_image_backend,
                 debug={
                     "model_contexts": list(deps.debug_contexts),
-                } if deps.debug_context else {},
+                }
+                if deps.debug_context
+                else {},
             )
 
         # ===== 绘图路径：用 refined 替换 parts 里的 [环境信息] 段，交棒给 planner =====
@@ -1309,7 +1370,9 @@ async def chat(req: ChatRequest) -> ChatResponse:
             _build_prequery_env_block(refined_resources),
             other_env,
         )
-        parts = [p for p in parts if not (isinstance(p, str) and p.lstrip().startswith("[环境信息]"))]
+        parts = [
+            p for p in parts if not (isinstance(p, str) and p.lstrip().startswith("[环境信息]"))
+        ]
         if new_env:
             insert_idx = 1 if (parts and isinstance(parts[0], str)) else 0
             parts.insert(insert_idx, f"[环境信息]\n{new_env}")
@@ -1327,6 +1390,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
     pp_sys_parts: list = []
     try:
         from .agents.pure_planner import pure_planner_agent
+
         pp_sys_parts = await _resolve_system_prompt_parts(pure_planner_agent, deps)
         pp_result = await pure_planner_agent.run(
             parts,
@@ -1351,6 +1415,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
             reply_text=lite_reply,
             draw_spec=spec.model_dump(),
             should_draw=True,
+            mood=None,
         )
     except Exception as e:
         if is_google_prohibited_content_error(e):
@@ -1391,7 +1456,9 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
     # ===== B3 阶段：提炼"采用清单"存入 _LAST_USED_RESOURCES =====
     try:
-        ctx_messages = pp_result.new_messages() if (pp_result and hasattr(pp_result, "new_messages")) else []
+        ctx_messages = (
+            pp_result.new_messages() if (pp_result and hasattr(pp_result, "new_messages")) else []
+        )
         used = _extract_used_resources(
             ctx_messages=ctx_messages,
             draw_specs=final_draw_specs,
@@ -1429,13 +1496,16 @@ async def chat(req: ChatRequest) -> ChatResponse:
         image_backend=_image_backend,
         debug={
             "model_contexts": list(deps.debug_contexts),
-        } if deps.debug_context else {},
+        }
+        if deps.debug_context
+        else {},
     )
 
 
 # ============================================================
 # ChatOutput → AgentResult 转换（Web 端前端兼容）
 # ============================================================
+
 
 def _chat_output_to_agent_result(output: ChatOutput, deps: AgentDeps) -> AgentResult:
     """
@@ -1465,11 +1535,13 @@ def _chat_output_to_agent_result(output: ChatOutput, deps: AgentDeps) -> AgentRe
         for c in chars_raw:
             if not isinstance(c, dict):
                 continue
-            characters.append({
-                "name": str(c.get("name", "") or ""),
-                "positive": str(c.get("positive", "") or ""),
-                "negative": str(c.get("negative", "") or ""),
-            })
+            characters.append(
+                {
+                    "name": str(c.get("name", "") or ""),
+                    "positive": str(c.get("positive", "") or ""),
+                    "negative": str(c.get("negative", "") or ""),
+                }
+            )
 
     return AgentResult(
         thinking=thinking,
@@ -1483,8 +1555,12 @@ def _chat_output_to_agent_result(output: ChatOutput, deps: AgentDeps) -> AgentRe
 # POST /api/agent/web/generate-prompt —— Web SSE 入口
 # ============================================================
 
+
 @router.post("/web/generate-prompt")
-async def web_generate_prompt(req: WebPromptRequest):
+async def web_generate_prompt(
+    req: WebPromptRequest,
+    _access: Annotated[AgentAccess, Depends(require_paid_agent_access)],
+):
     """
     Web 端 prompt 助手 —— SSE 流式响应。
 
@@ -1535,34 +1611,46 @@ async def web_generate_prompt(req: WebPromptRequest):
             if req.image_b64:
                 try:
                     import base64 as _b64
-                    parts.append(BinaryContent(
-                        data=_b64.b64decode(req.image_b64),
-                        media_type="image/png",
-                    ))
+
+                    parts.append(
+                        BinaryContent(
+                            data=_b64.b64decode(req.image_b64),
+                            media_type="image/png",
+                        )
+                    )
                 except Exception:
-                    pass
+                    logger.debug("忽略无法解码的 Web Agent 图片", exc_info=True)
 
             # Web 端历史：前端传过来即可，无服务端持久化
             from .history_adapter import (
-                to_model_messages, apply_token_budget, WEB_HISTORY_BUDGET_TOKENS,
+                WEB_HISTORY_BUDGET_TOKENS,
+                apply_token_budget,
+                to_model_messages,
             )
+
             try:
-                budgeted = apply_token_budget(req.history, WEB_HISTORY_BUDGET_TOKENS) if req.history else []
+                budgeted = (
+                    apply_token_budget(req.history, WEB_HISTORY_BUDGET_TOKENS)
+                    if req.history
+                    else []
+                )
                 history_msgs = to_model_messages(budgeted, trim=True) if budgeted else []
             except Exception as e:
                 logger.warning(f"Web 历史转换失败: {e}")
                 history_msgs = []
 
-            # ===== Prefilter 阶段（web 端 user_key 空，无 carryover；按类目阈值决定是否调小模型）=====
+            # ===== Prefilter 阶段 =====
+            # web 端 user_key 空且无 carryover；按类目阈值决定是否调小模型。
             web_artist_source = ""
             try:
                 raw_pq, other_env = _split_prequery_from_env(full_env_info)
                 web_artist_source = raw_pq if raw_pq.strip() else ""
                 refined_resources = ""
                 lite_reply = "本喵在喵~"
-                should_draw_lite = True   # Web 端始终视为绘图意图（前端只有一个"生成"按钮）
+                should_draw_lite = True  # Web 端始终视为绘图意图（前端只有一个"生成"按钮）
 
                 from .agents.lite_chat import run_lite_chat
+
                 lite_result, lite_messages, lite_sys_parts = await run_lite_chat(
                     user_text=req.user_request or "",
                     candidates=raw_pq,
@@ -1591,8 +1679,14 @@ async def web_generate_prompt(req: WebPromptRequest):
                 )
 
                 if refined_resources:
-                    new_env = _rebuild_env_info(_build_prequery_env_block(refined_resources), other_env)
-                    parts = [p for p in parts if not (isinstance(p, str) and p.lstrip().startswith("[环境信息]"))]
+                    new_env = _rebuild_env_info(
+                        _build_prequery_env_block(refined_resources), other_env
+                    )
+                    parts = [
+                        p
+                        for p in parts
+                        if not (isinstance(p, str) and p.lstrip().startswith("[环境信息]"))
+                    ]
                     if new_env:
                         parts.insert(0, f"[环境信息]\n{new_env}")
             except Exception as e:
@@ -1607,6 +1701,7 @@ async def web_generate_prompt(req: WebPromptRequest):
 
             # ===== Planner 阶段：pure_planner 出 DrawSpec =====
             from .agents.pure_planner import pure_planner_agent
+
             pp_sys_parts = await _resolve_system_prompt_parts(pure_planner_agent, deps)
             pp_result = await pure_planner_agent.run(
                 parts,
@@ -1631,6 +1726,7 @@ async def web_generate_prompt(req: WebPromptRequest):
                 reply_text=lite_reply,
                 draw_spec=spec.model_dump(),
                 should_draw=True,
+                mood=None,
             )
             # 合并架构：绘图参数就是 chat_output.draw_spec（单数 + Optional）。
             # "确认绘图却没产出 spec" 的情况由 _retry_draw_confirmation_without_specs 内部触发重试。
@@ -1645,7 +1741,9 @@ async def web_generate_prompt(req: WebPromptRequest):
             chat_output.draw_spec = _spec_list[0] if _spec_list else None
 
             if deps.degraded:
-                await channel.emit(SseEvent(event="degraded", data={"reason": "fallback_safe_mode"}))
+                await channel.emit(
+                    SseEvent(event="degraded", data={"reason": "fallback_safe_mode"})
+                )
 
             # ChatOutput → AgentResult 转换（保持前端 schema 兼容）
             agent_result = _chat_output_to_agent_result(chat_output, deps)
@@ -1656,7 +1754,8 @@ async def web_generate_prompt(req: WebPromptRequest):
         finally:
             await channel.close()
 
-    asyncio.create_task(run_agent())
+    producer_task = asyncio.create_task(run_agent())
+    channel.bind_producer(producer_task)
 
     return StreamingResponse(
         channel.iter_sse(),
@@ -1678,13 +1777,16 @@ async def web_generate_prompt(req: WebPromptRequest):
 # GET /api/agent/prompts
 # ============================================================
 
+
 @router.get("/prompts", response_model=PromptsResponse)
-async def get_prompts():
+async def get_prompts(
+    _access: Annotated[AgentAccess, Depends(require_agent_admin)],
+):
     """返回合并后的统一预设配置（tier 已移除）"""
     try:
         raw = get_prompts_raw()
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return PromptsResponse(
         system_prompts=raw.get("system_prompts", []),
         prison_break=raw.get("prison_break", []),
@@ -1695,19 +1797,28 @@ async def get_prompts():
 # GET /api/agent/history/{user_key}
 # ============================================================
 
+
 @router.get("/history/{user_key}", response_model=HistoryResponse)
-async def get_history(user_key: str = Path(..., description="如 qq_p_123456")):
+async def get_history(
+    access: Annotated[AgentAccess, Depends(require_agent_access)],
+    user_key: str = Path(..., description="如 qq_p_123456"),
+):
     """读取用户历史（仅文件持久化部分，内存语义群聊不持久）"""
+    user_key = authorize_history_key(user_key, access)
     try:
         history = await _load_user_history(user_key)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"读取历史失败: {e}")
+        raise HTTPException(status_code=500, detail=f"读取历史失败: {e}") from e
 
     messages = [
         HistoryMessage(
             role=h.get("role", "user"),
             content=h.get("content"),
-            **({"_is_generated_image": h["_is_generated_image"]} if "_is_generated_image" in h else {}),
+            **(
+                {"_is_generated_image": h["_is_generated_image"]}
+                if "_is_generated_image" in h
+                else {}
+            ),
             **({"generated_params": h["generated_params"]} if "generated_params" in h else {}),
         )
         for h in history
@@ -1716,8 +1827,12 @@ async def get_history(user_key: str = Path(..., description="如 qq_p_123456")):
 
 
 @router.delete("/history/{user_key}")
-async def delete_history(user_key: str = Path(...)):
+async def delete_history(
+    access: Annotated[AgentAccess, Depends(require_agent_access)],
+    user_key: str = Path(...),
+):
     """清空历史但保留 mode 等设置"""
+    user_key = authorize_history_key(user_key, access)
     ok = await clear_history(user_key, persistent="_g_" not in user_key)
     if not ok:
         return {"ok": False, "message": "user not found or already empty"}
@@ -1728,22 +1843,28 @@ async def delete_history(user_key: str = Path(...)):
 # /api/agent/models —— 列出 / 切换 / 解析可选 model
 # ============================================================
 
+
 @router.get("/models")
 async def get_models():
     """列出所有可选 model + 当前全局默认。"""
     from config import get_model_status  # type: ignore
+
     return get_model_status()
 
 
 @router.post("/models")
-async def switch_model(req: ModelSwitchRequest):
+async def switch_model(
+    req: ModelSwitchRequest,
+    _access: Annotated[AgentAccess, Depends(require_agent_admin)],
+):
     """切换全局默认 model。"""
     try:
         from config import switch_model as _switch_model  # type: ignore
+
         key, choice = _switch_model(req.target)
         return {"ok": True, "active": key, "choice": choice}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/models/resolve")
@@ -1751,21 +1872,26 @@ async def resolve_model(req: ModelSwitchRequest):
     """解析目标 model（不改全局状态），供单次调用临时指定。"""
     try:
         from config import resolve_model as _resolve_model  # type: ignore
+
         key, choice = _resolve_model(req.target, current=req.current)
         return {"ok": True, "active": key, "choice": choice}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ============================================================
 # GET /api/agent/health
 # ============================================================
 
+
 @router.get("/health", response_model=HealthResponse)
-async def agent_health():
+async def agent_health(
+    _access: Annotated[AgentAccess, Depends(require_agent_admin)],
+):
     """探测当前默认 model 可用性 + prompts 加载状态"""
-    from .model_provider import resolve_choice_to_model_name
     from config import ACTIVE_MODEL  # type: ignore
+
+    from .model_provider import resolve_choice_to_model_name
 
     prompts_status = warm_load_all()
 
@@ -1783,6 +1909,7 @@ async def agent_health():
     start = time.time()
     try:
         from .llm import Agent as _Agent
+
         probe = _Agent(get_model(model_key), output_type=str)
         r = await asyncio.wait_for(probe.run(test_input), timeout=15)
         ts.ok = bool(r.output)

@@ -2,7 +2,7 @@
  * NovelAI 官方服务状态查询（来自后端 /api/nai-status，转发自 status.io）。
  * 仅在出现事故时由 NaiStatusBanner 弹横幅提示，平时不展示状态。
  */
-import { getBackendUrl } from '../utils/apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
 
 // status.io status_code: 100=Operational, 200=Maintenance,
 // 300=Degraded, 400=Partial Disruption, 500=Service Disruption, 600=Security Event
@@ -47,7 +47,7 @@ export interface NaiStatusResponse {
 
 export async function fetchNaiStatus(signal?: AbortSignal): Promise<NaiStatusResponse | null> {
   try {
-    const res = await fetch(`${getBackendUrl()}/api/nai-status`, { signal });
+    const res = await appBackendApi.request('/api/nai-status', { signal });
     if (!res.ok) return null;
     return (await res.json()) as NaiStatusResponse;
   } catch {

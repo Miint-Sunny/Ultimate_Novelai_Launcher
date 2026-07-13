@@ -1,592 +1,199 @@
+"""Sidecar ASGI composition root.
+
+Transport handlers live under :mod:`sidecar.api`; this module only composes the
+runtime, process lifecycle, middleware, and route trees.
+"""
+
 from __future__ import annotations
 
-import hmac
 import logging
 import os
-import uuid
-import json
 from contextlib import asynccontextmanager
-from pathlib import Path
+from ipaddress import ip_address
 from typing import Any
+from urllib.parse import urlsplit
 
-import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
 
 from . import APP_VERSION
+from .api import mount_api
+from .api.auth_middleware import SidecarAuthMiddleware
+from .api.compat import register_compat_routes
+from .composition import RuntimeComponents, build_runtime
 from .config import Settings, load_settings
-from .credentials import (
-    CredentialStorageError,
-    delete_stored_llm_backup_key,
-    delete_stored_llm_key,
-    delete_stored_token,
-    set_stored_llm_backup_key,
-    set_stored_llm_key,
-    set_stored_token,
-)
-from .db import (
-    create_generation,
-    get_generation,
-    init_db,
-    list_history,
-    lookup_tag_translations,
-    mark_error,
-    mark_success,
-    upsert_tag_translations,
-)
-from .library import init_library
-from .library_routes import register_library_routes
-from .tags import register_tag_routes
-from .local_settings import write_local_settings
-from .llm.client import LLMConversionError, LLMNotConfiguredError, chat_completion, convert_natural_to_tags
-from .nai.client import NovelAIError, encode_vibe, fetch_anlas, generate_image, generate_image_from_payload, upscale_image
-from .nai.models import GenerateRequest, GenerationParams, ResolvedPrompt
-from .storage import image_path, write_mock_image
+from .process_control import process_control
+from .security import BodySizeLimitMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-class TokenRequest(BaseModel):
-    token: str = Field(min_length=1)
-
-
-class LlmKeyRequest(BaseModel):
-    api_key: str = Field(min_length=1)
-    slot: str = "primary"  # "primary" | "backup"
-
-
-class SettingsUpdateRequest(BaseModel):
-    nai_base_url: str | None = None
-    llm_provider: str | None = None
-    llm_backup_provider: str | None = None
-    llm_backup_base_url: str | None = None
-    llm_backup_model: str | None = None
-    llm_base_url: str | None = None
-    llm_model: str | None = None
-
-
-class VibeEncodeRequest(BaseModel):
-    image: str = Field(min_length=1)
-    information_extracted: float = 0.5
-    model: str = "nai-diffusion-4-5-full"
-
-
-class UpscaleRequest(BaseModel):
-    image: str = Field(min_length=1)
-    width: int
-    height: int
-    scale: int | float = 4
-
-
-class AgentGeneratePromptRequest(BaseModel):
-    input: str = Field(min_length=1)
-    params: GenerationParams = Field(default_factory=GenerationParams)
-    negative: str = ""
-
-
-class AgentWebGeneratePromptRequest(BaseModel):
-    user_request: str = Field(min_length=1)
-    current_negative: str = ""
-
-
-class ChatMessage(BaseModel):
-    role: str = Field(min_length=1)
-    content: str = Field(min_length=1)
-
-
-class ChatCompletionRequest(BaseModel):
-    messages: list[ChatMessage] = Field(min_length=1)
-    temperature: float = 0.3
-    max_tokens: int = 1000
-
-
-class TagTranslationLookupRequest(BaseModel):
-    tags: list[str] = Field(default_factory=list)
-
-
-class TagTranslationEntry(BaseModel):
-    tag: str = Field(min_length=1)
-    zh: str = Field(min_length=1)
-    source: str = "ai"
-
-
-class TagTranslationSubmitRequest(BaseModel):
-    entries: list[TagTranslationEntry] = Field(default_factory=list)
-
-
 def create_app(settings: Settings | None = None) -> FastAPI:
-    resolved_settings = settings or load_settings()
+    process_control.reset()
+    initial_settings = settings or load_settings()
+    components = build_runtime(
+        initial_settings,
+        reload_from_environment=settings is None,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        init_db(resolved_settings)
-        init_library(resolved_settings)
-        logger.info("Ultimate Novelai launcher sidecar ready at data_dir=%s", resolved_settings.data_dir)
-        yield
+        await components.runtime.startup()
+        challenge = components.pairing.issue()
+        logger.warning(
+            "Browser pairing code: %s (expires in %d seconds)",
+            challenge.code,
+            int(challenge.expires_in),
+        )
+        logger.info(
+            "Ultimate Novelai launcher sidecar ready at data_dir=%s",
+            components.settings.current.data_dir,
+        )
+        try:
+            yield
+        finally:
+            process_control.begin_drain()
+            await components.runtime.shutdown()
 
-    app = FastAPI(title="Ultimate Novelai launcher Sidecar", version=APP_VERSION, lifespan=lifespan)
-    app.state.settings = resolved_settings
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://127.0.0.1:1420",
-            "http://localhost:1420",
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-            "tauri://localhost",
-            "https://tauri.localhost",
-        ],
-        allow_methods=["*"],
-        allow_headers=["*"],
+    app = FastAPI(
+        title="Ultimate Novelai launcher Sidecar",
+        version=APP_VERSION,
+        lifespan=lifespan,
     )
+    app.state.components = components
+    _register_middleware(app, components)
+    mount_api(app, components.runtime)
+    register_compat_routes(app, components)
 
-    def require_sidecar_auth(x_sidecar_auth: str = Header(default="")) -> None:
-        """Gate sensitive endpoints on the per-session shared secret.
-
-        When the Tauri shell injects ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_AUTH, only
-        callers that echo it back (i.e. this app's own frontend) may spend the
-        NovelAI/LLM credentials, change the outbound base URL, or mutate credentials
-        and the local library. When no token is configured (e.g. `npm run sidecar`
-        during development) the check is a no-op so the dev workflow is unaffected.
-        """
-        expected = resolved_settings.sidecar_auth_token
-        if expected and not hmac.compare_digest(x_sidecar_auth, expected):
-            raise HTTPException(status_code=401, detail="unauthorized sidecar request")
-
-    auth = Depends(require_sidecar_auth)
-
-    @app.get("/health")
-    def health() -> dict[str, Any]:
+    @app.get("/livez")
+    def livez() -> dict[str, Any]:
+        current = components.settings.current
         return {
-            "ok": True,
+            "service": "ultimate-novelai-launcher-sidecar",
             "version": APP_VERSION,
-            "nai_configured": resolved_settings.nai_configured,
-            "llm_configured": resolved_settings.llm_configured,
-            "data_dir": str(resolved_settings.data_dir),
+            "protocol": current.protocol_version,
+            "instance_id": current.instance_id,
         }
-
-    @app.get("/settings")
-    def get_settings() -> dict[str, Any]:
-        return _settings_payload(resolved_settings)
-
-    @app.post("/settings", dependencies=[auth])
-    def update_settings(req: SettingsUpdateRequest) -> dict[str, Any]:
-        nonlocal resolved_settings
-        updates = req.model_dump(exclude_none=True)
-        write_local_settings(resolved_settings.data_dir, updates)
-        if settings is None:
-            resolved_settings = load_settings()
-            app.state.settings = resolved_settings
-        return _settings_payload(resolved_settings)
-
-    @app.get("/auth/token/status")
-    def token_status() -> dict[str, Any]:
-        return _token_status(resolved_settings)
-
-    @app.post("/auth/token", dependencies=[auth])
-    def set_token(req: TokenRequest) -> dict[str, Any]:
-        nonlocal resolved_settings
-        try:
-            set_stored_token(resolved_settings.data_dir, req.token)
-        except CredentialStorageError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        if settings is None:
-            resolved_settings = load_settings()
-            app.state.settings = resolved_settings
-        return _token_status(resolved_settings)
-
-    @app.delete("/auth/token", dependencies=[auth])
-    def delete_token() -> dict[str, Any]:
-        nonlocal resolved_settings
-        delete_stored_token(resolved_settings.data_dir)
-        if settings is None:
-            resolved_settings = load_settings()
-            app.state.settings = resolved_settings
-        return _token_status(resolved_settings)
-
-    @app.get("/auth/llm-key/status")
-    def llm_key_status() -> dict[str, Any]:
-        return _llm_status(resolved_settings)
-
-    @app.post("/auth/llm-key", dependencies=[auth])
-    def set_llm_key(req: LlmKeyRequest) -> dict[str, Any]:
-        nonlocal resolved_settings
-        setter = set_stored_llm_backup_key if req.slot == "backup" else set_stored_llm_key
-        try:
-            setter(resolved_settings.data_dir, req.api_key)
-        except CredentialStorageError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        if settings is None:
-            resolved_settings = load_settings()
-            app.state.settings = resolved_settings
-        return _llm_status(resolved_settings)
-
-    @app.delete("/auth/llm-key", dependencies=[auth])
-    def delete_llm_key(slot: str = "primary") -> dict[str, Any]:
-        nonlocal resolved_settings
-        remover = delete_stored_llm_backup_key if slot == "backup" else delete_stored_llm_key
-        remover(resolved_settings.data_dir)
-        if settings is None:
-            resolved_settings = load_settings()
-            app.state.settings = resolved_settings
-        return _llm_status(resolved_settings)
-
-    @app.get("/history", dependencies=[auth])
-    def history(limit: int = 100) -> dict[str, Any]:
-        safe_limit = min(max(limit, 1), 100)
-        return {"items": [record.to_api() for record in list_history(resolved_settings, safe_limit)]}
-
-    @app.get("/images/{image_id}")
-    def image(image_id: str) -> FileResponse:
-        record = get_generation(resolved_settings, image_id)
-        if not record or record.status != "success" or not record.image_path:
-            raise HTTPException(status_code=404, detail="image not found")
-        path = Path(record.image_path)
-        expected_path = image_path(resolved_settings, image_id)
-        if path != expected_path or not path.exists():
-            raise HTTPException(status_code=404, detail="image not found")
-        return FileResponse(path, media_type="image/png")
-
-    @app.post("/generate", dependencies=[auth])
-    async def generate(req: GenerateRequest) -> dict[str, Any]:
-        try:
-            resolved = await _resolve_prompt(resolved_settings, req)
-        except LLMNotConfiguredError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except LLMConversionError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-        if not resolved.tags:
-            raise HTTPException(status_code=400, detail="prompt tags are empty")
-
-        generation_id = uuid.uuid4().hex
-        record = create_generation(
-            resolved_settings,
-            generation_id=generation_id,
-            user_input=req.input,
-            mode=req.mode,
-            tags=resolved.tags,
-            negative=resolved.negative,
-            params=resolved.params.model_dump(),
-        )
-
-        try:
-            if resolved_settings.mock_generation:
-                path = write_mock_image(resolved_settings, generation_id)
-            elif req.legacy_payload:
-                payload = await generate_image_from_payload(
-                    settings=resolved_settings,
-                    payload=req.legacy_payload,
-                )
-                path = image_path(resolved_settings, generation_id)
-                path.write_bytes(payload)
-            else:
-                payload = await generate_image(
-                    settings=resolved_settings,
-                    tags=resolved.tags,
-                    negative=resolved.negative,
-                    params=resolved.params,
-                )
-                path = image_path(resolved_settings, generation_id)
-                path.write_bytes(payload)
-            record = mark_success(resolved_settings, generation_id, path)
-        except NovelAIError as exc:
-            record = mark_error(resolved_settings, generation_id, str(exc))
-            raise HTTPException(
-                status_code=400 if exc.status_code == 0 else 502,
-                detail={"message": str(exc), "record": record.to_api()},
-            ) from exc
-        except Exception as exc:
-            record = mark_error(resolved_settings, generation_id, "generation failed")
-            logger.exception("generation failed")
-            raise HTTPException(
-                status_code=500,
-                detail={"message": "generation failed", "record": record.to_api()},
-            ) from exc
-
-        api_record = record.to_api()
-        return {
-            "image_id": api_record["image_id"],
-            "image_url": api_record["image_url"],
-            "image_path": api_record["image_path"],
-            "input": api_record["input"],
-            "tags": api_record["tags"],
-            "negative": api_record["negative"],
-            "params": api_record["params"],
-            "created_at": api_record["created_at"],
-        }
-
-    @app.get("/generation/tasks")
-    def generation_tasks() -> dict[str, Any]:
-        return {"items": []}
-
-    @app.post("/generation/tasks/{task_id}/cancel")
-    def cancel_generation_task(task_id: str) -> dict[str, Any]:
-        return {"ok": False, "task_id": task_id, "message": "no active local task runner is configured"}
-
-    @app.post("/vibe/encode", dependencies=[auth])
-    async def vibe_encode(req: VibeEncodeRequest) -> dict[str, Any]:
-        if resolved_settings.mock_generation:
-            return {"encoding": "mock-vibe-encoding"}
-        try:
-            encoding = await encode_vibe(
-                settings=resolved_settings,
-                image=req.image,
-                information_extracted=req.information_extracted,
-                model=req.model,
-            )
-            return {"encoding": encoding}
-        except NovelAIError as exc:
-            raise HTTPException(status_code=400 if exc.status_code == 0 else 502, detail=str(exc)) from exc
-
-    @app.post("/upscale", dependencies=[auth])
-    async def upscale(req: UpscaleRequest) -> Response:
-        try:
-            if resolved_settings.mock_generation:
-                payload = image_path(resolved_settings, "__mock__")
-                if payload.exists():
-                    return Response(payload.read_bytes(), media_type="image/png")
-                return Response(write_mock_image(resolved_settings, "__mock__").read_bytes(), media_type="image/png")
-            image = await upscale_image(
-                settings=resolved_settings,
-                image=req.image,
-                width=req.width,
-                height=req.height,
-                scale=req.scale,
-            )
-            return Response(image, media_type="image/png")
-        except NovelAIError as exc:
-            raise HTTPException(status_code=400 if exc.status_code == 0 else 502, detail=str(exc)) from exc
-
-    @app.post("/agent/generate-prompt", dependencies=[auth])
-    async def agent_generate_prompt(req: AgentGeneratePromptRequest) -> dict[str, Any]:
-        try:
-            result = await convert_natural_to_tags(
-                settings=resolved_settings,
-                user_input=req.input,
-                fallback_params=req.params,
-                fallback_negative=req.negative,
-            )
-        except LLMNotConfiguredError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except LLMConversionError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        return {
-            "tags": result.tags,
-            "negative": result.negative,
-            "params": result.params.model_dump(),
-        }
-
-    # Intentionally NOT gated on the sidecar auth token: the frontend consumes this as
-    # a raw SSE stream (src/services/agentService.ts) that cannot carry the auth header
-    # via requestJson. It can spend the LLM key on cache-miss; the residual (a local
-    # process abusing it) is accepted rather than break the streaming AI assistant.
-    @app.post("/api/agent/web/generate-prompt")
-    async def legacy_agent_web_generate_prompt(req: AgentWebGeneratePromptRequest) -> StreamingResponse:
-        return StreamingResponse(
-            _legacy_agent_sse(resolved_settings, req),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    @app.post("/api/translate/en2zh", dependencies=[auth])
-    async def legacy_translate_en2zh(req: ChatCompletionRequest) -> dict[str, Any]:
-        return await _chat_completion_response(resolved_settings, req)
-
-    @app.post("/api/translate/proxy", dependencies=[auth])
-    async def legacy_translate_proxy(req: ChatCompletionRequest) -> dict[str, Any]:
-        return await _chat_completion_response(resolved_settings, req)
-
-    @app.post("/api/tags/translations/lookup")
-    def tag_translation_lookup(req: TagTranslationLookupRequest) -> dict[str, str]:
-        return lookup_tag_translations(resolved_settings, req.tags)
-
-    @app.post("/api/tags/translations/submit")
-    def tag_translation_submit(req: TagTranslationSubmitRequest) -> dict[str, Any]:
-        count = upsert_tag_translations(
-            resolved_settings,
-            [entry.model_dump() for entry in req.entries],
-        )
-        return {"ok": True, "count": count}
-
-    @app.post("/metadata/import")
-    async def metadata_import() -> dict[str, Any]:
-        return {"metadata": None, "warnings": ["metadata import adapter is not configured yet"]}
-
-    register_library_routes(app, resolved_settings, auth)
-    register_tag_routes(app, resolved_settings, auth)
-
-    @app.get("/api/anlas", dependencies=[auth])
-    async def legacy_anlas() -> dict[str, Any]:
-        if not resolved_settings.nai_configured:
-            return {
-                "fixedTrainingStepsLeft": 0,
-                "purchasedTrainingSteps": 0,
-                "isOpus": False,
-                "configured": False,
-            }
-        if resolved_settings.mock_generation and not resolved_settings.nai_token:
-            return {
-                "fixedTrainingStepsLeft": 0,
-                "purchasedTrainingSteps": 0,
-                "isOpus": False,
-                "configured": True,
-            }
-        try:
-            return {**await fetch_anlas(resolved_settings), "configured": True}
-        except NovelAIError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @app.get("/api/data/{filename}")
-    def legacy_data_file(filename: str) -> Any:
-        return _legacy_data_payload(resolved_settings, filename)
-
-    @app.get("/api/nai-status")
-    def legacy_nai_status() -> dict[str, Any]:
-        return {"ok": True, "status": "unknown", "configured": False}
-
-    @app.post("/api/online/heartbeat")
-    def legacy_online_heartbeat() -> dict[str, Any]:
-        return {"ok": True, "online": 1, "configured": False}
-
-    @app.get("/api/online/count")
-    def legacy_online_count() -> dict[str, Any]:
-        return {"count": 1, "configured": False}
 
     return app
 
 
-async def _resolve_prompt(settings: Settings, req: GenerateRequest) -> ResolvedPrompt:
-    negative = req.negative or ""
-    if req.mode == "tags":
-        return ResolvedPrompt(
-            tags=(req.tags or req.input).strip(),
-            negative=negative,
-            params=req.params,
-        )
-
-    return await convert_natural_to_tags(
-        settings=settings,
-        user_input=req.input,
-        fallback_params=req.params,
-        fallback_negative=negative,
+def _register_middleware(app: FastAPI, components: RuntimeComponents) -> None:
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        default_limit=72 * 1024 * 1024,
+        hard_limit=72 * 1024 * 1024,
+        path_limits={
+            "/settings": 64 * 1024,
+            "/auth": 64 * 1024,
+            "/api/v1/settings": 64 * 1024,
+            "/api/v1/auth": 64 * 1024,
+            "/api/v1/assets": 32 * 1024 * 1024,
+            # 20 MiB decoded image + 4 MiB UTF-8 context requires just under
+            # 31 MiB once the image is represented as base64 JSON.
+            "/api/agent": 32 * 1024 * 1024,
+            "/vibe": 45 * 1024 * 1024,
+            "/upscale": 45 * 1024 * 1024,
+            "/api/oc": 45 * 1024 * 1024,
+            "/api/artists": 45 * 1024 * 1024,
+            "/api/cr": 45 * 1024 * 1024,
+            "/api/vibes": 45 * 1024 * 1024,
+        },
     )
 
-
-async def _chat_completion_response(settings: Settings, req: ChatCompletionRequest) -> dict[str, Any]:
-    try:
-        return await chat_completion(
-            settings=settings,
-            messages=[message.model_dump() for message in req.messages],
-            temperature=req.temperature,
-            max_tokens=req.max_tokens,
-        )
-    except LLMNotConfiguredError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except LLMConversionError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-async def _legacy_agent_sse(settings: Settings, req: AgentWebGeneratePromptRequest):
-    try:
-        result = await convert_natural_to_tags(
-            settings=settings,
-            user_input=req.user_request,
-            fallback_params=GenerationParams(),
-            fallback_negative=req.current_negative,
-        )
-        yield _sse(
-            "final",
-            {
-                "thinking": "",
-                "positive": result.tags,
-                "negative": result.negative,
-                "characters": [],
-            },
-        )
-    except (LLMNotConfiguredError, LLMConversionError) as exc:
-        yield _sse("error", {"message": str(exc)})
-    except Exception:
-        logger.exception("legacy agent stream failed")
-        yield _sse("error", {"message": "agent generation failed"})
-
-
-def _sse(event: str, data: dict[str, Any]) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def _legacy_data_payload(settings: Settings, filename: str) -> Any:
-    if "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="invalid data filename")
-
-    data_paths = [
-        settings.data_dir / "data" / filename,
-        Path(__file__).resolve().parent.parent / "server" / "data" / filename,
+    allowed_origins = [
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://tauri.localhost",
     ]
-    for path in data_paths:
-        if path.is_file():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError as exc:
-                raise HTTPException(status_code=500, detail=f"invalid JSON data file: {filename}") from exc
-
-    if filename == "role_tag_mapping.json":
-        return {}
-    if filename in {"NAI_NSFW.json", "NAI_Common.json", "oc_data.json"}:
-        return []
-    return {"filename": filename, "items": [], "configured": False}
-
-
-def _token_status(settings: Settings) -> dict[str, Any]:
-    env_configured = bool(os.environ.get("NAI_TOKEN", "").strip())
-    return {
-        "configured": bool(settings.nai_token),
-        "source": "environment" if env_configured else ("credential-store" if settings.nai_token else "none"),
-        "mock_generation": settings.mock_generation,
-    }
-
-
-def _llm_status(settings: Settings) -> dict[str, Any]:
-    return {
-        "provider": settings.llm_provider,
-        "key_configured": bool(settings.llm_api_key),
-        "backup_provider": settings.llm_backup_provider,
-        "backup_key_configured": bool(settings.llm_backup_api_key),
-        "llm_configured": settings.llm_configured,
-    }
-
-
-def _settings_payload(settings: Settings) -> dict[str, Any]:
-    return {
-        "version": APP_VERSION,
-        "data_dir": str(settings.data_dir),
-        "nai_base_url": settings.nai_base_url,
-        "nai_configured": settings.nai_configured,
-        "llm_provider": settings.llm_provider,
-        "llm_base_url": settings.llm_base_url,
-        "llm_model": settings.llm_model,
-        "llm_key_configured": bool(settings.llm_api_key),
-        "llm_backup_provider": settings.llm_backup_provider,
-        "llm_backup_base_url": settings.llm_backup_base_url,
-        "llm_backup_model": settings.llm_backup_model,
-        "llm_backup_key_configured": bool(settings.llm_backup_api_key),
-        "llm_configured": settings.llm_configured,
-        "token": _token_status(settings),
-    }
+    allowed_origins.extend(_configured_web_origins())
+    if _development_origins_enabled():
+        allowed_origins.extend(
+            [
+                "http://127.0.0.1:1420",
+                "http://localhost:1420",
+                "http://127.0.0.1:5173",
+                "http://localhost:5173",
+            ]
+        )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "Last-Event-ID",
+            "X-Sidecar-Auth",
+        ],
+        expose_headers=[
+            "Deprecation",
+            "Idempotency-Replayed",
+            "Location",
+            "Sunset",
+            "X-Request-ID",
+        ],
+    )
+    app.add_middleware(SidecarAuthMiddleware, manager=components.security)
 
 
-app = create_app()
+def _development_origins_enabled() -> bool:
+    return os.environ.get(
+        "ULTIMATE_NOVELAI_LAUNCHER_ALLOW_DEV_ORIGINS",
+        "",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _configured_web_origins() -> list[str]:
+    raw_origins = os.environ.get("ULTIMATE_NOVELAI_LAUNCHER_WEB_ORIGINS", "")
+    origins: list[str] = []
+    for raw_origin in raw_origins.split(","):
+        origin = raw_origin.strip()
+        if not origin:
+            continue
+        parsed = urlsplit(origin)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError(f"invalid web origin: {origin}") from exc
+        hostname = parsed.hostname or ""
+        has_origin_only = not parsed.path and not parsed.query and not parsed.fragment
+        if (
+            "*" in origin
+            or parsed.scheme not in {"http", "https"}
+            or not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or not has_origin_only
+        ):
+            raise ValueError(f"invalid web origin: {origin}")
+        if parsed.scheme == "http" and not _is_loopback_hostname(hostname):
+            raise ValueError(f"insecure non-loopback web origin: {origin}")
+        canonical = f"{parsed.scheme}://{parsed.hostname}"
+        if ":" in hostname and not hostname.startswith("["):
+            canonical = f"{parsed.scheme}://[{hostname}]"
+        if port is not None:
+            canonical = f"{canonical}:{port}"
+        if canonical != origin:
+            raise ValueError(f"web origin must use its exact canonical form: {origin}")
+        if canonical not in origins:
+            origins.append(canonical)
+    return origins
+
+
+def _is_loopback_hostname(hostname: str) -> bool:
+    normalized = hostname.rstrip(".").lower()
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        return ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 if __name__ == "__main__":
-    runtime_settings = load_settings()
-    uvicorn.run(
-        "sidecar.server:app",
-        host=runtime_settings.host,
-        port=runtime_settings.port,
-        reload=False,
-    )
+    from .bootstrap import main
+
+    main()

@@ -17,32 +17,33 @@ Anima 出图后端 —— 走 cnb 托管的 ComfyUI workspace 出二次元图。
     cancel_anima_background() # app.py shutdown 钩
     get_anima_pool()          # 状态查询接口取池子实例(给管理 endpoint 用)
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import random
+import secrets
 import string
 import time
 from pathlib import Path
-from typing import Optional
+from random import SystemRandom
 from urllib.parse import urlencode
 
 import aiohttp
 
 from .cnb_comfy_pool import CNBComfyPool, CNBComfyTimeoutError
 
-
 logger = logging.getLogger("anima_provider")
+_RANDOM = SystemRandom()
 
 
 # ============================================================
 # 单例 anima_pool
 # ============================================================
 
-_anima_pool: Optional[CNBComfyPool] = None
-_anima_payload_template: Optional[dict] = None
+_anima_pool: CNBComfyPool | None = None
+_anima_payload_template: dict | None = None
 _anima_defaults: dict = {}
 
 
@@ -54,23 +55,23 @@ def _init_pool() -> CNBComfyPool:
 
     try:
         from config import (  # type: ignore
-            ANIMA_CNB_ACCOUNTS,
+            ANIMA_ACCOUNT_MAX_RUNNING_SECONDS,
             ANIMA_ACCOUNT_STORE,
-            ANIMA_PAYLOAD_PATH,
-            ANIMA_DEFAULT_PROMPT,
-            ANIMA_DEFAULT_NEGATIVE_PROMPT,
-            ANIMA_DEFAULT_WIDTH,
-            ANIMA_DEFAULT_HEIGHT,
-            ANIMA_CNB_REQUEST_TIMEOUT,
+            ANIMA_CNB_ACCOUNTS,
             ANIMA_CNB_DETAIL_POLL_INTERVAL,
             ANIMA_CNB_READY_TIMEOUT,
-            ANIMA_PATROL_INTERVAL_SECONDS,
+            ANIMA_CNB_REQUEST_TIMEOUT,
+            ANIMA_DEFAULT_HEIGHT,
+            ANIMA_DEFAULT_NEGATIVE_PROMPT,
+            ANIMA_DEFAULT_PROMPT,
+            ANIMA_DEFAULT_WIDTH,
             ANIMA_IDLE_SHUTDOWN_SECONDS,
-            ANIMA_ACCOUNT_MAX_RUNNING_SECONDS,
             ANIMA_LOCAL_ACTIVE_STALE_SECONDS,
-            ANIMA_SCALE_QUEUE_PER_ACCOUNT,
+            ANIMA_PATROL_INTERVAL_SECONDS,
+            ANIMA_PAYLOAD_PATH,
             ANIMA_POLL_INTERVAL,
             ANIMA_RUNNING_TIMEOUT_SECONDS,
+            ANIMA_SCALE_QUEUE_PER_ACCOUNT,
         )
     except ImportError as e:
         raise RuntimeError(f"anima_provider: 无法加载 ANIMA_* 配置: {e}") from e
@@ -118,6 +119,7 @@ def get_anima_pool() -> CNBComfyPool:
 # ============================================================
 # 业务函数：patch payload + ComfyUI 调用
 # ============================================================
+
 
 def _patch_anima_payload(
     template: dict,
@@ -205,8 +207,12 @@ async def _wait_history(
                 history_consecutive_failures += 1
                 failure_duration = history_consecutive_failures * poll_interval
                 if failure_duration > max_history_failure_seconds:
-                    raise Exception(f"查询历史连续失败超过 {max_history_failure_seconds}s: {e}")
-                logger.warning(f"anima 查询历史临时失败 (连续{history_consecutive_failures}次): {e}")
+                    raise Exception(
+                        f"查询历史连续失败超过 {max_history_failure_seconds}s: {e}"
+                    ) from e
+                logger.warning(
+                    f"anima 查询历史临时失败 (连续{history_consecutive_failures}次): {e}"
+                )
                 await asyncio.sleep(poll_interval)
                 continue
 
@@ -246,7 +252,8 @@ async def _wait_history(
                                 missing_started_at = time.time()
                             elif (time.time() - missing_started_at) > missing_timeout_seconds:
                                 raise CNBComfyTimeoutError(
-                                    f"anima 任务状态丢失（连续 {missing_timeout_seconds}s 不在 history/queue）"
+                                    "anima 任务状态丢失"
+                                    f"（连续 {missing_timeout_seconds}s 不在 history/queue）"
                                 )
             except CNBComfyTimeoutError:
                 raise
@@ -273,11 +280,13 @@ def _pick_image_output(history_job: dict) -> dict:
 
 
 async def _download_image(comfy_url: str, result_meta: dict) -> bytes:
-    query = urlencode({
-        "filename": result_meta["filename"],
-        "subfolder": result_meta.get("subfolder", ""),
-        "type": result_meta.get("type", "output"),
-    })
+    query = urlencode(
+        {
+            "filename": result_meta["filename"],
+            "subfolder": result_meta.get("subfolder", ""),
+            "type": result_meta.get("type", "output"),
+        }
+    )
     timeout = aiohttp.ClientTimeout(total=None, sock_connect=30, sock_read=180)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(f"{comfy_url}/view?{query}") as resp:
@@ -290,6 +299,7 @@ async def _download_image(comfy_url: str, result_meta: dict) -> bytes:
 # ============================================================
 # 主入口
 # ============================================================
+
 
 async def generate_anima_image(
     *,
@@ -324,14 +334,14 @@ async def generate_anima_image(
     negative_text = (negative or "").strip() or defaults["negative"]
     width_px = int(width) if int(width) > 0 else defaults["width"]
     height_px = int(height) if int(height) > 0 else defaults["height"]
-    seed_value = int(seed) if int(seed) >= 0 else random.randint(0, 2**31 - 1)
+    seed_value = int(seed) if int(seed) >= 0 else _RANDOM.randint(0, 2**31 - 1)
 
     if not task_id:
         task_id = "anima_" + "".join(
-            random.choice(string.ascii_lowercase + string.digits) for _ in range(10)
+            secrets.choice(string.ascii_lowercase + string.digits) for _ in range(10)
         )
 
-    account: Optional[dict] = None
+    account: dict | None = None
     base_url = ""
     prompt_id: str | None = None
     needs_restart = False
@@ -348,7 +358,7 @@ async def generate_anima_image(
             base_url = await pool.ensure_account_ready_url(account)
         except Exception as e:
             needs_restart = True
-            raise Exception(f"anima workspace 不可用: {e}")
+            raise Exception(f"anima workspace 不可用: {e}") from e
 
         # 队列守护：清理超时任务
         try:
@@ -410,6 +420,7 @@ async def generate_anima_image(
 # ============================================================
 # server lifecycle hooks
 # ============================================================
+
 
 def start_anima_patrol() -> None:
     """app.py @on_event('startup') 调用。"""

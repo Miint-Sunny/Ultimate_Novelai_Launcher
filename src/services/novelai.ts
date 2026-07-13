@@ -1,10 +1,11 @@
 import { getAppSettings } from './localLibrary';
 import { normalizeNoiseSchedule, normalizeSamplerToId } from '../utils/generationOptions';
-import { getBackendUrl, getQueueServerUrl } from '../utils/apiConfig';
+import { getQueueServerUrl } from '../utils/apiConfig';
 import { decode } from '@msgpack/msgpack';
 import { queueService } from './queueService';
 import { botService } from './botService';
 import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenerationParams } from '../api/sidecar';
+import { appBackendApi } from '../api/appBackendApi';
 
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
@@ -806,9 +807,8 @@ async function generateImageViaBotMode(
       };
     } else if (result.type === 'file' && result.path) {
       // 文件路径，需要从服务器获取
-      const serverUrl = getQueueServerUrl();
       try {
-        const response = await fetch(`${serverUrl}/api/bot/image?path=${encodeURIComponent(result.path)}`);
+        const response = await appBackendApi.request('/api/bot/image', undefined, { path: result.path });
         if (response.ok) {
           const imageData = await response.blob();
           return { success: true, imageData, seed: webParams.seed };

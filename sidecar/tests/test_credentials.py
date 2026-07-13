@@ -11,7 +11,7 @@ from sidecar import credentials
 
 @contextmanager
 def fake_secure_store(initial: str | None = None, available: bool = True):
-    """Patch the secure backend with an in-memory, account-keyed store so tests never touch the real OS keychain."""
+    """Patch secure storage with an in-memory account-keyed test double."""
     store: dict[str, str] = {}
     if initial is not None:
         store[credentials.ACCOUNT_NOVELAI] = initial
@@ -28,10 +28,11 @@ def fake_secure_store(initial: str | None = None, available: bool = True):
     def _delete(account: str) -> None:
         store.pop(account, None)
 
-    with mock.patch.object(credentials, "_secure_get", _get), mock.patch.object(
-        credentials, "_secure_set", _set
-    ), mock.patch.object(credentials, "_secure_delete", _delete), mock.patch.object(
-        credentials, "_secure_available", lambda: available
+    with (
+        mock.patch.object(credentials, "_secure_get", _get),
+        mock.patch.object(credentials, "_secure_set", _set),
+        mock.patch.object(credentials, "_secure_delete", _delete),
+        mock.patch.object(credentials, "_secure_available", lambda: available),
     ):
         yield store
 
@@ -52,7 +53,10 @@ class CredentialsTests(unittest.TestCase):
     def test_set_get_delete_roundtrip(self) -> None:
         with fake_secure_store():
             self.assertTrue(credentials.set_stored_token(self._data_dir(), "token-roundtrip-value"))
-            self.assertEqual(credentials.get_stored_token(self._data_dir()), "token-roundtrip-value")
+            self.assertEqual(
+                credentials.get_stored_token(self._data_dir()),
+                "token-roundtrip-value",
+            )
             # No plaintext file should ever be created.
             self.assertFalse(self._plaintext_path().exists())
 
@@ -73,9 +77,11 @@ class CredentialsTests(unittest.TestCase):
 
     def test_secure_store_present_but_write_fails_raises(self) -> None:
         # available() True but _secure_set returns False (e.g. CLI error).
-        with mock.patch.object(credentials, "_secure_available", lambda: True), mock.patch.object(
-            credentials, "_secure_set", lambda account, value: False
-        ), mock.patch.object(credentials, "_secure_get", lambda account: ""):
+        with (
+            mock.patch.object(credentials, "_secure_available", lambda: True),
+            mock.patch.object(credentials, "_secure_set", lambda account, value: False),
+            mock.patch.object(credentials, "_secure_get", lambda account: ""),
+        ):
             with self.assertRaises(credentials.CredentialStorageError):
                 credentials.set_stored_token(self._data_dir(), "token-write-fails")
             self.assertFalse(self._plaintext_path().exists())
@@ -100,16 +106,120 @@ class CredentialsTests(unittest.TestCase):
             credentials.set_stored_token(self._data_dir(), "token-new-secure")
             self.assertFalse(legacy.exists())
 
-    def test_legacy_plaintext_without_secure_store_is_readable_but_kept(self) -> None:
-        # No secure store available: existing plaintext stays readable (no data loss),
-        # but we never create new plaintext.
+    def test_legacy_plaintext_without_secure_store_fails_closed_and_is_kept(self) -> None:
         legacy = self._plaintext_path()
         legacy.parent.mkdir(parents=True, exist_ok=True)
         legacy.write_text("token-orphan-value", encoding="utf-8")
 
         with fake_secure_store(available=False):
-            self.assertEqual(credentials.get_stored_token(self._data_dir()), "token-orphan-value")
+            with self.assertRaises(credentials.CredentialStorageError):
+                credentials.get_stored_token(self._data_dir())
             self.assertTrue(legacy.exists())
+
+    def test_legacy_plaintext_write_failure_fails_closed_and_is_kept(self) -> None:
+        legacy = self._plaintext_path()
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("token-orphan-value", encoding="utf-8")
+
+        with (
+            mock.patch.object(credentials, "_secure_get", return_value=""),
+            mock.patch.object(credentials, "_secure_available", return_value=True),
+            mock.patch.object(credentials, "_secure_set", return_value=False),
+        ):
+            with self.assertRaises(credentials.CredentialStorageError):
+                credentials.get_stored_token(self._data_dir())
+        self.assertEqual(legacy.read_text(encoding="utf-8"), "token-orphan-value")
+
+    def test_macos_keychain_write_uses_resolved_executable_and_stdin(self) -> None:
+        completed = mock.Mock(returncode=0)
+        secret = "super-secret-value"
+        with (
+            mock.patch.object(
+                credentials.shutil,
+                "which",
+                return_value="/usr/bin/security",
+            ),
+            mock.patch.object(credentials.subprocess, "run", return_value=completed) as run,
+        ):
+            self.assertTrue(credentials._macos_set_password("account", secret))
+
+        args = run.call_args.args[0]
+        self.assertEqual(args[0], "/usr/bin/security")
+        self.assertEqual(args[-1], "-w")
+        self.assertNotIn(secret, args)
+        self.assertEqual(run.call_args.kwargs["input"], f"{secret}\n")
+
+    def test_macos_keychain_write_requires_resolved_executable(self) -> None:
+        with (
+            mock.patch.object(credentials.shutil, "which", return_value=None),
+            mock.patch.object(
+                credentials.subprocess,
+                "run",
+            ) as run,
+        ):
+            self.assertFalse(credentials._macos_set_password("account", "secret"))
+        run.assert_not_called()
+
+    def test_macos_keychain_read_and_delete_use_resolved_executable(self) -> None:
+        completed = mock.Mock(returncode=0, stdout="stored-secret\n")
+        with (
+            mock.patch.object(
+                credentials.shutil,
+                "which",
+                return_value="/usr/bin/security",
+            ),
+            mock.patch.object(credentials.subprocess, "run", return_value=completed) as run,
+        ):
+            self.assertEqual(credentials._macos_get_password("account"), "stored-secret")
+            credentials._macos_delete_password("account")
+
+        self.assertEqual(run.call_args_list[0].args[0][0], "/usr/bin/security")
+        self.assertEqual(run.call_args_list[1].args[0][0], "/usr/bin/security")
+
+    def test_macos_keychain_read_and_delete_require_resolved_executable(self) -> None:
+        with (
+            mock.patch.object(credentials.shutil, "which", return_value=None),
+            mock.patch.object(
+                credentials.subprocess,
+                "run",
+            ) as run,
+        ):
+            self.assertEqual(credentials._macos_get_password("account"), "")
+            credentials._macos_delete_password("account")
+        run.assert_not_called()
+
+    def test_secret_tool_uses_resolved_executable_and_stdin(self) -> None:
+        completed = mock.Mock(returncode=0, stdout="stored-secret\n")
+        secret = "linux-secret-value"
+        with (
+            mock.patch.object(
+                credentials.shutil,
+                "which",
+                return_value="/usr/bin/secret-tool",
+            ),
+            mock.patch.object(credentials.subprocess, "run", return_value=completed) as run,
+        ):
+            self.assertEqual(credentials._secret_tool_get("account"), "stored-secret")
+            self.assertTrue(credentials._secret_tool_set("account", secret))
+            credentials._secret_tool_delete("account")
+
+        for call in run.call_args_list:
+            self.assertEqual(call.args[0][0], "/usr/bin/secret-tool")
+            self.assertNotIn(secret, call.args[0])
+        self.assertEqual(run.call_args_list[1].kwargs["input"], secret)
+
+    def test_secret_tool_operations_require_resolved_executable(self) -> None:
+        with (
+            mock.patch.object(credentials.shutil, "which", return_value=None),
+            mock.patch.object(
+                credentials.subprocess,
+                "run",
+            ) as run,
+        ):
+            self.assertEqual(credentials._secret_tool_get("account"), "")
+            self.assertFalse(credentials._secret_tool_set("account", "secret"))
+            credentials._secret_tool_delete("account")
+        run.assert_not_called()
 
     # ---- LLM API key ----
 

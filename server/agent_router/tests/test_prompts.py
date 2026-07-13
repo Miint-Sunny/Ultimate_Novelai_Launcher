@@ -1,6 +1,7 @@
 """
 prompts.py 测试 —— 合并预设加载（单文件、tier 已移除，不依赖 PydanticAI 运行时）。
 """
+
 from __future__ import annotations
 
 

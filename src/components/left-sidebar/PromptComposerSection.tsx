@@ -1,6 +1,7 @@
 import type { Dispatch, MouseEvent, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import type { AgentState, GenerationSnapshot } from '../../services/agentService';
+import { appBackendApi } from '../../api/appBackendApi';
 import { InlineAgentPanel } from './InlineAgentPanel';
 import {
   ChipModeToggle,
@@ -98,6 +99,8 @@ export function PromptComposerSection({
   setIsFloatingAIOpen,
   onAssistantInitialRectChange,
 }: PromptComposerSectionProps) {
+  const agentAvailability = appBackendApi.desktopAgentAvailability();
+
   return (
     <div className="bg-nai-input rounded-lg border border-gray-800 p-1 relative group/prompt-container" ref={promptAreaRef}>
       <PromptToolbar
@@ -169,9 +172,19 @@ export function PromptComposerSection({
       <div className="px-2 pt-2 pb-1.5 flex items-center justify-between gap-2 border-t border-transparent">
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />
         <TokenMeter totalTokenCount={totalTokenCount} />
+        {!agentAvailability.available && (
+          <span
+            className="shrink-0 text-[10px] text-gray-600"
+            title={agentAvailability.reason}
+          >
+            Agent 未启用
+          </span>
+        )}
         <FloatingAgentButton
           isOpen={isFloatingAIOpen}
           isGenerating={isGeneratingPrompt}
+          disabled={!agentAvailability.available}
+          disabledReason={agentAvailability.reason}
           onClick={() => {
             if (!isFloatingAIOpen && promptAreaRef.current) {
               onAssistantInitialRectChange(promptAreaRef.current.getBoundingClientRect());

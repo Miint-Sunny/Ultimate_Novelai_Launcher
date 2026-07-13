@@ -9,7 +9,6 @@ import {
   setVibeTags as setVibeTagsStorage,
   type VibeData,
 } from '../../../services/localLibrary';
-import { getBackendUrl } from '../../../utils/apiConfig';
 import { getPublicVibeFile, getPublicVibes } from '../../../services/publicLibrary';
 import type { ActiveVibe, VibeFile } from '../types';
 
@@ -29,14 +28,12 @@ export const toMobileVibeFile = (vibe: VibeData): VibeFile => ({
 export async function loadMobileVibeLists() {
   const localVibes = await getVibes();
   const publicVibes = await getPublicVibes(true);
-  const backendUrl = getBackendUrl();
-
   return {
     local: localVibes.map(toMobileVibeFile),
     public: publicVibes.map((vibe): VibeFile => ({
       id: vibe.id || vibe.filename || `vibe-${Date.now()}`,
       name: vibe.name,
-      preview: vibe.thumbnail ? (vibe.thumbnail.startsWith('/') ? `${backendUrl}${vibe.thumbnail}` : vibe.thumbnail) : '',
+      preview: vibe.thumbnail || '',
       supportedModels: vibe.supportedModels,
       defaultStrength: vibe.defaultStrength,
       defaultInfoExtracted: vibe.defaultInfoExtracted,

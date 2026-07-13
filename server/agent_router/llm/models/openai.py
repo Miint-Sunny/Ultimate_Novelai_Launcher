@@ -3,7 +3,8 @@
 
 POST {base_url}/chat/completions（走 provider.http_client，没有则用共享默认 client）。
 所有请求体保持**标准 OpenAI /chat/completions 形态**（messages[]/tools[]/tool_choice/stream），
-这样 novelai_provider 的适配 transport（拦 /chat/completions、拍平 content、剥 tools、伪造非流式响应）
+这样 novelai_provider 的适配 transport（拦 /chat/completions、拍平 content、
+剥 tools、伪造非流式响应）
 仍能正常拦截工作。
 
 ModelSettings 消费：
@@ -13,28 +14,39 @@ ModelSettings 消费：
     extra_body            -> **最后整体并入 body**（覆盖计算出的字段，含 tool_choice / thinking）
 
 tool_choice：extra_body 覆盖优先；否则有工具时 require_tool? "required" : "auto"。
-strict 工具：转成 OpenAI strict（additionalProperties:false + required=全字段 + 可选字段 nullable）。
+strict 工具：转成 OpenAI strict（additionalProperties:false + required=全字段
++ 可选字段 nullable）。
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
-from ..messages import (
-    ModelMessage, ModelRequest, ModelResponse,
-    SystemPromptPart, UserPromptPart, ToolReturnPart, RetryPromptPart,
-    TextPart, ThinkingPart, ToolCallPart, ToolDefinition, BinaryContent,
-)
 from ..exceptions import ModelHTTPError
+from ..messages import (
+    BinaryContent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolDefinition,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from ..result import Usage
 from .base import Model, get_default_http_client
-
 
 # ============================================================
 # strict schema 转换
 # ============================================================
+
 
 def _make_nullable(sub: dict) -> dict:
     sub = dict(sub)
@@ -111,8 +123,7 @@ def _to_openai_scalar_params(schema: dict, *, _root: bool = True) -> dict:
         props = node.get("properties")
         if isinstance(props, dict):
             node["properties"] = {
-                name: _to_openai_scalar_params(sub, _root=False)
-                for name, sub in props.items()
+                name: _to_openai_scalar_params(sub, _root=False) for name, sub in props.items()
             }
         return node
 
@@ -134,6 +145,7 @@ def _to_openai_scalar_params(schema: dict, *, _root: bool = True) -> dict:
 # ============================================================
 # OpenAIModel
 # ============================================================
+
 
 class OpenAIModel(Model):
     def __init__(self, model_name: str, provider, *, supports_vision: bool = True) -> None:
@@ -159,10 +171,12 @@ class OpenAIModel(Model):
             for item in content:
                 if isinstance(item, BinaryContent):
                     if self.supports_vision:
-                        parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": item.as_data_uri()},
-                        })
+                        parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": item.as_data_uri()},
+                            }
+                        )
                     else:
                         parts.append({"type": "text", "text": _image_placeholder(item)})
                 elif item is not None:
@@ -188,20 +202,26 @@ class OpenAIModel(Model):
                         if part.content:
                             wire.append({"role": "system", "content": part.content})
                     elif isinstance(part, UserPromptPart):
-                        wire.append({"role": "user", "content": self._user_content_to_wire(part.content)})
+                        wire.append(
+                            {"role": "user", "content": self._user_content_to_wire(part.content)}
+                        )
                     elif isinstance(part, ToolReturnPart):
-                        wire.append({
-                            "role": "tool",
-                            "tool_call_id": part.tool_call_id or part.tool_name,
-                            "content": _json_content(part.content),
-                        })
-                    elif isinstance(part, RetryPromptPart):
-                        if part.tool_name:
-                            wire.append({
+                        wire.append(
+                            {
                                 "role": "tool",
                                 "tool_call_id": part.tool_call_id or part.tool_name,
-                                "content": part.content,
-                            })
+                                "content": _json_content(part.content),
+                            }
+                        )
+                    elif isinstance(part, RetryPromptPart):
+                        if part.tool_name:
+                            wire.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": part.tool_call_id or part.tool_name,
+                                    "content": part.content,
+                                }
+                            )
                         else:
                             wire.append({"role": "user", "content": part.content})
             elif isinstance(msg, ModelResponse):
@@ -212,14 +232,18 @@ class OpenAIModel(Model):
                         if part.content:
                             text_chunks.append(part.content)
                     elif isinstance(part, ToolCallPart):
-                        tool_calls.append({
-                            "id": part.tool_call_id or part.tool_name,
-                            "type": "function",
-                            "function": {
-                                "name": part.tool_name,
-                                "arguments": part.args if isinstance(part.args, str) else json.dumps(part.args, ensure_ascii=False),
-                            },
-                        })
+                        tool_calls.append(
+                            {
+                                "id": part.tool_call_id or part.tool_name,
+                                "type": "function",
+                                "function": {
+                                    "name": part.tool_name,
+                                    "arguments": part.args
+                                    if isinstance(part.args, str)
+                                    else json.dumps(part.args, ensure_ascii=False),
+                                },
+                            }
+                        )
                     # ThinkingPart 不回灌（与各家一致，思考不进下一轮输入）
                 assistant: dict = {"role": "assistant"}
                 assistant["content"] = "\n".join(text_chunks) if text_chunks else None
@@ -283,7 +307,7 @@ class OpenAIModel(Model):
         system_parts: list[SystemPromptPart],
         tools: list[ToolDefinition],
         require_tool: bool,
-        model_settings: Optional[dict] = None,
+        model_settings: dict | None = None,
     ) -> tuple[ModelResponse, Usage]:
         settings = dict(model_settings or {})
         body = self._build_body(messages, system_parts, tools, require_tool, settings)
@@ -306,6 +330,7 @@ class OpenAIModel(Model):
 # 响应解析
 # ============================================================
 
+
 def _parse_openai_response(data: dict) -> tuple[ModelResponse, Usage]:
     parts: list = []
     choices = data.get("choices") or []
@@ -324,11 +349,13 @@ def _parse_openai_response(data: dict) -> tuple[ModelResponse, Usage]:
                 args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
             except (json.JSONDecodeError, TypeError):
                 args = raw_args or {}
-            parts.append(ToolCallPart(
-                tool_name=fn.get("name") or "",
-                args=args,
-                tool_call_id=tc.get("id") or "",
-            ))
+            parts.append(
+                ToolCallPart(
+                    tool_name=fn.get("name") or "",
+                    args=args,
+                    tool_call_id=tc.get("id") or "",
+                )
+            )
 
     usage = _parse_usage(data.get("usage"))
     return ModelResponse(parts=parts), usage

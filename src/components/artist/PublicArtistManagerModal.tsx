@@ -4,7 +4,6 @@ import {
   getPublicArtists, deletePublicArtist,
   getPublicLibraryOwnerId, type PublicArtistData,
 } from '../../services/publicLibrary';
-import { getBackendUrl } from '../../utils/apiConfig';
 
 interface Props {
   isOpen: boolean;
@@ -137,7 +136,7 @@ export const PublicArtistManagerModal: React.FC<Props> = ({ isOpen, onClose, sho
                   {/* 预览图 */}
                   <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-800 shrink-0 flex items-center justify-center">
                     {artist.preview_url ? (
-                      <img src={`${getBackendUrl()}${artist.preview_url}`} alt={artist.name} className="w-full h-full object-cover"
+                      <img src={artist.preview_url} alt={artist.name} className="w-full h-full object-cover"
                         onError={e => { e.currentTarget.style.display = 'none'; }} />
                     ) : (
                       <Palette className="w-5 h-5 text-gray-500" />

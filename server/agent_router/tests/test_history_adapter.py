@@ -3,6 +3,7 @@ history_adapter.py 测试 —— round-trip 与图片裁剪策略。
 
 底层已由 pydantic_ai 换成自研 agent_router.llm，本测试不再依赖 pydantic-ai。
 """
+
 from __future__ import annotations
 
 import pytest  # noqa: F401  (保留以兼容可能的 fixture/mark 用法)
@@ -26,7 +27,7 @@ def _make_image_msg(role: str, text: str, b64_data: str, is_generated: bool = Fa
 
 
 def test_pure_text_round_trip():
-    from agent_router.history_adapter import to_model_messages, from_model_messages
+    from agent_router.history_adapter import from_model_messages, to_model_messages
 
     history = [
         _make_text_msg("user", "你好"),
@@ -47,12 +48,11 @@ def test_pure_text_round_trip():
 
 def test_user_image_max_3_strategy():
     from agent_router.history_adapter import trim_history_images
+
     # 模拟 base64
     b64 = "iVBORw0KGgo="  # 极短的占位
 
-    history = [
-        _make_image_msg("user", f"用户图{i}", b64) for i in range(5)
-    ]
+    history = [_make_image_msg("user", f"用户图{i}", b64) for i in range(5)]
     trimmed = trim_history_images(history)
 
     # 5 条都还在（条目数量不变）
@@ -61,9 +61,7 @@ def test_user_image_max_3_strategy():
     # 最新 3 条保留图片，最早 2 条剥离图片
     def has_image(entry):
         c = entry.get("content")
-        return isinstance(c, list) and any(
-            isinstance(x, dict) and "inline_data" in x for x in c
-        )
+        return isinstance(c, list) and any(isinstance(x, dict) and "inline_data" in x for x in c)
 
     images_kept = [has_image(e) for e in trimmed]
     # 旧的不留，新的 3 张留
@@ -85,9 +83,7 @@ def test_generated_image_body_is_not_kept():
 
     def has_image(entry):
         c = entry.get("content")
-        return isinstance(c, list) and any(
-            isinstance(x, dict) and "inline_data" in x for x in c
-        )
+        return isinstance(c, list) and any(isinstance(x, dict) and "inline_data" in x for x in c)
 
     # 生成图不再保留图片本体，只保留文字参数
     img_flags = [has_image(e) for e in trimmed]
@@ -96,7 +92,7 @@ def test_generated_image_body_is_not_kept():
 
 
 def test_text_and_image_in_user_msg():
-    from agent_router.history_adapter import to_model_messages, from_model_messages
+    from agent_router.history_adapter import from_model_messages, to_model_messages
 
     b64 = "iVBORw0KGgo="
     history = [
@@ -117,16 +113,20 @@ def test_text_and_image_in_user_msg():
 
 
 def test_from_model_messages_strips_runtime_environment_info():
-    from agent_router.llm.messages import ModelRequest, UserPromptPart
     from agent_router.history_adapter import from_model_messages
+    from agent_router.llm.messages import ModelRequest, UserPromptPart
 
     messages = [
-        ModelRequest(parts=[
-            UserPromptPart(content=[
-                "-↓用户消息内容↓-\n画若叶睦",
-                "[环境信息]\n[预查询资源]\n## search_character 结果\nleaf_(pokemon)",
-            ])
-        ])
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        "-↓用户消息内容↓-\n画若叶睦",
+                        "[环境信息]\n[预查询资源]\n## search_character 结果\nleaf_(pokemon)",
+                    ]
+                )
+            ]
+        )
     ]
 
     back = from_model_messages(messages)
@@ -141,12 +141,14 @@ def test_from_model_messages_strips_runtime_environment_info():
 def test_to_model_messages_strips_legacy_runtime_environment_info():
     from agent_router.history_adapter import from_model_messages, to_model_messages
 
-    history = [{
-        "role": "user",
-        "content": [
-            {"text": "-↓用户消息内容↓-\n画若叶睦\n[环境信息]\n[预查询资源]\nleaf_(pokemon)"},
-        ],
-    }]
+    history = [
+        {
+            "role": "user",
+            "content": [
+                {"text": "-↓用户消息内容↓-\n画若叶睦\n[环境信息]\n[预查询资源]\nleaf_(pokemon)"},
+            ],
+        }
+    ]
 
     messages = to_model_messages(history, trim=False)
     back = from_model_messages(messages)
@@ -159,6 +161,7 @@ def test_to_model_messages_strips_legacy_runtime_environment_info():
 
 def test_append_to_history_accepts_filtered_resource_memory():
     import asyncio
+
     from agent_router.history_adapter import (
         append_to_history,
         clear_history,
@@ -179,10 +182,12 @@ def test_append_to_history_accepts_filtered_resource_memory():
             user_key,
             new_messages,
             persistent=False,
-            extra_entries=[{
-                "role": "assistant",
-                "content": "[chat_agent 筛选资料记忆]\n角色: wakaba_mutsumi (bang_dream!)",
-            }],
+            extra_entries=[
+                {
+                    "role": "assistant",
+                    "content": "[chat_agent 筛选资料记忆]\n角色: wakaba_mutsumi (bang_dream!)",
+                }
+            ],
         )
 
         loaded = await load_history_for_agent(user_key, persistent=False)
@@ -198,6 +203,7 @@ def test_append_to_history_accepts_filtered_resource_memory():
 
 def test_filtered_resource_memory_is_single_slot():
     import asyncio
+
     from agent_router.history_adapter import (
         append_to_history,
         clear_history,
@@ -214,19 +220,23 @@ def test_filtered_resource_memory_is_single_slot():
             user_key,
             to_model_messages([{"role": "user", "content": "画 A"}], trim=False),
             persistent=False,
-            extra_entries=[{
-                "role": "assistant",
-                "content": "[chat_agent 筛选资料记忆]\n角色: old_character",
-            }],
+            extra_entries=[
+                {
+                    "role": "assistant",
+                    "content": "[chat_agent 筛选资料记忆]\n角色: old_character",
+                }
+            ],
         )
         await append_to_history(
             user_key,
             to_model_messages([{"role": "user", "content": "画 B"}], trim=False),
             persistent=False,
-            extra_entries=[{
-                "role": "assistant",
-                "content": "[chat_agent 筛选资料记忆]\n角色: new_character",
-            }],
+            extra_entries=[
+                {
+                    "role": "assistant",
+                    "content": "[chat_agent 筛选资料记忆]\n角色: new_character",
+                }
+            ],
         )
 
         loaded = await load_history_for_agent(user_key, persistent=False)
@@ -240,6 +250,7 @@ def test_filtered_resource_memory_is_single_slot():
 
 def test_filtered_resource_memory_expires_without_relay():
     import asyncio
+
     from agent_router.history_adapter import (
         append_to_history,
         clear_history,
@@ -256,10 +267,12 @@ def test_filtered_resource_memory_expires_without_relay():
             user_key,
             to_model_messages([{"role": "user", "content": "画 A"}], trim=False),
             persistent=False,
-            extra_entries=[{
-                "role": "assistant",
-                "content": "[chat_agent 筛选资料记忆]\n角色: old_character",
-            }],
+            extra_entries=[
+                {
+                    "role": "assistant",
+                    "content": "[chat_agent 筛选资料记忆]\n角色: old_character",
+                }
+            ],
         )
         await append_to_history(
             user_key,
@@ -278,6 +291,7 @@ def test_filtered_resource_memory_expires_without_relay():
 
 def test_private_history_uses_sliding_window(tmp_path, monkeypatch):
     import asyncio
+
     from agent_router import history_adapter as h
     from agent_router.history_adapter import (
         append_to_history,
@@ -315,6 +329,7 @@ def test_private_history_uses_sliding_window(tmp_path, monkeypatch):
 
 def test_group_memory_history_round_trip():
     import asyncio
+
     from agent_router.history_adapter import (
         append_to_history,
         clear_history,

@@ -4,7 +4,7 @@
  * 通过 botService.ts 门面对外暴露，导出形状保持不变。
  */
 
-import { getQueueServerUrl } from '../../utils/apiConfig';
+import { appBackendApi } from '../../api/appBackendApi';
 import { sidecarApi } from '../../api/sidecar';
 
 export interface BotAuthState {
@@ -40,6 +40,7 @@ class BotService {
   private ws: WebSocket | null = null;
   private listeners: Set<BotEventListener> = new Set();
   private authCheckInterval: number | null = null;
+  private authPollToken: string | null = null;
 
   private authState: BotAuthState = {
     isAuthorized: false,
@@ -83,23 +84,23 @@ class BotService {
     });
   }
 
-  private getServerUrl(): string {
-    return getQueueServerUrl();
-  }
-
   /**
    * 生成授权码
    */
   async generateAuthCode(): Promise<string | null> {
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/bot/auth/generate`, {
+      const response = await appBackendApi.request('/api/bot/auth/generate', {
         method: 'POST',
       });
 
       if (response.ok) {
         const data = await response.json();
+        if (typeof data.poll_token !== 'string' || data.poll_token.length < 32) {
+          throw new Error('授权服务未返回安全轮询凭据');
+        }
         this.authState.authCode = data.code;
         this.authState.authCodeExpires = Date.now() + data.expires_in * 1000;
+        this.authPollToken = data.poll_token;
         this.emit();
 
         // 开始轮询检查授权状态
@@ -120,7 +121,7 @@ class BotService {
     this.stopAuthCheck();
 
     this.authCheckInterval = window.setInterval(async () => {
-      if (!this.authState.authCode) {
+      if (!this.authState.authCode || !this.authPollToken) {
         this.stopAuthCheck();
         return;
       }
@@ -129,23 +130,33 @@ class BotService {
       if (this.authState.authCodeExpires && Date.now() > this.authState.authCodeExpires) {
         this.authState.authCode = null;
         this.authState.authCodeExpires = null;
+        this.authPollToken = null;
         this.stopAuthCheck();
         this.emit();
         return;
       }
 
       try {
-        const response = await fetch(`${this.getServerUrl()}/api/bot/auth/check`, {
+        const response = await appBackendApi.request('/api/bot/auth/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: this.authState.authCode }),
+          body: JSON.stringify({
+            code: this.authState.authCode,
+            poll_token: this.authPollToken,
+          }),
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.verified && data.session_id) {
+            if (this.authState.sessionId !== data.session_id) {
+              appBackendApi.revokeObjectUrls();
+            }
             this.authState.isAuthorized = true;
             this.authState.sessionId = data.session_id;
+            this.authState.authCode = null;
+            this.authState.authCodeExpires = null;
+            this.authPollToken = null;
             this.stopAuthCheck();
 
             // 连接WebSocket
@@ -178,21 +189,12 @@ class BotService {
       return;
     }
 
-    const wsUrl = this.getServerUrl().replace(/^http/, 'ws') + '/ws/bot';
+    const wsUrl = appBackendApi.webSocketUrl('/ws/bot');
     console.log('[BotService] 正在连接 WebSocket:', wsUrl);
-    this.ws = new WebSocket(wsUrl);
+    this.ws = new WebSocket(wsUrl, `bot-session.${this.authState.sessionId}`);
 
     this.ws.onopen = () => {
       console.log('[BotService] WebSocket 已连接');
-      // 绑定会话
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(
-          JSON.stringify({
-            action: 'bind_session',
-            session_id: this.authState.sessionId,
-          })
-        );
-      }
     };
 
     this.ws.onmessage = (event) => {
@@ -243,6 +245,10 @@ class BotService {
     this.ws.onclose = (event) => {
       console.log('[BotService] WebSocket 已断开, code:', event.code, 'reason:', event.reason);
       this.ws = null;
+      if (event.code === 4401) {
+        this.logout();
+        return;
+      }
       // 尝试重连（仅在仍然授权状态下）
       if (this.authState.isAuthorized) {
         console.log('[BotService] 3秒后尝试重连...');
@@ -279,7 +285,7 @@ class BotService {
     this.emit();
 
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/bot/generate`, {
+      const response = await appBackendApi.request('/api/bot/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -363,7 +369,15 @@ class BotService {
         if (now - lastPollTime >= pollInterval) {
           lastPollTime = now;
           try {
-            const response = await fetch(`${this.getServerUrl()}/api/task/${taskId}`);
+            const sessionId = this.authState.sessionId;
+            if (!sessionId) {
+              throw new Error('Bot 会话已失效');
+            }
+            const response = await appBackendApi.request(
+              `/api/task/${encodeURIComponent(taskId)}`,
+              undefined,
+              { session_id: sessionId },
+            );
             if (response.status === 404) {
               // 任务不存在（服务重启或任务过期），停止轮询
               this.taskState.status = 'failed';
@@ -441,9 +455,17 @@ class BotService {
     }
 
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/task/${taskId}`, {
-        method: 'DELETE',
-      });
+      const sessionId = this.authState.sessionId;
+      if (!sessionId) {
+        return false;
+      }
+      const response = await appBackendApi.request(
+        `/api/task/${encodeURIComponent(taskId)}`,
+        {
+          method: 'DELETE',
+        },
+        { session_id: sessionId },
+      );
 
       if (response.ok) {
         this.taskState.status = 'failed';
@@ -462,9 +484,12 @@ class BotService {
    * 登出
    */
   logout() {
+    localStorage.removeItem('bot_session');
+    appBackendApi.revokeObjectUrls();
     this.ws?.close();
     this.ws = null;
     this.stopAuthCheck();
+    this.authPollToken = null;
 
     this.authState = {
       isAuthorized: false,
@@ -510,6 +535,9 @@ class BotService {
     // 后端是基于 last_active 的滑动窗口，本地 expiresAt 只是上次同步的快照。
     // 不能用本地 expiresAt 作闸门 —— 否则 SPA 长期不刷新时，本地缓存先到期，
     // 即使后端 session 仍然活着也会被误判登出。统一交给后端 validate 裁决。
+    if (this.authState.sessionId !== data.sessionId) {
+      appBackendApi.revokeObjectUrls();
+    }
     this.authState.isAuthorized = true;
     this.authState.sessionId = data.sessionId;
     this.authState.botUserId = data.botUserId ?? null;
@@ -550,7 +578,7 @@ class BotService {
     sessionId: string
   ): Promise<{ valid: boolean; expiresAtMs?: number }> {
     try {
-      const response = await fetch(`${this.getServerUrl()}/api/bot/auth/validate`, {
+      const response = await appBackendApi.request('/api/bot/auth/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),

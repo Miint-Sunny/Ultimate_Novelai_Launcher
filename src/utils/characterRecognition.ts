@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { buildApiUrl, API_PATHS } from './apiConfig';
+import { appBackendApi } from '../api/appBackendApi';
+import { API_PATHS } from './apiConfig';
 
 /* ─── 角色识别工具 ─── */
 // 桌面 ToolsModal 与移动 tools 共用此实现（两端原为逐字副本，已统一到此处）。
@@ -28,7 +29,7 @@ let cachedOCData: OCData | null = null;
 async function fetchRoleTagMapping(): Promise<RoleTagMapping> {
   if (cachedRoleTagMapping) return cachedRoleTagMapping;
   try {
-    const res = await fetch(buildApiUrl(API_PATHS.DATA_ROLE_TAG_MAPPING));
+    const res = await appBackendApi.request(API_PATHS.DATA_ROLE_TAG_MAPPING);
     if (!res.ok) return {};
     cachedRoleTagMapping = await res.json();
     return cachedRoleTagMapping!;
@@ -40,7 +41,7 @@ async function fetchRoleTagMapping(): Promise<RoleTagMapping> {
 async function fetchOCData(): Promise<OCData> {
   if (cachedOCData) return cachedOCData;
   try {
-    const res = await fetch(buildApiUrl(API_PATHS.DATA_OC_DATA));
+    const res = await appBackendApi.request(API_PATHS.DATA_OC_DATA);
     if (!res.ok) return {};
     cachedOCData = await res.json();
     return cachedOCData!;

@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { getArtists } from '../../../services/localLibrary';
 import { getPublicArtists } from '../../../services/publicLibrary';
-import { getBackendUrl } from '../../../utils/apiConfig';
 import type { ArtistFile } from '../types';
 
 export function useMobileArtistLibrary() {
@@ -24,11 +23,10 @@ export function useMobileArtistLibrary() {
       setArtistLocalFiles(localArtistList);
 
       const artists = await getPublicArtists();
-      const backendUrl = getBackendUrl();
       const artistFiles: ArtistFile[] = artists.map((artist) => ({
         id: artist.id,
         name: artist.name,
-        previews: artist.preview_url ? [`${backendUrl}${artist.preview_url}`] : [],
+        previews: artist.preview_url ? [artist.preview_url] : [],
         prompt: artist.artist_string,
       }));
       setArtistPublicFiles(artistFiles);

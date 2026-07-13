@@ -7,6 +7,7 @@ system_prompt 函数、output_validator、tool，使得对 deps 的就地修改
 
 全仓库只访问 `ctx.deps`（见审计）；其余字段为兼容/调试附带，无外部依赖。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,8 +22,8 @@ class RunContext(Generic[DepsT]):
 
     deps: DepsT
     # 以下字段仅为与 pydantic_ai 行为对齐 / 调试可见性，本项目未直接读取：
-    retry: int = 0                      # 当前是第几次重试（从 0 起）
-    tool_name: str = ""                 # 若在工具上下文，当前工具名
+    retry: int = 0  # 当前是第几次重试（从 0 起）
+    tool_name: str = ""  # 若在工具上下文，当前工具名
     messages: list = field(default_factory=list)  # 截至当前的消息列表（只读视图）
 
 

@@ -6,7 +6,6 @@ import {
   getPublicVibes, deletePublicVibe, updatePublicVibeMeta,
   getPublicLibraryOwnerId, type PublicVibeData,
 } from '../../services/publicLibrary';
-import { getBackendUrl } from '../../utils/apiConfig';
 
 interface PublicVibeManagerModalProps {
   isOpen: boolean;
@@ -106,12 +105,11 @@ export const PublicVibeManagerModal: React.FC<PublicVibeManagerModalProps> = ({
 
   // 把 PublicVibeData 转换为 VibeFile 以便复用 VibeCard
   const toVibeFile = (v: PublicVibeData): VibeFile => {
-    const backendUrl = getBackendUrl();
     return {
       id: v.id,
       name: v.name,
       size: '',
-      preview: v.thumbnail ? (v.thumbnail.startsWith('/') ? `${backendUrl}${v.thumbnail}` : v.thumbnail) : '',
+      preview: v.thumbnail || '',
       supportedModels: v.supportedModels,
       defaultStrength: v.defaultStrength,
       defaultInfoExtracted: v.defaultInfoExtracted,

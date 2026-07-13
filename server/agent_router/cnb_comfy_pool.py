@@ -33,22 +33,23 @@
     - 巡检任务也按 instance 独立启动 + 取消
     - 业务函数（patch_payload / 提交 prompt / 等待 history / 下载图）不在这里，留给 provider
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional, Iterable
 from urllib.parse import quote, urlencode
 
 import aiohttp
 
-
 # ============================================================
 # 异常
 # ============================================================
+
 
 class CNBComfyTimeoutError(Exception):
     """workspace 启动 / 出图等待超时。"""
@@ -61,6 +62,7 @@ class CNBComfyRestartScheduledError(Exception):
 # ============================================================
 # CNBComfyPool
 # ============================================================
+
 
 class CNBComfyPool:
     """
@@ -85,7 +87,7 @@ class CNBComfyPool:
         scale_queue_per_account: int = 2,
         running_timeout_seconds: int = 300,
         healthcheck_timeout: int = 15,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger | None = None,
     ):
         self.name = name
         self._raw_accounts = list(accounts or [])
@@ -121,7 +123,7 @@ class CNBComfyPool:
         self._shutdown: bool = False
 
     # ----- 账户配置规范化 -----
-    def _normalize_account(self, item: dict) -> Optional[dict]:
+    def _normalize_account(self, item: dict) -> dict | None:
         repo = str(item.get("repo") or "").strip()
         token = str(item.get("token") or "").strip()
         if not repo or not token:
@@ -203,13 +205,15 @@ class CNBComfyPool:
         current = accounts_block.get(account_key)
         if not isinstance(current, dict):
             current = {}
-        current.update({
-            "name": account.get("name") or account_key,
-            "repo": account.get("repo"),
-            "branch": account.get("branch"),
-            "api_base": account.get("api_base"),
-            **fields,
-        })
+        current.update(
+            {
+                "name": account.get("name") or account_key,
+                "repo": account.get("repo"),
+                "branch": account.get("branch"),
+                "api_base": account.get("api_base"),
+                **fields,
+            }
+        )
         accounts_block[account_key] = current
         self._sync_store_urls(store)
         self.save_account_store(store)
@@ -224,7 +228,7 @@ class CNBComfyPool:
                 return str(info.get("url") or "").strip().rstrip("/")
         return ""
 
-    def get_account_workspace_create_time(self, account: dict) -> Optional[int]:
+    def get_account_workspace_create_time(self, account: dict) -> int | None:
         store = self.load_account_store()
         account_key = self.get_account_key(account)
         accounts_block = store.get("accounts") if isinstance(store, dict) else {}
@@ -234,6 +238,8 @@ class CNBComfyPool:
         if not isinstance(info, dict):
             return None
         raw_value = info.get("create_time")
+        if raw_value is None:
+            return None
         try:
             value = int(raw_value)
         except Exception:
@@ -244,7 +250,7 @@ class CNBComfyPool:
     # 轮换 + 选账户
     # ============================================================
 
-    def get_next_account(self) -> Optional[dict]:
+    def get_next_account(self) -> dict | None:
         accounts = self.get_accounts()
         if not accounts:
             return None
@@ -261,7 +267,7 @@ class CNBComfyPool:
         self._comfy_cursor += 1
         return ordered
 
-    def _pick_free_account_locked(self) -> Optional[dict]:
+    def _pick_free_account_locked(self) -> dict | None:
         accounts = self.get_accounts()
         if not accounts:
             return None
@@ -298,9 +304,7 @@ class CNBComfyPool:
                     raise Exception(f"CNB API {resp.status}: {text[:300]}")
         return json.loads(text) if text else {}
 
-    async def list_workspaces(
-        self, account: dict, status: str | None = None
-    ) -> list[dict]:
+    async def list_workspaces(self, account: dict, status: str | None = None) -> list[dict]:
         api_base = str(account.get("api_base") or "").rstrip("/")
         repo = str(account.get("repo") or "").strip()
         branch = str(account.get("branch") or "main").strip()
@@ -408,7 +412,7 @@ class CNBComfyPool:
                 if await self.healthcheck(stored_url, 10):
                     return stored_url
             except Exception:
-                pass
+                self.logger.debug("缓存 workspace URL 健康检查失败", exc_info=True)
 
         running_items = await self.list_workspaces(account, status="running")
         for item in running_items:
@@ -428,6 +432,7 @@ class CNBComfyPool:
                     )
                     return candidate
             except Exception:
+                self.logger.debug("候选 workspace URL 健康检查失败", exc_info=True)
                 continue
         return ""
 
@@ -473,8 +478,13 @@ class CNBComfyPool:
                     raise Exception("CNB 工作空间强制关闭超时，仍存在 running workspace")
 
                 self.update_account_store(
-                    account, url="", sn=None, pipeline_id=None,
-                    business_id=None, status="closed", create_time=None,
+                    account,
+                    url="",
+                    sn=None,
+                    pipeline_id=None,
+                    business_id=None,
+                    status="closed",
+                    create_time=None,
                 )
 
             start_url = f"{api_base}/{repo_path}/-/workspace/start"
@@ -503,11 +513,13 @@ class CNBComfyPool:
                             )
                             return new_url
                     except Exception:
-                        pass
+                        self.logger.debug("workspace 启动后的健康检查失败", exc_info=True)
                 await asyncio.sleep(max(poll_interval, 1))
 
             if not seen_started_workspace:
-                raise Exception("CNB 工作空间启动后未在超时前出现在 workspace/list 的 running 列表中")
+                raise Exception(
+                    "CNB 工作空间启动后未在超时前出现在 workspace/list 的 running 列表中"
+                )
             raise Exception("CNB 工作空间重启后未在超时前变为可用")
 
     async def ensure_account_restarting(self, account: dict) -> None:
@@ -523,14 +535,17 @@ class CNBComfyPool:
                 for attempt in range(1, max_retries + 1):
                     try:
                         new_url = await self.restart_workspace(account, force_restart=True)
-                        self.logger.info(f"[{self.name}] workspace 已恢复 {account_key} -> {new_url}")
+                        self.logger.info(
+                            f"[{self.name}] workspace 已恢复 {account_key} -> {new_url}"
+                        )
                         self._account_last_used_at[account_key] = time.time()
                         break
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
                         self.logger.error(
-                            f"[{self.name}] workspace 恢复失败 {account_key} (第{attempt}/{max_retries}次): {e}"
+                            f"[{self.name}] workspace 恢复失败 {account_key} "
+                            f"(第{attempt}/{max_retries}次): {e}"
                         )
                         if attempt < max_retries:
                             await asyncio.sleep(30)
@@ -546,7 +561,7 @@ class CNBComfyPool:
                     async with self._queue_condition:
                         self._queue_condition.notify_all()
                 except Exception:
-                    pass
+                    self.logger.debug("唤醒 workspace 等待队列失败", exc_info=True)
 
         task = asyncio.create_task(_runner())
         self._background_tasks.add(task)
@@ -672,11 +687,13 @@ class CNBComfyPool:
             except Exception:
                 create_time = None
 
-            tasks.append({
-                "prompt_id": prompt_id,
-                "create_time": create_time,
-                "client_id": meta.get("client_id") if isinstance(meta, dict) else None,
-            })
+            tasks.append(
+                {
+                    "prompt_id": prompt_id,
+                    "create_time": create_time,
+                    "client_id": meta.get("client_id") if isinstance(meta, dict) else None,
+                }
+            )
             seen_prompt_ids.add(prompt_id)
         return tasks
 
@@ -699,7 +716,9 @@ class CNBComfyPool:
         if stale_running_ids:
             try:
                 await self.interrupt(base_url)
-                self.logger.warning(f"[{self.name}] 发现超时 running 任务,已中断: {stale_running_ids}")
+                self.logger.warning(
+                    f"[{self.name}] 发现超时 running 任务,已中断: {stale_running_ids}"
+                )
             except Exception as e:
                 self.logger.warning(f"[{self.name}] 中断超时 running 任务失败: {e}")
             queue_data = await self.get_queue(base_url)
@@ -719,7 +738,7 @@ class CNBComfyPool:
         }
 
     async def cleanup_prompt(
-        self, base_url: str, prompt_id: Optional[str], interrupt_running: bool = False
+        self, base_url: str, prompt_id: str | None, interrupt_running: bool = False
     ) -> None:
         if not base_url:
             return
@@ -779,14 +798,13 @@ class CNBComfyPool:
                                 if base_url:
                                     try:
                                         queue_guard = await self.guard_queue(base_url)
-                                        if (
-                                            not queue_guard.get("running_ids")
-                                            and not queue_guard.get("pending_ids")
-                                        ):
+                                        if not queue_guard.get(
+                                            "running_ids"
+                                        ) and not queue_guard.get("pending_ids"):
                                             stale_active_account_keys.append(account_key)
                                             continue
                                     except Exception:
-                                        pass
+                                        self.logger.debug("巡检 stale 账户队列失败", exc_info=True)
 
                         # 2) workspace 跑太久：强制重启
                         if (
@@ -808,7 +826,8 @@ class CNBComfyPool:
 
                     # 3) 清理僵尸队列任务
                     zombie_ids = [
-                        tid for tid in self._local_queue
+                        tid
+                        for tid in self._local_queue
                         if tid != task_id and tid not in self._waiting_tasks
                     ]
                     for zombie_id in zombie_ids:
@@ -871,16 +890,16 @@ class CNBComfyPool:
             self.logger.info(f"[{self.name}] 动态扩容: 队列 {waiting_count} 等待, 启动 {key}")
             await self.ensure_account_restarting(acc)
 
-    async def release_local_account(
-        self, account: Optional[dict], task_id: Optional[str]
-    ) -> None:
+    async def release_local_account(self, account: dict | None, task_id: str | None) -> None:
         async with self._queue_condition:
             if task_id and task_id in self._local_queue:
                 self._local_queue.remove(task_id)
             if isinstance(account, dict):
                 account_key = self.get_account_key(account)
                 active_meta = self._local_active.get(account_key)
-                active_task_id = active_meta.get("task_id") if isinstance(active_meta, dict) else None
+                active_task_id = (
+                    active_meta.get("task_id") if isinstance(active_meta, dict) else None
+                )
                 if active_task_id == task_id:
                     self._local_active.pop(account_key, None)
                 self._account_last_used_at[account_key] = time.time()
@@ -949,8 +968,8 @@ class CNBComfyPool:
             task.cancel()
         try:
             await asyncio.wait_for(self._notify_queue_shutdown(), timeout=3.0)
-        except (asyncio.TimeoutError, Exception):
-            pass
+        except Exception:
+            self.logger.warning("关闭时唤醒等待队列失败", exc_info=True)
         if tasks:
             try:
                 await asyncio.wait_for(
@@ -1029,7 +1048,7 @@ class CNBComfyPool:
                     running_count = len(r_ids)
                     pending_count = len(p_ids)
                 except Exception:
-                    pass
+                    self.logger.debug("读取 workspace 队列统计失败", exc_info=True)
                 try:
                     history_data = await self.get_history(effective_url)
                     if isinstance(history_data, dict):
@@ -1044,31 +1063,33 @@ class CNBComfyPool:
                             if isinstance(status_info, dict) and status_info.get("completed"):
                                 completed_count += 1
                 except Exception:
-                    pass
+                    self.logger.debug("读取 workspace 历史统计失败", exc_info=True)
 
             active_meta = self._local_active.get(account_key)
             is_active = isinstance(active_meta, dict)
             active_task_id = active_meta.get("task_id") if is_active else None
             active_since = float(active_meta.get("started_at") or 0) if is_active else None
 
-            results.append({
-                "name": account.get("name") or account_key,
-                "repo": account.get("repo"),
-                "branch": account.get("branch"),
-                "url": effective_url,
-                "url_healthy": healthy,
-                "workspace_status": latest_item.get("status") if latest_item else None,
-                "business_id": latest_item.get("business_id") if latest_item else None,
-                "sn": latest_item.get("sn") if latest_item else None,
-                "create_time": latest_item.get("create_time") if latest_item else None,
-                "restarting": account_key in self._restarting_accounts,
-                "error": latest_error,
-                "running_seconds": running_seconds,
-                "running_count": running_count,
-                "pending_count": pending_count,
-                "completed_count": completed_count,
-                "active": is_active,
-                "active_task_id": active_task_id,
-                "active_since": active_since,
-            })
+            results.append(
+                {
+                    "name": account.get("name") or account_key,
+                    "repo": account.get("repo"),
+                    "branch": account.get("branch"),
+                    "url": effective_url,
+                    "url_healthy": healthy,
+                    "workspace_status": latest_item.get("status") if latest_item else None,
+                    "business_id": latest_item.get("business_id") if latest_item else None,
+                    "sn": latest_item.get("sn") if latest_item else None,
+                    "create_time": latest_item.get("create_time") if latest_item else None,
+                    "restarting": account_key in self._restarting_accounts,
+                    "error": latest_error,
+                    "running_seconds": running_seconds,
+                    "running_count": running_count,
+                    "pending_count": pending_count,
+                    "completed_count": completed_count,
+                    "active": is_active,
+                    "active_task_id": active_task_id,
+                    "active_since": active_since,
+                }
+            )
         return results

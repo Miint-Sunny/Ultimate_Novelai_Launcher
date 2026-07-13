@@ -1,20 +1,22 @@
 """
 集成测试：用 FakeModel 驱动**真实**的 pure_planner_agent（生产实例），
-验证真实 agent 配置（11 段 system prompt + 4 个知识工具 + DrawSpec 原生输出）在自研框架下端到端可用。
+验证真实 agent 配置（11 段 system prompt + 4 个知识工具 + DrawSpec 原生输出）
+在自研框架下端到端可用。
 
 不打真实 LLM / 不需要 server 在跑：FakeModel 按脚本返回，知识工具读本地库（缺则返回 []）。
 """
+
 from __future__ import annotations
 
 import json
 
 import pytest
 
-from agent_router.llm.models.base import Model
+from agent_router.deps import AgentDeps
 from agent_router.llm.messages import ModelResponse, TextPart, ToolCallPart
+from agent_router.llm.models.base import Model
 from agent_router.llm.output import OUTPUT_TOOL_NAME
 from agent_router.llm.result import Usage
-from agent_router.deps import AgentDeps
 
 
 class FakeModel(Model):
@@ -24,11 +26,13 @@ class FakeModel(Model):
         self.calls: list[dict] = []
 
     async def request(self, messages, *, system_parts, tools, require_tool, model_settings=None):
-        self.calls.append({
-            "tool_names": [t.name for t in tools],
-            "system_n": len(system_parts),
-            "require_tool": require_tool,
-        })
+        self.calls.append(
+            {
+                "tool_names": [t.name for t in tools],
+                "system_n": len(system_parts),
+                "require_tool": require_tool,
+            }
+        )
         return self._responses.pop(0), Usage(requests=1)
 
 
@@ -43,9 +47,9 @@ async def test_pure_planner_produces_drawspec():
         "characters": [],
         "size": "Portrait",
     }
-    fake = FakeModel([
-        ModelResponse(parts=[TextPart(content=json.dumps(spec_args, ensure_ascii=False))])
-    ])
+    fake = FakeModel(
+        [ModelResponse(parts=[TextPart(content=json.dumps(spec_args, ensure_ascii=False))])]
+    )
     deps = AgentDeps(user_id="t", scene="private")
 
     result = await pure_planner_agent.run("画一个女孩", deps=deps, model=fake)
@@ -70,14 +74,27 @@ async def test_pure_planner_tool_then_text_json():
     from agent_router.agents.pure_planner import pure_planner_agent
     from agent_router.schemas import DrawSpec
 
-    # 第一轮调真实工具 random_artist（无 server 时读本地库，缺则返回 []，循环继续）；第二轮用文本 JSON 收尾
-    fake = FakeModel([
-        ModelResponse(parts=[ToolCallPart(tool_name="random_artist", args={"count": 1}, tool_call_id="c1")]),
-        ModelResponse(parts=[TextPart(content=json.dumps(
-            {"positive": "art", "negative": "", "characters": [], "size": None},
-            ensure_ascii=False,
-        ))]),
-    ])
+    # 第一轮调真实工具 random_artist（无 server 时读本地库，缺则返回 []，循环继续）；
+    # 第二轮用文本 JSON 收尾。
+    fake = FakeModel(
+        [
+            ModelResponse(
+                parts=[
+                    ToolCallPart(tool_name="random_artist", args={"count": 1}, tool_call_id="c1")
+                ]
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content=json.dumps(
+                            {"positive": "art", "negative": "", "characters": [], "size": None},
+                            ensure_ascii=False,
+                        )
+                    )
+                ]
+            ),
+        ]
+    )
     deps = AgentDeps(user_id="t", scene="private")
 
     result = await pure_planner_agent.run("随机画一张", deps=deps, model=fake)
@@ -88,10 +105,14 @@ async def test_pure_planner_tool_then_text_json():
     assert len(fake.calls) == 2
     # 第二轮请求里应包含上一轮 random_artist 的工具返回（ModelRequest 携带 ToolReturnPart）
     from agent_router.llm.messages import ModelRequest, ToolReturnPart
+
     second_call_msgs = []  # noqa: F841  (结构性校验通过 result.all_messages 更稳)
     tool_returns = [
-        p for m in result.all_messages() if isinstance(m, ModelRequest)
-        for p in m.parts if isinstance(p, ToolReturnPart) and p.tool_name == "random_artist"
+        p
+        for m in result.all_messages()
+        if isinstance(m, ModelRequest)
+        for p in m.parts
+        if isinstance(p, ToolReturnPart) and p.tool_name == "random_artist"
     ]
     assert len(tool_returns) == 1
 
@@ -102,16 +123,26 @@ async def test_lite_chat_run_with_fake(monkeypatch):
     from agent_router.agents import lite_chat as lc
     from agent_router.schemas import LiteResponse
 
+    # 模块导入不应要求 Bot 的可选 config.py 或立即创建上游 client。
+    assert lc.lite_chat_agent._default_model is None
+
     lite_args = {"reply_text": "在画了喵~", "should_draw": True, "refined_resources": ""}
-    fake = FakeModel([
-        ModelResponse(parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args=lite_args, tool_call_id="c1")])
-    ])
+    fake = FakeModel(
+        [
+            ModelResponse(
+                parts=[ToolCallPart(tool_name=OUTPUT_TOOL_NAME, args=lite_args, tool_call_id="c1")]
+            )
+        ]
+    )
     monkeypatch.setattr(lc, "get_prefilter_model", lambda: fake)
     monkeypatch.setattr(lc, "get_prefilter_model_settings", lambda: None)
 
     deps = AgentDeps(user_id="t", scene="private")
     result, messages, sys_parts = await lc.run_lite_chat(
-        user_text="画个女孩", candidates="", history=[], deps=deps,
+        user_text="画个女孩",
+        candidates="",
+        history=[],
+        deps=deps,
     )
     assert isinstance(result, LiteResponse)
     assert result.should_draw is True

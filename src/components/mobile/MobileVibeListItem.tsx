@@ -88,11 +88,11 @@ export function MobileVibeListItem({
             {isCollecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className={`w-5 h-5 ${isCollected ? 'fill-current' : ''}`} />}
           </button>
           <button
-            onClick={(event) => {
+            onClick={async (event) => {
               event.stopPropagation();
               if (vibe.fileName) {
                 const anchor = document.createElement('a');
-                anchor.href = getPublicVibeDownloadUrl(vibe.fileName);
+                anchor.href = await getPublicVibeDownloadUrl(vibe.fileName);
                 anchor.download = vibe.fileName;
                 anchor.click();
               }

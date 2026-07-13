@@ -1,4 +1,4 @@
-import { sidecarApi } from '../../api/sidecar';
+import { appBackendApi } from '../../api/appBackendApi';
 
 export interface PublicCRData {
   id: string;
@@ -19,19 +19,22 @@ export interface UpdateCRParams {
 }
 
 let publicCRCache: PublicCRData[] | null = null;
+const crPreviewUrls = new Map<string, string>();
 
 export function clearPublicCRCache(): void {
   publicCRCache = null;
+  crPreviewUrls.clear();
+  appBackendApi.revokeObjectUrls('/api/cr/preview/');
 }
 
 export async function getPublicCRs(): Promise<PublicCRData[]> {
-  if (publicCRCache) return publicCRCache;
+  if (publicCRCache) return hydrateCRPreviews(publicCRCache);
 
   try {
-    const data = await sidecarApi.getJson<{ crs?: PublicCRData[] }>('/api/cr/list');
+    const data = await appBackendApi.getJson<{ crs?: PublicCRData[] }>('/api/cr/list');
     const crs = data.crs || [];
     publicCRCache = crs;
-    return crs;
+    return hydrateCRPreviews(crs);
   } catch (error) {
     console.error('获取公共CR列表失败:', error);
     return [];
@@ -39,14 +42,28 @@ export async function getPublicCRs(): Promise<PublicCRData[]> {
 }
 
 export function getPublicCRPreviewUrl(crId: string): string {
-  return sidecarApi.url(`/api/cr/preview/${encodeURIComponent(crId)}`);
+  return crPreviewUrls.get(crId) || '';
+}
+
+async function hydrateCRPreviews(crs: PublicCRData[]): Promise<PublicCRData[]> {
+  return Promise.all(crs.map(async cr => {
+    if (!cr.preview_url) return cr;
+    const path = `/api/cr/preview/${encodeURIComponent(cr.id)}`;
+    try {
+      const preview = await appBackendApi.objectUrl(path);
+      crPreviewUrls.set(cr.id, preview);
+      return { ...cr, preview_url: preview };
+    } catch {
+      return { ...cr, preview_url: null };
+    }
+  }));
 }
 
 export async function createPublicCR(
   params: CreateCRParams
 ): Promise<{ success: boolean; message: string; cr?: PublicCRData }> {
   try {
-    const data = await sidecarApi.postJson<{ message?: string; cr?: PublicCRData }>('/api/cr/create', params);
+    const data = await appBackendApi.postJson<{ message?: string; cr?: PublicCRData }>('/api/cr/create', params);
     clearPublicCRCache();
     return { success: true, message: data.message || '创建成功', cr: data.cr };
   } catch (error) {
@@ -57,7 +74,7 @@ export async function createPublicCR(
 
 export async function deletePublicCR(crId: string): Promise<{ success: boolean; message: string }> {
   try {
-    const data = await sidecarApi.deleteJson<{ message?: string }>(`/api/cr/${encodeURIComponent(crId)}`);
+    const data = await appBackendApi.deleteJson<{ message?: string }>(`/api/cr/${encodeURIComponent(crId)}`);
     clearPublicCRCache();
     return { success: true, message: data.message || '删除成功' };
   } catch (error) {
@@ -71,7 +88,7 @@ export async function updatePublicCR(
   params: UpdateCRParams
 ): Promise<{ success: boolean; message: string; cr?: PublicCRData }> {
   try {
-    const data = await sidecarApi.putJson<{ message?: string; cr?: PublicCRData }>(
+    const data = await appBackendApi.putJson<{ message?: string; cr?: PublicCRData }>(
       `/api/cr/${encodeURIComponent(crId)}`,
       params,
     );

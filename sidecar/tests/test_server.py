@@ -4,17 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-try:
-    from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient
 
-    from sidecar.config import Settings
-    from sidecar.server import create_app
-except ModuleNotFoundError as exc:  # pragma: no cover - dependency bootstrap guard
-    TestClient = None  # type: ignore[assignment]
-    _IMPORT_ERROR = exc
-else:
-    _IMPORT_ERROR = None
-
+from sidecar.config import Settings
+from sidecar.server import create_app
 
 ONE_PIXEL_DATA_URL = (
     "data:image/png;base64,"
@@ -22,8 +15,101 @@ ONE_PIXEL_DATA_URL = (
 )
 
 
-@unittest.skipIf(_IMPORT_ERROR is not None, f"missing dependency: {_IMPORT_ERROR}")
 class ServerTests(unittest.TestCase):
+    @staticmethod
+    def _settings(data_dir: Path) -> Settings:
+        return Settings(
+            host="127.0.0.1",
+            port=0,
+            data_dir=data_dir,
+            nai_token="",
+            nai_base_url="https://image.novelai.net",
+            llm_base_url="",
+            llm_api_key="",
+            llm_model="",
+            mock_generation=True,
+            sidecar_auth_token="process-secret",
+        )
+
+    def test_v1_streamed_body_limit_uses_actual_bytes_not_content_length(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            app = create_app(self._settings(Path(temp)))
+
+            def chunks():
+                yield b'{"code":"'
+                yield b"1" * (65 * 1024)
+                yield b'"}'
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/auth/pair/exchange",
+                    content=chunks(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Content-Length": "1",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.headers["content-type"], "application/problem+json")
+        payload = response.json()
+        self.assertEqual(payload["status"], 413)
+        self.assertEqual(payload["code"], "request_body_too_large")
+        self.assertEqual(payload["title"], "Request body too large")
+        self.assertEqual(payload["context"]["limit"], 64 * 1024)
+        self.assertGreater(payload["context"]["received"], 64 * 1024)
+        self.assertEqual(response.headers["x-request-id"], payload["request_id"])
+
+    def test_v1_malformed_json_remains_a_400_problem(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            app = create_app(self._settings(Path(temp)))
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/auth/pair/exchange",
+                    content=b'{"code":',
+                    headers={"Content-Type": "application/json"},
+                )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.headers["content-type"], "application/problem+json")
+        payload = response.json()
+        self.assertEqual(payload["status"], 400)
+        self.assertEqual(payload["code"], "invalid_request_body")
+        self.assertNotEqual(payload["code"], "request_body_too_large")
+
+    def test_v1_requires_bearer_while_compat_accepts_legacy_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            settings = Settings(
+                host="127.0.0.1",
+                port=38176,
+                data_dir=Path(temp),
+                nai_token="",
+                nai_base_url="https://image.novelai.net",
+                llm_base_url="",
+                llm_api_key="",
+                llm_model="",
+                mock_generation=True,
+                sidecar_auth_token="process-secret",
+            )
+            with TestClient(create_app(settings)) as client:
+                legacy_v1 = client.get(
+                    "/api/v1/system/ready",
+                    headers={"X-Sidecar-Auth": "process-secret"},
+                )
+                bearer_v1 = client.get(
+                    "/api/v1/system/ready",
+                    headers={"Authorization": "Bearer process-secret"},
+                )
+                legacy_compat = client.get(
+                    "/health",
+                    headers={"X-Sidecar-Auth": "process-secret"},
+                )
+
+            self.assertEqual(legacy_v1.status_code, 401)
+            self.assertEqual(legacy_v1.json()["code"], "authentication_failed")
+            self.assertEqual(bearer_v1.status_code, 200)
+            self.assertEqual(legacy_compat.status_code, 200)
+
     def test_health_and_history(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             settings = Settings(
@@ -36,6 +122,7 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
@@ -60,6 +147,7 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
@@ -93,10 +181,11 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
-                response = client.post(
+                rejected = client.post(
                     "/api/translate/proxy",
                     json={
                         "base_url": "https://should-not-be-used.example/v1",
@@ -104,6 +193,12 @@ class ServerTests(unittest.TestCase):
                         "model": "should-not-be-used",
                         "messages": [{"role": "user", "content": "translate this"}],
                     },
+                )
+                self.assertEqual(rejected.status_code, 422)
+
+                response = client.post(
+                    "/api/translate/proxy",
+                    json={"messages": [{"role": "user", "content": "translate this"}]},
                 )
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("LLM is not configured", response.json()["detail"])
@@ -120,6 +215,7 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
@@ -149,6 +245,7 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
@@ -160,7 +257,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(common.status_code, 200)
                 self.assertEqual(common.json(), [])
 
-    def test_legacy_agent_stream_reports_missing_llm(self) -> None:
+    def test_main_accepts_complete_agent_shape_then_reports_capability_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             settings = Settings(
                 host="127.0.0.1",
@@ -172,16 +269,80 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
                 response = client.post(
                     "/api/agent/web/generate-prompt",
-                    json={"user_request": "画一个笑着的女孩"},
+                    json={
+                        "user_request": "画一个笑着的女孩",
+                        "model": "",
+                        "history": [{"role": "user", "content": "上一轮"}],
+                        "use_codex": True,
+                        "knowledge_sources": ["roleTags", "artists", "vibes", "ocs"],
+                        "web_artists": [{"id": "A1", "name": "A1", "prompt": "artist:a"}],
+                        "web_ocs": [
+                            {
+                                "id": "OC1",
+                                "name": "Alice",
+                                "zh_name": "爱丽丝",
+                                "positive": "blue eyes",
+                                "negative": "",
+                            }
+                        ],
+                        "web_codex": [
+                            {
+                                "id": "C1",
+                                "category": "world",
+                                "title": "夜城",
+                                "content": "霓虹灯下的城市",
+                                "is_r18": False,
+                            }
+                        ],
+                        "current_positive": "1girl",
+                        "current_negative": "lowres",
+                        "current_characters": [
+                            {"name": "Alice", "positive": "smile", "negative": ""}
+                        ],
+                    },
                 )
-                self.assertEqual(response.status_code, 200)
-                self.assertIn("event: error", response.text)
-                self.assertIn("LLM is not configured", response.text)
+                extra = client.post(
+                    "/api/agent/web/generate-prompt",
+                    json={"user_request": "cat", "silently_ignored": True},
+                )
+                invalid_image = client.post(
+                    "/api/agent/web/generate-prompt",
+                    json={"user_request": "cat", "image_b64": "not-base64"},
+                )
+                image_only = client.post(
+                    "/api/agent/web/generate-prompt",
+                    json={
+                        "user_request": "",
+                        "image_b64": ONE_PIXEL_DATA_URL.split(",", 1)[1],
+                        "image_mime_type": "image/png",
+                    },
+                )
+                mismatched_mime = client.post(
+                    "/api/agent/web/generate-prompt",
+                    json={
+                        "user_request": "describe this",
+                        "image_b64": ONE_PIXEL_DATA_URL.split(",", 1)[1],
+                        "image_mime_type": "image/jpeg",
+                    },
+                )
+                ready = client.get("/api/v1/system/ready")
+
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(
+                    response.json()["detail"]["code"],
+                    "desktop_agent_unavailable_on_main",
+                )
+                self.assertEqual(extra.status_code, 422)
+                self.assertEqual(invalid_image.status_code, 422)
+                self.assertEqual(image_only.status_code, 503)
+                self.assertEqual(mismatched_mime.status_code, 422)
+                self.assertFalse(ready.json()["capabilities"]["desktop_agent_available"])
 
     def test_local_oc_artist_and_cr_lifecycle(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -195,6 +356,7 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             with TestClient(app) as client:
@@ -235,11 +397,21 @@ class ServerTests(unittest.TestCase):
 
                 cr = client.post(
                     "/api/cr/create",
-                    json={"name": "pose ref", "image_base64": ONE_PIXEL_DATA_URL, "zh_names": ["姿势"]},
+                    json={
+                        "name": "pose ref",
+                        "image_base64": ONE_PIXEL_DATA_URL,
+                        "zh_names": ["姿势"],
+                    },
                 )
                 self.assertEqual(cr.status_code, 200)
                 cr_id = cr.json()["cr"]["id"]
-                self.assertEqual(client.put(f"/api/cr/{cr_id}", json={"name": "pose ref 2"}).status_code, 200)
+                self.assertEqual(
+                    client.put(
+                        f"/api/cr/{cr_id}",
+                        json={"name": "pose ref 2"},
+                    ).status_code,
+                    200,
+                )
                 self.assertEqual(client.delete(f"/api/cr/{cr_id}").status_code, 200)
                 self.assertEqual(client.delete("/api/oc/alice").status_code, 200)
                 self.assertEqual(client.delete("/api/artists/soft%20shading").status_code, 200)
@@ -256,6 +428,7 @@ class ServerTests(unittest.TestCase):
                 llm_api_key="",
                 llm_model="",
                 mock_generation=True,
+                unsafe_dev_no_auth=True,
             )
             app = create_app(settings)
             vibe_payload = {
