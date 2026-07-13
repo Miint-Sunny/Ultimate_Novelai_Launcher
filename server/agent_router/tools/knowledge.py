@@ -41,18 +41,43 @@ _DANBOORU_CATEGORY_MAP = {
 }
 
 
+def _knowledge_source_enabled(deps: AgentDeps, source: str) -> bool:
+    """Honor Web source selection; the legacy Bot's empty default means all."""
+    configured = {
+        "".join(ch for ch in str(item).lower() if ch.isalnum())
+        for item in (deps.knowledge_sources or [])
+    }
+    if not configured:
+        return deps.scene != "web"
+    aliases = {
+        "artists": {"artist", "artists"},
+        "ocs": {"oc", "ocs"},
+        "roleTags": {"roletag", "roletags", "roles"},
+    }
+    normalized = "".join(ch for ch in source.lower() if ch.isalnum())
+    return bool(configured & aliases.get(source, {normalized}))
+
+
 def _internal_get(deps: AgentDeps, path: str, params: dict | None = None):
     """便捷封装：拼 URL + 带 session_id"""
     url = f"{deps.internal_base_url.rstrip('/')}{path}"
     final_params = dict(params or {})
     if deps.session_id and "session_id" not in final_params:
         final_params["session_id"] = deps.session_id
-    return deps.http_client.get(url, params=final_params)
+    return deps.http_client.get(
+        url,
+        params=final_params,
+        headers=deps.internal_headers or None,
+    )
 
 
 def _internal_post(deps: AgentDeps, path: str, json: dict | None = None):
     url = f"{deps.internal_base_url.rstrip('/')}{path}"
-    return deps.http_client.post(url, json=json or {})
+    return deps.http_client.post(
+        url,
+        json=json or {},
+        headers=deps.internal_headers or None,
+    )
 
 
 # ============================================================
@@ -126,25 +151,28 @@ def _load_artists_from_web(deps: AgentDeps) -> list[dict]:
 
 
 def _dedupe_artists(items: list[dict]) -> list[dict]:
-    seen: set[str] = set()
+    seen_ids: set[str] = set()
+    seen_names: set[str] = set()
     out: list[dict] = []
     for item in items:
-        key = (
-            str(item.get("id") or "").upper(),
-            str(item.get("name") or "").upper(),
-            str(item.get("artist_string") or ""),
-        )
-        marker = "|".join(key)
-        if marker in seen:
+        item_id = str(item.get("id") or "").strip().casefold()
+        name = str(item.get("name") or "").strip().casefold()
+        if (item_id and item_id in seen_ids) or (name and name in seen_names):
             continue
-        seen.add(marker)
+        if item_id:
+            seen_ids.add(item_id)
+        if name:
+            seen_names.add(name)
         out.append(item)
     return out
 
 
 def _load_artists_for_deps(deps: AgentDeps) -> list[dict]:
     """Web 端优先使用浏览器传来的资料；Bot/兜底继续读服务端本地库。"""
-    return _dedupe_artists(_load_artists_from_web(deps) + _load_artists_local())
+    if not _knowledge_source_enabled(deps, "artists"):
+        return []
+    local = [] if deps.knowledge_snapshot_injected else _load_artists_local()
+    return _dedupe_artists(_load_artists_from_web(deps) + local)
 
 
 def _load_ocs_local() -> list[dict]:
@@ -198,23 +226,24 @@ def _dedupe_ocs(items: list[dict]) -> list[dict]:
     seen: set[str] = set()
     out: list[dict] = []
     for item in items:
-        marker = "|".join(
-            [
-                str(item.get("en_name") or "").lower(),
-                str(item.get("zh_name") or ""),
-                str(item.get("tag_group") or ""),
-            ]
-        )
-        if marker in seen:
+        identities = {
+            str(item.get(key) or "").strip().casefold()
+            for key in ("id", "en_name", "name", "zh_name")
+            if str(item.get(key) or "").strip()
+        }
+        if identities & seen:
             continue
-        seen.add(marker)
+        seen.update(identities)
         out.append(item)
     return out
 
 
 def _load_ocs_for_deps(deps: AgentDeps) -> list[dict]:
     """Web 端优先使用浏览器传来的 OC；Bot/兜底继续读服务端本地库。"""
-    return _dedupe_ocs(_load_ocs_from_web(deps) + _load_ocs_local())
+    if not _knowledge_source_enabled(deps, "ocs"):
+        return []
+    local = [] if deps.knowledge_snapshot_injected else _load_ocs_local()
+    return _dedupe_ocs(_load_ocs_from_web(deps) + local)
 
 
 # ============================================================
@@ -229,6 +258,10 @@ _ROLE_MAPPING_TTL = 300.0
 
 async def _get_role_mapping(deps: AgentDeps) -> dict:
     """获取通用角色映射库（中英文 + origin）。带 5 分钟 TTL 缓存。"""
+    if not _knowledge_source_enabled(deps, "roleTags"):
+        return {}
+    if deps.role_mapping is not None:
+        return deps.role_mapping
     import time
 
     global _ROLE_MAPPING_CACHE, _ROLE_MAPPING_CACHE_AT

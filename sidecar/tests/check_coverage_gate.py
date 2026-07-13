@@ -20,6 +20,8 @@ TARGETS = (
     "sidecar/services/generation.py",
     "sidecar/services/jobs.py",
     "sidecar/services/library.py",
+    "server/agent_router/web_hooks.py",
+    "server/agent_router/web_runtime.py",
 )
 
 

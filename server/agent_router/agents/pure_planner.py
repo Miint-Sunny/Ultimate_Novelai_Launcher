@@ -13,14 +13,14 @@ from __future__ import annotations
 
 from ..deps import AgentDeps
 from ..llm import Agent, PromptedOutput, RunContext
-from ..model_provider import get_model
 from ..prompts import load_planner_section
 from ..schemas import DrawSpec
 from ..tools import register_knowledge_tools
 
-# 默认绑定全局 ACTIVE_MODEL；运行时 router 通过 model= 参数按所选 model 覆盖
+# Both the legacy router and desktop runner inject the request-scoped model.
+# Importing this module must not read deployment-specific config.py.
 pure_planner_agent: Agent[AgentDeps, DrawSpec] = Agent(
-    get_model(),
+    None,
     deps_type=AgentDeps,
     output_type=PromptedOutput(DrawSpec),
     retries=3,
@@ -57,6 +57,8 @@ def _register_planner_sections() -> None:
 
         def _make_loader(name: str):
             async def _loader(ctx: RunContext[AgentDeps]) -> str:
+                if ctx.deps.prompt_bundle is not None:
+                    return ctx.deps.prompt_bundle.planner(name)
                 return load_planner_section(name, preset=ctx.deps.prompt_preset)
 
             _loader.__name__ = f"_planner_{name}"

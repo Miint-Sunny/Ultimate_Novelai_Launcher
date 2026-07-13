@@ -47,6 +47,14 @@ class ModelHTTPError(LLMError):
         super().__init__(f"status_code: {status_code}, model error: {detail}")
 
 
+class ModelProtocolError(LLMError):
+    """A successful provider response that violates its wire contract."""
+
+    def __init__(self, provider: str, message: str) -> None:
+        self.provider = provider
+        super().__init__(f"{provider} response protocol error: {message}")
+
+
 # 反复空输出时统一抛这条消息——同时含 router 匹配的两个子串。
 EMPTY_OUTPUT_MESSAGE = (
     "Exceeded maximum output retries; the model returned neither a usable final "
@@ -75,6 +83,7 @@ __all__ = [
     "LLMError",
     "ModelRetry",
     "ModelHTTPError",
+    "ModelProtocolError",
     "UnexpectedModelBehavior",
     "EMPTY_OUTPUT_MESSAGE",
     "ToolCallError",

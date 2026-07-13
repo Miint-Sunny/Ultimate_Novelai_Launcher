@@ -9,6 +9,7 @@ from sidecar.bootstrap import (
     InstanceAlreadyRunningError,
     bind_sidecar_socket,
     readiness_payload,
+    settings_for_bound_socket,
 )
 from sidecar.config import Settings
 
@@ -84,9 +85,14 @@ class BootstrapTests(unittest.TestCase):
 
     def test_socket_owns_an_ephemeral_port(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            sock = bind_sidecar_socket(make_settings(Path(directory)))
+            settings = make_settings(Path(directory))
+            sock = bind_sidecar_socket(settings)
             try:
                 self.assertGreater(sock.getsockname()[1], 0)
+                runtime_settings = settings_for_bound_socket(settings, sock)
+                self.assertEqual(runtime_settings.port, sock.getsockname()[1])
+                self.assertGreater(runtime_settings.port, 0)
+                self.assertEqual(settings.port, 0)
             finally:
                 sock.close()
 

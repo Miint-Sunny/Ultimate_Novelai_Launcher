@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from ..exceptions import ModelHTTPError
+from ..exceptions import ModelHTTPError, ModelProtocolError
 from ..messages import (
     BinaryContent,
     ModelMessage,
@@ -31,7 +31,7 @@ from ..messages import (
     UserPromptPart,
 )
 from ..result import Usage
-from .base import Model, get_default_http_client
+from .base import Model, get_default_http_client, has_usable_terminal_part
 
 _ANTHROPIC_VERSION = "2023-06-01"
 _DEFAULT_MAX_TOKENS = 4096
@@ -197,8 +197,24 @@ class AnthropicModel(Model):
             text = _safe_text(resp)
             raise ModelHTTPError(resp.status_code, text, body=text)
 
-        data = resp.json()
-        return _parse_anthropic_response(data)
+        try:
+            data = resp.json()
+            return _parse_anthropic_response(data)
+        except ModelProtocolError:
+            raise
+        except (
+            json.JSONDecodeError,
+            UnicodeError,
+            TypeError,
+            ValueError,
+            AttributeError,
+            KeyError,
+            IndexError,
+        ) as exc:
+            raise ModelProtocolError(
+                "Anthropic",
+                f"invalid JSON or response structure ({type(exc).__name__})",
+            ) from exc
 
 
 # ============================================================
@@ -207,8 +223,16 @@ class AnthropicModel(Model):
 
 
 def _parse_anthropic_response(data: dict) -> tuple[ModelResponse, Usage]:
+    if not isinstance(data, dict):
+        raise TypeError("response root must be an object")
+    content = data.get("content")
+    if not isinstance(content, list):
+        raise TypeError("response.content must be a list")
+
     parts: list = []
-    for block in data.get("content") or []:
+    for block in content:
+        if not isinstance(block, dict):
+            raise TypeError("response.content entries must be objects")
         btype = block.get("type")
         if btype == "text":
             if str(block.get("text") or "").strip():
@@ -225,6 +249,12 @@ def _parse_anthropic_response(data: dict) -> tuple[ModelResponse, Usage]:
             thought = block.get("thinking") or block.get("text") or ""
             if thought:
                 parts.append(ThinkingPart(content=str(thought)))
+
+    if not has_usable_terminal_part(parts):
+        raise ModelProtocolError(
+            "Anthropic",
+            "response contains neither usable assistant text nor a named tool call",
+        )
 
     usage = _parse_usage(data.get("usage"))
     return ModelResponse(parts=parts), usage

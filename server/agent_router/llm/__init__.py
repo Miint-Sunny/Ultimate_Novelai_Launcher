@@ -30,6 +30,7 @@ from .exceptions import (
     EMPTY_OUTPUT_MESSAGE,
     LLMError,
     ModelHTTPError,
+    ModelProtocolError,
     ModelRetry,
     UnexpectedModelBehavior,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "RunContext",
     "ModelRetry",
     "ModelHTTPError",
+    "ModelProtocolError",
     "UnexpectedModelBehavior",
     "EMPTY_OUTPUT_MESSAGE",
     "LLMError",

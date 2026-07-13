@@ -147,24 +147,44 @@ class Settings:
         return bool(self.nai_token.strip()) or self.mock_generation
 
     def llm_slots(self) -> list[LlmSlot]:
-        """Usable LLM endpoints in priority order: [primary, backup]."""
-        slots: list[LlmSlot] = []
-        candidates = [
-            (self.llm_provider, self.llm_base_url, self.llm_api_key, self.llm_model),
-            (
-                self.llm_backup_provider,
-                self.llm_backup_base_url,
-                self.llm_backup_api_key,
-                self.llm_backup_model,
-            ),
-        ]
-        for provider, base, key, model in candidates:
+        """Usable endpoints in priority order without promoting a backup.
+
+        A backup credential is meaningful only after a complete primary slot.
+        Treating a backup-only configuration as the primary would make the UI and
+        the request-level ``degraded`` contract lie about which provider is active.
+        """
+
+        def resolve(
+            provider: str,
+            base: str,
+            key: str,
+            model: str,
+        ) -> LlmSlot | None:
             provider = (provider or "openai").strip().lower()
             key = (key or "").strip()
             model = (model or "").strip()
             base = _resolve_llm_base(provider, base)
             if key and model and base:
-                slots.append(LlmSlot(provider, base, key, model))
+                return LlmSlot(provider, base, key, model)
+            return None
+
+        primary = resolve(
+            self.llm_provider,
+            self.llm_base_url,
+            self.llm_api_key,
+            self.llm_model,
+        )
+        if primary is None:
+            return []
+        slots = [primary]
+        backup = resolve(
+            self.llm_backup_provider,
+            self.llm_backup_base_url,
+            self.llm_backup_api_key,
+            self.llm_backup_model,
+        )
+        if backup is not None:
+            slots.append(backup)
         return slots
 
     @property

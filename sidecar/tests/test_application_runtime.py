@@ -31,10 +31,13 @@ class ApplicationRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_settings_store_keeps_process_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             current = settings(Path(directory))
+            current = Settings(**{**current.__dict__, "host": "::1", "port": 49321})
             store = SettingsStore(current, loader=lambda: settings(Path(directory)))
             updated = await store.update({"llm_model": "test-model"})
             self.assertEqual(updated.instance_id, "instance")
             self.assertEqual(updated.sidecar_auth_token, "token")
+            self.assertEqual(updated.host, "::1")
+            self.assertEqual(updated.port, 49321)
 
     async def test_task_supervisor_cancels_and_rejects_paid_work_after_drain(self) -> None:
         supervisor = TaskSupervisor()

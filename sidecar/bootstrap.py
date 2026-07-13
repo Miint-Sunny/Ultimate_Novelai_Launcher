@@ -221,6 +221,12 @@ def readiness_payload(*, instance_id: str, protocol: int, port: int) -> dict[str
     }
 
 
+def settings_for_bound_socket(settings: Settings, sock: socket.socket) -> Settings:
+    """Bind runtime-visible settings to the retained socket's actual port."""
+
+    return replace(settings, port=int(sock.getsockname()[1]))
+
+
 async def serve(settings: Settings | None = None) -> None:
     instance_id = (
         os.environ.get("ULTIMATE_NOVELAI_LAUNCHER_INSTANCE_ID", "").strip()
@@ -251,7 +257,11 @@ async def serve(settings: Settings | None = None) -> None:
 
     with DataDirectoryLock(resolved.data_dir, instance_id):
         sock = bind_sidecar_socket(resolved)
-        port = int(sock.getsockname()[1])
+        # The retained socket is the authority for the process endpoint. Propagate
+        # its actual port into AppRuntime so request-scoped Agent knowledge clients
+        # never depend on the pre-bind ``port=0`` configuration.
+        resolved = settings_for_bound_socket(resolved, sock)
+        port = resolved.port
         from .server import create_app
 
         config = uvicorn.Config(

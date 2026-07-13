@@ -144,7 +144,7 @@ class ProviderTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(requests[1].headers["x-api-key"], "anthropic-key")
         self.assertEqual(requests[2].headers["x-goog-api-key"], "gemini-key")
 
-    async def test_backup_only_slot_keeps_its_own_network_scope(self) -> None:
+    async def test_backup_only_slot_is_not_promoted_to_primary(self) -> None:
         requests: list[httpx.Request] = []
 
         async def handler(request: httpx.Request) -> httpx.Response:
@@ -164,17 +164,16 @@ class ProviderTransportTests(unittest.IsolatedAsyncioTestCase):
         shared = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         pool = HttpClientPool(default_client=shared, long_running_client=shared)
         try:
-            result = await llm.llm_chat_text(
-                settings=settings,
-                messages=[{"role": "user", "content": "hello"}],
-                http=pool,
-            )
+            with self.assertRaises(LLMNotConfiguredError):
+                await llm.llm_chat_text(
+                    settings=settings,
+                    messages=[{"role": "user", "content": "hello"}],
+                    http=pool,
+                )
         finally:
             await pool.close()
 
-        self.assertEqual(result, "backup-ok")
-        self.assertEqual(len(requests), 1)
-        self.assertEqual(requests[0].headers["authorization"], "Bearer backup-key")
+        self.assertEqual(requests, [])
 
     async def test_local_network_policy_error_does_not_try_backup(self) -> None:
         calls = 0

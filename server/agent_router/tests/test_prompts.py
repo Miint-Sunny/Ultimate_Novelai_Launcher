@@ -4,6 +4,8 @@ prompts.py 测试 —— 合并预设加载（单文件、tier 已移除，不�
 
 from __future__ import annotations
 
+import pytest
+
 
 def test_load_chat_section(tmp_data_dir):
     """从合并预设 prompts.yaml 读 chat 段"""
@@ -37,7 +39,7 @@ def test_warm_load_all_basic(tmp_data_dir):
     assert status["prompts"]["ok"] is True
     assert "persona" in status["prompts"]["chat_sections"]
     assert status["prompts"]["chat_missing"] == []
-    assert status["prompts"]["planner_prompts_count"] == 2
+    assert status["prompts"]["planner_prompts_count"] == 12
 
 
 def test_get_prompts_raw(tmp_data_dir):
@@ -50,3 +52,63 @@ def test_get_prompts_raw(tmp_data_dir):
     assert isinstance(raw["system_prompts"], list)
     assert len(raw["system_prompts"]) > 0
     assert raw["prison_break"] == []  # planner 没有 prison_break
+
+
+def test_package_resource_fallback(tmp_data_dir, tmp_path, monkeypatch):
+    from agent_router import prompts as p
+
+    packaged = tmp_data_dir / "prompts.yaml"
+    empty_legacy_dir = tmp_path / "legacy-empty"
+    empty_legacy_dir.mkdir()
+    monkeypatch.setattr(p, "_data_dir", lambda: empty_legacy_dir)
+    monkeypatch.setattr(p, "_package_resource", lambda filename: packaged)
+    p._load_yaml_cached.cache_clear()
+
+    assert "测试合并猫娘" in p.load_chat_section("persona")
+
+
+def test_prompt_bundle_exposes_validated_sections(tmp_data_dir):
+    from agent_router import prompts as p
+
+    bundle = p.load_prompt_bundle()
+    assert "测试合并猫娘" in bundle.chat("persona")
+    assert bundle.lite_chat("system_prompt")
+    assert "你是绘图助手" in bundle.planner("mission")
+
+
+def test_prompt_contract_matches_sections_consumed_by_agents():
+    from agent_router import prompts as p
+    from agent_router.agents.pure_planner import _PLANNER_SECTIONS
+
+    assert tuple(_PLANNER_SECTIONS) == p._REQUIRED_PLANNER_SECTIONS
+    assert p._REQUIRED_CHAT_SECTIONS == ("persona", "workflow", "tools_hint", "reply_rules")
+
+
+def test_packaged_bundle_never_falls_back_to_legacy(tmp_data_dir, tmp_path, monkeypatch):
+    from agent_router import prompts as p
+
+    missing = tmp_path / "package-empty" / "prompts.yaml"
+    monkeypatch.setattr(p, "_package_resource", lambda filename: missing)
+    with pytest.raises(p.PromptResourceError):
+        p.load_packaged_prompt_bundle()
+
+
+def test_preflight_missing_resource_is_clear(tmp_path):
+    from agent_router import prompts as p
+
+    missing = tmp_path / "prompts.yaml"
+    status = p.preflight_prompt_resource(missing)
+    assert status["ok"] is False
+    assert str(missing) in status["error"]
+    assert "不存在" in status["error"]
+
+
+def test_preflight_rejects_incomplete_prompt(tmp_path):
+    from agent_router import prompts as p
+
+    incomplete = tmp_path / "prompts.yaml"
+    incomplete.write_text("chat: {}\nplanner: {}\n", encoding="utf-8")
+    status = p.preflight_prompt_resource(incomplete)
+    assert status["ok"] is False
+    assert "lite_chat.system_prompt" in status["error"]
+    assert "planner.system_prompts" in status["error"]

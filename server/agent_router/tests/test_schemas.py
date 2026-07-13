@@ -112,20 +112,94 @@ def test_web_prompt_request_default_knowledge_sources():
 
 
 def test_web_prompt_request_accepts_web_local_context():
-    req = WebPromptRequest(
-        user_request="画我的 OC，使用 A1",
-        web_artists=[{"id": "A1", "name": "A1", "prompt": "artist:test"}],
-        web_ocs=[{"id": "oc1", "name": "自设", "positive": "my_oc, blue hair"}],
+    req = WebPromptRequest.model_validate(
+        {
+            "user_request": "画我的 OC，使用 A1",
+            "web_artists": [{"id": "A1", "name": "A1", "prompt": "artist:test"}],
+            "web_ocs": [{"id": "oc1", "name": "自设", "positive": "my_oc, blue hair"}],
+        }
     )
-    assert req.web_artists[0]["prompt"] == "artist:test"
-    assert req.web_ocs[0]["positive"] == "my_oc, blue hair"
+    assert req.web_artists[0].prompt == "artist:test"
+    assert req.web_ocs[0].positive == "my_oc, blue hair"
+
+
+def test_web_prompt_request_accepts_image_only_and_preserves_mime():
+    req = WebPromptRequest(
+        user_request="",
+        image_b64="/9j/cGF5bG9hZA==",
+        image_mime_type="image/jpeg",
+    )
+    assert req.image_mime_type == "image/jpeg"
+
+    inferred = WebPromptRequest(user_request="", image_b64="/9j/cGF5bG9hZA==")
+    assert inferred.image_mime_type == "image/jpeg"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"user_request": ""},
+        {"user_request": "x", "image_b64": "not base64"},
+        {
+            "user_request": "x",
+            "image_b64": "/9j/cGF5bG9hZA==",
+            "image_mime_type": "image/png",
+        },
+        {
+            "user_request": "x",
+            "image_b64": "/9j/cGF5bG9hZA==",
+            "image_mime_type": "image/svg+xml",
+        },
+    ],
+)
+def test_web_prompt_request_rejects_missing_or_invalid_image(payload):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        WebPromptRequest.model_validate(payload)
+
+
+def test_web_prompt_request_nested_models_preserve_wire_shape():
+    req = WebPromptRequest.model_validate(
+        {
+            "user_request": "在原图上修改",
+            "history": [{"role": "user", "content": "上一轮"}],
+            "web_artists": [{"id": "A1", "name": "画师", "prompt": ""}],
+            "web_ocs": [{"id": "oc1", "name": "OC", "zh_name": "自设"}],
+            "current_characters": [{"name": "角色A", "positive": "x"}],
+        }
+    )
+    dumped = req.model_dump()
+    assert dumped["history"] == [{"role": "user", "content": "上一轮"}]
+    assert dumped["web_artists"] == [{"id": "A1", "name": "画师", "prompt": ""}]
+    assert dumped["current_characters"][0]["positive"] == "x"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"user_request": "x", "unknown": True},
+        {"user_request": "x", "history": [{"role": "user", "content": "x", "extra": 1}]},
+        {
+            "user_request": "x",
+            "web_artists": [{"id": "A1", "name": "A1", "prompt": "x", "extra": 1}],
+        },
+        {"user_request": "x", "web_ocs": [{"id": "o", "name": "o", "extra": 1}]},
+        {"user_request": "x", "web_codex": [{"title": "t", "content": "c", "extra": 1}]},
+    ],
+)
+def test_web_prompt_request_forbids_unknown_fields(payload):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        WebPromptRequest.model_validate(payload)
 
 
 @pytest.mark.asyncio
 async def test_web_prequery_context_matches_bot_style(monkeypatch):
     from agent_router.deps import AgentDeps
-    from agent_router.router import _build_web_prequery_context
     from agent_router.tools import knowledge
+    from agent_router.web_hooks import _build_web_prequery_context
 
     monkeypatch.setattr(
         knowledge,
@@ -165,6 +239,48 @@ async def test_web_prequery_context_matches_bot_style(monkeypatch):
     assert "plana_(blue_archive)" in context
 
 
+@pytest.mark.asyncio
+async def test_web_codex_toggle_controls_request_context():
+    from agent_router.deps import AgentDeps
+    from agent_router.web_hooks import _build_web_prequery_context
+
+    codex = [
+        {
+            "id": "common_1",
+            "category": "科幻",
+            "title": "赛博月光",
+            "content": "cyberpunk city, blue moonlight, neon reflections",
+            "is_r18": False,
+        }
+    ]
+    req = WebPromptRequest.model_validate(
+        {"user_request": "画一张赛博月光城市", "use_codex": True, "web_codex": codex}
+    )
+    enabled = AgentDeps(
+        user_id="web",
+        platform="web",
+        scene="web",
+        use_codex=True,
+        web_codex=codex,
+        knowledge_sources=[],
+        knowledge_snapshot_injected=True,
+        role_mapping={},
+    )
+    disabled = AgentDeps(
+        user_id="web",
+        platform="web",
+        scene="web",
+        use_codex=False,
+        web_codex=codex,
+        knowledge_sources=[],
+        knowledge_snapshot_injected=True,
+        role_mapping={},
+    )
+
+    assert "## search_codex 结果" in await _build_web_prequery_context(req, enabled)
+    assert "search_codex" not in await _build_web_prequery_context(req, disabled)
+
+
 def test_history_message_alias():
     """HistoryMessage 字段 alias: _is_generated_image → is_generated_image"""
     m = HistoryMessage.model_validate(
@@ -192,8 +308,8 @@ def test_group_user_key_is_separated_by_user():
 
 def test_web_agent_result_wraps_artist_markers_only_for_web():
     from agent_router.deps import AgentDeps
-    from agent_router.router import _chat_output_to_agent_result
     from agent_router.schemas import ChatOutput
+    from agent_router.web_hooks import _chat_output_to_agent_result
 
     output = ChatOutput(
         reply_text="ok",
@@ -223,7 +339,7 @@ def test_web_agent_result_wraps_artist_markers_only_for_web():
 
 
 def test_requested_character_prompts_are_restored_from_prequery_resources():
-    from agent_router.router import _ensure_requested_character_prompts
+    from agent_router.web_hooks import _ensure_requested_character_prompts
 
     prequery = (
         "## search_character 结果（source=roleTag）\n"
@@ -254,20 +370,22 @@ def test_requested_character_prompts_are_restored_from_prequery_resources():
 
 
 def test_web_current_prompt_context_tells_agent_to_edit_existing_prompt():
-    from agent_router.router import _build_current_prompt_context
     from agent_router.schemas import WebPromptRequest
+    from agent_router.web_hooks import _build_current_prompt_context
 
-    req = WebPromptRequest(
-        user_request="给她换成冬装",
-        current_positive="1girl, blue eyes, school uniform",
-        current_negative="lowres",
-        current_characters=[
-            {
-                "name": "角色A",
-                "positive": "long hair",
-                "negative": "bad hands",
-            }
-        ],
+    req = WebPromptRequest.model_validate(
+        {
+            "user_request": "给她换成冬装",
+            "current_positive": "1girl, blue eyes, school uniform",
+            "current_negative": "lowres",
+            "current_characters": [
+                {
+                    "name": "角色A",
+                    "positive": "long hair",
+                    "negative": "bad hands",
+                }
+            ],
+        }
     )
 
     context = _build_current_prompt_context(req)

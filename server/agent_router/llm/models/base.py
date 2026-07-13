@@ -17,10 +17,18 @@ Model.request：把「中性消息列表 + system 段 + 工具定义 + 设置」
 from __future__ import annotations
 
 import abc
+from collections.abc import Iterable
 
 import httpx
 
-from ..messages import ModelMessage, ModelResponse, SystemPromptPart, ToolDefinition
+from ..messages import (
+    ModelMessage,
+    ModelResponse,
+    SystemPromptPart,
+    TextPart,
+    ToolCallPart,
+    ToolDefinition,
+)
 from ..result import Usage
 
 # 共享默认 httpx client（无自定义 transport 的直连场景复用一个连接池）
@@ -32,6 +40,28 @@ def get_default_http_client() -> httpx.AsyncClient:
     if _DEFAULT_CLIENT is None or _DEFAULT_CLIENT.is_closed:
         _DEFAULT_CLIENT = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
     return _DEFAULT_CLIENT
+
+
+def has_usable_terminal_part(parts: Iterable[object]) -> bool:
+    """Return whether a provider response can advance or finish an Agent turn.
+
+    Thinking is supplemental metadata, not a terminal response. A response is
+    usable only when it contains non-blank assistant text or a named tool call.
+    """
+
+    return any(
+        (
+            isinstance(part, TextPart)
+            and isinstance(part.content, str)
+            and bool(part.content.strip())
+        )
+        or (
+            isinstance(part, ToolCallPart)
+            and isinstance(part.tool_name, str)
+            and bool(part.tool_name.strip())
+        )
+        for part in parts
+    )
 
 
 class Model(abc.ABC):
@@ -53,4 +83,4 @@ class Model(abc.ABC):
         raise NotImplementedError
 
 
-__all__ = ["Model", "get_default_http_client", "Usage"]
+__all__ = ["Model", "get_default_http_client", "has_usable_terminal_part", "Usage"]

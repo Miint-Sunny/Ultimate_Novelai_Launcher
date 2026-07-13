@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
@@ -118,8 +119,8 @@ async def test_pure_planner_tool_then_text_json():
 
 
 @pytest.mark.asyncio
-async def test_lite_chat_run_with_fake(monkeypatch):
-    """run_lite_chat 内部固定用 get_prefilter_model；monkeypatch 成 FakeModel 验证 lite 端到端。"""
+async def test_lite_chat_run_with_fake(tmp_data_dir):
+    """run_lite_chat accepts the request-scoped model used by both transports."""
     from agent_router.agents import lite_chat as lc
     from agent_router.schemas import LiteResponse
 
@@ -134,16 +135,53 @@ async def test_lite_chat_run_with_fake(monkeypatch):
             )
         ]
     )
-    monkeypatch.setattr(lc, "get_prefilter_model", lambda: fake)
-    monkeypatch.setattr(lc, "get_prefilter_model_settings", lambda: None)
-
     deps = AgentDeps(user_id="t", scene="private")
     result, messages, sys_parts = await lc.run_lite_chat(
         user_text="画个女孩",
         candidates="",
         history=[],
         deps=deps,
+        model=fake,
     )
     assert isinstance(result, LiteResponse)
     assert result.should_draw is True
     assert result.reply_text == "在画了喵~"
+
+
+@pytest.mark.asyncio
+async def test_lite_chat_failure_log_redacts_provider_body(tmp_data_dir, caplog):
+    from agent_router.agents import lite_chat as lc
+    from agent_router.llm.exceptions import ModelHTTPError
+
+    secret = "provider-response-secret"
+
+    class FailingModel(Model):
+        model_name = "failing"
+
+        async def request(
+            self,
+            messages,
+            *,
+            system_parts,
+            tools,
+            require_tool,
+            model_settings=None,
+        ):
+            del messages, system_parts, tools, require_tool, model_settings
+            raise ModelHTTPError(503, secret, body=secret)
+
+    caplog.set_level(logging.WARNING, logger=lc.__name__)
+    result, _messages, _sys_parts = await lc.run_lite_chat(
+        user_text="画个女孩",
+        candidates="",
+        history=[],
+        deps=AgentDeps(user_id="t", scene="private"),
+        model=FailingModel(),
+    )
+
+    logs = "\n".join(caplog.messages)
+    assert result.should_draw is True
+    assert "error_type=ModelHTTPError" in logs
+    assert "provider_status=503" in logs
+    assert secret not in logs
+    assert "model error" not in logs.lower()

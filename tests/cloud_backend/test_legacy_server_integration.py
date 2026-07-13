@@ -122,8 +122,9 @@ async def _configure_workshop(
     module: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> tuple[SQLiteWorkshopQuotaRepository, Any]:
+) -> tuple[SQLiteWorkshopQuotaRepository, Any, str]:
     stats = tmp_path / "workshop-stats.db"
+    quota_date = module.datetime.now(module._BEIJING_TZ).strftime("%Y-%m-%d")
     async with aiosqlite.connect(stats) as connection:
         await connection.execute(
             """
@@ -136,7 +137,10 @@ async def _configure_workshop(
             )
             """
         )
-        await connection.execute("INSERT INTO user_quotas VALUES ('owner', 1, 1, 0, '2026-07-13')")
+        await connection.execute(
+            "INSERT INTO user_quotas VALUES ('owner', 1, 1, 0, ?)",
+            (quota_date,),
+        )
         await connection.commit()
     repository = SQLiteWorkshopQuotaRepository(stats)
     await repository.initialize()
@@ -146,7 +150,7 @@ async def _configure_workshop(
     monkeypatch.setattr(module, "_STATS_DB", stats)
     monkeypatch.setattr(module, "_workshop_tasks", {})
     monkeypatch.setattr(module, "_workshop_background_tasks", {})
-    return repository, owner
+    return repository, owner, quota_date
 
 
 async def _wait_workshop_terminal(module: ModuleType, task_id: str) -> dict[str, Any]:
@@ -1614,7 +1618,9 @@ async def test_workshop_captures_only_after_atomic_result_write(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repository, owner = await _configure_workshop(legacy_server, monkeypatch, tmp_path)
+    repository, owner, quota_date = await _configure_workshop(
+        legacy_server, monkeypatch, tmp_path
+    )
 
     async def successful_provider(**kwargs):
         return {
@@ -1645,7 +1651,7 @@ async def test_workshop_captures_only_after_atomic_result_write(
     assert "session_id" not in job.payload
     assert job.payload["quota"] == {"reservation_id": task_id, "units": 1}
     assert await legacy_server._cloud_job_results.load_bytes(job.result) == PNG
-    balance = await repository.balance("owner", quota_date="2026-07-13")
+    balance = await repository.balance("owner", quota_date=quota_date)
     assert balance.total_available == 0
 
 
@@ -1655,7 +1661,9 @@ async def test_workshop_write_failure_and_cancel_both_refund(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repository, owner = await _configure_workshop(legacy_server, monkeypatch, tmp_path)
+    repository, owner, quota_date = await _configure_workshop(
+        legacy_server, monkeypatch, tmp_path
+    )
 
     async def successful_provider(**kwargs):
         return {
@@ -1679,7 +1687,7 @@ async def test_workshop_write_failure_and_cancel_both_refund(
         )
     failed_task = await _wait_workshop_terminal(legacy_server, failed.json()["task_id"])
     assert failed_task["status"] == "error"
-    assert (await repository.balance("owner", quota_date="2026-07-13")).total_available == 1
+    assert (await repository.balance("owner", quota_date=quota_date)).total_available == 1
     monkeypatch.setattr(legacy_server._cloud_job_results, "save_base64", original_save)
 
     started = asyncio.Event()
@@ -1719,7 +1727,7 @@ async def test_workshop_write_failure_and_cancel_both_refund(
         "cancel_requested",
         "cancelled",
     } <= event_kinds
-    assert (await repository.balance("owner", quota_date="2026-07-13")).total_available == 1
+    assert (await repository.balance("owner", quota_date=quota_date)).total_available == 1
 
 
 @pytest.mark.asyncio
@@ -1728,7 +1736,9 @@ async def test_workshop_cancel_during_result_commit_finishes_as_deliverable_succ
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repository, owner = await _configure_workshop(legacy_server, monkeypatch, tmp_path)
+    repository, owner, quota_date = await _configure_workshop(
+        legacy_server, monkeypatch, tmp_path
+    )
     save_entered = asyncio.Event()
     allow_save = asyncio.Event()
     original_save = legacy_server._cloud_job_results.save_base64
@@ -1774,7 +1784,7 @@ async def test_workshop_cancel_during_result_commit_finishes_as_deliverable_succ
     assert cancelled.json()["status"] == "success"
     assert job is not None and job.status is JobStatus.SUCCEEDED
     assert image.status_code == 200 and image.content == PNG
-    assert (await repository.balance("owner", quota_date="2026-07-13")).total_available == 0
+    assert (await repository.balance("owner", quota_date=quota_date)).total_available == 0
 
 
 @pytest.mark.asyncio
@@ -1842,7 +1852,9 @@ async def test_workshop_restart_interrupts_running_cancels_queued_and_refunds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repository, owner = await _configure_workshop(legacy_server, monkeypatch, tmp_path)
+    repository, owner, quota_date = await _configure_workshop(
+        legacy_server, monkeypatch, tmp_path
+    )
     resource = ResourceOwner(legacy_server._BOT_TASK_TENANT_ID, owner.bot_user_id)
     payload = {
         "kind": "workshop",
@@ -1854,7 +1866,7 @@ async def test_workshop_restart_interrupts_running_cancels_queued_and_refunds(
         owner.bot_user_id,
         job_id="ws_running",
         units=1,
-        quota_date="2026-07-13",
+        quota_date=quota_date,
         result_filename="ws_running.png",
     )
     for job_id in ("ws_running", "ws_queued"):
@@ -1879,7 +1891,7 @@ async def test_workshop_restart_interrupts_running_cancels_queued_and_refunds(
     assert running is not None and running.status is JobStatus.INTERRUPTED
     assert queued is not None and queued.status is JobStatus.CANCELLED
     assert (captured, refunded) == (0, 1)
-    assert (await repository.balance("owner", quota_date="2026-07-13")).total_available == 1
+    assert (await repository.balance("owner", quota_date=quota_date)).total_available == 1
     assert (await legacy_server._cloud_jobs.recover_interrupted()) == []
     assert (await legacy_server._cloud_jobs.list_events("ws_running"))[-1].kind == "interrupted"
     assert (await legacy_server._cloud_jobs.list_events("ws_queued"))[-1].kind == (
@@ -1893,13 +1905,15 @@ async def test_workshop_restart_captures_committed_result_and_restores_access(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repository, owner = await _configure_workshop(legacy_server, monkeypatch, tmp_path)
+    repository, owner, quota_date = await _configure_workshop(
+        legacy_server, monkeypatch, tmp_path
+    )
     resource = ResourceOwner(legacy_server._BOT_TASK_TENANT_ID, owner.bot_user_id)
     await repository.reserve(
         owner.bot_user_id,
         job_id="ws_recovered",
         units=1,
-        quota_date="2026-07-13",
+        quota_date=quota_date,
         result_filename="ws_recovered.png",
     )
     await legacy_server._cloud_jobs.create(
@@ -1936,7 +1950,7 @@ async def test_workshop_restart_captures_committed_result_and_restores_access(
         image = await client.get(tasks.json()["tasks"][0]["image_url"])
 
     assert (captured, refunded) == (1, 0)
-    assert (await repository.balance("owner", quota_date="2026-07-13")).total_available == 0
+    assert (await repository.balance("owner", quota_date=quota_date)).total_available == 0
     assert tasks.json()["tasks"][0]["status"] == "success"
     assert image.status_code == 200 and image.content == PNG
 
@@ -2424,7 +2438,9 @@ async def test_agent_paid_routes_require_live_quota(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repository, owner = await _configure_workshop(legacy_server, monkeypatch, tmp_path)
+    repository, owner, quota_date = await _configure_workshop(
+        legacy_server, monkeypatch, tmp_path
+    )
     access = legacy_server.AgentAccess(
         Principal.user(owner.bot_user_id, legacy_server._BOT_TASK_TENANT_ID)
     )
@@ -2447,7 +2463,7 @@ async def test_agent_paid_routes_require_live_quota(
         )
 
     assert denied.status_code == 402
-    assert (await repository.balance("owner", quota_date="2026-07-13")).total_available == 1
+    assert (await repository.balance("owner", quota_date=quota_date)).total_available == 1
 
 
 @pytest.mark.asyncio

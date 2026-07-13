@@ -17,11 +17,16 @@ from __future__ import annotations
 
 import json
 
+import httpx
+import pytest
+
+from agent_router.llm.exceptions import ModelProtocolError
 from agent_router.llm.messages import (
     BinaryContent,
     ModelRequest,
     ModelResponse,
     SystemPromptPart,
+    TextPart,
     ToolCallPart,
     ToolDefinition,
     ToolReturnPart,
@@ -91,6 +96,126 @@ def _sample_inputs():
         ),
     ]
     return system_parts, messages, tools
+
+
+def _provider_model(provider_name: str, client: httpx.AsyncClient):
+    if provider_name == "openai":
+        return OpenAIModel(
+            "fake",
+            OpenAIProvider(base_url="https://provider.test/v1", http_client=client),
+        )
+    if provider_name == "google":
+        return GoogleModel(
+            "fake",
+            GoogleProvider(base_url="https://provider.test/v1beta", http_client=client),
+        )
+    return AnthropicModel(
+        "fake",
+        AnthropicProvider(base_url="https://provider.test", http_client=client),
+    )
+
+
+def _provider_success_payload(provider_name: str, response_kind: str) -> dict:
+    if provider_name == "openai":
+        message: dict = {"reasoning_content": "private thought"}
+        if response_kind == "empty":
+            message = {"content": "  "}
+        elif response_kind == "text":
+            message["content"] = "ok"
+        elif response_kind == "tool":
+            message["tool_calls"] = [
+                {
+                    "id": "call-1",
+                    "function": {"name": "final_result", "arguments": "{}"},
+                }
+            ]
+        return {"choices": [{"message": message}]}
+
+    if provider_name == "google":
+        parts: list[dict] = [{"thought": True, "text": "private thought"}]
+        if response_kind == "empty":
+            parts = []
+        elif response_kind == "text":
+            parts.append({"text": "ok"})
+        elif response_kind == "tool":
+            parts.append({"functionCall": {"name": "final_result", "args": {}}})
+        return {
+            "candidates": [{"content": {"parts": parts}, "finishReason": "STOP"}],
+        }
+
+    content: list[dict] = [{"type": "thinking", "thinking": "private thought"}]
+    if response_kind == "empty":
+        content = []
+    elif response_kind == "text":
+        content.append({"type": "text", "text": "ok"})
+    elif response_kind == "tool":
+        content.append(
+            {"type": "tool_use", "id": "call-1", "name": "final_result", "input": {}}
+        )
+    return {"content": content}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["openai", "google", "anthropic"])
+async def test_provider_malformed_success_is_protocol_error(provider_name):
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        model = _provider_model(provider_name, client)
+
+        with pytest.raises(ModelProtocolError):
+            await model.request(
+                [],
+                system_parts=[],
+                tools=[],
+                require_tool=False,
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["openai", "google", "anthropic"])
+@pytest.mark.parametrize("response_kind", ["empty", "thinking"])
+async def test_provider_nonterminal_success_is_protocol_error(provider_name, response_kind):
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_provider_success_payload(provider_name, response_kind),
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        model = _provider_model(provider_name, client)
+        with pytest.raises(ModelProtocolError):
+            await model.request([], system_parts=[], tools=[], require_tool=False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["openai", "google", "anthropic"])
+@pytest.mark.parametrize(
+    ("response_kind", "expected_part_type"),
+    [("text", TextPart), ("tool", ToolCallPart)],
+)
+async def test_provider_thinking_plus_terminal_part_remains_usable(
+    provider_name,
+    response_kind,
+    expected_part_type,
+):
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_provider_success_payload(provider_name, response_kind),
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        model = _provider_model(provider_name, client)
+        response, _usage = await model.request(
+            [],
+            system_parts=[],
+            tools=[],
+            require_tool=False,
+        )
+
+    assert any(isinstance(part, expected_part_type) for part in response.parts)
 
 
 # ============================================================

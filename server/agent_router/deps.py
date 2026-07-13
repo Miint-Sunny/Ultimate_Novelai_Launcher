@@ -14,11 +14,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from .schemas import Scene, SseEvent
+
+if TYPE_CHECKING:
+    from .prompts import AgentPromptBundle
 
 logger = logging.getLogger("agent_router.deps")
 
@@ -45,10 +48,12 @@ class AgentDeps:
     # 由 router.chat 在 deps 构造时按 req.model 注入；agent 的 @system_prompt 函数读取
     # 后传给 prompts.load_*_section(name, preset=...) 切换到对应 yaml 文件。
     prompt_preset: str = ""
+    prompt_bundle: AgentPromptBundle | None = None
 
     # === 内部服务 ===
     http_client: httpx.AsyncClient = field(default=None)  # type: ignore[assignment]
     internal_base_url: str = "http://127.0.0.1:8765"  # 本机 server 自身，调 /api/cr 等
+    internal_headers: dict[str, str] = field(default_factory=dict)
 
     # === SSE（chat_agent 在 Web 端 SSE 入口下使用，Bot 端一次性返回不用） ===
     sse_emitter: SseEmitter | None = None
@@ -58,6 +63,11 @@ class AgentDeps:
     knowledge_sources: list[str] = field(default_factory=list)
     web_artists: list[dict[str, Any]] = field(default_factory=list)
     web_ocs: list[dict[str, Any]] = field(default_factory=list)
+    web_codex: list[dict[str, Any]] = field(default_factory=list)
+    # None keeps the legacy lazy lookup; a dict (including {}) is a complete
+    # request-scoped snapshot supplied by the sidecar.
+    role_mapping: dict[str, Any] | None = None
+    knowledge_snapshot_injected: bool = False
     web_current_prompt_context: str = ""
 
     # === 标记是否已触发降级 ===

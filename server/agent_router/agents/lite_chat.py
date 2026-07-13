@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from ..deps import AgentDeps
 from ..llm import Agent, RunContext
-from ..model_provider import get_prefilter_model, get_prefilter_model_settings
 from ..prompts import load_lite_chat_section
 from ..schemas import LiteResponse
 
@@ -37,6 +36,8 @@ lite_chat_agent: Agent[AgentDeps, LiteResponse] = Agent(
 
 @lite_chat_agent.system_prompt
 async def _lite_system_prompt(ctx: RunContext[AgentDeps]) -> str:
+    if ctx.deps.prompt_bundle is not None:
+        return ctx.deps.prompt_bundle.lite_chat("system_prompt")
     return load_lite_chat_section("system_prompt", preset=ctx.deps.prompt_preset)
 
 
@@ -61,7 +62,9 @@ async def run_lite_chat(
     candidates: str,
     history: list,
     deps: AgentDeps,
-    timeout_s: float = 30.0,
+    model=None,
+    model_settings: dict | None = None,
+    timeout_s: float | None = 30.0,
 ) -> tuple[LiteResponse, list, list]:
     """
     跑一次 lite_chat。失败 / 超时**降级为直接进入生成**——把决策权交给 planner，
@@ -83,6 +86,15 @@ async def run_lite_chat(
 
     logger = logging.getLogger(__name__)
 
+    if model is None:
+        # Keep the Bot path compatible while making the shared runner fully
+        # runtime-injected and configuration-free at import time.
+        from ..model_provider import get_prefilter_model, get_prefilter_model_settings
+
+        model = get_prefilter_model()
+        if model_settings is None:
+            model_settings = get_prefilter_model_settings()
+
     # 组装 user prompt：原话 + 候选资料（如有）
     if candidates.strip():
         prompt = f"用户原话：{user_text.strip()}\n\n[预查询资源]\n{candidates.strip()}"
@@ -98,16 +110,14 @@ async def run_lite_chat(
         sys_parts = []
 
     try:
-        result = await asyncio.wait_for(
-            lite_chat_agent.run(
-                prompt,
-                deps=deps,
-                message_history=short_history,
-                model=get_prefilter_model(),
-                model_settings=get_prefilter_model_settings(),
-            ),
-            timeout=timeout_s,
+        request = lite_chat_agent.run(
+            prompt,
+            deps=deps,
+            message_history=short_history,
+            model=model,
+            model_settings=model_settings,
         )
+        result = await request if timeout_s is None else await asyncio.wait_for(request, timeout_s)
         try:
             all_msgs = list(result.all_messages())
         except Exception:
@@ -115,8 +125,19 @@ async def run_lite_chat(
         return result.output, all_msgs, sys_parts
     except asyncio.TimeoutError:
         logger.warning(f"lite_chat timeout >{timeout_s}s，降级直接进入生成")
-    except Exception as e:
-        logger.warning(f"lite_chat failed ({type(e).__name__}: {e})，降级直接进入生成")
+    except Exception as exc:
+        provider_status = getattr(exc, "status_code", None)
+        if isinstance(provider_status, int):
+            logger.warning(
+                "lite_chat failed; error_type=%s provider_status=%d; falling back to planner",
+                type(exc).__name__,
+                provider_status,
+            )
+        else:
+            logger.warning(
+                "lite_chat failed; error_type=%s; falling back to planner",
+                type(exc).__name__,
+            )
 
     # 降级：直接进入生成（lite 超时/失败时把决策权交给 planner）
     # refined_resources 用 candidates 原文不筛选——让 planner 拿到完整资料自己挑

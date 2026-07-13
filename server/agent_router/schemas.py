@@ -15,9 +15,18 @@ Agent 路由组的所有 pydantic 模型。
 
 from __future__ import annotations
 
+import base64
+import binascii
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # ============================================================
 # Tier / 模型档位
@@ -266,38 +275,145 @@ class ChatResponse(BaseModel):
     debug: dict[str, Any] = Field(default_factory=dict, description="调试信息（不会给模型使用）")
 
 
-class WebPromptRequest(BaseModel):
-    """POST /api/agent/web/generate-prompt —— Web Agent SSE 入口"""
+class _StrictWebInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
-    user_request: str = Field(..., description="用户输入")
-    model: str = Field(
-        default="", description="选用的 model（MODEL_CHOICES 的 key/别名；空 = 全局默认）"
+
+class WebHistoryMessage(_StrictWebInput):
+    """One stateless conversation turn supplied by the Web client."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=4 * 1024 * 1024)
+
+
+class WebArtistContext(_StrictWebInput):
+    id: str | int
+    name: str = Field(..., min_length=1, max_length=512)
+    prompt: str = Field(..., max_length=4 * 1024 * 1024)
+
+
+class WebOcContext(_StrictWebInput):
+    id: str | int
+    name: str = Field(..., min_length=1, max_length=512)
+    zh_name: str = Field(default="", max_length=512)
+    positive: str = Field(default="", max_length=4 * 1024 * 1024)
+    negative: str = Field(default="", max_length=4 * 1024 * 1024)
+
+
+class WebCurrentCharacter(_StrictWebInput):
+    name: str = Field(..., min_length=1, max_length=512)
+    positive: str = Field(default="", max_length=4 * 1024 * 1024)
+    negative: str = Field(default="", max_length=4 * 1024 * 1024)
+
+
+class WebCodexContext(_StrictWebInput):
+    id: str | int
+    category: str = Field(default="", max_length=512)
+    title: str = Field(default="", max_length=1_000)
+    content: str = Field(default="", max_length=4 * 1024 * 1024)
+    is_r18: bool = False
+
+
+class WebPromptRequest(_StrictWebInput):
+    """Complete, strict input for the stateless Web Agent request."""
+
+    user_request: str = Field(
+        default="", max_length=4 * 1024 * 1024, description="用户输入（可与图片二选一）"
     )
-    image_b64: str | None = Field(default=None)
-    # Web Agent 不维护服务端会话历史，由前端把要回带的历史扔进来
-    history: list[dict] = Field(
-        default_factory=list, description="前端持有的对话历史（[{role, content}]）"
-    )
-    use_codex: bool = Field(default=False, description="是否启用法典")
-    knowledge_sources: list[str] = Field(
+    model: str = Field(default="", max_length=256, description="选用的 model；空 = 运行时主模型")
+    image_b64: str | None = Field(default=None, max_length=(20 * 1024 * 1024 * 4 // 3) + 32)
+    image_mime_type: str = Field(default="image/png", max_length=100)
+    history: list[WebHistoryMessage] = Field(default_factory=list, max_length=200)
+    use_codex: bool = False
+    knowledge_sources: list[Literal["roleTags", "artists", "vibes", "ocs"]] = Field(
         default_factory=lambda: ["roleTags", "artists", "vibes", "ocs"],
-        description="启用的资料源",
+        max_length=4,
     )
-    web_artists: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Web 前端当前可见的画师串资料（含浏览器本地 IndexedDB 条目）",
-    )
-    web_ocs: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Web 前端当前可见的 OC 资料（含浏览器本地 IndexedDB 条目）",
-    )
-    # 当前画面提示词状态（用户可能想"在此基础上"修改）
-    current_positive: str = Field(default="", description="用户当前的全局正向 tag")
-    current_negative: str = Field(default="", description="用户当前的全局反向 tag")
-    current_characters: list[dict] = Field(
-        default_factory=list,
-        description="用户当前的分角色列表（[{name, positive, negative?}]）",
-    )
+    web_artists: list[WebArtistContext] = Field(default_factory=list, max_length=1_000)
+    web_ocs: list[WebOcContext] = Field(default_factory=list, max_length=1_000)
+    web_codex: list[WebCodexContext] = Field(default_factory=list, max_length=5_000)
+    current_positive: str = Field(default="", max_length=4 * 1024 * 1024)
+    current_negative: str = Field(default="", max_length=4 * 1024 * 1024)
+    current_characters: list[WebCurrentCharacter] = Field(default_factory=list, max_length=100)
+
+    @field_validator("knowledge_sources")
+    @classmethod
+    def _validate_knowledge_sources(cls, value: list[str]) -> list[str]:
+        allowed = {"roleTags", "artists", "vibes", "ocs"}
+        if any(item not in allowed for item in value):
+            raise ValueError("knowledge_sources contains an unsupported source")
+        return list(dict.fromkeys(value))
+
+    @field_validator("image_b64")
+    @classmethod
+    def _validate_image_base64(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            decoded = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("image_b64 must be valid base64 without a data-URI prefix") from exc
+        if not decoded:
+            raise ValueError("image_b64 must decode to non-empty image data")
+        if len(decoded) > 20 * 1024 * 1024:
+            raise ValueError("decoded Agent image exceeds 20 MiB")
+        return value
+
+    @field_validator("image_mime_type")
+    @classmethod
+    def _normalize_image_mime_type(cls, value: str) -> str:
+        normalized = (value or "image/png").strip().lower()
+        if normalized == "image/jpg":
+            normalized = "image/jpeg"
+        if normalized not in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
+            raise ValueError("image_mime_type must be PNG, JPEG, WebP, or GIF")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_text_or_image_and_signature(self) -> WebPromptRequest:
+        if not self.user_request.strip() and not self.image_b64:
+            raise ValueError("user_request or image_b64 is required")
+        if self.image_b64:
+            decoded = base64.b64decode(self.image_b64, validate=True)
+            signatures = {
+                "image/png": decoded.startswith(b"\x89PNG\r\n\x1a\n"),
+                "image/jpeg": decoded.startswith(b"\xff\xd8\xff"),
+                "image/webp": (
+                    len(decoded) >= 12
+                    and decoded.startswith(b"RIFF")
+                    and decoded[8:12] == b"WEBP"
+                ),
+                "image/gif": decoded.startswith((b"GIF87a", b"GIF89a")),
+            }
+            detected = next((mime for mime, matches in signatures.items() if matches), None)
+            if detected is None:
+                raise ValueError("image bytes are not a supported PNG, JPEG, WebP, or GIF")
+            if "image_mime_type" not in self.model_fields_set:
+                self.image_mime_type = detected
+            elif not signatures[self.image_mime_type]:
+                raise ValueError("image bytes do not match image_mime_type")
+
+        text_payload = self.model_dump(exclude={"image_b64", "image_mime_type"})
+
+        def count_text_bytes(value: Any) -> int:
+            if isinstance(value, str):
+                return len(value.encode("utf-8"))
+            if isinstance(value, dict):
+                return sum(
+                    len(str(key).encode("utf-8")) + count_text_bytes(nested)
+                    for key, nested in value.items()
+                )
+            if isinstance(value, list):
+                return sum(count_text_bytes(item) for item in value)
+            return 0
+
+        text_bytes = count_text_bytes(text_payload)
+        if text_bytes > 4 * 1024 * 1024:
+            raise ValueError("Agent text context exceeds 4 MiB")
+        return self
 
 
 class PromptsResponse(BaseModel):

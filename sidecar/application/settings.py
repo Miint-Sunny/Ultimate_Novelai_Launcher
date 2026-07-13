@@ -68,6 +68,12 @@ class SettingsStore:
         # The shell handshake is process identity, not user-editable configuration.
         self._current = replace(
             loaded,
+            # Host and port are process identity after bootstrap has retained the
+            # port=0 socket and learned its kernel-assigned port. A settings reload
+            # must not restore the environment's original zero or a different bind
+            # address, otherwise request-local Agent tools call the wrong endpoint.
+            host=previous.host,
+            port=previous.port,
             instance_id=previous.instance_id or loaded.instance_id,
             protocol_version=previous.protocol_version,
             sidecar_auth_token=previous.sidecar_auth_token or loaded.sidecar_auth_token,

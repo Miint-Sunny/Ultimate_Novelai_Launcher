@@ -24,6 +24,29 @@ if str(_SERVER_DIR) not in sys.path:
 
 # 测试用合并预设模板（chat 行为段 + planner 知识段，单文件 prompts.yaml）
 def _merged_yaml(persona_text: str) -> str:
+    planner_names = (
+        "mission",
+        "input_format",
+        "nsfw_authorization",
+        "art_fundamentals",
+        "art_principles",
+        "character_rules",
+        "art_advanced",
+        "fixed_combos",
+        "technique_combos",
+        "art_craft",
+        "reference_examples",
+        "draw_output",
+    )
+    planner_lines: list[str] = []
+    for name in planner_names:
+        content = "你是绘图助手 {random_string}" if name == "mission" else f"{name} 测试段"
+        planner_lines.append(
+            "    - role: system\n"
+            f"      name: {name}\n"
+            f"      content: {content}\n"
+        )
+    planner = "".join(planner_lines)
     return (
         "chat:\n"
         f"  persona: |\n    {persona_text}\n"
@@ -34,12 +57,12 @@ def _merged_yaml(persona_text: str) -> str:
         "  reply_rules: |\n"
         "    回复规则测试段\n"
         "\n"
+        "lite_chat:\n"
+        "  system_prompt: Lite 测试段\n"
+        "\n"
         "planner:\n"
         "  system_prompts:\n"
-        "    - role: user\n"
-        '      content: "{random_string}"\n'
-        "    - role: system\n"
-        "      content: 你是绘图助手\n"
+        + planner
     )
 
 

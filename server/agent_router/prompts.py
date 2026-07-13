@@ -40,15 +40,21 @@ chat 段（行为层）与 planner 段（知识层）拼成**同一个** agent �
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import random
 import re
 import string
+from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import lru_cache
+from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import yaml
+
+from . import resources as packaged_prompt_resources
 
 # ============================================================
 # 文件位置 + 加载
@@ -75,6 +81,61 @@ _PRESET_FILES: dict[str, str] = {
     "anima": "prompts_anima.yaml",
 }
 
+_REQUIRED_CHAT_SECTIONS = ("persona", "workflow", "tools_hint", "reply_rules")
+_REQUIRED_PLANNER_SECTIONS = (
+    "mission",
+    "input_format",
+    "nsfw_authorization",
+    "art_fundamentals",
+    "art_principles",
+    "character_rules",
+    "art_advanced",
+    "fixed_combos",
+    "technique_combos",
+    "art_craft",
+    "reference_examples",
+    "draw_output",
+)
+
+
+class _ReadableResource(Protocol):
+    def is_file(self) -> bool: ...
+
+    def read_text(self, encoding: str = "utf-8") -> str: ...
+
+
+class PromptResourceError(RuntimeError):
+    """The versioned Agent prompt is missing or violates its schema."""
+
+
+@dataclass(frozen=True)
+class AgentPromptBundle:
+    """Validated prompt sections injected into one Agent request."""
+
+    source: str
+    chat_sections: Mapping[str, str]
+    planner_sections: Mapping[str, str]
+    lite_chat_sections: Mapping[str, str]
+
+    def chat(self, name: str) -> str:
+        return str(self.chat_sections.get(name) or "").strip()
+
+    def planner(self, name: str) -> str:
+        return str(self.planner_sections.get(name) or "").strip()
+
+    def lite_chat(self, name: str = "system_prompt") -> str:
+        return str(self.lite_chat_sections.get(name) or "").strip()
+
+
+def _package_resource(filename: str) -> _ReadableResource:
+    # Importing the resource package gives PyInstaller a static import edge.
+    return resources.files(packaged_prompt_resources).joinpath(filename)
+
+
+def packaged_prompts_path() -> Path:
+    """Source-tree location expected by the desktop build preflight."""
+    return Path(__file__).resolve().with_name("resources") / _PROMPTS_FILE
+
 
 def _preset_file(preset: str | None) -> str:
     """按 preset 名解析到 yaml 文件名，未知 preset 走默认。"""
@@ -87,31 +148,138 @@ _prompts_logger = logging.getLogger("agent_router.prompts")
 
 
 @lru_cache(maxsize=16)
-def _load_yaml_cached(filename: str, mtime: float) -> dict:
-    """按 (filename, mtime) 缓存。mtime 变了 key 也变,文件改动自动失效。"""
-    path = _data_dir() / filename
-    if not path.exists():
-        raise FileNotFoundError(f"prompts 配置文件不存在: {path}")
-    text = path.read_text(encoding="utf-8")
-    data = yaml.safe_load(text) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} root 必须是 dict")
+def _load_yaml_cached(source: str, digest: str, text: str) -> dict[str, Any]:
+    """Cache by source and content hash so modified resources reload."""
+    del digest
+    data = _parse_and_validate_yaml(text, source)
     _prompts_logger.info(
-        f"[prompts] reload {filename} (mtime={mtime}) — "
+        f"[prompts] reload {source} — "
         f"sections: chat={list((data.get('chat') or {}).keys())} "
         f"planner_count={len((data.get('planner') or {}).get('system_prompts') or [])}"
     )
     return data
 
 
-def _load_yaml(filename: str) -> dict:
-    """加载指定 YAML 文件,按 mtime 自动失效缓存。"""
-    path = _data_dir() / filename
+def _format_missing_resource_error(filename: str, legacy_path: Path) -> str:
+    return (
+        f"Agent 提示词资源不存在: {filename}。已检查 legacy BOT_DATA_DIR 路径 "
+        f"{legacy_path} 和包资源 {packaged_prompts_path()}。桌面构建前请将 Bot 的"
+        f"生产文件放到 {packaged_prompts_path()}。"
+    )
+
+
+def _read_prompt_source(filename: str) -> tuple[str, str]:
+    """Read legacy Bot data first, then the versioned package resource."""
+    legacy_path = _data_dir() / filename
+    if legacy_path.is_file():
+        return str(legacy_path), legacy_path.read_text(encoding="utf-8")
+
     try:
-        mtime = path.stat().st_mtime
-    except FileNotFoundError:
-        mtime = 0.0
-    return _load_yaml_cached(filename, mtime)
+        packaged = _package_resource(filename)
+        if packaged.is_file():
+            return (
+                f"package:{__package__}.resources/{filename}",
+                packaged.read_text(encoding="utf-8"),
+            )
+    except (FileNotFoundError, ModuleNotFoundError):
+        pass
+
+    raise PromptResourceError(_format_missing_resource_error(filename, legacy_path))
+
+
+def _parse_yaml(text: str, source: str) -> dict[str, Any]:
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise PromptResourceError(f"Agent 提示词 YAML 无法解析 ({source}): {exc}") from exc
+    if not isinstance(data, dict):
+        raise PromptResourceError(f"Agent 提示词根节点必须是映射 ({source})")
+    return data
+
+
+def _non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_prompt_data(data: dict[str, Any], source: str) -> None:
+    errors: list[str] = []
+    chat = data.get("chat")
+    if not isinstance(chat, dict):
+        errors.append("chat 必须是映射")
+    else:
+        missing = [
+            name
+            for name in _REQUIRED_CHAT_SECTIONS
+            if not _non_empty_string(chat.get(name))
+        ]
+        if missing:
+            errors.append(f"chat 缺少非空段: {', '.join(missing)}")
+
+    lite_chat = data.get("lite_chat")
+    if not isinstance(lite_chat, dict) or not _non_empty_string(lite_chat.get("system_prompt")):
+        errors.append("lite_chat.system_prompt 必须是非空字符串")
+
+    planner = data.get("planner")
+    planner_prompts = planner.get("system_prompts") if isinstance(planner, dict) else None
+    planner_names: set[str] = set()
+    if not isinstance(planner_prompts, list) or not planner_prompts:
+        errors.append("planner.system_prompts 必须是非空列表")
+    else:
+        for index, item in enumerate(planner_prompts):
+            if not isinstance(item, dict):
+                errors.append(f"planner.system_prompts[{index}] 必须是映射")
+                continue
+            if not _non_empty_string(item.get("content")):
+                errors.append(f"planner.system_prompts[{index}].content 必须是非空字符串")
+            name = item.get("name")
+            if _non_empty_string(name):
+                assert isinstance(name, str)
+                if name in planner_names:
+                    errors.append(f"planner.system_prompts 段名重复: {name}")
+                planner_names.add(name)
+        missing = [name for name in _REQUIRED_PLANNER_SECTIONS if name not in planner_names]
+        if missing:
+            errors.append(f"planner 缺少命名段: {', '.join(missing)}")
+
+    if errors:
+        raise PromptResourceError(f"Agent 提示词校验失败 ({source}): {'; '.join(errors)}")
+
+
+def _parse_and_validate_yaml(text: str, source: str) -> dict[str, Any]:
+    data = _parse_yaml(text, source)
+    _validate_prompt_data(data, source)
+    return data
+
+
+def _load_yaml(filename: str) -> dict[str, Any]:
+    source, text = _read_prompt_source(filename)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return _load_yaml_cached(source, digest, text)
+
+
+def preflight_prompt_resource(path: str | Path | None = None) -> dict[str, Any]:
+    """Validate the formal Agent prompt without raising (build/readiness API)."""
+    source = str(Path(path).resolve()) if path is not None else _PROMPTS_FILE
+    try:
+        if path is None:
+            resolved_source, text = _read_prompt_source(_PROMPTS_FILE)
+        else:
+            explicit = Path(path).resolve()
+            if not explicit.is_file():
+                raise PromptResourceError(
+                    f"Agent 提示词资源不存在: {explicit}。请将 Bot 的生产 prompts.yaml 放到该路径。"
+                )
+            resolved_source, text = str(explicit), explicit.read_text(encoding="utf-8")
+        data = _parse_and_validate_yaml(text, resolved_source)
+        return {
+            "ok": True,
+            "file": _PROMPTS_FILE,
+            "source": resolved_source,
+            "chat_sections": list(data["chat"].keys()),
+            "planner_prompts_count": len(data["planner"]["system_prompts"]),
+        }
+    except (OSError, UnicodeError, PromptResourceError) as exc:
+        return {"ok": False, "file": _PROMPTS_FILE, "source": source, "error": str(exc)}
 
 
 def _load_prompts(preset: str | None = None) -> dict:
@@ -119,6 +287,65 @@ def _load_prompts(preset: str | None = None) -> dict:
     f = _preset_file(preset)
     _prompts_logger.debug(f"[prompts] _load_prompts preset={preset!r} -> {f}")
     return _load_yaml(f)
+
+
+def _prompt_bundle_from_data(data: dict[str, Any], source: str) -> AgentPromptBundle:
+    planner_items = (data.get("planner") or {}).get("system_prompts") or []
+    planner_sections = {
+        str(item["name"]): str(item["content"]).strip()
+        for item in planner_items
+        if isinstance(item, dict)
+        and _non_empty_string(item.get("name"))
+        and _non_empty_string(item.get("content"))
+    }
+    return AgentPromptBundle(
+        source=source,
+        chat_sections={
+            str(name): str(content).strip()
+            for name, content in (data.get("chat") or {}).items()
+            if isinstance(content, str)
+        },
+        planner_sections=planner_sections,
+        lite_chat_sections={
+            str(name): str(content).strip()
+            for name, content in (data.get("lite_chat") or {}).items()
+            if isinstance(content, str)
+        },
+    )
+
+
+def prompt_bundle_from_text(text: str, source: str = "injected") -> AgentPromptBundle:
+    """Validate explicit prompt text and make a request-scoped bundle."""
+    return _prompt_bundle_from_data(_parse_and_validate_yaml(text, source), source)
+
+
+def load_prompt_bundle(preset: str | None = None) -> AgentPromptBundle:
+    """Load a bundle through the legacy-first lookup used by the Bot."""
+    filename = _preset_file(preset)
+    source, text = _read_prompt_source(filename)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return _prompt_bundle_from_data(_load_yaml_cached(source, digest, text), source)
+
+
+def load_packaged_prompt_bundle() -> AgentPromptBundle:
+    """Load only the versioned desktop resource; never consult BOT_DATA_DIR."""
+    try:
+        packaged = _package_resource(_PROMPTS_FILE)
+        if not packaged.is_file():
+            raise PromptResourceError(
+                f"Agent 提示词资源不存在: {packaged_prompts_path()}。"
+                "请将 Bot 的生产 prompts.yaml 放到该路径。"
+            )
+        source = f"package:{__package__}.resources/{_PROMPTS_FILE}"
+        text = packaged.read_text(encoding="utf-8")
+    except PromptResourceError:
+        raise
+    except (FileNotFoundError, ModuleNotFoundError, OSError, UnicodeError) as exc:
+        raise PromptResourceError(
+            f"Agent 提示词资源无法读取: {packaged_prompts_path()}: {exc}"
+        ) from exc
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return _prompt_bundle_from_data(_load_yaml_cached(source, digest, text), source)
 
 
 # ============================================================
@@ -239,24 +466,8 @@ def get_prompts_raw() -> dict:
 
 
 def warm_load_all() -> dict:
-    """启动期预加载并做基本校验"""
-    status: dict[str, Any] = {}
-    try:
-        data = _load_yaml(_PROMPTS_FILE)
-    except Exception as e:
-        status["prompts"] = {"ok": False, "error": str(e)}
-        return status
-
-    chat = data.get("chat") or {}
-    planner = data.get("planner") or {}
-    planner_prompts = planner.get("system_prompts") or []
-    status["prompts"] = {
-        "ok": True,
-        "file": _PROMPTS_FILE,
-        "chat_sections": list(chat.keys()),
-        "chat_missing": [
-            n for n in ("persona", "workflow", "tools_hint", "reply_rules") if n not in chat
-        ],
-        "planner_prompts_count": len(planner_prompts),
-    }
-    return status
+    """Legacy startup API backed by the strict Agent resource preflight."""
+    result = preflight_prompt_resource()
+    if result.get("ok"):
+        result["chat_missing"] = []
+    return {"prompts": result}

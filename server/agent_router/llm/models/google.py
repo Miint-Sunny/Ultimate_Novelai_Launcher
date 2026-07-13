@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from ..exceptions import LLMError, ModelHTTPError
+from ..exceptions import LLMError, ModelHTTPError, ModelProtocolError
 from ..messages import (
     BinaryContent,
     ModelMessage,
@@ -41,7 +41,7 @@ from ..messages import (
     UserPromptPart,
 )
 from ..result import Usage
-from .base import Model, get_default_http_client
+from .base import Model, get_default_http_client, has_usable_terminal_part
 
 
 class GeminiBlockedError(LLMError):
@@ -263,8 +263,24 @@ class GoogleModel(Model):
                 )
             raise ModelHTTPError(resp.status_code, text, body=text)
 
-        data = resp.json()
-        return _parse_gemini_response(data)
+        try:
+            data = resp.json()
+            return _parse_gemini_response(data)
+        except (GeminiBlockedError, ModelProtocolError):
+            raise
+        except (
+            json.JSONDecodeError,
+            UnicodeError,
+            TypeError,
+            ValueError,
+            AttributeError,
+            KeyError,
+            IndexError,
+        ) as exc:
+            raise ModelProtocolError(
+                "Gemini",
+                f"invalid JSON or response structure ({type(exc).__name__})",
+            ) from exc
 
 
 # ============================================================
@@ -273,17 +289,35 @@ class GoogleModel(Model):
 
 
 def _parse_gemini_response(data: dict) -> tuple[ModelResponse, Usage]:
+    if not isinstance(data, dict):
+        raise TypeError("response root must be an object")
+    if "candidates" not in data and "promptFeedback" not in data:
+        raise ValueError("response has neither candidates nor promptFeedback")
+
     usage = _parse_usage(data.get("usageMetadata"))
 
     feedback = data.get("promptFeedback") or {}
+    if not isinstance(feedback, dict):
+        raise TypeError("promptFeedback must be an object")
     block_reason = str(feedback.get("blockReason") or "")
     candidates = data.get("candidates") or []
+    if not isinstance(candidates, list):
+        raise TypeError("candidates must be a list")
+    if candidates and not isinstance(candidates[0], dict):
+        raise TypeError("candidates[0] must be an object")
     finish_reason = str((candidates[0] if candidates else {}).get("finishReason") or "")
 
     parts: list = []
     if candidates:
         content = candidates[0].get("content") or {}
-        for p in content.get("parts") or []:
+        if not isinstance(content, dict):
+            raise TypeError("candidates[0].content must be an object")
+        wire_parts = content.get("parts") or []
+        if not isinstance(wire_parts, list):
+            raise TypeError("candidates[0].content.parts must be a list")
+        for p in wire_parts:
+            if not isinstance(p, dict):
+                raise TypeError("candidate parts must be objects")
             if "functionCall" in p:
                 fc = p["functionCall"] or {}
                 parts.append(
@@ -295,7 +329,7 @@ def _parse_gemini_response(data: dict) -> tuple[ModelResponse, Usage]:
                 elif str(p.get("text") or "").strip():
                     parts.append(TextPart(content=str(p["text"])))
 
-    if not parts:
+    if not has_usable_terminal_part(parts):
         reason_blob = (
             f"blockReason={block_reason or 'none'}, finishReason={finish_reason or 'none'}"
         )
@@ -303,7 +337,10 @@ def _parse_gemini_response(data: dict) -> tuple[ModelResponse, Usage]:
             raise GeminiBlockedError(f"Gemini blocked: PROHIBITED_CONTENT ({reason_blob})")
         if block_reason or finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
             raise GeminiBlockedError(f"Gemini blocked / empty output ({reason_blob})")
-        # 既无 parts 又无明确拦截：交给 Agent 的空输出重试逻辑
+        raise ModelProtocolError(
+            "Gemini",
+            "response contains neither usable assistant text nor a named function call",
+        )
     return ModelResponse(parts=parts), usage
 
 

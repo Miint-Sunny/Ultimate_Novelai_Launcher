@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from ..exceptions import ModelHTTPError
+from ..exceptions import ModelHTTPError, ModelProtocolError
 from ..messages import (
     BinaryContent,
     ModelMessage,
@@ -41,7 +41,7 @@ from ..messages import (
     UserPromptPart,
 )
 from ..result import Usage
-from .base import Model, get_default_http_client
+from .base import Model, get_default_http_client, has_usable_terminal_part
 
 # ============================================================
 # strict schema 转换
@@ -322,8 +322,24 @@ class OpenAIModel(Model):
         if resp.status_code >= 400:
             raise ModelHTTPError(resp.status_code, _safe_text(resp), body=_safe_text(resp))
 
-        data = resp.json()
-        return _parse_openai_response(data)
+        try:
+            data = resp.json()
+            return _parse_openai_response(data)
+        except ModelProtocolError:
+            raise
+        except (
+            json.JSONDecodeError,
+            UnicodeError,
+            TypeError,
+            ValueError,
+            AttributeError,
+            KeyError,
+            IndexError,
+        ) as exc:
+            raise ModelProtocolError(
+                "OpenAI-compatible",
+                f"invalid JSON or response structure ({type(exc).__name__})",
+            ) from exc
 
 
 # ============================================================
@@ -332,30 +348,51 @@ class OpenAIModel(Model):
 
 
 def _parse_openai_response(data: dict) -> tuple[ModelResponse, Usage]:
+    if not isinstance(data, dict):
+        raise TypeError("response root must be an object")
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("response is missing a non-empty choices list")
+    if not isinstance(choices[0], dict):
+        raise TypeError("choices[0] must be an object")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise TypeError("choices[0].message must be an object")
+
     parts: list = []
-    choices = data.get("choices") or []
-    if choices:
-        message = choices[0].get("message") or {}
-        reasoning = message.get("reasoning_content") or message.get("reasoning")
-        if reasoning:
-            parts.append(ThinkingPart(content=str(reasoning)))
-        content = message.get("content")
-        if isinstance(content, str) and content.strip():
-            parts.append(TextPart(content=content))
-        for tc in message.get("tool_calls") or []:
-            fn = tc.get("function") or {}
-            raw_args = fn.get("arguments")
-            try:
-                args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-            except (json.JSONDecodeError, TypeError):
-                args = raw_args or {}
-            parts.append(
-                ToolCallPart(
-                    tool_name=fn.get("name") or "",
-                    args=args,
-                    tool_call_id=tc.get("id") or "",
-                )
+    reasoning = message.get("reasoning_content") or message.get("reasoning")
+    if reasoning:
+        parts.append(ThinkingPart(content=str(reasoning)))
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        parts.append(TextPart(content=content))
+    tool_calls = message.get("tool_calls") or []
+    if not isinstance(tool_calls, list):
+        raise TypeError("message.tool_calls must be a list")
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            raise TypeError("tool_calls entries must be objects")
+        fn = tc.get("function") or {}
+        if not isinstance(fn, dict):
+            raise TypeError("tool_calls[].function must be an object")
+        raw_args = fn.get("arguments")
+        try:
+            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+        except (json.JSONDecodeError, TypeError):
+            args = raw_args or {}
+        parts.append(
+            ToolCallPart(
+                tool_name=fn.get("name") or "",
+                args=args,
+                tool_call_id=tc.get("id") or "",
             )
+        )
+
+    if not has_usable_terminal_part(parts):
+        raise ModelProtocolError(
+            "OpenAI-compatible",
+            "response contains neither usable assistant text nor a named tool call",
+        )
 
     usage = _parse_usage(data.get("usage"))
     return ModelResponse(parts=parts), usage
