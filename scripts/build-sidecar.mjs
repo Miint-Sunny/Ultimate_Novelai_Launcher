@@ -4,6 +4,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const promptResource = path.join(root, 'server', 'agent_router', 'resources', 'prompts.yaml');
+try {
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'preflight-agent-prompts.mjs')], {
+    cwd: root,
+    stdio: 'inherit',
+  });
+} catch {
+  process.exit(1);
+}
+
 const extension = process.platform === 'win32' ? '.exe' : '';
 const targetTriple = execFileSync('rustc', ['--print', 'host-tuple'], { encoding: 'utf8' }).trim();
 if (!targetTriple) throw new Error('Failed to determine Rust host target triple');
@@ -29,6 +39,7 @@ execFileSync('uv', [
   '--specpath', specDir,
   '--paths', root,
   '--collect-all', 'curl_cffi',
+  '--add-data', `${promptResource}${path.delimiter}server/agent_router/resources`,
   path.join(root, 'scripts', 'sidecar-entry.py'),
 ], {
   cwd: root,

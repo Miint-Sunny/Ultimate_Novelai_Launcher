@@ -130,6 +130,7 @@ let resolvedSidecarUrl: string | null = null;
 const BROWSER_SESSION_TOKEN_KEY = 'ultimate_novelai_launcher_sidecar_session';
 const SIDECAR_PROTOCOL = 1;
 export const SIDECAR_SESSION_CHANGED_EVENT = 'sidecar-session-changed';
+export const SIDECAR_SETTINGS_CHANGED_EVENT = 'sidecar-settings-changed';
 
 export class SidecarPairingRequiredError extends Error {
   constructor() {
@@ -392,6 +393,29 @@ export function getLocalSidecarReady(): SidecarReady | null {
   return latestSidecarReady;
 }
 
+export async function refreshLocalSidecarReady(): Promise<SidecarReady> {
+  try {
+    const ready = await requestJson<SidecarReady>('/api/v1/system/ready');
+    latestSidecarReady = ready;
+    return ready;
+  } catch (error) {
+    // Never keep advertising a paid capability from a stale startup snapshot
+    // when the authoritative readiness probe can no longer be refreshed.
+    latestSidecarReady = null;
+    throw error;
+  }
+}
+
+async function refreshReadyAfterSettingsMutation(): Promise<void> {
+  try {
+    await refreshLocalSidecarReady();
+  } catch {
+    // The settings mutation already succeeded. Keep its result, clear the stale
+    // capability cache above, and let the next request surface connectivity.
+  }
+  window.dispatchEvent(new Event(SIDECAR_SETTINGS_CHANGED_EVENT));
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const body = await response.json();
@@ -432,15 +456,22 @@ export const localSidecarApi = {
   },
   health: () => requestJson<{ ok: boolean; version: string }>('/health'),
   settings: () => requestJson<AppSettings>('/settings'),
-  updateSettings: (
+  primaryLlmModel: async () => {
+    const settings = await requestJson<AppSettings>('/settings');
+    return settings.llm_model.trim();
+  },
+  updateSettings: async (
     settings: Partial<Pick<AppSettings,
       'nai_base_url' | 'llm_provider' | 'llm_base_url' | 'llm_model'
       | 'llm_backup_provider' | 'llm_backup_base_url' | 'llm_backup_model'>>,
-  ) =>
-    requestJson<AppSettings>('/settings', {
+  ) => {
+    const updated = await requestJson<AppSettings>('/settings', {
       method: 'POST',
       body: JSON.stringify(settings),
-    }),
+    });
+    await refreshReadyAfterSettingsMutation();
+    return updated;
+  },
   tokenStatus: () => requestJson<TokenStatus>('/auth/token/status'),
   saveToken: (token: string) =>
     requestJson<TokenStatus>('/auth/token', {
@@ -449,13 +480,22 @@ export const localSidecarApi = {
     }),
   clearToken: () => requestJson<TokenStatus>('/auth/token', { method: 'DELETE' }),
   llmKeyStatus: () => requestJson<LlmKeyStatus>('/auth/llm-key/status'),
-  saveLlmKey: (apiKey: string, slot: 'primary' | 'backup' = 'primary') =>
-    requestJson<LlmKeyStatus>('/auth/llm-key', {
+  saveLlmKey: async (apiKey: string, slot: 'primary' | 'backup' = 'primary') => {
+    const status = await requestJson<LlmKeyStatus>('/auth/llm-key', {
       method: 'POST',
       body: JSON.stringify({ api_key: apiKey, slot }),
-    }),
-  clearLlmKey: (slot: 'primary' | 'backup' = 'primary') =>
-    requestJson<LlmKeyStatus>(`/auth/llm-key?slot=${slot}`, { method: 'DELETE' }),
+    });
+    await refreshReadyAfterSettingsMutation();
+    return status;
+  },
+  clearLlmKey: async (slot: 'primary' | 'backup' = 'primary') => {
+    const status = await requestJson<LlmKeyStatus>(
+      `/auth/llm-key?slot=${slot}`,
+      { method: 'DELETE' },
+    );
+    await refreshReadyAfterSettingsMutation();
+    return status;
+  },
   generate: (request: GenerationRequest) =>
     requestJson<GenerationResult>('/generate', {
       method: 'POST',
@@ -501,7 +541,7 @@ export const localSidecarApi = {
 };
 
 export const sidecarV1Api = {
-  ready: () => requestJson<SidecarReady>('/api/v1/system/ready'),
+  ready: () => refreshLocalSidecarReady(),
   createGenerationJob: (
     body: CanonicalGenerationJobCreate,
     idempotencyKey?: string,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { appBackendApi } from '../../api/appBackendApi';
 import { agentService, type AgentState } from '../../services/agentService';
+import { useAgentModelPresentation } from '../../hooks/useAgentModelPresentation';
 import { AssistantHeader } from './ai-assistant/AssistantHeader';
 import { AssistantInputBar } from './ai-assistant/AssistantInputBar';
 import { AssistantLogList } from './ai-assistant/AssistantLogList';
@@ -38,6 +39,7 @@ export const MobileAIAssistantSheet: React.FC<MobileAIAssistantSheetProps> = ({
   onRestoreSnapshot,
 }) => {
   const agentAvailability = appBackendApi.desktopAgentAvailability();
+  const agentModel = useAgentModelPresentation();
   const {
     aiInput,
     setAiInput,
@@ -81,6 +83,7 @@ export const MobileAIAssistantSheet: React.FC<MobileAIAssistantSheetProps> = ({
       >
         <AssistantHeader
           aiModel={aiModel}
+          localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
           onAiModelChange={onAiModelChange}
           onClose={onClose}
         />

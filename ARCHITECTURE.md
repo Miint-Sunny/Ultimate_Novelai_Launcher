@@ -14,14 +14,28 @@ rules.
 The `main` sidecar deliberately does **not** mount the complete desktop Agent. Its
 compatibility endpoint `POST /api/agent/web/generate-prompt` validates the complete
 request shape, then returns an explicit `503 desktop_agent_unavailable_on_main`.
-Readiness reports `desktop_agent_available: false` and
-`agent_prompt_resources: not_required_on_main`.
 
-The `dev` Agent is an adapter over the shared core, not a second backend. Its
-versioned package resource `server/agent_router/resources/prompts.yaml` is a hard
-build/runtime dependency. That file is not present on `main`; a packaged `dev`
-Agent cannot pass its release gate until the formal resource is supplied. Do not
-invent a fallback prompt file.
+On `dev`, that compatibility adapter is replaced by the complete request-scoped,
+two-stage Agent. The adapter consumes the shared transport-neutral core and the
+single lifespan-owned sidecar runtime; it does not create a second server or retain
+conversation state. Images (with their real MIME type), caller history, Codex data,
+knowledge-source selection, artist/OC context, and current whole/per-character
+prompts all cross the typed frontend transport boundary. SSE preserves
+`agent_token`, `tool_call`, `tool_result`, `degraded`, `final`, and `error`.
+
+Both local Agent stages use the sidecar primary LLM and share one request-level
+failover decision, so local requests intentionally send an empty `model`. Desktop,
+left-sidebar, and mobile surfaces expose that setting as read-only; configured
+private-cloud mode keeps the historical five-model selector. Provider/network
+failover produces `degraded` and stays on the backup for the rest of that request.
+
+The versioned package resource
+`server/agent_router/resources/prompts.yaml` remains a hard build/runtime dependency.
+`npm run check:agent-prompts` calls the package validator against that exact file,
+and `npm run build:sidecar` runs the preflight before adding it to the PyInstaller
+bundle. The formal file is currently absent, so packaged `dev` acceptance remains
+blocked. Tests may inject synthetic YAML in temporary directories; release builds
+must never create or accept a placeholder resource.
 
 ## Runtime topology
 

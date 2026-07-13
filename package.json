@@ -11,6 +11,7 @@
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "sidecar": "uv run --frozen python -m sidecar.bootstrap",
+    "check:agent-prompts": "node scripts/preflight-agent-prompts.mjs",
     "build:sidecar": "node scripts/build-sidecar.mjs",
     "generate:api-types": "node scripts/generate-sidecar-api.mjs",
     "check:api-contract": "node scripts/generate-sidecar-api.mjs --check",

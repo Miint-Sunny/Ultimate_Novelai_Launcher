@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sidecar import APP_VERSION
+from sidecar.agent_runtime import DesktopAgentAdapter
 from sidecar.application import MutationGate, SettingsStore, TaskSupervisor
 from sidecar.config import Settings, load_settings
 from sidecar.infrastructure import HttpClientPool
@@ -32,6 +33,7 @@ class RuntimeComponents:
     tasks: TaskSupervisor
     mutations: MutationGate
     http: HttpClientPool
+    agent: DesktopAgentAdapter
 
 
 def build_runtime(
@@ -57,6 +59,7 @@ def build_runtime(
     )
     library = LibraryService(database, assets)
     clients = HttpClientPool()
+    agent = DesktopAgentAdapter(settings_store, clients, library)
     executor = NovelAIGenerationExecutor(settings_store, assets, clients)
     persistent_jobs = JobService(
         database,
@@ -97,12 +100,12 @@ def build_runtime(
     runtime.backups = backups
     runtime.pairing = pairing
     runtime.tasks = tasks
+    runtime.agent = agent
     runtime.process_control = process_control
     runtime.capability_provider = lambda: {
         "generation_model_configured": settings_store.current.nai_configured,
         "llm_model_configured": settings_store.current.llm_configured,
-        "agent_prompt_resources": "not_required_on_main",
-        "desktop_agent_available": False,
+        **agent.capabilities(),
     }
     # A prepared restore may have moved the canonical database aside. Recover it
     # before Database.initialize() gets any chance to create a fresh empty file.
@@ -117,6 +120,9 @@ def build_runtime(
     runtime.register("backups", backups)
     runtime.register_hooks("tag_clients", shutdown=close_tag_clients, required=False)
     runtime.register("http_clients", clients)
+    # Missing formal prompts disable only the Agent capability; they do not make
+    # storage, settings, or generation unavailable.
+    runtime.register("desktop_agent", agent, required=False)
     runtime.register("security", security)
     runtime.register("pairing", pairing)
     runtime.register("generation_jobs", jobs)
@@ -134,6 +140,7 @@ def build_runtime(
         tasks=tasks,
         mutations=mutations,
         http=clients,
+        agent=agent,
     )
 
 

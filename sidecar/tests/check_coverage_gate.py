@@ -10,6 +10,7 @@ MINIMUM_LINE_PERCENT = 90.0
 TARGETS = (
     "backend_core/",
     "cloud_backend/",
+    "sidecar/agent_runtime.py",
     "sidecar/application/",
     "sidecar/persistence/",
     "sidecar/process_control.py",

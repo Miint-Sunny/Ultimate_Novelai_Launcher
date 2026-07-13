@@ -112,9 +112,30 @@ function desktopAgentAvailability(): BackendFeatureAvailability {
   const capabilities = getLocalSidecarReady()?.capabilities ?? {};
   const explicitAvailability = capabilities.desktop_agent_available;
   const promptResources = capabilities.agent_prompt_resources;
+  if (explicitAvailability === true) return { available: true };
+
+  if (promptResources === 'unavailable') {
+    return {
+      available: false,
+      reason: '本地 Agent 正式提示词资源不可用，请检查 dev sidecar 打包资源',
+    };
+  }
+  // The current dev sidecar always publishes this authoritative boolean. It
+  // must take precedence over prompt-only compatibility states: prompts can be
+  // present while the primary provider/model/key tuple is still incomplete.
+  if (explicitAvailability === false) {
+    return {
+      available: false,
+      reason: promptResources === 'available'
+        ? '本地 Agent 主模型尚未完整配置，请先设置提供商、地址、模型和密钥'
+        : '完整桌面 Agent 仅在 dev 版本或已配置的私有云后端中提供',
+    };
+  }
+
+  // One-release compatibility for older dev sidecars that exposed only a
+  // prompt-resource state and did not yet publish desktop_agent_available.
   if (
-    explicitAvailability === true
-    || promptResources === 'ready'
+    promptResources === 'ready'
     || promptResources === 'bundled'
     || promptResources === 'available'
   ) {
@@ -123,7 +144,7 @@ function desktopAgentAvailability(): BackendFeatureAvailability {
 
   return {
     available: false,
-    reason: explicitAvailability === false || promptResources === 'not_required_on_main'
+    reason: promptResources === 'not_required_on_main'
       ? '完整桌面 Agent 仅在 dev 版本或已配置的私有云后端中提供'
       : '本地后端未声明桌面 Agent 能力，请检查 sidecar 版本与就绪状态',
   };

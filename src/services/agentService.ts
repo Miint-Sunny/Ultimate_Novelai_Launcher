@@ -13,7 +13,6 @@
 
 import { appBackendApi } from '../api/appBackendApi';
 import { getAppSettings } from './localLibrary/appSettings';
-import { botService } from './bot/botSession';
 import { cleanPromptMarkers } from './novelai';
 
 // ==================== 可选 model（与后端 MODEL_CHOICES 对齐）====================
@@ -149,6 +148,96 @@ const DEFAULT_KNOWLEDGE_SOURCES: KnowledgeSource[] = [
   'vibes',
   'ocs',
 ];
+
+type AgentHistoryMessage = { role: 'user' | 'assistant'; content: string };
+
+interface AgentWebRequest {
+  user_request: string;
+  model: string;
+  image_b64?: string;
+  image_mime_type: string;
+  history: AgentHistoryMessage[];
+  use_codex: boolean;
+  knowledge_sources: KnowledgeSource[];
+  web_artists: Array<{ id: string; name: string; prompt: string }>;
+  web_ocs: Array<{
+    id: string;
+    name: string;
+    zh_name: string;
+    positive: string;
+    negative: string;
+  }>;
+  web_codex: Array<{
+    id: string;
+    category: string;
+    title: string;
+    content: string;
+    is_r18: boolean;
+  }>;
+  current_positive: string;
+  current_negative: string;
+  current_characters: CharacterPrompt[];
+}
+
+type SsePayload = Record<string, unknown> | string | null;
+
+function payloadField(payload: SsePayload, key: string): unknown {
+  return payload && typeof payload === 'object' ? payload[key] : undefined;
+}
+
+function payloadString(payload: SsePayload, key: string): string | undefined {
+  const value = payloadField(payload, key);
+  return typeof value === 'string' ? value : undefined;
+}
+
+function eventErrorMessage(payload: SsePayload): string {
+  if (typeof payload === 'string' && payload.trim()) return payload;
+  for (const key of ['message', 'detail', 'title', 'code']) {
+    const value = payloadString(payload, key);
+    if (value) return value;
+  }
+  return 'Agent 运行失败';
+}
+
+function parseImagePayload(image: string | undefined): {
+  base64?: string;
+  mimeType: string;
+} {
+  if (!image) return { mimeType: 'image/png' };
+
+  const dataUrl = image.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+  if (!dataUrl) return { base64: image, mimeType: 'image/png' };
+
+  const mimeType = dataUrl[1].trim().toLowerCase().replace('image/jpg', 'image/jpeg');
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) {
+    throw new Error('Agent 图片只支持 PNG、JPEG、WebP 或 GIF');
+  }
+  return { base64: dataUrl[2], mimeType };
+}
+
+function parseSseBlock(block: string): { event: string; data: SsePayload } | null {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const rawLine of block.split(/\r?\n/)) {
+    if (rawLine.startsWith('event:')) {
+      event = rawLine.slice(6).trim();
+    } else if (rawLine.startsWith('data:')) {
+      dataLines.push(rawLine.slice(5).trimStart());
+    }
+  }
+  if (dataLines.length === 0) return null;
+  const raw = dataLines.join('\n');
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed === 'string') return { event, data: parsed };
+    if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { event, data: parsed as Record<string, unknown> };
+    }
+    return { event, data: raw };
+  } catch {
+    return { event, data: raw };
+  }
+}
 
 // ==================== Agent 服务类 ====================
 
@@ -359,7 +448,8 @@ class AgentService {
     );
     this.state.summary = undefined;
 
-    this.abortController = new AbortController();
+    const controller = new AbortController();
+    this.abortController = controller;
     this.updateState({ status: 'thinking', progress: undefined });
 
     // 添加用户日志（保留旧实现的延迟队列语义）
@@ -378,7 +468,7 @@ class AgentService {
     }
 
     // 从已完成的对话日志（user + success）重建 history
-    const history: Array<{ role: string; content: string }> = [];
+    const history: AgentHistoryMessage[] = [];
     let lastSuccessIdx = -1;
     for (let i = this.state.logs.length - 1; i >= 0; i--) {
       if (this.state.logs[i].type === 'success') {
@@ -403,33 +493,21 @@ class AgentService {
     const referencedArtists: string[] = [];
     const referencedOCs: string[] = [];
     const referencedRoleTags: string[] = [];
-
-    // 解析图片（去掉 data: 前缀，只保留纯 base64）
-    let imageB64Pure: string | undefined;
-    if (imageBase64) {
-      imageB64Pure = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    }
+    let responseReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-      };
-      if (getAppSettings().serverMode === 'custom') {
-        const sessionId = botService.getAuthState().sessionId;
-        if (!sessionId) {
-          throw new Error('私有云 Agent 需要先完成 Bot 登录');
-        }
-        headers['X-Bot-Session'] = sessionId;
-      }
-
-      const body = {
+      const image = parseImagePayload(imageBase64);
+      const isLocalSidecar = getAppSettings().serverMode !== 'custom';
+      const body: AgentWebRequest = {
         user_request: userRequest,
-        model,
-        image_b64: imageB64Pure,
+        // Both Agent phases use the sidecar's configured primary model. The
+        // private-cloud protocol keeps the existing per-request model keys.
+        model: isLocalSidecar ? '' : model,
+        image_b64: image.base64,
+        image_mime_type: image.mimeType,
         history,
         use_codex: this.useCodex,
-        knowledge_sources: DEFAULT_KNOWLEDGE_SOURCES,
+        knowledge_sources: [...DEFAULT_KNOWLEDGE_SOURCES],
         web_artists: this.context.artists.map(a => ({
           id: a.id,
           name: a.name,
@@ -442,6 +520,15 @@ class AgentService {
           positive: o.positive,
           negative: o.negative || '',
         })),
+        web_codex: this.useCodex
+          ? (this.context.codex ?? []).map(item => ({
+              id: item.id,
+              category: item.category,
+              title: item.title,
+              content: item.content,
+              is_r18: item.isR18,
+            }))
+          : [],
         current_positive: cleanPromptMarkers(this.context.currentPositive || ''),
         current_negative: cleanPromptMarkers(this.context.currentNegative || ''),
         current_characters: this.context.currentCharacters.map(c => ({
@@ -451,17 +538,13 @@ class AgentService {
         })),
       };
 
-      const resp = await appBackendApi.request('/api/agent/web/generate-prompt', {
+      const resp = await appBackendApi.openSse('/api/agent/web/generate-prompt', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: this.abortController.signal,
+        signal: controller.signal,
       });
 
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
-      }
       if (!resp.body) {
         throw new Error('响应没有 body 流');
       }
@@ -469,36 +552,36 @@ class AgentService {
       // ---- SSE 流式解析 ----
       let finalResult: AgentResult | null = null;
       const reader = resp.body.getReader();
+      responseReader = reader;
       const decoder = new TextDecoder();
       let buf = '';
 
       while (true) {
-        if (this.abortController?.signal.aborted) throw new Error('aborted');
+        if (controller.signal.aborted) throw new DOMException('aborted', 'AbortError');
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          buf += decoder.decode();
+        } else {
+          buf += decoder.decode(value, { stream: true });
+        }
 
-        buf += decoder.decode(value, { stream: true });
-
-        // SSE 事件按 \n\n 分隔
-        let sepIdx: number;
-        while ((sepIdx = buf.indexOf('\n\n')) !== -1) {
-          const block = buf.slice(0, sepIdx);
-          buf = buf.slice(sepIdx + 2);
-
-          let evt = 'message';
-          let data: any = null;
-          for (const line of block.split('\n')) {
-            if (line.startsWith('event:')) {
-              evt = line.slice(6).trim();
-            } else if (line.startsWith('data:')) {
-              const raw = line.slice(5).trim();
-              try { data = JSON.parse(raw); } catch { data = raw; }
-            }
+        let boundary = buf.match(/\r?\n\r?\n/);
+        while (boundary?.index !== undefined) {
+          const block = buf.slice(0, boundary.index);
+          buf = buf.slice(boundary.index + boundary[0].length);
+          const parsed = parseSseBlock(block);
+          if (!parsed) {
+            boundary = buf.match(/\r?\n\r?\n/);
+            continue;
           }
+          const { event: evt, data } = parsed;
 
           if (evt === 'tool_call') {
-            const name = data?.name || 'unknown';
-            const args = data?.arguments || {};
+            const name = payloadString(data, 'name') || 'unknown';
+            const rawArgs = payloadField(data, 'arguments');
+            const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)
+              ? rawArgs as Record<string, unknown>
+              : {};
             // 累积引用统计（按 tool name 粗略归类）
             // 注：search_oc/search_vibe 已被后端合并/删除，分支保留作 dead code 兼容老 server
             // search_character 现在一次同时查通用角色库 + OC 库，referencedOCs 暂无法从 tool_call 层精确区分
@@ -512,22 +595,31 @@ class AgentService {
             else if (name === 'search_oc' && args.query) referencedOCs.push(String(args.query));
             this.addLog('system', `🐾 调用工具 ${name}`, { toolDisplayNames: [name] });
           } else if (evt === 'tool_result') {
-            // 简要 summary 已在 system 日志里体现，此处不重复
+            const summary = payloadString(data, 'summary');
+            if (summary) this.addLog('system', `↳ ${summary}`);
           } else if (evt === 'delegate_start') {
-            const target = data?.target || 'sub-agent';
+            const target = payloadString(data, 'target') || 'sub-agent';
             this.addLog('system', `🪄 委派子任务: ${target}`);
           } else if (evt === 'delegate_end') {
             // silent
           } else if (evt === 'agent_token') {
             // 暂不展示打字机；如需启用可在此追加 progress 文本
           } else if (evt === 'final') {
-            finalResult = data as AgentResult;
+            if (!data || typeof data !== 'object') throw new Error('Agent final 事件格式无效');
+            finalResult = data as unknown as AgentResult;
           } else if (evt === 'error') {
-            throw new Error(data?.message || 'agent error');
+            throw new Error(eventErrorMessage(data));
           } else if (evt === 'degraded') {
-            this.addLog('system', '⚠️ 已降级到安全模式');
+            this.addLog(
+              'system',
+              payloadString(data, 'reason') === 'llm_backup'
+                ? '⚠️ 主模型不可用，本轮已切换备用模型'
+                : '⚠️ Agent 已进入降级模式',
+            );
           }
+          boundary = buf.match(/\r?\n\r?\n/);
         }
+        if (done) break;
       }
 
       if (!finalResult) {
@@ -620,11 +712,14 @@ class AgentService {
       this.updateState({ status: 'done', result: finalResult, summary });
       return finalResult;
     } catch (error) {
-      if (this.abortController?.signal.aborted) return null;
+      if (controller.signal.aborted) return null;
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.addLog('error', `生成失败: ${errorMsg}`);
       this.updateState({ status: 'error', error: errorMsg });
       return null;
+    } finally {
+      await responseReader?.cancel().catch(() => undefined);
+      if (this.abortController === controller) this.abortController = null;
     }
   }
 }

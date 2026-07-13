@@ -1,5 +1,6 @@
 import { once } from 'node:events';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
@@ -12,6 +13,74 @@ const expectedBinary = `ultimate-novelai-sidecar-${targetTriple}${extension}`;
 const candidates = (await readdir(binariesDirectory)).filter(name => name === expectedBinary);
 if (candidates.length !== 1) {
   throw new Error(`Expected one bundled sidecar, found: ${candidates.join(', ')}`);
+}
+
+let fakeLlmRequests = 0;
+const fakeLlm = createServer(async (request, response) => {
+  try {
+    if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
+      response.writeHead(404).end();
+      return;
+    }
+    if (request.headers.authorization !== 'Bearer smoke-llm-credential') {
+      response.writeHead(401).end();
+      return;
+    }
+    const chunks = [];
+    let received = 0;
+    for await (const chunk of request) {
+      received += chunk.length;
+      if (received > 4 * 1024 * 1024) throw new Error('Fake LLM request exceeded 4 MiB');
+      chunks.push(chunk);
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (body.model !== 'smoke-model') throw new Error('Unexpected fake LLM model');
+    fakeLlmRequests += 1;
+
+    const hasFinalResultTool = Array.isArray(body.tools)
+      && body.tools.some(tool => tool?.function?.name === 'final_result');
+    const message = hasFinalResultTool
+      ? {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: 'smoke-lite-final',
+            type: 'function',
+            function: {
+              name: 'final_result',
+              arguments: JSON.stringify({
+                reply_text: 'smoke ready',
+                should_draw: true,
+                refined_resources: '',
+              }),
+            },
+          }],
+        }
+      : {
+          role: 'assistant',
+          content: JSON.stringify({
+            positive: '1girl, smoke test',
+            negative: '',
+            characters: [],
+            size: 'Square',
+          }),
+        };
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      id: `smoke-${fakeLlmRequests}`,
+      choices: [{ index: 0, message, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }));
+  } catch (error) {
+    response.writeHead(500, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: { message: error.message } }));
+  }
+});
+fakeLlm.listen(0, '127.0.0.1');
+await once(fakeLlm, 'listening');
+const fakeLlmAddress = fakeLlm.address();
+if (!fakeLlmAddress || typeof fakeLlmAddress === 'string') {
+  throw new Error('Fake LLM did not bind a TCP port');
 }
 
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'ultimate-novelai-sidecar-'));
@@ -28,6 +97,11 @@ const child = spawn(path.join(binariesDirectory, candidates[0]), [], {
     ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_AUTH: token,
     ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_HOST: '127.0.0.1',
     ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT: '0',
+    LLM_PROVIDER: 'openai',
+    LLM_BASE_URL: `http://127.0.0.1:${fakeLlmAddress.port}/v1`,
+    LLM_API_KEY: 'smoke-llm-credential',
+    LLM_MODEL: 'smoke-model',
+    LLM_NETWORK_SCOPE: 'loopback',
   },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
@@ -62,11 +136,43 @@ try {
     headers: { Authorization: `Bearer ${token}` },
     signal: timeout,
   });
-  if (!readiness.ok || !(await readiness.json()).ready) {
+  const readinessBody = await readiness.json();
+  if (!readiness.ok || !readinessBody.ready) {
     throw new Error('Bundled sidecar readiness smoke failed');
+  }
+  if (
+    readinessBody.capabilities?.agent_prompt_resources !== 'available'
+    || readinessBody.capabilities?.desktop_agent_available !== true
+  ) {
+    throw new Error(`Bundled Agent resource smoke failed: ${JSON.stringify(readinessBody)}`);
   }
 
   const authorization = { Authorization: `Bearer ${token}` };
+  const agent = await fetch(`${base}/api/agent/web/generate-prompt`, {
+    method: 'POST',
+    headers: { ...authorization, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_request: 'draw a smoke test girl',
+      model: '',
+      history: [{ role: 'user', content: 'previous smoke turn' }],
+      knowledge_sources: [],
+      current_positive: 'smoke base',
+      current_negative: '',
+      current_characters: [],
+    }),
+    signal: timeout,
+  });
+  const agentEvents = await agent.text();
+  if (
+    !agent.ok
+    || agentEvents.includes('event: error')
+    || !agentEvents.includes('event: final')
+    || !agentEvents.includes('1girl, smoke test')
+    || fakeLlmRequests !== 2
+  ) {
+    throw new Error(`Bundled fake Agent smoke failed: ${agent.status} ${agentEvents}`);
+  }
+
   const submitted = await fetch(`${base}/api/v1/generation/jobs`, {
     method: 'POST',
     headers: {
@@ -170,5 +276,8 @@ try {
   if (child.exitCode === null) await once(child, 'exit', { signal: timeout });
 } finally {
   if (child.exitCode === null) child.kill();
+  const fakeLlmClosed = once(fakeLlm, 'close');
+  fakeLlm.close();
+  await fakeLlmClosed;
   await rm(dataDirectory, { recursive: true, force: true });
 }

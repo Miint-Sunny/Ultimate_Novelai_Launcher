@@ -3,6 +3,7 @@ import {
   agentService,
   type AgentState,
 } from '../../../services/agentService';
+import { useAgentModelPresentation } from '../../../hooks/useAgentModelPresentation';
 import { ChatBody } from './ChatBody';
 import { Header } from './Header';
 import { HistoryView } from './HistoryView';
@@ -60,6 +61,7 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
   onRestoreSnapshot,
   initialRect,
 }) => {
+  const agentModel = useAgentModelPresentation();
   // ─────────────────────────────
   // 渲染挂载（保留出现/退出动画）
   // ─────────────────────────────
@@ -354,6 +356,7 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
       <Header
         view={view}
         model={aiModel}
+        localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
         blink={blink}
         sending={isGeneratingPrompt}
         hasMessages={msgs.length > 0}
@@ -383,7 +386,7 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
           {/* 隐藏 file input */}
           <input
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/webp,image/gif"
             ref={fileInputRef}
             onChange={handleImagePicked}
             style={{ display: 'none' }}
@@ -412,4 +415,3 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
     </div>
   );
 };
-

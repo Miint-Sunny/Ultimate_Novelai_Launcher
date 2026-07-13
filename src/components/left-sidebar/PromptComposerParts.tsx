@@ -20,6 +20,7 @@ export function PromptToolbar({
   activeTab,
   onActiveTabChange,
   aiModel,
+  localPrimaryModel,
   onAiModelChange,
   onOpenInspiration,
   onOpenTagManager,
@@ -28,6 +29,7 @@ export function PromptToolbar({
   activeTab: ActiveTab;
   onActiveTabChange: (tab: ActiveTab) => void;
   aiModel: string;
+  localPrimaryModel: string | null;
   onAiModelChange: (model: string) => void;
   onOpenInspiration: () => void;
   onOpenTagManager: () => void;
@@ -86,15 +88,26 @@ export function PromptToolbar({
           </div>
 
           <div className="flex items-center gap-2">
-            <select
-              value={aiModel}
-              onChange={(event) => onAiModelChange(event.target.value)}
-              className="h-8 pl-3 pr-6 text-xs font-bold rounded bg-black/40 border border-gray-700/50 text-white cursor-pointer outline-none hover:border-gray-600 transition-colors appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2212%22%20height%3d%2212%22%20viewBox%3d%220%200%2012%2012%22%3e%3cpath%20fill%3d%22%239ca3af%22%20d%3d%22M2%204l4%204%204-4%22%2f%3e%3c%2fsvg%3e')] bg-no-repeat bg-[right_8px_center]"
-            >
-              {AI_MODEL_CHOICES.map((choice) => (
-                <option key={choice.key} value={choice.key}>{choice.label}</option>
-              ))}
-            </select>
+            {localPrimaryModel !== null ? (
+              <span
+                role="status"
+                title={`本地 sidecar 主模型：${localPrimaryModel || '未配置'}`}
+                className="h-8 max-w-[190px] px-3 inline-flex items-center gap-1.5 text-xs font-bold rounded bg-black/40 border border-gray-700/50 text-white"
+              >
+                <span className="shrink-0">本地主模型</span>
+                <span className="text-gray-400 truncate">· {localPrimaryModel || '未配置'}</span>
+              </span>
+            ) : (
+              <select
+                value={aiModel}
+                onChange={(event) => onAiModelChange(event.target.value)}
+                className="h-8 pl-3 pr-6 text-xs font-bold rounded bg-black/40 border border-gray-700/50 text-white cursor-pointer outline-none hover:border-gray-600 transition-colors appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2212%22%20height%3d%2212%22%20viewBox%3d%220%200%2012%2012%22%3e%3cpath%20fill%3d%22%239ca3af%22%20d%3d%22M2%204l4%204%204-4%22%2f%3e%3c%2fsvg%3e')] bg-no-repeat bg-[right_8px_center]"
+              >
+                {AI_MODEL_CHOICES.map((choice) => (
+                  <option key={choice.key} value={choice.key}>{choice.label}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </div>

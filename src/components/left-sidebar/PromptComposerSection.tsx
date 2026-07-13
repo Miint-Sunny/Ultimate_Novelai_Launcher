@@ -2,6 +2,7 @@ import type { Dispatch, MouseEvent, MutableRefObject, RefObject, SetStateAction 
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import type { AgentState, GenerationSnapshot } from '../../services/agentService';
 import { appBackendApi } from '../../api/appBackendApi';
+import { useAgentModelPresentation } from '../../hooks/useAgentModelPresentation';
 import { InlineAgentPanel } from './InlineAgentPanel';
 import {
   ChipModeToggle,
@@ -100,6 +101,7 @@ export function PromptComposerSection({
   onAssistantInitialRectChange,
 }: PromptComposerSectionProps) {
   const agentAvailability = appBackendApi.desktopAgentAvailability();
+  const agentModel = useAgentModelPresentation();
 
   return (
     <div className="bg-nai-input rounded-lg border border-gray-800 p-1 relative group/prompt-container" ref={promptAreaRef}>
@@ -107,6 +109,7 @@ export function PromptComposerSection({
         activeTab={activeTab}
         onActiveTabChange={onActiveTabChange}
         aiModel={aiModel}
+        localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
         onAiModelChange={onAiModelChange}
         onOpenInspiration={onOpenInspiration}
         onOpenTagManager={onOpenTagManager}

@@ -11,6 +11,10 @@ current system map; this file contains the rules that keep that architecture int
   Agent. It may be ahead of `main`, but must never be behind it.
 - The formal `server/agent_router/resources/prompts.yaml` is required to package the
   `dev` Agent. Do not invent a substitute or silently fall back when it is absent.
+- `npm run check:agent-prompts` validates that exact formal resource through the
+  Agent package loader. `npm run build:sidecar` runs the same preflight before
+  PyInstaller and bundles the file as package data. A missing resource is an
+  expected hard failure, not a reason to copy prompts from tests or legacy data.
 - Do not add product behavior to `main` merely to make a `dev` build pass.
 
 ## Dependency boundaries
@@ -86,6 +90,9 @@ API adapters -> application services -> backend_core protocols <- infrastructure
   ports, or download inference models.
 - Desktop images and thumbnails are authenticated Blob downloads; revoke object URLs
   when their backend/session changes.
+- In local mode both Agent phases use the sidecar primary LLM: requests send an
+  empty `model`, and all Agent surfaces show a read-only local-primary-model status.
+  Custom/private-cloud mode retains the five historical model choices.
 - Keep large page shells as orchestration layers. Put domain state in focused hooks or
   services and visible sections in focused components. Avoid unrelated "parts" files.
 - Keep existing event names, storage keys, public facade shapes, and compatibility

@@ -47,10 +47,12 @@ const localApiPath = path.join('src', 'api', 'localSidecarApi.ts');
 const cloudApiPath = path.join('src', 'api', 'cloudBackendApi.ts');
 const appBackendPath = path.join('src', 'api', 'appBackendApi.ts');
 const agentServicePath = path.join('src', 'services', 'agentService.ts');
+const agentModelHookPath = path.join('src', 'hooks', 'useAgentModelPresentation.ts');
 const localApiSource = await readFile(path.join(root, localApiPath), 'utf8');
 const cloudApiSource = await readFile(path.join(root, cloudApiPath), 'utf8');
 const appBackendSource = await readFile(path.join(root, appBackendPath), 'utf8');
 const agentServiceSource = await readFile(path.join(root, agentServicePath), 'utf8');
+const agentModelHookSource = await readFile(path.join(root, agentModelHookPath), 'utf8');
 
 if (/export\s+function\s+imageUrl\s*\(/.test(localApiSource)) {
   violations.push(`${localApiPath}: unauthenticated image URL helpers are forbidden`);
@@ -65,6 +67,9 @@ if (!cloudApiSource.includes("headers.set('X-Bot-Session', sessionId)")) {
 if (!cloudApiSource.includes("redirect: 'error'")) {
   violations.push(`${cloudApiPath}: authenticated custom backend requests must reject redirects`);
 }
+if (!localApiSource.includes("headers.set('Authorization', `Bearer ${token}`)")) {
+  violations.push(`${localApiPath}: local sidecar requests are missing centralized Bearer authentication`);
+}
 
 for (const lifecycleSignal of [
   'APP_SETTINGS_CHANGED_EVENT',
@@ -78,12 +83,39 @@ for (const lifecycleSignal of [
 }
 
 const agentGuardIndex = agentServiceSource.indexOf('desktopAgentAvailability()');
-const agentRequestIndex = agentServiceSource.indexOf("appBackendApi.request('/api/agent/web/generate-prompt'");
-if (agentRequestIndex >= 0 && (agentGuardIndex < 0 || agentGuardIndex > agentRequestIndex)) {
+const agentRequestIndex = agentServiceSource.indexOf(
+  "appBackendApi.openSse('/api/agent/web/generate-prompt'",
+);
+if (agentRequestIndex < 0) {
+  violations.push(`${agentServicePath}: desktop Agent SSE must use the mode-aware appBackendApi client`);
+} else if (agentGuardIndex < 0 || agentGuardIndex > agentRequestIndex) {
   violations.push(`${agentServicePath}: desktop Agent request is not capability-gated`);
 }
-if (agentRequestIndex >= 0 && !agentServiceSource.includes("headers['X-Bot-Session']")) {
-  violations.push(`${agentServicePath}: private-cloud Agent request is missing Bot session authentication`);
+
+const explicitUnavailableIndex = appBackendSource.indexOf('if (explicitAvailability === false)');
+const legacyPromptCompatibilityIndex = appBackendSource.indexOf(
+  "promptResources === 'ready'",
+);
+if (
+  explicitUnavailableIndex < 0
+  || legacyPromptCompatibilityIndex < 0
+  || explicitUnavailableIndex > legacyPromptCompatibilityIndex
+) {
+  violations.push(`${appBackendPath}: authoritative desktop Agent unavailability must precede prompt-only compatibility`);
+}
+
+const readinessRefreshCalls = localApiSource.match(/await refreshReadyAfterSettingsMutation\(\);/g) ?? [];
+if (!localApiSource.includes('export async function refreshLocalSidecarReady()')) {
+  violations.push(`${localApiPath}: readiness cache has no authenticated refresh function`);
+}
+if (readinessRefreshCalls.length < 3) {
+  violations.push(`${localApiPath}: settings and both LLM key mutations must refresh readiness capabilities`);
+}
+if (!agentModelHookSource.includes('SIDECAR_SETTINGS_CHANGED_EVENT')) {
+  violations.push(`${agentModelHookPath}: Agent model presentation does not observe sidecar capability changes`);
+}
+if (!agentModelHookSource.includes('setPresentation({ isLocal: true,')) {
+  violations.push(`${agentModelHookPath}: capability-only changes may not force Agent entry points to re-render`);
 }
 
 if (violations.length > 0) {

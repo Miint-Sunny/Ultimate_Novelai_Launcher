@@ -69,6 +69,7 @@ class AppRuntime:
     backups: Any = None
     pairing: Any = None
     tasks: Any = None
+    agent: Any = None
     mutations: MutationGate = field(default_factory=MutationGate)
     process_control: Any = None
     capability_provider: Callable[[], dict[str, Any]] | None = None

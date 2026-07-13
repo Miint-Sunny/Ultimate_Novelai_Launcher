@@ -6,6 +6,7 @@ import { AI_MODEL_CHOICES } from '../../../services/agentService';
 interface Props {
   view: 'chat' | 'history';
   model: string;
+  localPrimaryModel: string | null;
   blink: boolean;
   sending: boolean;
   hasMessages: boolean;
@@ -30,6 +31,7 @@ interface Props {
 export const Header: React.FC<Props> = ({
   view,
   model,
+  localPrimaryModel,
   blink,
   sending,
   hasMessages,
@@ -105,7 +107,11 @@ export const Header: React.FC<Props> = ({
         className="no-drag"
         style={{ display: 'flex', alignItems: 'center', gap: 6 }}
       >
-        {view === 'chat' && <ModelSelect model={model} onChange={onModelChange} />}
+        {view === 'chat' && (
+          localPrimaryModel !== null
+            ? <LocalModelStatus model={localPrimaryModel} />
+            : <ModelSelect model={model} onChange={onModelChange} />
+        )}
 
         {view === 'chat' && (
           <>
@@ -147,6 +153,43 @@ export const Header: React.FC<Props> = ({
           </svg>
         </button>
       </div>
+    </div>
+  );
+};
+
+const LocalModelStatus: React.FC<{ model: string }> = ({ model }) => {
+  const detail = model || '未配置';
+  return (
+    <div
+      role="status"
+      aria-label={`本地主模型：${detail}`}
+      title={`本地 sidecar 主模型：${detail}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        height: 28,
+        maxWidth: 156,
+        padding: '0 12px',
+        overflow: 'hidden',
+        color: C.text,
+        background: C.surface,
+        border: `1px solid ${C.borderStrong}`,
+        borderRadius: 999,
+        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.25)',
+        fontSize: 11.5,
+        fontWeight: 800,
+        letterSpacing: 0.2,
+        lineHeight: 1,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span style={{ flexShrink: 0 }}>本地主模型</span>
+      <span
+        aria-hidden
+        style={{ marginLeft: 5, overflow: 'hidden', color: C.textDim, textOverflow: 'ellipsis' }}
+      >
+        · {detail}
+      </span>
     </div>
   );
 };

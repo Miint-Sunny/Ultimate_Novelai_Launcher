@@ -4,12 +4,14 @@ import { AI_MODEL_CHOICES } from '../../../services/agentService';
 
 interface AssistantHeaderProps {
   aiModel: string;
+  localPrimaryModel: string | null;
   onAiModelChange: (model: string) => void;
   onClose: () => void;
 }
 
 export const AssistantHeader: React.FC<AssistantHeaderProps> = ({
   aiModel,
+  localPrimaryModel,
   onAiModelChange,
   onClose,
 }) => (
@@ -19,15 +21,26 @@ export const AssistantHeader: React.FC<AssistantHeaderProps> = ({
       <span className="text-base font-bold text-nai-accent">Plana Art Web</span>
     </div>
     <div className="flex items-center gap-2">
-      <select
-        value={aiModel}
-        onChange={(e) => onAiModelChange(e.target.value)}
-        className="h-8 px-2 text-sm font-bold rounded-lg bg-[#232736] border border-[#2c3144] text-white max-w-[160px]"
-      >
-        {AI_MODEL_CHOICES.map((choice) => (
-          <option key={choice.key} value={choice.key}>{choice.label}</option>
-        ))}
-      </select>
+      {localPrimaryModel !== null ? (
+        <div
+          role="status"
+          title={`本地 sidecar 主模型：${localPrimaryModel || '未配置'}`}
+          className="h-8 max-w-[180px] px-2.5 inline-flex items-center gap-1.5 text-xs font-bold rounded-lg bg-[#232736] border border-[#2c3144] text-white"
+        >
+          <span className="shrink-0">本地主模型</span>
+          <span className="text-gray-400 truncate">· {localPrimaryModel || '未配置'}</span>
+        </div>
+      ) : (
+        <select
+          value={aiModel}
+          onChange={(e) => onAiModelChange(e.target.value)}
+          className="h-8 px-2 text-sm font-bold rounded-lg bg-[#232736] border border-[#2c3144] text-white max-w-[160px]"
+        >
+          {AI_MODEL_CHOICES.map((choice) => (
+            <option key={choice.key} value={choice.key}>{choice.label}</option>
+          ))}
+        </select>
+      )}
 
       <button
         onClick={onClose}

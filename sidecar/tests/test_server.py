@@ -257,7 +257,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(common.status_code, 200)
                 self.assertEqual(common.json(), [])
 
-    def test_main_accepts_complete_agent_shape_then_reports_capability_unavailable(self) -> None:
+    def test_dev_accepts_complete_agent_shape_then_reports_missing_model(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             settings = Settings(
                 host="127.0.0.1",
@@ -336,7 +336,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 503)
                 self.assertEqual(
                     response.json()["detail"]["code"],
-                    "desktop_agent_unavailable_on_main",
+                    "agent_model_not_configured",
                 )
                 self.assertEqual(extra.status_code, 422)
                 self.assertEqual(invalid_image.status_code, 422)

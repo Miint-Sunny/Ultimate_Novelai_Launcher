@@ -8,18 +8,28 @@ protected mutations as defense in depth.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.routing import APIRoute
 
+from backend_core.errors import RuntimeNotReadyError
+from server.agent_router.schemas import SseEvent
+from server.agent_router.sse import SseChannel
 from sidecar import APP_VERSION
+from sidecar.agent_runtime import (
+    AgentRequestValidationError,
+    AgentRuntimeUnavailable,
+    DesktopAgentAdapter,
+    public_agent_error,
+)
 from sidecar.composition import RuntimeComponents
 from sidecar.config import Settings
 from sidecar.credentials import (
@@ -282,15 +292,80 @@ def create_compat_router(components: RuntimeComponents) -> APIRouter:
             "params": result.params.model_dump(),
         }
 
-    @router.post("/api/agent/web/generate-prompt")
+    @router.post("/api/agent/web/generate-prompt", dependencies=[auth])
     async def legacy_agent_web_generate_prompt(
-        _req: AgentWebGeneratePromptRequest,
-    ) -> None:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "desktop_agent_unavailable_on_main",
-                "message": "the complete desktop Agent is available only on the dev branch",
+        req: AgentWebGeneratePromptRequest,
+        request: Request,
+    ) -> StreamingResponse:
+        agent = components.agent
+        if not isinstance(agent, DesktopAgentAdapter):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "desktop_agent_unavailable",
+                    "message": "the desktop Agent adapter is unavailable",
+                },
+            )
+
+        channel = SseChannel()
+        try:
+            prepared = await agent.prepare(req, channel.emit)
+        except AgentRuntimeUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        except AgentRequestValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+
+        request_id = str(getattr(request.state, "request_id", "") or "unknown")
+
+        async def produce() -> None:
+            try:
+                result = await prepared.run(channel.emit)
+                await channel.emit_final(result.model_dump(mode="json"))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # Provider bodies can contain request material. Keep logs and the
+                # SSE payload limited to a stable classification.
+                logger.warning(
+                    "desktop Agent request failed request_id=%s error_type=%s",
+                    request_id,
+                    type(exc).__name__,
+                )
+                await channel.emit(
+                    SseEvent(event="error", data=public_agent_error(exc, request_id))
+                )
+            finally:
+                await channel.close()
+
+        try:
+            producer = components.tasks.create_task(
+                produce(),
+                name=f"desktop-agent-{request_id}",
+                paid=True,
+            )
+        except RuntimeNotReadyError as exc:
+            await channel.close()
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": exc.code_value,
+                    "message": "the sidecar is draining and cannot start an Agent request",
+                },
+            ) from exc
+        channel.bind_producer(producer)
+        return StreamingResponse(
+            _agent_event_stream(channel, producer),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-store",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
             },
         )
 
@@ -372,6 +447,21 @@ def register_compat_routes(app: FastAPI, components: RuntimeComponents) -> None:
     """Mount the compatibility transport on the application composition root."""
 
     app.include_router(create_compat_router(components))
+
+
+async def _agent_event_stream(
+    channel: SseChannel,
+    producer: asyncio.Task[None],
+) -> AsyncIterator[str]:
+    """Join the Agent producer when Starlette finalizes a disconnected stream."""
+
+    try:
+        async for event in channel.iter_sse():
+            yield event
+    finally:
+        if not producer.done():
+            producer.cancel()
+        await asyncio.gather(producer, return_exceptions=True)
 
 
 def _compat_history_item(job: Any) -> dict[str, Any]:

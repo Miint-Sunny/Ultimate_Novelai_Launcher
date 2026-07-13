@@ -46,6 +46,7 @@ branch = true
 include = [
   "backend_core/*",
   "cloud_backend/*",
+  "sidecar/agent_runtime.py",
   "sidecar/application/*",
   "sidecar/persistence/*",
   "sidecar/process_control.py",
