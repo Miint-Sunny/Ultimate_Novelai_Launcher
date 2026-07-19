@@ -24,6 +24,9 @@ const child = spawn(path.join(binariesDirectory, candidates[0]), [], {
     ULTIMATE_NOVELAI_LAUNCHER_DATA_DIR: dataDirectory,
     ULTIMATE_NOVELAI_LAUNCHER_INSTANCE_ID: instanceId,
     ULTIMATE_NOVELAI_LAUNCHER_MOCK_GENERATION: '1',
+    // Hold mock jobs briefly in a running state so the cancellation smoke can
+    // catch a cancellable job instead of racing instant mock output.
+    ULTIMATE_NOVELAI_LAUNCHER_MOCK_GENERATION_DELAY_MS: '750',
     ULTIMATE_NOVELAI_LAUNCHER_PROTOCOL: '1',
     ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_AUTH: token,
     ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_HOST: '127.0.0.1',

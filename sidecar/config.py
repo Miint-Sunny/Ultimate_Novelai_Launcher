@@ -113,6 +113,9 @@ class Settings:
     llm_api_key: str
     llm_model: str
     mock_generation: bool
+    # Optional artificial delay for mock generation so a job stays cancellable
+    # long enough for tests/smoke checks to exercise cancellation; 0 = instant.
+    mock_generation_delay_ms: int = 0
     danbooru_proxy_url: str = ""
     llm_provider: str = "openai"
     llm_backup_provider: str = "openai"
@@ -264,6 +267,9 @@ def load_settings() -> Settings:
         instance_id=os.environ.get("ULTIMATE_NOVELAI_LAUNCHER_INSTANCE_ID", "").strip(),
         protocol_version=_env_int("ULTIMATE_NOVELAI_LAUNCHER_PROTOCOL", 1, minimum=1, maximum=1),
         unsafe_dev_no_auth=_env_bool("ULTIMATE_NOVELAI_LAUNCHER_UNSAFE_DEV_NO_AUTH"),
+        mock_generation_delay_ms=_env_int(
+            "ULTIMATE_NOVELAI_LAUNCHER_MOCK_GENERATION_DELAY_MS", 0, minimum=0, maximum=60_000
+        ),
         generation_workers=_env_int(
             "ULTIMATE_NOVELAI_LAUNCHER_GENERATION_WORKERS", 1, minimum=1, maximum=4
         ),

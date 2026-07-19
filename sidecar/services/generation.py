@@ -345,6 +345,10 @@ class NovelAIGenerationExecutor:
             raise InvalidArgumentError("prompt tags are empty", code="empty_prompt")
 
         if settings.mock_generation:
+            # Keep the job in a running, cancellable state for the configured
+            # window so cancellation can be exercised against instant mock output.
+            if settings.mock_generation_delay_ms > 0:
+                await asyncio.sleep(settings.mock_generation_delay_ms / 1000)
             payload = _ONE_PIXEL_PNG
         elif request.legacy_payload:
             payload = await generate_image_from_payload(
