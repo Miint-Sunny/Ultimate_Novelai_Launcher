@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -151,8 +153,12 @@ def test_autocomplete_keeps_query_data_out_of_the_upstream_url() -> None:
         app = FastAPI()
         tags.register_tag_routes(app, _settings(Path(temp)))
         session = _CapturingSession()
+        stub_policy = tags.OutboundPolicy("public", resolver=lambda host, port: ["1.1.1.1"])
 
-        with patch.object(tags, "_get_danbooru_session", return_value=session):
+        with (
+            patch.object(tags, "_get_danbooru_session", return_value=session),
+            patch.object(tags, "_danbooru_outbound_policy", stub_policy),
+        ):
             with TestClient(app) as client:
                 response = client.get(
                     "/api/tags/autocomplete",
@@ -160,6 +166,9 @@ def test_autocomplete_keeps_query_data_out_of_the_upstream_url() -> None:
                 )
 
         assert response.status_code == 200
+        # The upstream call must carry the query only as encoded params and must
+        # disable curl's implicit redirect follower (SSRF: redirects are validated
+        # and followed manually via the shared outbound policy).
         assert session.requests == [
             (
                 "https://danbooru.donmai.us/autocomplete.json",
@@ -170,9 +179,53 @@ def test_autocomplete_keeps_query_data_out_of_the_upstream_url() -> None:
                         "limit": 10,
                     },
                     "timeout": 10,
+                    "allow_redirects": False,
                 },
             )
         ]
+
+
+class _FakeRedirect:
+    def __init__(self, location: str) -> None:
+        self.status_code = 302
+        self.headers = {"location": location}
+
+
+class _RedirectingSession(_FakeSession):
+    """curl-style session whose GET always returns a redirect to ``location``."""
+
+    def __init__(self, location: str) -> None:
+        super().__init__()
+        self.location = location
+        self.calls = 0
+
+    def get(self, url: str, **kwargs: object) -> _FakeRedirect:
+        self.calls += 1
+        return _FakeRedirect(self.location)
+
+
+def test_danbooru_get_rejects_redirect_to_metadata_host() -> None:
+    # curl's implicit redirect follower is disabled; each Location is re-validated
+    # against the shared outbound policy, so a 3xx pointing at cloud metadata is
+    # rejected instead of followed.
+    stub_policy = tags.OutboundPolicy("public", resolver=lambda host, port: ["1.1.1.1"])
+    session = _RedirectingSession("https://169.254.169.254/latest/meta-data/")
+    with patch.object(tags, "_danbooru_outbound_policy", stub_policy):
+        with pytest.raises(tags.OutboundPolicyError):
+            tags._danbooru_get(session, f"{tags.DANBOORU}/posts.json", timeout=5)
+    assert session.calls == 1  # the redirect target was never fetched
+
+
+def test_search_backend_post_without_pool_is_policy_pinned() -> None:
+    # With no lifespan pool the fallback still routes through request_with_policy,
+    # so a host that resolves to a private address is rejected before any socket is
+    # opened — there is no unpinned raw-httpx path.
+    stub_policy = tags.OutboundPolicy("public", resolver=lambda host, port: ["127.0.0.1"])
+    with patch.object(tags, "_danbooru_outbound_policy", stub_policy):
+        with pytest.raises(tags.OutboundPolicyError):
+            asyncio.run(
+                tags._search_backend_post(None, "/api/search", {"query": "x"}, timeout=5)
+            )
 
 
 def test_tag_caches_are_bounded_expired_and_copy_isolated() -> None:

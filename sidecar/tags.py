@@ -30,9 +30,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import Settings
 from .db import lookup_tag_translations
-from .infrastructure import HttpClientPool
+from .infrastructure import HttpClientPool, request_with_policy
 from .llm.client import chat_completion
-from .security import OutboundPolicy
+from .security import OutboundPolicy, OutboundPolicyError
 
 DANBOORU = "https://danbooru.donmai.us"
 DANBOORU_SEARCH_BASE = "https://sakizuki-danboorusearch.hf.space"
@@ -125,6 +125,71 @@ def close_tag_clients() -> None:
         _danbooru_session = None
         _danbooru_proxy_key = ()
     _clear_tag_caches()
+
+
+# ---- shared SSRF policy for the Danbooru / search-backend calls ----
+# curl_cffi keeps the Chrome TLS impersonation that clears Cloudflare but cannot
+# pin the socket to a validated IP, so the Danbooru helpers validate the resolved
+# DNS answers before every hop and follow redirects manually with re-validation
+# instead of trusting curl's own follower. The policy is module-level so tests can
+# inject a resolver.
+_REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
+_DANBOORU_MAX_REDIRECTS = 3
+_danbooru_outbound_policy = OutboundPolicy("public")
+
+
+def _danbooru_get(
+    session,
+    url: str,
+    *,
+    params: Mapping[str, Any] | None = None,
+    timeout: float,
+):
+    """GET a Danbooru URL with the shared SSRF policy enforced on the initial
+    request and every redirect hop.
+
+    Redirect following is disabled on the curl session so a 3xx to a private or
+    metadata host is never followed implicitly; each Location is re-validated
+    against the outbound policy before it is fetched.
+    """
+    policy = _danbooru_outbound_policy
+    current = str(policy.validate_url(url))
+    hop_params = params
+    for _ in range(_DANBOORU_MAX_REDIRECTS + 1):
+        resp = session.get(
+            current,
+            params=hop_params,
+            timeout=timeout,
+            allow_redirects=False,
+        )
+        if resp.status_code not in _REDIRECT_STATUS:
+            return resp
+        location = resp.headers.get("location") or resp.headers.get("Location")
+        if not location:
+            return resp
+        current = str(policy.validate_redirect(current, location))
+        hop_params = None
+    raise OutboundPolicyError("too many Danbooru redirects")
+
+
+async def _search_backend_post(
+    http: HttpClientPool | None,
+    path: str,
+    payload: Any,
+    *,
+    timeout: float,
+) -> httpx.Response:
+    """POST to the DanbooruSearch backend through the shared SSRF policy.
+
+    Uses the lifespan-owned pool when present; otherwise owns a redirect-disabled
+    client so request_with_policy re-validates every hop. There is no unpinned path.
+    """
+    url = f"{DANBOORU_SEARCH_BASE}{path}"
+    policy = _danbooru_outbound_policy
+    if http is not None:
+        return await http.request(policy, "POST", url, json=payload, timeout=timeout)
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        return await request_with_policy(client, policy, "POST", url, json=payload, timeout=timeout)
 
 
 def _normalize_tag(tag: str) -> str:
@@ -325,7 +390,9 @@ def _absolute_danbooru_url(url: str | None) -> str | None:
 
 def _fetch_wiki_page(settings: Settings, tag: str) -> dict | None:
     session = _get_danbooru_session(settings)
-    resp = session.get(f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5)
+    resp = _danbooru_get(
+        session, f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5
+    )
     if resp.status_code != 200:
         return None
     data = resp.json()
@@ -341,7 +408,9 @@ def _check_wiki_page_exists(settings: Settings, tag: str) -> tuple[bool, bool]:
     """Return (request_ok, has_wiki); network failures stay out of the negative cache."""
     try:
         session = _get_danbooru_session(settings)
-        resp = session.get(f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5)
+        resp = _danbooru_get(
+            session, f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5
+        )
         if resp.status_code != 200:
             return False, False
         data = resp.json()
@@ -356,7 +425,7 @@ def _check_wiki_page_exists(settings: Settings, tag: str) -> tuple[bool, bool]:
 
 def _fetch_wiki_example(session, ref_type: str, ref_id: int) -> dict | None:
     if ref_type == "post":
-        resp = session.get(f"{DANBOORU}/posts/{ref_id}.json", timeout=8)
+        resp = _danbooru_get(session, f"{DANBOORU}/posts/{ref_id}.json", timeout=8)
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -375,7 +444,7 @@ def _fetch_wiki_example(session, ref_type: str, ref_id: int) -> dict | None:
         }
 
     if ref_type == "asset":
-        resp = session.get(f"{DANBOORU}/media_assets/{ref_id}.json", timeout=8)
+        resp = _danbooru_get(session, f"{DANBOORU}/media_assets/{ref_id}.json", timeout=8)
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -412,7 +481,8 @@ def _fetch_wiki_example(session, ref_type: str, ref_id: int) -> dict | None:
 
 def _fetch_posts_examples(session, tag: str, limit: int = 4) -> list[dict]:
     try:
-        resp = session.get(
+        resp = _danbooru_get(
+            session,
             f"{DANBOORU}/posts.json",
             params={"tags": f"{tag} {_POST_EXAMPLE_RATING}", "limit": limit * 4},
             timeout=8,
@@ -457,7 +527,9 @@ def _fetch_posts_examples(session, tag: str, limit: int = 4) -> list[dict]:
 def _fetch_wiki_chinese(settings: Settings, tag: str) -> tuple[str, list[str]]:
     try:
         session = _get_danbooru_session(settings)
-        resp = session.get(f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5)
+        resp = _danbooru_get(
+            session, f"{DANBOORU}/wiki_pages.json", params={"search[title]": tag}, timeout=5
+        )
         if resp.status_code != 200:
             return tag, []
         data = resp.json()
@@ -711,7 +783,8 @@ def register_tag_routes(
 
         def _fetch():
             session = _get_danbooru_session(current_settings())
-            resp = session.get(
+            resp = _danbooru_get(
+                session,
                 f"{DANBOORU}/autocomplete.json",
                 params={
                     "search[query]": normalized_query,
@@ -743,7 +816,8 @@ def register_tag_routes(
         def _fetch():
             session = _get_danbooru_session(current_settings())
             names_param = ",".join(tags)
-            resp = session.get(
+            resp = _danbooru_get(
+                session,
                 f"{DANBOORU}/tags.json",
                 params={"search[name_comma]": names_param, "limit": len(tags)},
                 timeout=10,
@@ -1038,20 +1112,7 @@ def register_tag_routes(
         results: list[dict] = []
         upstream_error: str | None = None
         try:
-            if http is None:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.post(
-                        f"{DANBOORU_SEARCH_BASE}/api/search",
-                        json=payload,
-                    )
-            else:
-                resp = await http.request(
-                    OutboundPolicy("public"),
-                    "POST",
-                    f"{DANBOORU_SEARCH_BASE}/api/search",
-                    json=payload,
-                    timeout=30,
-                )
+            resp = await _search_backend_post(http, "/api/search", payload, timeout=30)
             if resp.status_code != 200:
                 upstream_error = f"upstream_{resp.status_code}"
             else:
@@ -1118,20 +1179,7 @@ def register_tag_routes(
                 "limit": upstream_limit,
                 "show_nsfw": req.show_nsfw,
             }
-            if http is None:
-                async with httpx.AsyncClient(timeout=90) as client:
-                    resp = await client.post(
-                        f"{DANBOORU_SEARCH_BASE}/api/related",
-                        json=related_payload,
-                    )
-            else:
-                resp = await http.request(
-                    OutboundPolicy("public"),
-                    "POST",
-                    f"{DANBOORU_SEARCH_BASE}/api/related",
-                    json=related_payload,
-                    timeout=90,
-                )
+            resp = await _search_backend_post(http, "/api/related", related_payload, timeout=90)
             if resp.status_code != 200:
                 upstream_error = f"upstream_{resp.status_code}"
             else:
