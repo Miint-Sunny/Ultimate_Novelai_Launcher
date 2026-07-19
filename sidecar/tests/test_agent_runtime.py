@@ -84,7 +84,6 @@ def _prompt_bundle():
     planner_names = (
         "mission",
         "input_format",
-        "nsfw_authorization",
         "art_fundamentals",
         "art_principles",
         "character_rules",
