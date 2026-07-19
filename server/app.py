@@ -4425,7 +4425,17 @@ async def _authenticate_agent_request(request: Request) -> AgentAccess:
 
 
 async def _authorize_agent_paid(access: AgentAccess) -> bool:
-    """Require an internal Bot caller, an admin, or a user with live quota."""
+    """Require an internal Bot caller, an admin, or a user with live quota.
+
+    Intent (not a bug): the Agent LLM assistant is gated on the owner holding live
+    image quota but is deliberately NOT metered. Unlike the image path — which
+    reserves and captures workshop quota units (see ``_workshop_quota.reserve`` /
+    ``capture``) — agent chat/prompt calls neither reserve nor decrement quota.
+    Images are the metered paid unit; the LLM helper stays free for any user who
+    already has quota, so the absence of a reserve/capture here is by design and
+    not a metering bypass. If unbounded agent LLM use ever needs bounding, add a
+    per-owner rate limit rather than repurposing the image quota ledger.
+    """
     if access.administrator or access.trusted_service:
         return True
     owner_id = access.owner_id
