@@ -11074,8 +11074,11 @@ async def _workshop_process_task(
                 kind="failed",
                 error=error,
             )
-            _mirror_workshop_job(job, session_id=req.session_id)
+            # Refund before mirroring the terminal state: the mirror is what marks
+            # the task complete to clients, so the quota must already be restored
+            # once they can observe the failure (avoids a refund-lags-completion race).
             await _refund_workshop_quota(task_id)
+            _mirror_workshop_job(job, session_id=req.session_id)
     except asyncio.CancelledError:
         job = await _cloud_jobs.get(task_id)
         if job is not None and job.status is JobStatus.SUCCEEDED:
@@ -11095,8 +11098,11 @@ async def _workshop_process_task(
                     kind="cancelled",
                     error="用户取消",
                 )
+            # Refund before the completion mirror (see the failed-branch note).
+            await _refund_workshop_quota(task_id)
             _mirror_workshop_job(job, session_id=req.session_id)
-        await _refund_workshop_quota(task_id)
+        else:
+            await _refund_workshop_quota(task_id)
         raise
     except Exception as e:
         print(f"[Workshop] 任务异常: {e}")
@@ -11112,8 +11118,9 @@ async def _workshop_process_task(
                     kind="cancelled",
                     error="用户取消",
                 )
-            _mirror_workshop_job(job, session_id=req.session_id)
+            # Refund before the completion mirror (see the failed-branch note).
             await _refund_workshop_quota(task_id)
+            _mirror_workshop_job(job, session_id=req.session_id)
             return
         if job is not None and not job.terminal:
             job, _ = await _cloud_jobs.transition(
@@ -11122,8 +11129,11 @@ async def _workshop_process_task(
                 kind="failed",
                 error=f"生成异常: {e}"[:2_000],
             )
+            # Refund before the completion mirror (see the failed-branch note).
+            await _refund_workshop_quota(task_id)
             _mirror_workshop_job(job, session_id=req.session_id)
-        await _refund_workshop_quota(task_id)
+        else:
+            await _refund_workshop_quota(task_id)
 
 
 @app.delete("/api/workshop/tasks/{task_id}")
