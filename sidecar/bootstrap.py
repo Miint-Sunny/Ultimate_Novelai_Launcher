@@ -64,10 +64,13 @@ class DataDirectoryLock:
             handle.truncate()
             handle.write(self.instance_id.encode("ascii"))
             handle.flush()
-            try:
-                os.fchmod(handle.fileno(), 0o600)
-            except OSError:
-                pass
+            # os.fchmod does not exist on Windows; mirror secure_json's guard.
+            fchmod = getattr(os, "fchmod", None)
+            if fchmod is not None:
+                try:
+                    fchmod(handle.fileno(), 0o600)
+                except OSError:
+                    pass
             try:
                 os.fsync(handle.fileno())
             except OSError:
