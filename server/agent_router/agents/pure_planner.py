@@ -37,7 +37,6 @@ pure_planner_agent: Agent[AgentDeps, DrawSpec] = Agent(
 _PLANNER_SECTIONS = [
     "mission",
     "input_format",
-    "nsfw_authorization",
     "art_fundamentals",
     "art_principles",
     "character_rules",

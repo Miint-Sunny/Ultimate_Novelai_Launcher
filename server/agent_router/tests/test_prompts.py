@@ -39,7 +39,7 @@ def test_warm_load_all_basic(tmp_data_dir):
     assert status["prompts"]["ok"] is True
     assert "persona" in status["prompts"]["chat_sections"]
     assert status["prompts"]["chat_missing"] == []
-    assert status["prompts"]["planner_prompts_count"] == 12
+    assert status["prompts"]["planner_prompts_count"] == 11
 
 
 def test_get_prompts_raw(tmp_data_dir):
