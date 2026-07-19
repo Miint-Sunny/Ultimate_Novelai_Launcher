@@ -32,7 +32,15 @@ try {
   output = execFileSync(
     'uv',
     ['run', '--frozen', 'python', '-c', python, promptResource],
-    { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Force UTF-8 stdio in the child so the (Chinese) validator output never
+      // hits Windows' cp1252 console encoder and dies with UnicodeEncodeError,
+      // masking the real validation result.
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    },
   );
 } catch (error) {
   const stderr = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
