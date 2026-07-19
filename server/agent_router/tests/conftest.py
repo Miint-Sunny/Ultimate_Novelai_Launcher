@@ -27,7 +27,6 @@ def _merged_yaml(persona_text: str) -> str:
     planner_names = (
         "mission",
         "input_format",
-        "nsfw_authorization",
         "art_fundamentals",
         "art_principles",
         "character_rules",

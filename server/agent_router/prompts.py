@@ -85,7 +85,6 @@ _REQUIRED_CHAT_SECTIONS = ("persona", "workflow", "tools_hint", "reply_rules")
 _REQUIRED_PLANNER_SECTIONS = (
     "mission",
     "input_format",
-    "nsfw_authorization",
     "art_fundamentals",
     "art_principles",
     "character_rules",
