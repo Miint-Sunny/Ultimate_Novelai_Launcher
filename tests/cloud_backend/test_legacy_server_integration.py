@@ -2794,3 +2794,55 @@ async def test_public_library_reads_stay_public_but_writes_are_owner_bound(
     assert public_vibe.json()["owner_id"] == owner.bot_user_id
     assert public_vibe.json()["tenant_id"] == legacy_server._BOT_TASK_TENANT_ID
     assert public_vibe.json()["uploader_id"] == owner.bot_user_id
+
+
+@pytest.mark.asyncio
+async def test_payment_qrcode_requires_a_session(
+    legacy_server: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    owner = legacy_server.BotSession("qr-session", "code", "owner", 1.0, time.time())
+    attacker = legacy_server.BotSession("qr-attacker", "code", "attacker", 1.0, time.time())
+    monkeypatch.setattr(
+        legacy_server.bot_auth_manager,
+        "sessions",
+        {owner.session_id: owner, attacker.session_id: attacker},
+    )
+    data_dir = tmp_path / "bot-data"
+    data_dir.mkdir()
+    (data_dir / "payment_qr_wechat.png").write_bytes(PNG)
+    monkeypatch.setattr(legacy_server, "BOT_DATA_DIR", data_dir)
+
+    async with _client(legacy_server) as client:
+        anonymous = await client.get("/api/billing/qrcode")
+        forged = await client.get("/api/billing/qrcode", params={"session_id": "not-a-session"})
+        conflicting = await client.get(
+            "/api/billing/qrcode",
+            headers={"X-Bot-Session": owner.session_id},
+            params={"session_id": attacker.session_id},
+        )
+        authorized = await client.get(
+            "/api/billing/qrcode",
+            headers={"X-Bot-Session": owner.session_id},
+        )
+        compat = await client.get(
+            "/api/billing/qrcode",
+            params={"session_id": owner.session_id},
+        )
+        traversal = await client.get(
+            "/api/billing/qrcode",
+            headers={"X-Bot-Session": owner.session_id},
+            params={"type": "../../secrets"},
+        )
+
+    # The operator's payment image is no longer anonymously downloadable.
+    assert anonymous.status_code == 401
+    assert forged.status_code == 401
+    # Header and compat credentials are never reconciled when they disagree.
+    assert conflicting.status_code == 401
+    assert authorized.status_code == 200
+    assert authorized.content == PNG
+    assert compat.status_code == 200
+    # Type cleaning still runs after the gate; the sanitized name has no file.
+    assert traversal.status_code == 404
