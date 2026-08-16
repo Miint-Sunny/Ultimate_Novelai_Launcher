@@ -36,6 +36,10 @@ dev = [
 [tool.uv]
 package = false
 required-version = "==0.11.18"
+# Supply-chain cooling-off: a fresh resolve may not pick up distributions
+# published after this date, so a compromised release cannot land silently on a
+# `uv lock --upgrade`. Move the date forward deliberately when upgrading.
+exclude-newer = "2026-07-14T00:00:00Z"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
