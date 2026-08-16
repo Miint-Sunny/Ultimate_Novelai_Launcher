@@ -117,6 +117,12 @@ def _register_middleware(app: FastAPI, components: RuntimeComponents) -> None:
                 "http://localhost:5173",
             ]
         )
+    app.add_middleware(SidecarAuthMiddleware, manager=components.security)
+    # CORS must be registered LAST so it runs OUTSIDE authentication (Starlette
+    # runs middlewares in reverse registration order). Otherwise the auth 401
+    # bypasses CORS entirely: a browser cannot read the status (so pairing can
+    # never begin) and credentialed preflights are rejected before CORS answers
+    # them, which breaks every authenticated browser-mode request.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -136,7 +142,6 @@ def _register_middleware(app: FastAPI, components: RuntimeComponents) -> None:
             "X-Request-ID",
         ],
     )
-    app.add_middleware(SidecarAuthMiddleware, manager=components.security)
 
 
 def _development_origins_enabled() -> bool:
