@@ -18,6 +18,11 @@ _DATA_URL = re.compile(
     re.DOTALL,
 )
 _BINARY_FIELD_PARTS = ("base64", "image", "thumbnail", "reference", "mask")
+# NovelAI wire fields whose names merely LOOK binary. ``image_format`` carries
+# the output container name ('png'); decoding it as base64 would reject every
+# legitimate desktop generation request. Keep this an exact-name allowlist so
+# the fail-closed default still covers unknown binary-looking fields.
+_TEXT_METADATA_FIELDS = frozenset({"image_format"})
 
 
 class PayloadBudgetError(ValueError):
@@ -104,6 +109,8 @@ def enforce_json_decoded_budget(
 
 def _looks_binary_field(value: str) -> bool:
     normalized = value.casefold()
+    if normalized in _TEXT_METADATA_FIELDS:
+        return False
     return any(part in normalized for part in _BINARY_FIELD_PARTS)
 
 
