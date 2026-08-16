@@ -44,7 +44,26 @@ from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-import aiohttp
+from cloud_backend.outbound import SafeBinaryHttpClient, SafeJsonHttpClient
+
+# CNB API 与 workspace 端点都是公网 HTTPS。控制面请求带 Authorization
+# 凭据，必须走 DNS 钉扎 + 跨域重定向剥凭据的出站客户端；裸 aiohttp
+# 违反 AGENTS.md 的 SSRF 不变量。客户端无状态，模块级懒单例即可。
+_json_client: SafeJsonHttpClient | None = None
+_binary_client: SafeBinaryHttpClient | None = None
+
+# 控制面/状态响应都是 JSON；/history 全量可能偏大，给到 16MB。
+_STATE_MAX_BYTES = 16 * 1024 * 1024
+
+
+def _outbound_clients() -> tuple[SafeJsonHttpClient, SafeBinaryHttpClient]:
+    global _json_client, _binary_client
+    if _json_client is None:
+        _json_client = SafeJsonHttpClient(max_response_bytes=_STATE_MAX_BYTES)
+    if _binary_client is None:
+        _binary_client = SafeBinaryHttpClient()
+    return _json_client, _binary_client
+
 
 # ============================================================
 # 异常
@@ -294,14 +313,25 @@ class CNBComfyPool:
             "Accept": "application/vnd.cnb.api+json",
             "Authorization": token,
         }
-        if payload is not None:
-            headers["Content-Type"] = "application/json"
-        timeout = aiohttp.ClientTimeout(total=self.request_timeout)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.request(method.upper(), url, headers=headers, json=payload) as resp:
-                text = await resp.text()
-                if resp.status >= 400:
-                    raise Exception(f"CNB API {resp.status}: {text[:300]}")
+        json_client, binary_client = _outbound_clients()
+        normalized = method.upper()
+        if normalized == "GET" and payload is None:
+            response = await binary_client.get(
+                url,
+                headers=headers,
+                timeout=float(self.request_timeout),
+                max_bytes=_STATE_MAX_BYTES,
+            )
+        else:
+            response = await json_client.post_json(
+                url,
+                headers=headers,
+                payload=payload or {},
+                timeout=float(self.request_timeout),
+            )
+        text = response.body.decode("utf-8", "replace")
+        if response.status >= 400:
+            raise Exception(f"CNB API {response.status}: {text[:300]}")
         return json.loads(text) if text else {}
 
     async def list_workspaces(self, account: dict, status: str | None = None) -> list[dict]:
@@ -374,18 +404,24 @@ class CNBComfyPool:
             return False
         system_url = f"{base}/system_stats"
         object_info_url = f"{base}/object_info"
-        timeout = aiohttp.ClientTimeout(total=int(timeout_seconds or self.healthcheck_timeout))
+        timeout = float(timeout_seconds or self.healthcheck_timeout)
+        _, binary_client = _outbound_clients()
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(system_url) as resp:
-                    if resp.status != 200:
-                        return False
-                    system_text = await resp.text()
-                async with session.get(object_info_url) as resp:
-                    if resp.status != 200:
-                        return False
-                    object_info_text = await resp.text()
+            system_response = await binary_client.get(
+                system_url, headers={}, timeout=timeout, max_bytes=_STATE_MAX_BYTES
+            )
+            if system_response.status != 200:
+                return False
+            system_text = system_response.body.decode("utf-8", "replace")
+            object_info_response = await binary_client.get(
+                object_info_url, headers={}, timeout=timeout, max_bytes=_STATE_MAX_BYTES
+            )
+            if object_info_response.status != 200:
+                return False
+            object_info_text = object_info_response.body.decode("utf-8", "replace")
         except Exception:
+            # 不可达、超大响应、或策略拒绝（非法/内网地址）一律视为不健康：
+            # 这个 URL 不会被选中，语义上失败封闭。
             return False
         try:
             system_data = json.loads(system_text) if system_text else {}
@@ -602,42 +638,42 @@ class CNBComfyPool:
     # ComfyUI 队列守护（出图层用）
     # ============================================================
 
+    async def _get_state(self, url: str, *, what: str) -> dict:
+        _, binary_client = _outbound_clients()
+        response = await binary_client.get(
+            url, headers={}, timeout=30.0, max_bytes=_STATE_MAX_BYTES
+        )
+        text = response.body.decode("utf-8", "replace")
+        if response.status != 200:
+            raise Exception(f"{what}失败: {response.status} {text[:200]}")
+        return json.loads(text) if text else {}
+
     async def get_queue(self, base_url: str) -> dict:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(f"{base_url}/queue") as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    raise Exception(f"读取队列失败: {resp.status} {text[:200]}")
-                return json.loads(text) if text else {}
+        return await self._get_state(f"{base_url}/queue", what="读取队列")
 
     async def get_history(self, base_url: str) -> dict:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(f"{base_url}/history") as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    raise Exception(f"读取历史失败: {resp.status} {text[:200]}")
-                return json.loads(text) if text else {}
+        return await self._get_state(f"{base_url}/history", what="读取历史")
 
     async def delete_queue_items(self, base_url: str, prompt_ids: Iterable[str]) -> None:
         ids = [str(x).strip() for x in (prompt_ids or []) if str(x).strip()]
         if not ids:
             return
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(f"{base_url}/queue", json={"delete": ids}) as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    raise Exception(f"删除队列任务失败: {resp.status} {text[:200]}")
+        json_client, _ = _outbound_clients()
+        response = await json_client.post_json(
+            f"{base_url}/queue", headers={}, payload={"delete": ids}, timeout=30.0
+        )
+        if response.status != 200:
+            text = response.body.decode("utf-8", "replace")
+            raise Exception(f"删除队列任务失败: {response.status} {text[:200]}")
 
     async def interrupt(self, base_url: str) -> None:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(f"{base_url}/interrupt") as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    raise Exception(f"中断运行任务失败: {resp.status} {text[:200]}")
+        json_client, _ = _outbound_clients()
+        response = await json_client.post_json(
+            f"{base_url}/interrupt", headers={}, payload={}, timeout=30.0
+        )
+        if response.status != 200:
+            text = response.body.decode("utf-8", "replace")
+            raise Exception(f"中断运行任务失败: {response.status} {text[:200]}")
 
     @staticmethod
     def extract_queue_prompt_ids(queue_items) -> list[str]:
