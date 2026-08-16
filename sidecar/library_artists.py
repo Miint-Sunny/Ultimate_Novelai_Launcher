@@ -18,7 +18,7 @@ from .library_tables import delete_by_key, fetch_all, find_one
 
 
 def list_artists(settings: Settings) -> list[dict[str, Any]]:
-    rows = fetch_all(settings, "SELECT * FROM artists ORDER BY created_time DESC")
+    rows = fetch_all(settings, "artists")
     return [_artist_to_api(row) for row in rows]
 
 

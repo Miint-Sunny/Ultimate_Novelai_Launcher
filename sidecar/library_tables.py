@@ -14,6 +14,13 @@ _LOOKUP_COLUMNS = {
     "vibes": "filename",
 }
 
+_LIST_ORDER_COLUMNS = {
+    "artists": "created_time",
+    "crs": "created_time",
+    "ocs": "created_at",
+    "vibes": "created_at",
+}
+
 
 def init_library(settings: Settings) -> None:
     ensure_asset_dirs(settings)
@@ -83,9 +90,19 @@ def init_library(settings: Settings) -> None:
         conn.commit()
 
 
-def fetch_all(settings: Settings, query: str) -> list[sqlite3.Row]:
+def fetch_all(settings: Settings, table: str) -> list[sqlite3.Row]:
+    """List one whitelisted library table newest-first.
+
+    The table and its ordering column both come from ``_LIST_ORDER_COLUMNS`` so
+    this stays a closed query surface instead of a general SQL entry point.
+    """
+    order_column = _LIST_ORDER_COLUMNS.get(table)
+    if order_column is None:
+        raise ValueError("unsupported library table listing")
     with closing(connect(settings.db_path)) as conn:
-        return conn.execute(query).fetchall()
+        return conn.execute(
+            f"SELECT * FROM {table} ORDER BY {order_column} DESC",  # noqa: S608
+        ).fetchall()
 
 
 def find_one(settings: Settings, table: str, key: str, alt_column: str) -> sqlite3.Row | None:

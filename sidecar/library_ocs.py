@@ -19,7 +19,7 @@ from .library_tables import delete_by_key, fetch_all, find_one
 
 
 def list_ocs(settings: Settings) -> list[dict[str, Any]]:
-    rows = fetch_all(settings, "SELECT * FROM ocs ORDER BY created_at DESC")
+    rows = fetch_all(settings, "ocs")
     return [_oc_to_api(row) for row in rows]
 
 
