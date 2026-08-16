@@ -614,6 +614,21 @@ LEGACY_GENERATION_QUEUE_CAPACITY = int(
     os.environ.get("LEGACY_GENERATION_QUEUE_CAPACITY", "32")
 )
 
+# 请求频控（滑动窗口，默认开启）。计数按"调用者身份"分桶：已登录会话 → 任务
+# capability Bearer → 客户端地址；每个路径类别各自独立，所以桌面端的状态轮询
+# 不会吃掉生成/放大的额度。留一个显式开关便于排障时临时关闭。
+RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "1") == "1"
+
+# 默认额度（次/分钟）。生成期间桌面端每个活跃任务每 2 秒轮询一次，多任务并发时
+# 每分钟可达数百次，这个值必须留足余量；吃紧的额度只给花钱/换凭据的路由。
+RATE_LIMIT_DEFAULT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_DEFAULT_PER_MINUTE", "600"))
+
+# 反向代理网段（CIDR）。部署在 nginx/Caddy 后面时**必须**填写，否则所有调用者都
+# 从 127.0.0.1 进来、彼此无法区分。只有当直连对端本身落在这个列表里时才会采信
+# X-Forwarded-For（直连时该头由攻击者控制，一律不信）。未配置且对端是回环地址
+# 时，按地址分桶会自动跳过——宁可不限流，也不把全体匿名用户并成一个桶误伤。
+RATE_LIMIT_TRUSTED_PROXIES: list[str] = []
+
 
 # ==================== Anima（cnb ComfyUI 二次元出图后端）====================
 # 用户切到 MODEL_CHOICES["anima"] 渠道后：ChatResponse.image_backend = "anima"，

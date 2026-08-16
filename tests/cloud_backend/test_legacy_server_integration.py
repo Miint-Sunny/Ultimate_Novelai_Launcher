@@ -2846,3 +2846,43 @@ async def test_payment_qrcode_requires_a_session(
     assert compat.status_code == 200
     # Type cleaning still runs after the gate; the sanitized name has no file.
     assert traversal.status_code == 404
+
+
+def test_rate_limiter_runs_outside_every_other_middleware(legacy_server: ModuleType) -> None:
+    installed = [entry.cls.__name__ for entry in legacy_server.app.user_middleware]
+    # Index 0 is the outermost layer, so an abusive caller is turned away before
+    # the body limiter buffers anything.
+    assert installed[0] == "RateLimitMiddleware"
+    assert "StreamingBodyLimitMiddleware" in installed
+
+
+@pytest.mark.asyncio
+async def test_expensive_path_class_rejects_a_flood_with_retry_after(
+    legacy_server: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = legacy_server.BotSession("flood-session", "code", "owner", 1.0, time.time())
+    monkeypatch.setattr(
+        legacy_server.bot_auth_manager,
+        "sessions",
+        {owner.session_id: owner},
+    )
+    budget = legacy_server._LEGACY_RATE_LIMIT_PATH_RULES["/api/agent"].limit
+    headers = {"X-Bot-Session": owner.session_id}
+
+    async with _client(legacy_server) as client:
+        # An unrouted path still consumes the class budget because the limiter
+        # runs before routing; this keeps the flood free of side effects.
+        allowed = [
+            await client.get("/api/agent/missing-on-purpose", headers=headers)
+            for _ in range(budget)
+        ]
+        blocked = await client.get("/api/agent/missing-on-purpose", headers=headers)
+        # A separate class keeps its own allowance for the same caller.
+        other_class = await client.get("/api/billing/qrcode", headers=headers)
+
+    assert {response.status_code for response in allowed} == {404}
+    assert blocked.status_code == 429
+    assert blocked.json()["code"] == "rate_limited"
+    assert int(blocked.headers["retry-after"]) >= 1
+    assert other_class.status_code != 429

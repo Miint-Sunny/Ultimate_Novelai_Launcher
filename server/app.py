@@ -56,6 +56,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from backend_core.jobs import JobStatus
 from cloud_backend.body_limit import StreamingBodyLimitMiddleware
+from cloud_backend.rate_limit import RateLimitMiddleware, RateLimitRule
 from cloud_backend.errors import (
     CloudBackendError,
     InvalidCapabilityError,
@@ -3315,6 +3316,53 @@ app.add_middleware(
     default_limit=_LEGACY_DEFAULT_BODY_LIMIT,
     path_limits=_LEGACY_BODY_PATH_LIMITS,
 )
+
+_RATE_LIMIT_ENABLED = bool(getattr(_appcfg, "RATE_LIMIT_ENABLED", True))
+_RATE_LIMIT_DEFAULT_PER_MINUTE = int(
+    getattr(_appcfg, "RATE_LIMIT_DEFAULT_PER_MINUTE", 0) or 600
+)
+_RATE_LIMIT_TRUSTED_PROXIES = tuple(
+    str(entry).strip()
+    for entry in (getattr(_appcfg, "RATE_LIMIT_TRUSTED_PROXIES", ()) or ())
+    if str(entry).strip()
+)
+
+# Per-identity budgets by path class. The default allowance is deliberately
+# generous because the desktop client polls task state every two seconds per
+# active job; only routes that cost money, spend upstream capacity, or exchange
+# credentials get a tight budget. Each class counts separately, so polling can
+# never exhaust the allowance for generation.
+_LEGACY_RATE_LIMIT_PATH_RULES = {
+    # Paid or upstream-bound work, all of it human-paced in the real client.
+    "/api/generate": RateLimitRule(limit=20, window_seconds=60),
+    "/api/bot/generate": RateLimitRule(limit=30, window_seconds=60),
+    "/api/upscale": RateLimitRule(limit=20, window_seconds=60),
+    "/api/wd-tagger": RateLimitRule(limit=20, window_seconds=60),
+    "/api/vibe/encode": RateLimitRule(limit=20, window_seconds=60),
+    "/api/agent": RateLimitRule(limit=30, window_seconds=60),
+    # Credential exchange, on top of the per-code attempt limits.
+    "/api/bot/auth": RateLimitRule(limit=30, window_seconds=60),
+    # Asset writes are size-bounded already but should not be scriptable in bulk.
+    "/api/vibes/upload": RateLimitRule(limit=30, window_seconds=60),
+    "/api/artists/create": RateLimitRule(limit=30, window_seconds=60),
+    # Bot service progress/update traffic is server-to-server and legitimately
+    # high volume; keep a ceiling without interfering with normal operation.
+    "/api/bot/task": RateLimitRule(limit=1200, window_seconds=60),
+}
+
+# Rate limiting is the outermost layer so an abusive caller is rejected before
+# the body limiter buffers anything. ``/health`` stays exempt for probes.
+if _RATE_LIMIT_ENABLED:
+    app.add_middleware(
+        RateLimitMiddleware,
+        default_rule=RateLimitRule(
+            limit=_RATE_LIMIT_DEFAULT_PER_MINUTE,
+            window_seconds=60,
+        ),
+        path_rules=_LEGACY_RATE_LIMIT_PATH_RULES,
+        exempt_paths=("/health",),
+        trusted_proxies=_RATE_LIMIT_TRUSTED_PROXIES,
+    )
 
 
 class HealthResponse(BaseModel):
