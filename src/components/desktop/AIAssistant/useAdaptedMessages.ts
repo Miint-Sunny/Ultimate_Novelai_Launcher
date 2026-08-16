@@ -34,6 +34,7 @@ export function useAdaptedMessages(agentState: AgentState): VMsg[] {
           content: log.content,
           ts: fmtTimeHM(log.timestamp),
           snapshot: log.snapshot,
+          summary: log.summary,
           tags: splitPromptToTags(log.snapshot?.positive),
         });
       } else if (log.type === 'error') {

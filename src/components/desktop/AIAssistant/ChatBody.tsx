@@ -237,6 +237,34 @@ const EmptyState: React.FC<{ onPick: (s: string) => void; suggestions: string[] 
 // ───────────────────────────────────────────────────────
 // User 消息
 // ───────────────────────────────────────────────────────
+/** 生成摘要行：这次回复引用了哪些资料源（无引用时不渲染，零占位） */
+const SummaryRefLine: React.FC<{ summary?: VMsg['summary'] }> = ({ summary }) => {
+  if (!summary) return null;
+  const parts: string[] = [];
+  if (summary.referencedVibes.length > 0) parts.push(`Vibe ${summary.referencedVibes.join('、')}`);
+  if (summary.referencedArtists.length > 0) parts.push(`画师 ${summary.referencedArtists.join('、')}`);
+  if (summary.referencedOCs.length > 0) parts.push(`OC ${summary.referencedOCs.join('、')}`);
+  if (summary.referencedRoleTags.length > 0) parts.push(`角色映射 ${summary.referencedRoleTags.join('、')}`);
+  if (summary.usedCodex) parts.push('Codex');
+  if (parts.length === 0) return null;
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        paddingTop: 6,
+        borderTop: `1px dashed ${C.border}`,
+        fontSize: 10.5,
+        lineHeight: 1.5,
+        color: C.textDim,
+        wordBreak: 'break-word',
+      }}
+      title="本次生成引用的资料源"
+    >
+      引用 · {parts.join(' · ')}
+    </div>
+  );
+};
+
 const UserMsg: React.FC<{ m: VMsg }> = ({ m }) => (
   <div
     className="aa-msg-in"
@@ -389,6 +417,7 @@ const AIMsg: React.FC<AIMsgProps> = ({
             {renderTagContent(m.content, diffMap)}
           </div>
         )}
+        {!isError && <SummaryRefLine summary={m.summary} />}
       </div>
       {/* 常驻操作栏 */}
       <div

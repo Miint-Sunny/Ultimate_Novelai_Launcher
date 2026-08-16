@@ -661,6 +661,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     positivePrompt,
     negativePrompt,
     characterPrompts,
+    selectedVibes,
     setPositivePrompt,
     setNegativePrompt,
     setSelectedVibes,

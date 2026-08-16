@@ -177,7 +177,7 @@ export const AgentDock: React.FC = () => {
     if (lastSuccessIdx < 0) return;
     const snap = logs[lastSuccessIdx].snapshot;
 
-    // 1) 先把提示词回滚到生成前的状态
+    // 1) 先把提示词回滚到生成前的状态（旧归档快照没有 preVibes：保持现状不动 vibes）
     const handlers = handlersRef.current;
     if (snap && handlers) {
       handlers.restoreSnapshot({
@@ -185,6 +185,7 @@ export const AgentDock: React.FC = () => {
         positive: snap.prePositive,
         negative: snap.preNegative,
         characters: snap.preCharacters,
+        vibes: snap.preVibes ?? snap.vibes,
       });
     }
     // 2) 把对应的 user request 拎出来 + 截掉 user log 及之后
@@ -226,6 +227,7 @@ export const AgentDock: React.FC = () => {
           positive: snap.prePositive,
           negative: snap.preNegative,
           characters: snap.preCharacters,
+          vibes: snap.preVibes,
         }, payload.image);
         return;
       }

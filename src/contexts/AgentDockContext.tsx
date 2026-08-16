@@ -30,6 +30,7 @@ export interface AgentDockHandlers {
       positive: string;
       negative: string;
       characters: { positive: string; negative?: string; name: string }[];
+      vibes?: string[];
     },
     imageBase64?: string,
   ) => void;

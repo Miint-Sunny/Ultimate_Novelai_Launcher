@@ -12,6 +12,8 @@ type AgentPreState = {
   positive: string;
   negative: string;
   characters: Array<{ name: string; positive: string; negative?: string }>;
+  /** 生成前选中的 vibe id；旧快照没有时回落到当前选中 */
+  vibes?: string[];
 };
 
 type RoleTagMap = AgentContext['roleTags'];
@@ -29,6 +31,7 @@ interface UseAgentPromptGenerationParams {
   positivePrompt: string;
   negativePrompt: string;
   characterPrompts: SidebarCharacterPrompt[];
+  selectedVibes: string[];
   setPositivePrompt: Dispatch<SetStateAction<string>>;
   setNegativePrompt: Dispatch<SetStateAction<string>>;
   setSelectedVibes: Dispatch<SetStateAction<string[]>>;
@@ -83,6 +86,7 @@ function buildAgentContext(
     currentPositive: preState?.positive ?? params.positivePrompt,
     currentNegative: preState?.negative ?? params.negativePrompt,
     currentCharacters: preState?.characters ?? mapCurrentCharacters(params.characterPrompts),
+    currentVibes: preState?.vibes ?? params.selectedVibes,
   };
 }
 

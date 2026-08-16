@@ -79,6 +79,7 @@ export interface LogEntry {
   collapsed?: boolean; // 是否折叠
   generationIndex?: number; // 生成编号（仅 success 类型）
   snapshot?: GenerationSnapshot; // 生成快照（仅 success 类型）
+  summary?: GenerationSummary; // 本次生成的资源引用摘要（仅 success 类型）
   thinking?: string; // AI 思考内容（仅 success 类型）
   expanded?: boolean; // 是否展开详情（仅 success 类型）
   imagePreview?: string; // 用户发送的图片预览（仅 user 类型）
@@ -94,10 +95,12 @@ export interface GenerationSnapshot {
   characters: CharacterPrompt[];
   vibes: string[];
   tokenCount: number;
-  // 生成前的状态（用于重试时传给 AI）
+  // 生成前的状态（用于重试时传给 AI / 撤回时回滚）
   prePositive: string;
   preNegative: string;
   preCharacters: CharacterPrompt[];
+  /** 生成前选中的 vibe id（旧归档快照没有此字段：缺失时撤回保持现状不动 vibes） */
+  preVibes?: string[];
 }
 
 // 生成摘要
@@ -141,6 +144,8 @@ export interface AgentContext {
   currentPositive: string;
   currentNegative: string;
   currentCharacters: Array<{ name: string; positive: string; negative?: string }>;
+  /** 生成发起时左栏选中的 vibe id（进快照 preVibes，撤回/重试用） */
+  currentVibes?: string[];
   codex?: Array<{ id: string; category: string; title: string; content: string; isR18: boolean }>;
 }
 
@@ -690,6 +695,7 @@ class AgentService {
           positive: c.positive,
           negative: c.negative,
         })),
+        preVibes: [...(this.context.currentVibes ?? [])],
       };
 
       // 4) 生成摘要
@@ -720,6 +726,7 @@ class AgentService {
         timestamp: Date.now(),
         generationIndex: this.generationCounter,
         snapshot,
+        summary,
         thinking: meta,
         expanded: totalTokens > 0,
       };

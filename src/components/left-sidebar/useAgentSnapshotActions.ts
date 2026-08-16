@@ -18,6 +18,7 @@ type RegenerateWithRequest = (
     positive: string;
     negative: string;
     characters: SnapshotCharacter[];
+    vibes?: string[];
   },
   imageBase64?: string,
 ) => void;
@@ -115,6 +116,7 @@ export function useAgentSnapshotActions(params: UseAgentSnapshotActionsParams) {
           positive: snapshot.prePositive,
           negative: snapshot.preNegative,
           characters: snapshot.preCharacters,
+          vibes: snapshot.preVibes,
         });
       }
       return;

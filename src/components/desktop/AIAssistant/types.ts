@@ -5,7 +5,12 @@
  * 这里的 VMsg 是把 LogEntry 适配到原型的 user/ai/error 三态视图模型，
  * 便于 ChatBody 渲染。
  */
-import type { AssistantCard, LogEntry, GenerationSnapshot } from '../../../services/agentService';
+import type {
+  AssistantCard,
+  GenerationSnapshot,
+  GenerationSummary,
+  LogEntry,
+} from '../../../services/agentService';
 
 export type VMsgRole = 'user' | 'ai' | 'error' | 'card';
 
@@ -25,6 +30,8 @@ export interface VMsg {
   tags?: string[];
   /** 固定指令产出的结果卡片（仅 card） */
   card?: AssistantCard;
+  /** 本次生成引用了哪些资料源（仅 ai，摘要行渲染用） */
+  summary?: GenerationSummary;
 }
 
 /**
