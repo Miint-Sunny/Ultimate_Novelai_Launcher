@@ -88,6 +88,7 @@ class SettingsStore:
                 "llm_backup_trusted_networks",
                 "llm_backup_base_url",
             ),
+            ("comfy_network_scope", "comfy_trusted_networks", "comfy_base_url"),
         ):
             if (
                 scope_key not in updates

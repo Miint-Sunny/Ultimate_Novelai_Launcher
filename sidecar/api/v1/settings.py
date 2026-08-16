@@ -14,6 +14,7 @@ from sidecar.runtime import AppRuntime
 from ..dependencies import authorize_request, resolve_runtime
 from ..problems import ProblemDetailsRoute
 from .models import (
+    ComfyNetworkScopeValue,
     NetworkScopeValue,
     ProviderValue,
     SettingsResponse,
@@ -97,6 +98,10 @@ def settings_response(settings: Settings, *, version: str) -> SettingsResponse:
         ),
         llm_backup_trusted_networks=list(settings.llm_backup_trusted_networks),
         llm_configured=settings.llm_configured,
+        comfy_base_url=settings.comfy_base_url,
+        comfy_network_scope=cast(ComfyNetworkScopeValue, settings.comfy_network_scope),
+        comfy_trusted_networks=list(settings.comfy_trusted_networks),
+        comfy_configured=settings.comfy_configured,
     )
 
 

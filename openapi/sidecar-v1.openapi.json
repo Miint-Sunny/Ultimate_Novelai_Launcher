@@ -861,6 +861,15 @@
             "title": "Noise Schedule",
             "type": "string"
           },
+          "provider": {
+            "default": "nai",
+            "enum": [
+              "nai",
+              "comfy"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
           "sampler": {
             "default": "k_euler_ancestral",
             "title": "Sampler",
@@ -1541,6 +1550,29 @@
       "SettingsResponse": {
         "additionalProperties": false,
         "properties": {
+          "comfy_base_url": {
+            "title": "Comfy Base Url",
+            "type": "string"
+          },
+          "comfy_configured": {
+            "title": "Comfy Configured",
+            "type": "boolean"
+          },
+          "comfy_network_scope": {
+            "enum": [
+              "loopback",
+              "trusted-lan"
+            ],
+            "title": "Comfy Network Scope",
+            "type": "string"
+          },
+          "comfy_trusted_networks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Comfy Trusted Networks",
+            "type": "array"
+          },
           "data_dir": {
             "title": "Data Dir",
             "type": "string"
@@ -1658,7 +1690,11 @@
           "llm_backup_key_configured",
           "llm_backup_network_scope",
           "llm_backup_trusted_networks",
-          "llm_configured"
+          "llm_configured",
+          "comfy_base_url",
+          "comfy_network_scope",
+          "comfy_trusted_networks",
+          "comfy_configured"
         ],
         "title": "SettingsResponse",
         "type": "object"
@@ -1874,6 +1910,50 @@
       "sidecar__api__v1__models__SettingsUpdateRequest": {
         "additionalProperties": false,
         "properties": {
+          "comfy_base_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comfy Base Url"
+          },
+          "comfy_network_scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "loopback",
+                  "trusted-lan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comfy Network Scope"
+          },
+          "comfy_trusted_networks": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "minLength": 3,
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comfy Trusted Networks"
+          },
           "llm_backup_base_url": {
             "anyOf": [
               {

@@ -69,6 +69,8 @@ class DrainResponse(StrictModel):
 
 ProviderValue = Literal["openai", "anthropic", "gemini"]
 NetworkScopeValue = Literal["public", "loopback", "trusted-lan"]
+# ComfyUI is a local/LAN service; its endpoint may never be public internet.
+ComfyNetworkScopeValue = Literal["loopback", "trusted-lan"]
 TrustedNetworkValue = Annotated[str, Field(min_length=3, max_length=64)]
 
 
@@ -87,6 +89,12 @@ class SettingsUpdateRequest(StrictModel):
     llm_backup_model: str | None = Field(default=None, max_length=256)
     llm_backup_network_scope: NetworkScopeValue | None = None
     llm_backup_trusted_networks: list[TrustedNetworkValue] | None = Field(
+        default=None,
+        max_length=16,
+    )
+    comfy_base_url: str | None = Field(default=None, max_length=2048)
+    comfy_network_scope: ComfyNetworkScopeValue | None = None
+    comfy_trusted_networks: list[TrustedNetworkValue] | None = Field(
         default=None,
         max_length=16,
     )
@@ -122,6 +130,10 @@ class SettingsResponse(StrictModel):
     llm_backup_network_scope: NetworkScopeValue
     llm_backup_trusted_networks: list[str]
     llm_configured: bool
+    comfy_base_url: str
+    comfy_network_scope: ComfyNetworkScopeValue
+    comfy_trusted_networks: list[str]
+    comfy_configured: bool
 
 
 class StorageStatusResponse(StrictModel):

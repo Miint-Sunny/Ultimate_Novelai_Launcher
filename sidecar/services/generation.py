@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Any
 
@@ -11,6 +12,7 @@ from backend_core.errors import InvalidArgumentError, RuntimeNotReadyError
 from backend_core.jobs import GenerationJob, JobCreateResult, JobEvent, JobStatus
 from backend_core.types import JsonValue
 from sidecar.application.settings import SettingsStore
+from sidecar.comfy import ComfyUIError, generate_comfy_image
 from sidecar.infrastructure import HttpClientPool
 from sidecar.llm.client import LLMConversionError, LLMNotConfiguredError, convert_natural_to_tags
 from sidecar.nai.client import NovelAIError, generate_image, generate_image_from_payload
@@ -315,17 +317,25 @@ class GenerationJobCoordinator:
 
 
 class NovelAIGenerationExecutor:
-    """Execute one immutable job snapshot against the current local settings."""
+    """Execute one immutable job snapshot against the current local settings.
+
+    Despite the historical name this is the provider dispatch point: the
+    validated payload's ``params.provider`` selects NovelAI or a local ComfyUI
+    instance, while queueing, cancellation, and asset storage stay shared.
+    """
 
     def __init__(
         self,
         settings: SettingsStore,
         assets: AssetService,
         http: HttpClientPool | None = None,
+        *,
+        jobs: JobService | None = None,
     ) -> None:
         self.settings = settings
         self.assets = assets
         self.http = http
+        self.jobs = jobs
 
     async def initialize(self) -> None:
         await self.assets.initialize()
@@ -350,6 +360,20 @@ class NovelAIGenerationExecutor:
             if settings.mock_generation_delay_ms > 0:
                 await asyncio.sleep(settings.mock_generation_delay_ms / 1000)
             payload = _ONE_PIXEL_PNG
+        elif resolved.params.provider == "comfy":
+            if self.http is None:
+                raise InvalidArgumentError(
+                    "ComfyUI generation requires the lifecycle HTTP pool",
+                    code="comfy_not_configured",
+                )
+            payload = await generate_comfy_image(
+                settings=settings,
+                tags=resolved.tags,
+                negative=resolved.negative,
+                params=resolved.params,
+                http=self.http,
+                on_progress=self._progress_reporter(job.id),
+            )
         elif request.legacy_payload:
             payload = await generate_image_from_payload(
                 settings=settings,
@@ -387,6 +411,19 @@ class NovelAIGenerationExecutor:
             "created_at": asset.created_at,
         }
 
+    def _progress_reporter(self, job_id: str) -> Callable[[float], Awaitable[None]] | None:
+        if self.jobs is None:
+            return None
+        store = self.jobs
+
+        async def report(progress: float) -> None:
+            # Progress is advisory. A job that has moved to ``cancelling`` (or a
+            # non-monotonic estimate) must never fail the generation itself.
+            with contextlib.suppress(Exception):
+                await store.update_progress(job_id, progress)
+
+        return report
+
 
 async def _resolve_prompt(
     settings: Any,
@@ -413,7 +450,7 @@ async def _resolve_prompt(
 def _safe_error_message(exc: Exception) -> str:
     if isinstance(exc, (InvalidArgumentError, LLMNotConfiguredError, LLMConversionError)):
         return str(exc)[:500]
-    if isinstance(exc, NovelAIError):
+    if isinstance(exc, (NovelAIError, ComfyUIError)):
         return str(exc)[:500]
     return "generation failed"
 

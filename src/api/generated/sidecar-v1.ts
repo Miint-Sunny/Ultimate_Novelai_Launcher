@@ -664,6 +664,12 @@ export interface components {
              */
             readonly noise_schedule: string;
             /**
+             * Provider
+             * @default nai
+             * @enum {string}
+             */
+            readonly provider: "nai" | "comfy";
+            /**
              * Sampler
              * @default k_euler_ancestral
              */
@@ -901,6 +907,17 @@ export interface components {
         };
         /** SettingsResponse */
         readonly SettingsResponse: {
+            /** Comfy Base Url */
+            readonly comfy_base_url: string;
+            /** Comfy Configured */
+            readonly comfy_configured: boolean;
+            /**
+             * Comfy Network Scope
+             * @enum {string}
+             */
+            readonly comfy_network_scope: "loopback" | "trusted-lan";
+            /** Comfy Trusted Networks */
+            readonly comfy_trusted_networks: readonly string[];
             /** Data Dir */
             readonly data_dir: string;
             /** Llm Backup Base Url */
@@ -952,6 +969,12 @@ export interface components {
         };
         /** SettingsUpdateRequest */
         readonly sidecar__api__v1__models__SettingsUpdateRequest: {
+            /** Comfy Base Url */
+            readonly comfy_base_url?: string | null;
+            /** Comfy Network Scope */
+            readonly comfy_network_scope?: ("loopback" | "trusted-lan") | null;
+            /** Comfy Trusted Networks */
+            readonly comfy_trusted_networks?: readonly string[] | null;
             /** Llm Backup Base Url */
             readonly llm_backup_base_url?: string | null;
             /** Llm Backup Model */

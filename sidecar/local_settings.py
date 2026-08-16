@@ -22,14 +22,24 @@ EDITABLE_KEYS = {
     "llm_backup_model",
     "llm_backup_network_scope",
     "llm_backup_trusted_networks",
+    "comfy_base_url",
+    "comfy_network_scope",
+    "comfy_trusted_networks",
 }
 
-_URL_KEYS = ("nai_base_url", "llm_base_url", "llm_backup_base_url")
+_URL_KEYS = ("nai_base_url", "llm_base_url", "llm_backup_base_url", "comfy_base_url")
 _PROVIDER_KEYS = ("llm_provider", "llm_backup_provider")
 _NETWORK_SCOPE_KEYS = ("llm_network_scope", "llm_backup_network_scope")
-_TRUSTED_NETWORK_KEYS = ("llm_trusted_networks", "llm_backup_trusted_networks")
+# ComfyUI is a local/LAN service; "public" is never a valid scope for it.
+_COMFY_SCOPE_KEYS = ("comfy_network_scope",)
+_TRUSTED_NETWORK_KEYS = (
+    "llm_trusted_networks",
+    "llm_backup_trusted_networks",
+    "comfy_trusted_networks",
+)
 _ALLOWED_PROVIDERS = {"openai", "anthropic", "gemini"}
 _ALLOWED_NETWORK_SCOPES = {"public", "loopback", "trusted-lan"}
+_ALLOWED_COMFY_SCOPES = {"loopback", "trusted-lan"}
 
 # The stored NovelAI token is only ever legitimately sent to NovelAI, so the
 # UI-writable base URL is pinned to NovelAI hosts. This stops a hostile (or merely
@@ -140,6 +150,8 @@ def _sanitize_editable(data: dict[str, Any]) -> dict[str, Any]:
         if key in _PROVIDER_KEYS and value not in _ALLOWED_PROVIDERS:
             continue
         if key in _NETWORK_SCOPE_KEYS and value not in _ALLOWED_NETWORK_SCOPES:
+            continue
+        if key in _COMFY_SCOPE_KEYS and value not in _ALLOWED_COMFY_SCOPES:
             continue
         result[key] = value
     return result

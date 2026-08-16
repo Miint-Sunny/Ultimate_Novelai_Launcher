@@ -17,6 +17,9 @@ LLM_DEFAULT_BASES = {
 }
 _LLM_PROVIDERS = frozenset(LLM_DEFAULT_BASES) | {"openai"}
 _NETWORK_SCOPES = frozenset({"public", "loopback", "trusted-lan"})
+# A local ComfyUI endpoint is loopback (or an explicit LAN box) by design; the
+# public internet is never a valid destination for this channel.
+_COMFY_NETWORK_SCOPES = frozenset({"loopback", "trusted-lan"})
 
 
 @dataclass(frozen=True)
@@ -136,10 +139,21 @@ class Settings:
     llm_backup_network_scope: str = "public"
     llm_trusted_networks: tuple[str, ...] = ()
     llm_backup_trusted_networks: tuple[str, ...] = ()
+    comfy_base_url: str = ""
+    comfy_network_scope: str = "loopback"
+    comfy_trusted_networks: tuple[str, ...] = ()
 
     @property
     def db_path(self) -> Path:
         return self.data_dir / "ultimate_novelai_launcher.sqlite3"
+
+    @property
+    def comfy_workflows_dir(self) -> Path:
+        return self.data_dir / "comfy-workflows"
+
+    @property
+    def comfy_configured(self) -> bool:
+        return bool(self.comfy_base_url.strip())
 
     @property
     def images_dir(self) -> Path:
@@ -309,6 +323,23 @@ def load_settings() -> Settings:
             local,
             "LLM_BACKUP_TRUSTED_NETWORKS",
             "llm_backup_trusted_networks",
+        ),
+        comfy_base_url=_configured_string(
+            local,
+            "ULTIMATE_NOVELAI_LAUNCHER_COMFY_URL",
+            "comfy_base_url",
+        ).strip().rstrip("/"),
+        comfy_network_scope=_configured_choice(
+            local,
+            "ULTIMATE_NOVELAI_LAUNCHER_COMFY_NETWORK_SCOPE",
+            "comfy_network_scope",
+            "loopback",
+            _COMFY_NETWORK_SCOPES,
+        ),
+        comfy_trusted_networks=_configured_networks(
+            local,
+            "ULTIMATE_NOVELAI_LAUNCHER_COMFY_TRUSTED_NETWORKS",
+            "comfy_trusted_networks",
         ),
     )
 

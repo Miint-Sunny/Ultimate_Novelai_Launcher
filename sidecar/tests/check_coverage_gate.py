@@ -12,6 +12,7 @@ TARGETS = (
     "cloud_backend/",
     "sidecar/agent_runtime.py",
     "sidecar/application/",
+    "sidecar/comfy/",
     "sidecar/persistence/",
     "sidecar/process_control.py",
     "sidecar/runtime.py",

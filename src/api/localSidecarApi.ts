@@ -24,6 +24,8 @@ export interface PromptState {
 }
 
 export interface GenerationParams {
+  /** 后端按 provider 分发:缺省 'nai';'comfy' 时 model 为工作流 id。 */
+  provider?: 'nai' | 'comfy';
   model: string;
   width: number;
   height: number;
@@ -608,7 +610,12 @@ export async function generateLegacyImage(
   request: GenerationRequest,
 ): Promise<LegacyGenerateImageResult> {
   const submitted = await sidecarV1Api.createGenerationJob(
-    { payload: request },
+    {
+      payload: {
+        ...request,
+        params: { provider: 'nai' as const, ...request.params },
+      },
+    },
     `desktop-${crypto.randomUUID()}`,
   );
   let job = submitted;

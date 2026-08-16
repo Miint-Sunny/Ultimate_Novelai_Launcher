@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -31,10 +32,17 @@ AVAILABLE_SAMPLERS = {
 
 AVAILABLE_NOISE_SCHEDULES = {"karras", "native", "exponential", "polyexponential"}
 
+GenerationProvider = Literal["nai", "comfy"]
+
+# A ComfyUI model id names a provisioned workflow template file, so it must stay a
+# safe single path segment (no separators, no dots-only names, no traversal).
+COMFY_WORKFLOW_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
 
 class GenerationParams(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
+    provider: GenerationProvider = "nai"
     model: str = "nai-diffusion-4-5-full"
     width: int = 832
     height: int = 1216
@@ -45,12 +53,14 @@ class GenerationParams(BaseModel):
     noise_schedule: str = "karras"
     seed: int | None = None
 
-    @field_validator("model")
-    @classmethod
-    def validate_model(cls, value: str) -> str:
-        if value not in AVAILABLE_MODELS:
-            raise ValueError(f"unsupported model: {value}")
-        return value
+    @model_validator(mode="after")
+    def validate_model_for_provider(self) -> GenerationParams:
+        if self.provider == "nai":
+            if self.model not in AVAILABLE_MODELS:
+                raise ValueError(f"unsupported model: {self.model}")
+        elif not COMFY_WORKFLOW_ID_PATTERN.fullmatch(self.model) or ".." in self.model:
+            raise ValueError(f"invalid ComfyUI workflow id: {self.model}")
+        return self
 
     @field_validator("sampler")
     @classmethod

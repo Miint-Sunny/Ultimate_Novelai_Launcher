@@ -60,11 +60,11 @@ def build_runtime(
     library = LibraryService(database, assets)
     clients = HttpClientPool()
     agent = DesktopAgentAdapter(settings_store, clients, library)
-    executor = NovelAIGenerationExecutor(settings_store, assets, clients)
     persistent_jobs = JobService(
         database,
         capacity=settings.generation_queue_capacity,
     )
+    executor = NovelAIGenerationExecutor(settings_store, assets, clients, jobs=persistent_jobs)
     jobs = GenerationJobCoordinator(
         persistent_jobs,
         executor,
@@ -105,6 +105,7 @@ def build_runtime(
     runtime.capability_provider = lambda: {
         "generation_model_configured": settings_store.current.nai_configured,
         "llm_model_configured": settings_store.current.llm_configured,
+        "comfyui_configured": settings_store.current.comfy_configured,
         **agent.capabilities(),
     }
     # A prepared restore may have moved the canonical database aside. Recover it
