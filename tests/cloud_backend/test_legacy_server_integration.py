@@ -1613,6 +1613,106 @@ async def test_anima_uses_shared_bounded_admission(
 
 
 @pytest.mark.asyncio
+async def test_bot_generate_routes_anima_backend_with_minimal_quota(
+    legacy_server: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = legacy_server.BotSession("owner-session", "code", "owner", 1.0, time.time())
+    monkeypatch.setattr(
+        legacy_server.bot_auth_manager, "sessions", {owner.session_id: owner}
+    )
+    monkeypatch.setattr(legacy_server.bot_auth_manager, "tasks", {})
+    tasks: dict[str, dict[str, Any]] = {}
+    monkeypatch.setattr(legacy_server, "_generation_tasks", tasks)
+    enqueued: list[dict[str, Any]] = []
+    spawned: list[tuple[str, Any]] = []
+
+    async def fake_enqueue(
+        params,
+        user_id="",
+        allow_boost=True,
+        *,
+        resource,
+        task_id=None,
+        task_metadata=None,
+        idempotency_key=None,
+        request_hash=None,
+    ):
+        enqueued.append({"params": dict(params), "metadata": dict(task_metadata or {})})
+        record = {
+            "task_id": task_id,
+            "status": "queued",
+            "result": None,
+            "step": 0,
+            "total_steps": 1,
+            "created_at": time.time(),
+            "user_id": user_id,
+            **(task_metadata or {}),
+        }
+        legacy_server._task_access.bind_record(record, resource)
+        tasks[task_id] = record
+        await legacy_server._cloud_jobs.create(
+            job_id=task_id,
+            resource=resource,
+            request_hash=request_hash,
+            payload={"model": "test"},
+            idempotency_key=idempotency_key,
+            total_steps=1,
+        )
+        return task_id, 1, True
+
+    async def capture_anima(task_id, request) -> None:
+        spawned.append((task_id, request))
+
+    monkeypatch.setattr(legacy_server, "enqueue_generation", fake_enqueue)
+    monkeypatch.setattr(legacy_server, "_run_anima_task", capture_anima)
+
+    async with _client(legacy_server) as client:
+        anima = await client.post(
+            "/api/bot/generate",
+            json={
+                "session_id": "owner-session",
+                "params": {"positivePrompt": "cat", "image_backend": "anima"},
+            },
+            headers={"Idempotency-Key": "anima-submit"},
+        )
+        await asyncio.sleep(0)
+        novelai = await client.post(
+            "/api/bot/generate",
+            json={
+                "session_id": "owner-session",
+                "params": {"positivePrompt": "dog"},
+            },
+            headers={"Idempotency-Key": "nai-submit"},
+        )
+        await asyncio.sleep(0)
+        invalid = await client.post(
+            "/api/bot/generate",
+            json={
+                "session_id": "owner-session",
+                # anima 分支要求可校验的生成参数：缺 positivePrompt 必须 400。
+                "params": {"image_backend": "anima"},
+            },
+            headers={"Idempotency-Key": "anima-bad"},
+        )
+
+    assert anima.status_code == 200 and anima.json()["success"] is True
+    assert novelai.status_code == 200 and novelai.json()["success"] is True
+    assert invalid.status_code == 400
+
+    assert len(enqueued) == 2
+    anima_call, novelai_call = enqueued
+    assert anima_call["params"]["_image_backend"] == "anima"
+    assert anima_call["params"]["steps"] == 1
+    assert anima_call["metadata"]["quota_units"] == 1
+    assert "_image_backend" not in novelai_call["params"]
+
+    # anima 的 runner 只为 anima 任务拉起，且拿到的是校验后的请求对象。
+    assert [task for task, _request in spawned] == [anima.json()["task_id"]]
+    assert spawned[0][1].positivePrompt == "cat"
+
+
+@pytest.mark.asyncio
 async def test_anima_outbound_policy_rejection_is_not_retried(
     legacy_server: ModuleType,
     monkeypatch: pytest.MonkeyPatch,

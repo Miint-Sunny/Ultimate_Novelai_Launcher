@@ -3489,7 +3489,21 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
         if job is None or job.status is not JobStatus.QUEUED:
             return
         _generation_tasks[task_id]["status"] = "generating"
-        await _notify_task_update(task_id, "generating", 0, 1)
+        _generation_tasks[task_id]["total_steps"] = 100
+        await _notify_task_update(task_id, "generating", 0, 100)
+
+        async def _report_anima_progress(fraction: float) -> None:
+            # 粗粒度 0..1 → 现有 step/total 轮询/WebSocket 机制，单调且只在
+            # generating 态推送；异常由 provider 侧吞掉（提示性信息）。
+            task = _generation_tasks.get(task_id)
+            if not task or task.get("status") != "generating":
+                return
+            step = max(0, min(99, int(fraction * 100)))
+            if step <= int(task.get("step") or 0):
+                return
+            task["step"] = step
+            await _notify_task_update(task_id, "generating", step, 100)
+
         image_bytes = await _await_generation_upstream(
             task_id,
             lambda: generate_anima_image(
@@ -3499,6 +3513,7 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
                 height=int(req.height or 0),
                 seed=int(req.seed or -1),
                 task_id=task_id,
+                on_progress=_report_anima_progress,
             ),
         )
         if image_bytes is None:
@@ -3507,8 +3522,8 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
 
         _generation_tasks[task_id]["result"] = result_b64
         _generation_tasks[task_id]["status"] = "completed"
-        _generation_tasks[task_id]["step"] = 1
-        await _notify_task_update(task_id, "completed", 1, 1, result_b64)
+        _generation_tasks[task_id]["step"] = 100
+        await _notify_task_update(task_id, "completed", 100, 100, result_b64)
         print(f"[anima] 任务完成: id={task_id}")
     except asyncio.CancelledError:
         raise
@@ -4809,8 +4824,21 @@ async def bot_generate(
         raise HTTPException(status_code=401, detail="会话无效或已过期")
     resource = ResourceOwner(_BOT_TASK_TENANT_ID, principal.subject_id)
     
-    # 转换参数
-    stream_params = convert_web_params_to_stream(req.params)
+    # 转换参数。image_backend 由 agent router 的 ChatResponse 决定、bot 端原样
+    # 透传进 params;anima 不走 NAI 参数转换,复用 direct_generate 的分发形状。
+    backend = str((req.params or {}).get("image_backend") or "novelai").strip().lower()
+    anima_request: DirectGenerateRequest | None = None
+    if backend == "anima":
+        try:
+            anima_request = DirectGenerateRequest.model_validate(req.params)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="anima 生成参数无效") from exc
+        queue_params = anima_request.model_dump()
+        queue_params["_image_backend"] = "anima"
+        queue_params["steps"] = 1
+    else:
+        queue_params = convert_web_params_to_stream(req.params)
+    stream_params = queue_params
     request_hash = _generation_request_hash(stream_params)
     normalized_key = idempotency_key.strip()
     if _quota_ledger.enabled and not normalized_key:
@@ -4869,14 +4897,19 @@ async def bot_generate(
             message="任务已存在",
         )
 
-    quota_units = calculate_anlas_cost(
-        int(stream_params.get("width", 832)),
-        int(stream_params.get("height", 1216)),
-        int(stream_params.get("steps", 28)),
-        str(stream_params.get("model", "")),
-        stream_params.get("strength") if stream_params.get("image") else None,
-        len(stream_params.get("director_reference_images", []) or []),
-    )
+    if backend == "anima":
+        # anima 走 CNB 算力,不烧 Anlas;账本按「一张图」记最小单位,
+        # 防免费通道被拿来无限刷额度外的产出。
+        quota_units = 1
+    else:
+        quota_units = calculate_anlas_cost(
+            int(stream_params.get("width", 832)),
+            int(stream_params.get("height", 1216)),
+            int(stream_params.get("steps", 28)),
+            str(stream_params.get("model", "")),
+            stream_params.get("strength") if stream_params.get("image") else None,
+            len(stream_params.get("director_reference_images", []) or []),
+        )
     task_metadata: dict[str, Any] = {
         "request_hash": request_hash,
         "idempotency_key": normalized_key or None,
@@ -4953,7 +4986,11 @@ async def bot_generate(
             capability_token=capability,
             message="任务已存在",
         )
-    
+
+    if backend == "anima" and anima_request is not None:
+        # anima 有自己的 provider runner;准入/配额/幂等已经走完共享路径。
+        asyncio.create_task(_run_anima_task(task_id, anima_request))
+
     # 同时在 bot_auth_manager 中创建任务记录（用于兼容现有的状态查询接口）
     await bot_auth_manager.create_task(
         req.session_id,
