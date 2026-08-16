@@ -630,6 +630,17 @@ RATE_LIMIT_DEFAULT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_DEFAULT_PER_MINUT
 RATE_LIMIT_TRUSTED_PROXIES: list[str] = []
 
 
+# ==================== Modal 通道（自部署 serverless 算力，见 deploy/modal/）====================
+# 私域 server → Modal 的家族 B 通道；终端用户不直连 modal.run。
+# 部署 deploy/modal/comfy_app.py 后，把 web endpoint URL 与 proxy-auth token 填到这里。
+# MODAL_COMFY_MODEL_IDS 非空才会注册 provider；三项配置不全时 provider 失败封闭。
+MODAL_COMFY_ENDPOINT = os.environ.get("MODAL_COMFY_ENDPOINT", "")
+MODAL_COMFY_TOKEN_ID = os.environ.get("MODAL_COMFY_TOKEN_ID", "")
+MODAL_COMFY_TOKEN_SECRET = os.environ.get("MODAL_COMFY_TOKEN_SECRET", "")
+# 认领的 workshop model_id 列表，例如 ["modal-anime-xl"]。留空 = 通道关闭。
+MODAL_COMFY_MODEL_IDS: list[str] = []
+
+
 # ==================== Anima（cnb ComfyUI 二次元出图后端）====================
 # 用户切到 MODEL_CHOICES["anima"] 渠道后：ChatResponse.image_backend = "anima"，
 # Bot 端按此路由到 server 的 anima provider（M3 实现）；本块给 M2/M3 用。

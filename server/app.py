@@ -98,6 +98,12 @@ from cloud_backend.paid_operations import (
     validate_translate_context,
 )
 from agent_router.access import AgentAccess
+from workshop_providers import (
+    FunctionWorkshopProvider,
+    ModalComfyProvider,
+    WorkshopProviderRegistry,
+    WorkshopProviderRequest,
+)
 
 from config import (
     BOT_DATA_DIR, NOVELAI_TOKENS, NOVELAI_ANLAS_ONLY_TOKEN, PROXY_URL, IMAGE_GENERATION_PROXY_URL, DANBOORU_PROXY_URL, TOKEN_MAX_CONSECUTIVE_ERRORS,
@@ -10379,6 +10385,51 @@ _WORKSHOP_JOB_KIND = "workshop"
 _WORKSHOP_JOB_LIST_LIMIT = 200
 _WORKSHOP_MAX_RESULT_BYTES = 32 * 1024 * 1024
 
+
+# ==================== Workshop provider 注册表（家族 B 接缝） ====================
+# model_id → provider 的封闭路由。配额/持久化/取消/恢复由宿主统一处理，
+# provider 只实现「拿请求、还结果」。新后端（MiniMax / Seedance / Grok …）在此注册。
+
+async def _run_big_gpt_provider(request: WorkshopProviderRequest) -> dict:
+    # 经模块属性晚绑定调用，保持既有测试对 _workshop_call_big_gpt 的 monkeypatch 有效。
+    return await _workshop_call_big_gpt(
+        model_id=request.model,
+        prompt=request.prompt,
+        aspect_ratio=request.aspect_ratio,
+        images=request.images,
+    )
+
+
+def _build_workshop_providers() -> WorkshopProviderRegistry:
+    registry = WorkshopProviderRegistry()
+    registry.register(
+        FunctionWorkshopProvider(
+            name="big_gpt",
+            models=("gpt-image", "gpt-image-4k"),
+            run=_run_big_gpt_provider,
+        )
+    )
+    modal_models = tuple(
+        str(m).strip()
+        for m in (getattr(_appcfg, "MODAL_COMFY_MODEL_IDS", ()) or ())
+        if str(m).strip()
+    )
+    if modal_models:
+        registry.register(
+            ModalComfyProvider(
+                name="modal_comfy",
+                models=modal_models,
+                endpoint=str(getattr(_appcfg, "MODAL_COMFY_ENDPOINT", "") or ""),
+                token_id=str(getattr(_appcfg, "MODAL_COMFY_TOKEN_ID", "") or ""),
+                token_secret=str(getattr(_appcfg, "MODAL_COMFY_TOKEN_SECRET", "") or ""),
+                http=_safe_outbound_large_json,
+            )
+        )
+    return registry
+
+
+_workshop_providers = _build_workshop_providers()
+
 def _cleanup_workshop_tasks():
     """Drop only stale memory mirrors; durable jobs/results are never auto-deleted."""
 
@@ -11079,19 +11130,20 @@ async def _workshop_process_task(
         )
         _mirror_workshop_job(job, session_id=req.session_id)
 
+        provider = _workshop_providers.resolve(req.model)
         await _cloud_jobs.transition(
             task_id,
             JobStatus.RUNNING,
             kind="provider_started",
-            data={"provider": "big_gpt"},
+            data={"provider": provider.name if provider else "unknown"},
         )
-        if req.model in ("gpt-image", "gpt-image-4k"):
-            result = await _workshop_call_big_gpt(
-                model_id=req.model,
+        if provider is not None:
+            result = await provider.run(WorkshopProviderRequest(
+                model=req.model,
                 prompt=req.prompt,
                 aspect_ratio=req.aspect_ratio,
                 images=req.images if req.images else None,
-            )
+            ))
         else:
             result = {"success": False, "error": f"模型已停用: {req.model}"}
 
