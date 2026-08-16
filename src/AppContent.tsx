@@ -1,10 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MainContent } from './components/MainContent';
-import { RightSidebar } from './components/RightSidebar';
+import { HistoryDock } from './components/HistoryDock';
 import { LoginModal } from './components/LoginModal';
-import { History } from 'lucide-react';
-import { type HistoryItemMetadata } from './contexts/GenerationContext';
 import { useAuth } from './contexts/AuthContext';
 import { useDragDrop } from './contexts/DragDropContext';
 import { DropZoneModal, type DropTarget } from './components/DropZoneModal';
@@ -28,7 +26,6 @@ interface ImportOptions {
 // Desktop layout. Lazy-loaded from App so mobile devices never parse it.
 const AppContent: React.FC = () => {
   const { logout, showLoginModal, closeLoginModal, login, isAuthenticated } = useAuth();
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const {
     isDraggingOver,
     setIsDraggingOver,
@@ -38,19 +35,6 @@ const AppContent: React.FC = () => {
     processFileForTarget,
   } = useDragDrop();
   const dragCounterRef = useRef(0);
-
-  // Ref to store the apply metadata handler from LeftSidebar
-  const applyMetadataHandlerRef = useRef<((metadata: HistoryItemMetadata, seed: number, width?: number, height?: number) => void) | null>(null);
-
-  const setApplyMetadataHandler = useCallback((handler: (metadata: HistoryItemMetadata, seed: number, width?: number, height?: number) => void) => {
-    applyMetadataHandlerRef.current = handler;
-  }, []);
-
-  const handleApplyMetadata = useCallback((metadata: HistoryItemMetadata, seed: number, width?: number, height?: number) => {
-    if (applyMetadataHandlerRef.current) {
-      applyMetadataHandlerRef.current(metadata, seed, width, height);
-    }
-  }, []);
 
   // Scroll to drop zones when dragging starts
   useEffect(() => {
@@ -139,19 +123,12 @@ const AppContent: React.FC = () => {
       onDrop={handleBackgroundDrop}
     >
       <div className="flex flex-1 overflow-hidden relative">
-        <LeftSidebar onLogout={logout} onRegisterApplyMetadata={setApplyMetadataHandler} />
-        <MainContent />
-        {isRightPanelOpen ? (
-          <RightSidebar onClose={() => setIsRightPanelOpen(false)} onApplyMetadata={handleApplyMetadata} />
-        ) : (
-          <button
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-6 h-24 bg-nai-panel border border-gray-600 border-r-0 rounded-l-2xl text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200 shadow-[-4px_0_12px_rgba(0,0,0,0.5)] group"
-            onClick={() => setIsRightPanelOpen(true)}
-            title="显示历史记录"
-          >
-            <History className="w-5 h-5 group-hover:scale-110 transition-transform" />
-          </button>
-        )}
+        <LeftSidebar onLogout={logout} />
+        {/* 中央工作区：画布在上，历史条横放在下方展开 */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <MainContent />
+          <HistoryDock />
+        </div>
       </div>
 
       {/* Drop target selection modal - shown when dropping outside specific zones */}

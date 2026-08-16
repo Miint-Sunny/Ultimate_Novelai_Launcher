@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, ChevronRight, Trash2, X, Copy, FileDigit, Maximize2, Check, CheckSquare, ChevronLeft, ChevronRight as ChevronRightIcon, Settings2, Archive } from 'lucide-react';
-import { useGeneration, type HistoryItemMetadata } from '../contexts/GenerationContext';
+import { Download, ChevronUp, ChevronDown, Trash2, X, Copy, FileDigit, Maximize2, Check, CheckSquare, ChevronLeft, ChevronRight, Settings2, Archive } from 'lucide-react';
+import { useGeneration } from '../contexts/GenerationContext';
 import { useDragDrop } from '../contexts/DragDropContext';
 import { processImageForSave, getSaveExt, type SaveFormat } from '../utils/imageMetadata';
 import { generateImageFileName } from '../utils/fileSystem';
@@ -11,14 +11,18 @@ const STORAGE_KEY_SAVE_MODE = 'nai_default_save_mode';
 const STORAGE_KEY_CUSTOM_PROMPT = 'nai_save_custom_prompt';
 const STORAGE_KEY_SAVE_FORMAT = 'nai_save_format';
 const STORAGE_KEY_SAVE_QUALITY = 'nai_save_quality';
+const STORAGE_KEY_DOCK_MODE = 'nai_history_dock_mode';
 const DEFAULT_QUALITY = 0.92;
 
-interface RightSidebarProps {
-  onClose: () => void;
-  onApplyMetadata?: (metadata: HistoryItemMetadata, seed: number, width?: number, height?: number) => void;
-}
+/** 底部历史条的三种形态：仅标题栏 / 单行缩略图条 / 向上展开的多行网格。 */
+type DockMode = 'hidden' | 'strip' | 'expanded';
 
-export const RightSidebar: React.FC<RightSidebarProps> = ({ onClose, onApplyMetadata }) => {
+const readInitialDockMode = (): DockMode => {
+  const saved = localStorage.getItem(STORAGE_KEY_DOCK_MODE);
+  return saved === 'hidden' || saved === 'expanded' ? saved : 'strip';
+};
+
+export const HistoryDock: React.FC = () => {
   const { history, imageUrl, selectHistoryItem, clearHistory, deleteHistoryItem, deleteHistoryItems, setSeedSetting, isGenerating, isQueuing, previewUrl, currentStep, totalSteps, queuePosition, viewingHistory, setViewingHistory } = useGeneration();
   const { setPendingFile } = useDragDrop();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
@@ -27,6 +31,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ onClose, onApplyMeta
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [previewItem, setPreviewItem] = useState<string | null>(null);
   const [isZipping, setIsZipping] = useState(false);
+  const [dockMode, setDockModeState] = useState<DockMode>(readInitialDockMode);
+  const stripScrollRef = useRef<HTMLDivElement>(null);
+
+  const setDockMode = (mode: DockMode) => {
+    setDockModeState(mode);
+    localStorage.setItem(STORAGE_KEY_DOCK_MODE, mode);
+    // 折回单行/隐藏时退出多选，避免选中态在不可见处残留
+    if (mode !== 'expanded') {
+      setIsSelectMode(false);
+      setSelectedItems(new Set());
+    }
+  };
 
   // 保存设置
   const [saveMode, setSaveMode] = useState<'original' | 'clean' | 'custom'>('original');
@@ -429,25 +445,173 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ onClose, onApplyMeta
     }
   };
 
-  return (
-    <div className="relative w-[12.5rem] bg-nai-panel border-l border-gray-800 shrink-0 flex flex-col z-10" onClick={closeContextMenu}>
-      {/* Collapse Button */}
-      <button
-        className="absolute left-0 top-1/2 -translate-x-full -translate-y-1/2 flex items-center justify-center w-6 h-24 bg-nai-panel border border-gray-600 border-r-0 rounded-l-2xl text-gray-400 hover:text-white hover:bg-gray-800 transition-all duration-200 shadow-[-4px_0_12px_rgba(0,0,0,0.5)] group"
-        onClick={onClose}
-        title="收起"
-      >
-        <ChevronRight className="w-5 h-5 group-hover:scale-110 transition-transform" />
-      </button>
+  // 横向条：把竖向滚轮转成横向滚动
+  const handleStripWheel = (e: React.WheelEvent) => {
+    const el = stripScrollRef.current;
+    if (!el) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      el.scrollLeft += e.deltaY;
+    }
+  };
 
-      <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+  // 生成中占位卡片（单行条与展开网格共用）
+  const generatingTile = (isGenerating || isQueuing) && (
+    <div
+      className={`aspect-square h-full shrink-0 bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative transition-all ${!viewingHistory
+        ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+        : 'border-transparent hover:border-gray-600'
+        }`}
+      onClick={() => setViewingHistory(false)}
+    >
+      {/* 预览缩略图或加载动画 */}
+      {previewUrl ? (
+        <img src={previewUrl} alt="生成中" className="w-full h-full object-contain" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <div className="relative w-8 h-8">
+            <div className="absolute inset-0 bg-nai-accent/30 rounded-full animate-ping" />
+            <div className="absolute inset-1.5 bg-nai-accent/60 rounded-full animate-pulse" />
+          </div>
+        </div>
+      )}
+      {/* 底部进度/排队状态 */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5">
+        {isQueuing ? (
+          <div className="flex items-center gap-1">
+            <div className="relative w-2.5 h-2.5 flex-shrink-0">
+              <div className="absolute inset-0 bg-nai-accent/40 rounded-full animate-ping" />
+              <div className="absolute inset-0.5 bg-nai-accent rounded-full" />
+            </div>
+            <span className="text-[10px] text-gray-300">排队 #{queuePosition > 0 ? queuePosition : '-'}</span>
+          </div>
+        ) : (
+          <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-nai-accent rounded-full transition-all duration-200 ease-out"
+              style={{ width: `${totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // 单条历史缩略图（strip = 单行条；grid = 展开网格，支持多选）
+  const renderHistoryTile = (item: typeof history[0], variant: 'strip' | 'grid') => {
+    const inGrid = variant === 'grid';
+    const selectable = inGrid && isSelectMode;
+    const isActive = selectable
+      ? selectedItems.has(item.id)
+      : imageUrl === item.imageUrl && (!(isGenerating || isQueuing) || viewingHistory);
+    return (
+      <div
+        key={item.id}
+        className={`aspect-square ${inGrid ? '' : 'h-full shrink-0'} bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative group transition-all ${isActive
+          ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+          : 'border-transparent hover:border-gray-600'
+          }`}
+        onClick={() => (selectable ? toggleSelect(item.id) : selectHistoryItem(item.id))}
+        onContextMenu={(e) => handleContextMenu(e, item.id)}
+      >
+        <img src={item.imageUrl} alt={`Seed: ${item.seed}`} className="w-full h-full object-contain" />
+        {/* 超分标记 */}
+        {item.isUpscaled && !selectable && (
+          <div className="absolute top-1 left-1 px-1 py-0.5 bg-green-500/80 rounded text-[8px] text-white font-bold flex items-center gap-0.5" title="超分辨率">
+            <Maximize2 className="w-2 h-2" />
+            {item.upscaleScale || 4}x
+          </div>
+        )}
+        {/* 局部重绘标记 */}
+        {item.isInpainted && !item.isUpscaled && !selectable && (
+          <div className="absolute top-1 left-1 px-1 py-0.5 bg-blue-500/80 rounded text-[8px] text-white font-bold" title="局部重绘">
+            重绘
+          </div>
+        )}
+        {/* 香蕉重绘标记 */}
+        {item.isBananaRepaint && !item.isUpscaled && !item.isInpainted && !selectable && (
+          <div className="absolute top-1 left-1 px-1 py-0.5 bg-yellow-500/80 rounded text-[8px] text-black font-bold" title="香蕉重绘">
+            🍌
+          </div>
+        )}
+        {/* 选择指示器 */}
+        {selectable && (
+          <div className={`absolute top-1 left-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${selectedItems.has(item.id) ? 'bg-nai-accent border-nai-accent' : 'bg-black/50 border-gray-400'
+            }`}>
+            {selectedItems.has(item.id) && <Check className="w-3.5 h-3.5 text-black" />}
+          </div>
+        )}
+        {!selectable && (
+          <button
+            className="absolute top-1 right-1 p-1.5 bg-black/70 rounded opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-400"
+            onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
+            title="删除"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-1.5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="text-[10px] text-gray-200 flex justify-between drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+            <span>{item.width}×{item.height}</span>
+            <span>{formatTime(item.timestamp)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const headerButtonClass = 'p-1.5 text-gray-500 hover:text-white transition-colors rounded hover:bg-white/5';
+
+  return (
+    <div className="relative bg-nai-panel border-t border-gray-800 shrink-0 flex flex-col z-10" onClick={closeContextMenu}>
+      {/* 标题栏：常驻，承载展开/收起与批量操作入口 */}
+      <div className="px-3 h-10 border-b border-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-2 text-base font-bold text-gray-200">
           历史记录
-          <span className="text-sm text-gray-500 font-normal">({history.length})</span>
+          <span className="text-xs text-gray-500 font-normal">({history.length})</span>
+          {dockMode === 'expanded' && history.length > 0 && (
+            <div className="flex items-center gap-1.5 ml-2">
+              <button
+                className={`px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1 ${isSelectMode ? 'bg-nai-accent/20 text-nai-accent border-nai-accent/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                  }`}
+                onClick={() => { setIsSelectMode(!isSelectMode); if (isSelectMode) setSelectedItems(new Set()); }}
+              >
+                <CheckSquare className="w-3 h-3" />
+                多选
+              </button>
+              {isSelectMode && (
+                <>
+                  <button className="px-2 py-1 text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded hover:text-white" onClick={selectAll}>全选</button>
+                  <button className="px-2 py-1 text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded hover:text-white" onClick={deselectAll}>取消</button>
+                  <span className="text-xs text-gray-500 font-normal">已选 {selectedItems.size} 项</span>
+                  {selectedItems.size > 0 && (
+                    <>
+                      <button className="px-2 py-1 text-xs bg-nai-accent/20 text-nai-accent border border-nai-accent/50 rounded hover:bg-nai-accent/30 flex items-center gap-1" onClick={handleDownloadSelectedWithSettings} disabled={isZipping}>
+                        <Download className="w-3 h-3" /> 下载
+                      </button>
+                      <button className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 border border-blue-500/50 rounded hover:bg-blue-500/30 flex items-center gap-1" onClick={handleZipSelectedWithSettings} disabled={isZipping}>
+                        <Archive className="w-3 h-3" /> {isZipping ? '打包中...' : '打包'}
+                      </button>
+                      <button className="px-2 py-1 text-xs bg-red-500/20 text-red-400 border border-red-500/50 rounded hover:bg-red-500/30 flex items-center gap-1" onClick={handleDeleteSelected}>
+                        <Trash2 className="w-3 h-3" /> 删除
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          {history.length > 0 && (
+          {dockMode !== 'hidden' && history.length > 0 && (
             <>
+              <button
+                onClick={handleZipAllWithSettings}
+                className={headerButtonClass}
+                disabled={isZipping}
+                title={isZipping ? '打包中...' : '打包下载全部'}
+              >
+                <Archive className="w-4 h-4" />
+              </button>
               <button
                 onClick={() => setIsGalleryOpen(true)}
                 className="p-1.5 text-gray-500 hover:text-nai-accent transition-colors rounded hover:bg-white/5"
@@ -462,117 +626,72 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ onClose, onApplyMeta
               >
                 <Trash2 className="w-4 h-4" />
               </button>
+              <div className="w-px h-4 bg-gray-800 mx-1" />
             </>
+          )}
+          {dockMode !== 'expanded' && (
+            <button
+              onClick={() => setDockMode('expanded')}
+              className={headerButtonClass}
+              title="展开历史面板"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          )}
+          {dockMode !== 'strip' && (
+            <button
+              onClick={() => setDockMode('strip')}
+              className={headerButtonClass}
+              title={dockMode === 'hidden' ? '显示历史条' : '收起为单行'}
+            >
+              {dockMode === 'hidden' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          )}
+          {dockMode === 'strip' && (
+            <button
+              onClick={() => setDockMode('hidden')}
+              className={headerButtonClass}
+              title="隐藏历史条"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-        {/* 生成中占位卡片 */}
-        {(isGenerating || isQueuing) && (
-          <div
-            className={`aspect-square bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative transition-all ${!viewingHistory
-              ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
-              : 'border-transparent hover:border-gray-600'
-              }`}
-            onClick={() => setViewingHistory(false)}
-          >
-            {/* 预览缩略图或加载动画 */}
-            {previewUrl ? (
-              <img src={previewUrl} alt="生成中" className="w-full h-full object-contain" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="relative w-8 h-8">
-                  <div className="absolute inset-0 bg-nai-accent/30 rounded-full animate-ping" />
-                  <div className="absolute inset-1.5 bg-nai-accent/60 rounded-full animate-pulse" />
-                </div>
-              </div>
-            )}
-            {/* 底部进度/排队状态 */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5">
-              {isQueuing ? (
-                <div className="flex items-center gap-1">
-                  <div className="relative w-2.5 h-2.5 flex-shrink-0">
-                    <div className="absolute inset-0 bg-nai-accent/40 rounded-full animate-ping" />
-                    <div className="absolute inset-0.5 bg-nai-accent rounded-full" />
-                  </div>
-                  <span className="text-[10px] text-gray-300">排队 #{queuePosition > 0 ? queuePosition : '-'}</span>
-                </div>
-              ) : (
-                <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-nai-accent rounded-full transition-all duration-200 ease-out"
-                    style={{ width: `${totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {history.length === 0 && !isGenerating && !isQueuing ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 text-xs">
-            <p>暂无历史记录</p>
-          </div>
-        ) : (
-          history.map((item) => (
-            <div
-              key={item.id}
-              className={`aspect-square bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative group transition-all ${imageUrl === item.imageUrl && (!(isGenerating || isQueuing) || viewingHistory)
-                ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
-                : 'border-transparent hover:border-gray-600'
-                }`}
-              onClick={() => selectHistoryItem(item.id)}
-              onContextMenu={(e) => handleContextMenu(e, item.id)}
-            >
-              <img src={item.imageUrl} alt={`Seed: ${item.seed}`} className="w-full h-full object-contain" />
-              {/* 超分标记 */}
-              {item.isUpscaled && (
-                <div className="absolute top-1 left-1 px-1 py-0.5 bg-green-500/80 rounded text-[8px] text-white font-bold flex items-center gap-0.5" title="超分辨率">
-                  <Maximize2 className="w-2 h-2" />
-                  {item.upscaleScale || 4}x
-                </div>
-              )}
-              {/* 局部重绘标记 */}
-              {item.isInpainted && !item.isUpscaled && (
-                <div className="absolute top-1 left-1 px-1 py-0.5 bg-blue-500/80 rounded text-[8px] text-white font-bold" title="局部重绘">
-                  重绘
-                </div>
-              )}
-              {/* 香蕉重绘标记 */}
-              {item.isBananaRepaint && !item.isUpscaled && !item.isInpainted && (
-                <div className="absolute top-1 left-1 px-1 py-0.5 bg-yellow-500/80 rounded text-[8px] text-black font-bold" title="香蕉重绘">
-                  🍌
-                </div>
-              )}
-              <button
-                className="absolute top-1 right-1 p-1.5 bg-black/70 rounded opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-400"
-                onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
-                title="删除"
-              >
-                <X className="w-4 h-4" />
-              </button>
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-1.5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="text-[10px] text-gray-200 flex justify-between drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
-                  <span>{item.width}×{item.height}</span>
-                  <span>{formatTime(item.timestamp)}</span>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="p-3 border-t border-gray-800">
-        <button
-          className={`w-full py-2 flex items-center justify-center gap-2 text-xs transition-colors rounded ${history.length > 0 && !isZipping ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 cursor-not-allowed'
-            }`}
-          onClick={handleZipAllWithSettings}
-          disabled={history.length === 0 || isZipping}
+      {/* 单行缩略图条 */}
+      {dockMode === 'strip' && (
+        <div
+          ref={stripScrollRef}
+          className="h-24 flex gap-2 overflow-x-auto overflow-y-hidden p-2 custom-scrollbar"
+          onWheel={handleStripWheel}
         >
-          <Archive className="w-3 h-3" />
-          {isZipping ? '打包中...' : '打包下载'}
-        </button>
-      </div>
+          {generatingTile}
+          {history.length === 0 && !isGenerating && !isQueuing ? (
+            <div className="flex items-center justify-center w-full text-gray-500 text-xs">
+              暂无历史记录
+            </div>
+          ) : (
+            history.map((item) => renderHistoryTile(item, 'strip'))
+          )}
+        </div>
+      )}
+
+      {/* 展开的多行网格 */}
+      {dockMode === 'expanded' && (
+        <div className="h-[38vh] overflow-y-auto p-3 custom-scrollbar">
+          {history.length === 0 && !isGenerating && !isQueuing ? (
+            <div className="flex items-center justify-center h-full text-gray-500 text-xs">
+              暂无历史记录
+            </div>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
+              {generatingTile && <div className="aspect-square">{generatingTile}</div>}
+              {history.map((item) => renderHistoryTile(item, 'grid'))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 右键菜单 */}
       {contextMenu && (
@@ -805,7 +924,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ onClose, onApplyMeta
               className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
               onClick={(e) => { e.stopPropagation(); goToNextPreview(); }}
             >
-              <ChevronRightIcon className="w-8 h-8" />
+              <ChevronRight className="w-8 h-8" />
             </button>
           )}
 
