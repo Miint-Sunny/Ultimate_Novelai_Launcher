@@ -43,6 +43,14 @@ export function useAdaptedMessages(agentState: AgentState): VMsg[] {
           content: log.content,
           ts: fmtTimeHM(log.timestamp),
         });
+      } else if (log.type === 'card' && log.card) {
+        out.push({
+          logIndex: idx,
+          role: 'card',
+          content: log.content,
+          ts: fmtTimeHM(log.timestamp),
+          card: log.card,
+        });
       }
     });
     return out;

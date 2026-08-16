@@ -34,6 +34,8 @@ export interface AgentDockHandlers {
     imageBase64?: string,
   ) => void;
   restoreSnapshot: (snapshot: GenerationSnapshot) => void;
+  /** 固定指令「生成图片」：可选地先替换正向提示词，再按左栏当前参数提交生成 */
+  triggerGenerate?: (positive?: string) => void;
 }
 
 interface AgentDockContextValue {

@@ -5,9 +5,9 @@
  * 这里的 VMsg 是把 LogEntry 适配到原型的 user/ai/error 三态视图模型，
  * 便于 ChatBody 渲染。
  */
-import type { LogEntry, GenerationSnapshot } from '../../../services/agentService';
+import type { AssistantCard, LogEntry, GenerationSnapshot } from '../../../services/agentService';
 
-export type VMsgRole = 'user' | 'ai' | 'error';
+export type VMsgRole = 'user' | 'ai' | 'error' | 'card';
 
 export interface VMsg {
   /** 在原始 logs 数组中的索引（撤回 / 复制等操作要用） */
@@ -23,6 +23,8 @@ export interface VMsg {
   snapshot?: GenerationSnapshot;
   /** AI 这条 reply 提取出的 tag 数组（来自 snapshot.positive 的逗号分隔） */
   tags?: string[];
+  /** 固定指令产出的结果卡片（仅 card） */
+  card?: AssistantCard;
 }
 
 /**

@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useMemo, useState } from 'react';
 import { NekoAvatar } from './NekoAvatar';
+import { CardMsg } from './CardMsg';
 import { TagChip, renderTagContent, extractTagMarkers } from './TagChip';
 import { C, MONO, splitPromptToTags } from './tokens';
 import type { VMsg } from './types';
@@ -15,6 +16,8 @@ interface Props {
   inputBarOffset: number;
   onSuggest: (text: string) => void;
   onCopyAll: (msg: VMsg) => void;
+  /** 结果卡片「导入到左栏」（固定指令产出的 metadata 卡） */
+  onImportMetadata?: (msg: VMsg) => void;
   /** 重试这条 AI 回复（或 error）= 截到对应 user request + 重发 */
   onRetry: (msg: VMsg) => void;
   /** 撤回最新一条 AI 回复 + 把 user 文本回填到输入框 */
@@ -39,7 +42,7 @@ const GREETINGS = [
 
 /** 消息列表 + 空态 */
 export const ChatBody = forwardRef<HTMLDivElement, Props>(
-  ({ msgs, sending, progressText, lastAiVIndex, inputBarOffset, onSuggest, onCopyAll, onRetry, onUndoLast }, ref) => {
+  ({ msgs, sending, progressText, lastAiVIndex, inputBarOffset, onSuggest, onCopyAll, onImportMetadata, onRetry, onUndoLast }, ref) => {
     const shuffled = useMemo(
       () => [...SUGGESTIONS].sort(() => 0.5 - Math.random()).slice(0, 3),
       [],
@@ -88,6 +91,9 @@ export const ChatBody = forwardRef<HTMLDivElement, Props>(
             msgs.map((m, i) => {
               if (m.role === 'user') {
                 return <UserMsg key={`u-${m.logIndex}`} m={m} />;
+              }
+              if (m.role === 'card' && m.card) {
+                return <CardMsg key={`c-${m.logIndex}`} m={m} onImportMetadata={onImportMetadata} />;
               }
               if (m.role === 'error') {
                 return (

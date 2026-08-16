@@ -16,6 +16,7 @@ import type { ArchivedSession, VMsg } from './types';
 import { useAdaptedMessages } from './useAdaptedMessages';
 import { useBlink } from './useBlink';
 import { useSessions, buildSessionFromLogs } from './useSessions';
+import { useAssistantCommands, matchCommand } from './useAssistantCommands';
 
 /**
  * Plana 助手停靠面板（悬浮窗 V2 的停靠形态）。
@@ -37,7 +38,6 @@ export const AgentDock: React.FC = () => {
     dockWidth,
     setDockWidth,
     handlersRef,
-    handlersReady,
   } = useAgentDock();
   const agentModel = useAgentModelPresentation();
 
@@ -54,6 +54,8 @@ export const AgentDock: React.FC = () => {
 
   const { sessions, archive, remove } = useSessions();
   const msgs = useAdaptedMessages(agentState);
+  const { tryRunCommand, importMetadataFromCard, specs } = useAssistantCommands();
+  const showPalette = input.startsWith('/');
 
   // 悬浮 InputBar 的实际高度（消息区底部要据此留出避让，避免被遮）
   const [inputBarOffset, setInputBarOffset] = useState(64);
@@ -116,20 +118,39 @@ export const AgentDock: React.FC = () => {
   // ─────────────────────────────
   // 行为（与悬浮窗一致，写回走注册 handlers）
   // ─────────────────────────────
-  const canSend = agentAvailable && handlersReady;
-
   const handleSend = useCallback(
     (overrideText?: string) => {
       const text = (overrideText ?? input).trim();
       if (!text && !selectedImage) return;
+      if (isGeneratingPrompt) return;
+      const clearInput = () => {
+        setInput('');
+        setSelectedImage(null);
+        if (inputRef.current) inputRef.current.style.height = 'auto';
+      };
+      // 固定指令优先：不经 LLM，Agent 未配置也可用
+      if (text && matchCommand(text)) {
+        const image = selectedImage ?? undefined;
+        clearInput();
+        void tryRunCommand(text, image);
+        return;
+      }
       const handlers = handlersRef.current;
-      if (isGeneratingPrompt || !handlers) return;
+      if (!agentAvailable || !handlers) {
+        agentService.addLog('card', 'Agent 未启用', {
+          card: {
+            kind: 'info',
+            title: 'Plana 暂不可用',
+            body: agentUnavailableReason || '本地 Agent 主模型尚未配置。',
+            hint: '固定指令（kkt / 生成图片 / 生成视频）不依赖 LLM，仍然可用。',
+          },
+        });
+        return;
+      }
       handlers.generate(text, selectedImage ?? undefined);
-      setInput('');
-      setSelectedImage(null);
-      if (inputRef.current) inputRef.current.style.height = 'auto';
+      clearInput();
     },
-    [input, selectedImage, isGeneratingPrompt, handlersRef],
+    [input, selectedImage, isGeneratingPrompt, handlersRef, agentAvailable, agentUnavailableReason, tryRunCommand],
   );
 
   const handlePickImage = () => fileInputRef.current?.click();
@@ -318,15 +339,16 @@ export const AgentDock: React.FC = () => {
         onClose={() => setDockOpen(false)}
         closeTitle="收起助手栏"
       />
-      {!agentAvailable ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center">
-          <Bot className="w-8 h-8 text-gray-600" />
-          <div className="text-sm text-gray-400">Agent 未启用</div>
-          {agentUnavailableReason && (
-            <div className="text-xs text-gray-600">{agentUnavailableReason}</div>
-          )}
+      {!agentAvailable && (
+        <div
+          className="shrink-0 px-3 py-1.5 text-[11px]"
+          style={{ background: 'rgba(252,237,164,0.06)', color: C.textDim, borderBottom: `1px solid ${C.line}` }}
+          title={agentUnavailableReason}
+        >
+          Plana LLM 未配置，仅固定指令可用（kkt / 生成图片 / 生成视频）
         </div>
-      ) : view === 'chat' ? (
+      )}
+      {view === 'chat' ? (
         <>
           <ChatBody
             ref={bodyRef}
@@ -337,9 +359,52 @@ export const AgentDock: React.FC = () => {
             inputBarOffset={inputBarOffset}
             onSuggest={t => handleSend(t)}
             onCopyAll={handleCopyAll}
+            onImportMetadata={m => { if (m.card) void importMetadataFromCard(m.card); }}
             onUndoLast={handleUndoLast}
             onRetry={handleRetry}
           />
+          {/* “/” 指令面板 */}
+          {showPalette && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 10,
+                right: 10,
+                bottom: inputBarOffset + 8,
+                background: C.panel2,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 6,
+                zIndex: 5,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              }}
+            >
+              {specs.map(spec => (
+                <button
+                  key={spec.id}
+                  className="aa-btn"
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    borderRadius: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                  title={spec.usage}
+                  onClick={() => {
+                    setInput(`${spec.keywords[0]} `);
+                    window.setTimeout(() => inputRef.current?.focus(), 30);
+                  }}
+                >
+                  <span style={{ color: C.accent, fontSize: 12, fontWeight: 700 }}>{spec.keywords[0]}</span>
+                  <span style={{ color: C.textDim, fontSize: 11, marginLeft: 8 }}>{spec.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {/* 隐藏 file input */}
           <input
             type="file"
@@ -352,7 +417,7 @@ export const AgentDock: React.FC = () => {
             value={input}
             onChange={setInput}
             onSend={() => handleSend()}
-            sending={isGeneratingPrompt || !canSend}
+            sending={isGeneratingPrompt}
             inputRef={inputRef}
             selectedImage={selectedImage}
             onPickImage={handlePickImage}

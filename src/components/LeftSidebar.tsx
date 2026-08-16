@@ -685,17 +685,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     handleAIGenerateWithRequest,
   });
 
-  // 把提示词写回入口注册给右侧停靠面板（提示词状态所有权留在左栏）。
-  useEffect(() => {
-    registerHandlers({
-      generate: (request, imageBase64) => { void handleAIGenerate(request, imageBase64); },
-      regenerate: (request, preState, imageBase64) => {
-        void handleAIGenerateWithRequest(request, preState, imageBase64);
-      },
-      restoreSnapshot: (snapshot) => restorePromptSnapshot(snapshot, { openCharacterSection: true }),
-    });
-  }, [registerHandlers, handleAIGenerate, handleAIGenerateWithRequest, restorePromptSnapshot]);
-
   const positiveEditorRef = useRef<PromptEditorRef>(null);
   const negativeEditorRef = useRef<PromptEditorRef>(null);
   const {
@@ -789,6 +778,36 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     cropInfoRef,
     vibeEncodingCache,
   });
+
+  // 固定指令「生成图片」带新提示词时：先落状态，提交后的渲染帧再触发生成，
+  // 避免 handleGenerate 读到旧的 positivePrompt 闭包值。
+  const pendingCommandGenerateRef = useRef(false);
+  useEffect(() => {
+    if (!pendingCommandGenerateRef.current) return;
+    pendingCommandGenerateRef.current = false;
+    handleGenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positivePrompt]);
+
+  // 把提示词写回入口注册给右侧停靠面板（提示词状态所有权留在左栏）。
+  useEffect(() => {
+    registerHandlers({
+      generate: (request, imageBase64) => { void handleAIGenerate(request, imageBase64); },
+      regenerate: (request, preState, imageBase64) => {
+        void handleAIGenerateWithRequest(request, preState, imageBase64);
+      },
+      restoreSnapshot: (snapshot) => restorePromptSnapshot(snapshot, { openCharacterSection: true }),
+      triggerGenerate: (positive) => {
+        if (positive && positive.trim() && positive.trim() !== positivePrompt.trim()) {
+          pendingCommandGenerateRef.current = true;
+          setPositivePrompt(positive.trim());
+        } else {
+          handleGenerate();
+        }
+      },
+    });
+  }, [registerHandlers, handleAIGenerate, handleAIGenerateWithRequest, restorePromptSnapshot, handleGenerate, positivePrompt]);
+
 
   useGenerationCompletionEffects({
     isGenerating,

@@ -54,9 +54,26 @@ export interface AgentResult {
   vibes?: string[];
 }
 
+// 助手结果卡片（固定指令产出；只存可 JSON 序列化的数据，动作按 kind 在渲染层派生。
+// 不要把大体积 base64 塞进 payload —— 卡片随会话进 localStorage。）
+export interface AssistantCard {
+  kind: 'metadata' | 'info';
+  title: string;
+  /** metadata 卡：解析出的图片元数据（imageMetadata.ts 的 ImageMetadata 结构） */
+  metadata?: import('../utils/imageMetadata').ImageMetadata;
+  /** metadata 卡：图片来源（导入动作按此在运行时重取图；会话恢复后可能失效） */
+  imageSource?: 'attached' | 'canvas' | 'history';
+  /** metadata 卡：运行时图源缓存键（addLog 是异步排队的，logIndex 不可靠） */
+  cacheKey?: string;
+  /** info 卡：正文 */
+  body?: string;
+  /** info 卡：弱化的补充行 */
+  hint?: string;
+}
+
 // 日志条目
 export interface LogEntry {
-  type: 'user' | 'system' | 'success' | 'error';
+  type: 'user' | 'system' | 'success' | 'error' | 'card';
   content: string;
   timestamp: number;
   collapsed?: boolean; // 是否折叠
@@ -66,6 +83,7 @@ export interface LogEntry {
   expanded?: boolean; // 是否展开详情（仅 success 类型）
   imagePreview?: string; // 用户发送的图片预览（仅 user 类型）
   toolDisplayNames?: string[]; // 工具显示名称（仅工具系统日志）
+  card?: AssistantCard; // 结果卡片（仅 card 类型）
 }
 
 // 生成快照（用于撤回和重试）
