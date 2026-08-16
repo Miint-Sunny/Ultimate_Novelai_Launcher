@@ -27,7 +27,7 @@ from .library_tables import fetch_all
 
 
 def list_vibes(settings: Settings) -> list[dict[str, Any]]:
-    rows = fetch_all(settings, "SELECT * FROM vibes ORDER BY created_at DESC")
+    rows = fetch_all(settings, "vibes")
     return [_vibe_to_api(row) for row in rows]
 
 
