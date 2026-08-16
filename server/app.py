@@ -6566,11 +6566,18 @@ async def mark_paid(session_id: str = ""):
 
 
 @app.get("/api/billing/qrcode")
-async def get_payment_qrcode(type: str = "wechat"):
+async def get_payment_qrcode(
+    request: Request,
+    type: str = "wechat",
+    session_id: str = "",  # v0 compatibility; new clients use X-Bot-Session
+):
     """返回收款二维码图片。type: wechat | alipay
     文件命名：payment_qr_wechat.png / payment_qr_alipay.png
     兼容旧命名：payment_qr.png 作为微信的 fallback
     """
+    # 收款码是运营者配置的私有图片，只发给已登录用户：与同组 dismiss/mark_paid
+    # 一样要求有效会话，不再匿名可取。
+    _library_principal_from_request(request, session_id)
     # 清洗 type，杜绝 ../ 之类的路径穿越读取（正常取值 wechat/alipay）。
     safe_type = re.sub(r"[^a-z0-9_]", "", (type or "").lower()) or "wechat"
     name = f"payment_qr_{safe_type}"
