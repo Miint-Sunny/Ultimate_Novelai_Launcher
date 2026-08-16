@@ -26,16 +26,49 @@ import logging
 import secrets
 import string
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from random import SystemRandom
 from urllib.parse import urlencode
 
-import aiohttp
+from cloud_backend.errors import InvalidRequestError
+from cloud_backend.outbound import SafeBinaryHttpClient, SafeJsonHttpClient
 
 from .cnb_comfy_pool import CNBComfyPool, CNBComfyTimeoutError
 
 logger = logging.getLogger("anima_provider")
 _RANDOM = SystemRandom()
+
+ProgressCallback = Callable[[float], Awaitable[None]]
+
+# CNB workspace 是公网 HTTPS 端点：所有数据面请求（提交/轮询/下图）都走
+# cloud_backend.outbound 的 DNS 钉扎客户端，每次请求、每一跳都重新过公网策略。
+# 裸 aiohttp 在这里违反 AGENTS.md 的 SSRF 不变量。
+_json_client: SafeJsonHttpClient | None = None
+_binary_client: SafeBinaryHttpClient | None = None
+
+# /history 与 /queue 是 JSON 状态响应，4MB 足够;/view 是成图。
+_STATE_MAX_BYTES = 4 * 1024 * 1024
+_IMAGE_MAX_BYTES = 48 * 1024 * 1024
+
+
+def _outbound_clients() -> tuple[SafeJsonHttpClient, SafeBinaryHttpClient]:
+    global _json_client, _binary_client
+    if _json_client is None:
+        _json_client = SafeJsonHttpClient(max_response_bytes=_STATE_MAX_BYTES)
+    if _binary_client is None:
+        _binary_client = SafeBinaryHttpClient()
+    return _json_client, _binary_client
+
+
+async def _report_progress(on_progress: ProgressCallback | None, fraction: float) -> None:
+    """进度是提示性信息，报告失败绝不允许拖垮生成本身。"""
+    if on_progress is None:
+        return
+    try:
+        await on_progress(fraction)
+    except Exception as e:  # noqa: BLE001 - advisory by design
+        logger.debug(f"anima 进度上报失败（忽略）: {e}")
 
 
 # ============================================================
@@ -159,17 +192,37 @@ async def _submit_prompt(comfy_url: str, payload: dict) -> str:
         "prompt": payload.get("prompt") or {},
         "client_id": f"anima-{int(time.time())}",
     }
-    timeout = aiohttp.ClientTimeout(total=60)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(f"{comfy_url}/prompt", json=request_body) as resp:
-            text = await resp.text()
-            if resp.status != 200:
-                raise Exception(f"anima 提交任务失败: {resp.status} {text[:300]}")
-            data = json.loads(text) if text else {}
+    json_client, _ = _outbound_clients()
+    response = await json_client.post_json(
+        f"{comfy_url}/prompt",
+        headers={},
+        payload=request_body,
+        timeout=60.0,
+    )
+    text = response.body.decode("utf-8", "replace")
+    if response.status != 200:
+        raise Exception(f"anima 提交任务失败: {response.status} {text[:300]}")
+    data = json.loads(text) if text else {}
     prompt_id = data.get("prompt_id")
     if not prompt_id:
         raise Exception(f"anima 未返回 prompt_id: {data}")
     return str(prompt_id)
+
+
+async def _get_state_json(url: str, *, what: str) -> dict:
+    """GET 一个 ComfyUI 状态端点并解析 JSON（有界响应，钉扎 DNS）。"""
+    _, binary_client = _outbound_clients()
+    response = await binary_client.get(
+        url,
+        headers={},
+        timeout=60.0,
+        max_bytes=_STATE_MAX_BYTES,
+    )
+    text = response.body.decode("utf-8", "replace")
+    if response.status != 200:
+        raise Exception(f"{what}失败: {response.status} {text[:200]}")
+    data = json.loads(text) if text else {}
+    return data if isinstance(data, dict) else {}
 
 
 async def _wait_history(
@@ -178,89 +231,95 @@ async def _wait_history(
     prompt_id: str,
     poll_interval: float,
     running_timeout_seconds: int,
+    on_progress: ProgressCallback | None = None,
 ) -> dict:
-    """轮询 /history/{prompt_id} 直到 outputs 出现，或超时。"""
+    """轮询 /history/{prompt_id} 直到 outputs 出现，或超时。
+
+    出站策略拒绝（InvalidRequestError）是永久性失败，立即抛出，不参与
+    临时失败的 60s 重试窗口。
+    """
     submit_started_at = time.time()
     missing_timeout_seconds = running_timeout_seconds + 60
     running_started_at: float | None = None
     missing_started_at: float | None = None
-    timeout = aiohttp.ClientTimeout(total=60)
     history_consecutive_failures = 0
     max_history_failure_seconds = 60
+    # 粗粒度单调进度：pending 压在低位，running 渐进逼近 0.9（真·逐步进度
+    # 需要消费 ComfyUI WebSocket，等实测阶段再上）。
+    progress = 0.15
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        while True:
-            if (time.time() - submit_started_at) > running_timeout_seconds:
-                raise CNBComfyTimeoutError(
-                    f"anima 出图执行超时（提交后超过 {running_timeout_seconds}s）"
-                )
-            try:
-                async with session.get(f"{comfy_url}/history/{prompt_id}") as resp:
-                    text = await resp.text()
-                    if resp.status != 200:
-                        raise Exception(f"查询历史失败: {resp.status} {text[:200]}")
-                    data = json.loads(text) if text else {}
-                history_consecutive_failures = 0
-            except CNBComfyTimeoutError:
-                raise
-            except Exception as e:
-                history_consecutive_failures += 1
-                failure_duration = history_consecutive_failures * poll_interval
-                if failure_duration > max_history_failure_seconds:
-                    raise Exception(
-                        f"查询历史连续失败超过 {max_history_failure_seconds}s: {e}"
-                    ) from e
-                logger.warning(
-                    f"anima 查询历史临时失败 (连续{history_consecutive_failures}次): {e}"
-                )
-                await asyncio.sleep(poll_interval)
-                continue
-
-            job = data.get(prompt_id)
-            if job and job.get("outputs"):
-                return job
-            if job:
-                missing_started_at = None
-
-            try:
-                async with session.get(f"{comfy_url}/queue") as resp:
-                    queue_text = await resp.text()
-                    if resp.status == 200:
-                        queue_data = json.loads(queue_text) if queue_text else {}
-                        running_ids = pool.extract_queue_prompt_ids(
-                            queue_data.get("queue_running") or []
-                        )
-                        pending_ids = pool.extract_queue_prompt_ids(
-                            queue_data.get("queue_pending") or []
-                        )
-                        if prompt_id in running_ids:
-                            missing_started_at = None
-                            if running_started_at is None:
-                                running_started_at = time.time()
-                                logger.info(f"anima 任务进入 running: {prompt_id}")
-                            running_elapsed = time.time() - running_started_at
-                            if running_elapsed > running_timeout_seconds:
-                                raise CNBComfyTimeoutError(
-                                    f"anima 出图超时（running 超过 {running_timeout_seconds}s）"
-                                )
-                        elif prompt_id in pending_ids:
-                            running_started_at = None
-                            missing_started_at = None
-                        else:
-                            running_started_at = None
-                            if missing_started_at is None:
-                                missing_started_at = time.time()
-                            elif (time.time() - missing_started_at) > missing_timeout_seconds:
-                                raise CNBComfyTimeoutError(
-                                    "anima 任务状态丢失"
-                                    f"（连续 {missing_timeout_seconds}s 不在 history/queue）"
-                                )
-            except CNBComfyTimeoutError:
-                raise
-            except Exception as e:
-                logger.warning(f"anima 查询队列状态失败 {prompt_id}: {e}")
-
+    while True:
+        if (time.time() - submit_started_at) > running_timeout_seconds:
+            raise CNBComfyTimeoutError(
+                f"anima 出图执行超时（提交后超过 {running_timeout_seconds}s）"
+            )
+        try:
+            data = await _get_state_json(
+                f"{comfy_url}/history/{prompt_id}", what="查询历史"
+            )
+            history_consecutive_failures = 0
+        except (CNBComfyTimeoutError, InvalidRequestError):
+            raise
+        except Exception as e:
+            history_consecutive_failures += 1
+            failure_duration = history_consecutive_failures * poll_interval
+            if failure_duration > max_history_failure_seconds:
+                raise Exception(
+                    f"查询历史连续失败超过 {max_history_failure_seconds}s: {e}"
+                ) from e
+            logger.warning(
+                f"anima 查询历史临时失败 (连续{history_consecutive_failures}次): {e}"
+            )
             await asyncio.sleep(poll_interval)
+            continue
+
+        job = data.get(prompt_id)
+        if job and job.get("outputs"):
+            await _report_progress(on_progress, 0.9)
+            return job
+        if job:
+            missing_started_at = None
+
+        try:
+            queue_data = await _get_state_json(f"{comfy_url}/queue", what="查询队列")
+            running_ids = pool.extract_queue_prompt_ids(
+                queue_data.get("queue_running") or []
+            )
+            pending_ids = pool.extract_queue_prompt_ids(
+                queue_data.get("queue_pending") or []
+            )
+            if prompt_id in running_ids:
+                missing_started_at = None
+                if running_started_at is None:
+                    running_started_at = time.time()
+                    logger.info(f"anima 任务进入 running: {prompt_id}")
+                running_elapsed = time.time() - running_started_at
+                if running_elapsed > running_timeout_seconds:
+                    raise CNBComfyTimeoutError(
+                        f"anima 出图超时（running 超过 {running_timeout_seconds}s）"
+                    )
+                progress = min(0.9, progress + (0.9 - progress) * 0.15)
+                await _report_progress(on_progress, progress)
+            elif prompt_id in pending_ids:
+                running_started_at = None
+                missing_started_at = None
+                progress = max(progress, 0.2)
+                await _report_progress(on_progress, progress)
+            else:
+                running_started_at = None
+                if missing_started_at is None:
+                    missing_started_at = time.time()
+                elif (time.time() - missing_started_at) > missing_timeout_seconds:
+                    raise CNBComfyTimeoutError(
+                        "anima 任务状态丢失"
+                        f"（连续 {missing_timeout_seconds}s 不在 history/queue）"
+                    )
+        except (CNBComfyTimeoutError, InvalidRequestError):
+            raise
+        except Exception as e:
+            logger.warning(f"anima 查询队列状态失败 {prompt_id}: {e}")
+
+        await asyncio.sleep(poll_interval)
 
 
 def _pick_image_output(history_job: dict) -> dict:
@@ -287,13 +346,17 @@ async def _download_image(comfy_url: str, result_meta: dict) -> bytes:
             "type": result_meta.get("type", "output"),
         }
     )
-    timeout = aiohttp.ClientTimeout(total=None, sock_connect=30, sock_read=180)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(f"{comfy_url}/view?{query}") as resp:
-            if resp.status != 200:
-                text = await resp.text()
-                raise Exception(f"anima 下载结果失败: {resp.status} {text[:200]}")
-            return await resp.read()
+    _, binary_client = _outbound_clients()
+    response = await binary_client.get(
+        f"{comfy_url}/view?{query}",
+        headers={},
+        timeout=210.0,
+        max_bytes=_IMAGE_MAX_BYTES,
+    )
+    if response.status != 200:
+        text = response.body.decode("utf-8", "replace")
+        raise Exception(f"anima 下载结果失败: {response.status} {text[:200]}")
+    return response.body
 
 
 # ============================================================
@@ -309,6 +372,7 @@ async def generate_anima_image(
     height: int = 0,
     seed: int = -1,
     task_id: str = "",
+    on_progress: ProgressCallback | None = None,
 ) -> bytes:
     """
     生成一张 anima 图，同步等到完成，返回 PNG bytes。
@@ -319,6 +383,7 @@ async def generate_anima_image(
         width / height: 0 / 负数 → 用 ANIMA_DEFAULT_WIDTH/HEIGHT
         seed: 负数 → 随机
         task_id: 用于队列追踪的标识（空 → 自动生成）
+        on_progress: 粗粒度进度回调（0..1 单调；提示性，失败不影响生成）
 
     Raises:
         CNBComfyTimeoutError: 启动 / 出图阶段超时
@@ -352,13 +417,17 @@ async def generate_anima_image(
     except Exception as e:
         logger.warning(f"anima enqueue 提示失败（不阻塞）: {e}")
 
+    await _report_progress(on_progress, 0.02)
+
     try:
         account, _initial_position = await pool.acquire_local_account(task_id)
+        await _report_progress(on_progress, 0.05)
         try:
             base_url = await pool.ensure_account_ready_url(account)
         except Exception as e:
             needs_restart = True
             raise Exception(f"anima workspace 不可用: {e}") from e
+        await _report_progress(on_progress, 0.1)
 
         # 队列守护：清理超时任务
         try:
@@ -379,6 +448,7 @@ async def generate_anima_image(
             f"anima 提交成功: task={task_id} prompt_id={prompt_id} "
             f"account={pool.get_account_key(account)} size={width_px}x{height_px} seed={seed_value}"
         )
+        await _report_progress(on_progress, 0.15)
 
         history = await _wait_history(
             pool,
@@ -386,9 +456,12 @@ async def generate_anima_image(
             prompt_id,
             poll_interval=defaults["poll_interval"],
             running_timeout_seconds=defaults["running_timeout"],
+            on_progress=on_progress,
         )
         result_meta = _pick_image_output(history)
-        return await _download_image(base_url, result_meta)
+        image = await _download_image(base_url, result_meta)
+        await _report_progress(on_progress, 0.98)
+        return image
 
     except CNBComfyTimeoutError:
         if base_url and prompt_id:

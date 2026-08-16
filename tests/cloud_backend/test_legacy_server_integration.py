@@ -9,7 +9,7 @@ import sys
 import time
 import zipfile
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import aiosqlite
@@ -1610,6 +1610,124 @@ async def test_anima_uses_shared_bounded_admission(
     assert first.status_code == 200 and first.json()["success"] is True
     assert second.status_code == 200 and second.json()["success"] is False
     assert len(legacy_server._generation_tasks) == 1
+
+
+@pytest.mark.asyncio
+async def test_anima_outbound_policy_rejection_is_not_retried(
+    legacy_server: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del legacy_server  # 只为保证 server/ 在 sys.path、config 已就位
+    import agent_router.anima_provider as anima_provider
+    from cloud_backend.errors import InvalidRequestError
+
+    calls = 0
+
+    async def rejecting(url: str, *, what: str) -> dict:
+        nonlocal calls
+        calls += 1
+        raise InvalidRequestError("outbound host resolves to a forbidden address")
+
+    monkeypatch.setattr(anima_provider, "_get_state_json", rejecting)
+
+    class _PoolStub:
+        @staticmethod
+        def extract_queue_prompt_ids(rows):
+            return set()
+
+    with pytest.raises(InvalidRequestError):
+        await anima_provider._wait_history(
+            _PoolStub(),
+            "https://workspace.example",
+            "pid-1",
+            poll_interval=0.01,
+            running_timeout_seconds=60,
+        )
+    # 策略拒绝是永久失败：绝不能进入临时失败的重试窗口。
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_anima_data_plane_uses_pinned_clients_and_reports_progress(
+    legacy_server: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del legacy_server
+    import agent_router.anima_provider as anima_provider
+
+    # 裸 aiohttp 已从数据面退场；出站只剩 cloud_backend.outbound 的钉扎客户端。
+    source = (SERVER / "agent_router" / "anima_provider.py").read_text(encoding="utf-8")
+    assert "import aiohttp" not in source and "aiohttp.ClientSession" not in source
+
+    class _JsonClientStub:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        async def post_json(self, url, *, headers, payload, timeout):
+            self.urls.append(url)
+            body = json.dumps({"prompt_id": "pid-9"}).encode()
+            return SimpleNamespace(status=200, body=body)
+
+    class _BinaryClientStub:
+        def __init__(self, responses: list[tuple[int, bytes]]) -> None:
+            self.responses = responses
+            self.urls: list[str] = []
+
+        async def get(self, url, *, headers, timeout, max_bytes):
+            self.urls.append(url)
+            status, body = self.responses.pop(0)
+            return SimpleNamespace(status=status, body=body)
+
+    json_stub = _JsonClientStub()
+    empty_history = json.dumps({}).encode()
+    running_queue = json.dumps({"queue_running": [[0, "pid-9"]], "queue_pending": []}).encode()
+    done_history = json.dumps(
+        {"pid-9": {"outputs": {"46": {"images": [{"filename": "a.png"}]}}}}
+    ).encode()
+    binary_stub = _BinaryClientStub(
+        [
+            (200, empty_history),
+            (200, running_queue),
+            (200, done_history),
+            (200, PNG),
+        ]
+    )
+    monkeypatch.setattr(
+        anima_provider, "_outbound_clients", lambda: (json_stub, binary_stub)
+    )
+
+    prompt_id = await anima_provider._submit_prompt(
+        "https://workspace.example", {"prompt": {"1": {}}}
+    )
+    assert prompt_id == "pid-9"
+    assert json_stub.urls == ["https://workspace.example/prompt"]
+
+    progress: list[float] = []
+
+    async def on_progress(fraction: float) -> None:
+        progress.append(fraction)
+
+    class _PoolStub:
+        @staticmethod
+        def extract_queue_prompt_ids(rows):
+            return {row[1] for row in rows if isinstance(row, list) and len(row) > 1}
+
+    history = await anima_provider._wait_history(
+        _PoolStub(),
+        "https://workspace.example",
+        "pid-9",
+        poll_interval=0.01,
+        running_timeout_seconds=60,
+        on_progress=on_progress,
+    )
+    image = await anima_provider._download_image(
+        "https://workspace.example", anima_provider._pick_image_output(history)
+    )
+    assert image == PNG
+    assert binary_stub.urls[-1].startswith("https://workspace.example/view?filename=a.png")
+    # 粗粒度进度：单调、以 0.9 收口在出图完成处。
+    assert progress == sorted(progress)
+    assert progress and progress[-1] == pytest.approx(0.9)
 
 
 @pytest.mark.asyncio
