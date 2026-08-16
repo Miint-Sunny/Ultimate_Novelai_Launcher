@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { Dispatch, MouseEvent as ReactMouseEvent, RefObject, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import { agentService, type AgentContext, type AgentResult } from '../../services/agentService';
 import type { VibeData } from '../../services/localLibrary';
 import { getPublicVibeFile } from '../../services/publicLibrary';
@@ -17,9 +17,6 @@ type AgentPreState = {
 type RoleTagMap = AgentContext['roleTags'];
 
 interface UseAgentPromptGenerationParams {
-  aiInputPrompt: string;
-  setAiInputPrompt: Dispatch<SetStateAction<string>>;
-  aiInputRef: RefObject<HTMLTextAreaElement | null>;
   aiModel: string;
   setIsGeneratingPrompt: Dispatch<SetStateAction<boolean>>;
   publicFiles: VibeFile[];
@@ -46,7 +43,6 @@ interface RunAgentOptions {
   input: string;
   imageBase64?: string;
   skipUserLog: boolean;
-  resetInputOnSuccess: boolean;
   allowImageOnly: boolean;
   preState?: AgentPreState;
 }
@@ -229,13 +225,6 @@ export function useAgentPromptGeneration(params: UseAgentPromptGenerationParams)
 
       if (result) {
         applyAgentResult(result, params);
-
-        if (options.resetInputOnSuccess) {
-          params.setAiInputPrompt('');
-          if (params.aiInputRef.current) {
-            params.aiInputRef.current.style.height = '32px';
-          }
-        }
       }
     } catch (error) {
       console.error('Agent执行失败:', error);
@@ -248,15 +237,14 @@ export function useAgentPromptGeneration(params: UseAgentPromptGenerationParams)
     request?: string | ReactMouseEvent,
     imageBase64?: string,
   ) => {
-    const input = typeof request === 'string' ? request : params.aiInputPrompt;
+    const input = typeof request === 'string' ? request : '';
     return runAgent({
       input,
       imageBase64,
       skipUserLog: false,
-      resetInputOnSuccess: true,
       allowImageOnly: true,
     });
-  }, [params.aiInputPrompt, runAgent]);
+  }, [runAgent]);
 
   const handleAIGenerateWithRequest = useCallback((
     request: string,
@@ -266,7 +254,6 @@ export function useAgentPromptGeneration(params: UseAgentPromptGenerationParams)
     input: request,
     imageBase64,
     skipUserLog: true,
-    resetInputOnSuccess: false,
     allowImageOnly: false,
     preState,
   }), [runAgent]);

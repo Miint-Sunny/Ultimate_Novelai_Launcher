@@ -88,8 +88,11 @@ export function useAgentSnapshotActions(params: UseAgentSnapshotActionsParams) {
     }
   }, [params]);
 
-  const restoreGeneratedSnapshot = useCallback((snapshot: GenerationSnapshot) => {
-    restorePromptSnapshot(snapshot);
+  const restoreGeneratedSnapshot = useCallback((
+    snapshot: GenerationSnapshot,
+    options: { openCharacterSection: boolean } = { openCharacterSection: false },
+  ) => {
+    restorePromptSnapshot(snapshot, options);
 
     if (snapshot.vibes.length > 0) {
       params.setSelectedVibes(snapshot.vibes);
@@ -130,6 +133,7 @@ export function useAgentSnapshotActions(params: UseAgentSnapshotActionsParams) {
 
   return {
     restorePromptSnapshot,
+    restoreGeneratedSnapshot,
     handleSuccessLogAction,
     handleErrorLogRetry,
   };

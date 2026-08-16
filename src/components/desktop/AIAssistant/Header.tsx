@@ -15,9 +15,11 @@ interface Props {
   onBack: () => void;
   onNewChat: () => void;
   onClose: () => void;
-  onPointerDown: (e: React.PointerEvent) => void;
-  onPointerMove: (e: React.PointerEvent) => void;
-  onPointerUp: (e: React.PointerEvent) => void;
+  closeTitle?: string;
+  // 悬浮形态才需要拖拽手柄；停靠形态不传即无拖拽、光标常规。
+  onPointerDown?: (e: React.PointerEvent) => void;
+  onPointerMove?: (e: React.PointerEvent) => void;
+  onPointerUp?: (e: React.PointerEvent) => void;
 }
 
 /**
@@ -40,6 +42,7 @@ export const Header: React.FC<Props> = ({
   onBack,
   onNewChat,
   onClose,
+  closeTitle = '收起浮窗',
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -59,7 +62,7 @@ export const Header: React.FC<Props> = ({
         padding: '10px 10px 10px 12px',
         background: C.bgDeep,
         borderBottom: `1px solid ${C.line}`,
-        cursor: 'move',
+        cursor: onPointerDown ? 'move' : 'default',
         flexShrink: 0,
       }}
     >
@@ -137,7 +140,7 @@ export const Header: React.FC<Props> = ({
         <button
           className="aa-btn-cell"
           onClick={onClose}
-          title="收起浮窗"
+          title={closeTitle}
           style={closeBtnStyle()}
         >
           <svg

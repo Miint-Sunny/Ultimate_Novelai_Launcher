@@ -2,7 +2,9 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MainContent } from './components/MainContent';
 import { HistoryDock } from './components/HistoryDock';
+import { AgentDock } from './components/desktop/AIAssistant/AgentDock';
 import { LoginModal } from './components/LoginModal';
+import { AgentDockProvider } from './contexts/AgentDockContext';
 import { useAuth } from './contexts/AuthContext';
 import { useDragDrop } from './contexts/DragDropContext';
 import { DropZoneModal, type DropTarget } from './components/DropZoneModal';
@@ -123,12 +125,16 @@ const AppContent: React.FC = () => {
       onDrop={handleBackgroundDrop}
     >
       <div className="flex flex-1 overflow-hidden relative">
-        <LeftSidebar onLogout={logout} />
-        {/* 中央工作区：画布在上，历史条横放在下方展开 */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <MainContent />
-          <HistoryDock />
-        </div>
+        <AgentDockProvider>
+          <LeftSidebar onLogout={logout} />
+          {/* 中央工作区：画布在上，历史条横放在下方展开 */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <MainContent />
+            <HistoryDock />
+          </div>
+          {/* 右侧：Plana 助手停靠面板 */}
+          <AgentDock />
+        </AgentDockProvider>
       </div>
 
       {/* Drop target selection modal - shown when dropping outside specific zones */}

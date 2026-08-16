@@ -1,139 +1,48 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  agentService,
-  type AgentState,
-} from '../../../services/agentService';
+import { Bot } from 'lucide-react';
+import { agentService } from '../../../services/agentService';
 import { useAgentModelPresentation } from '../../../hooks/useAgentModelPresentation';
+import {
+  useAgentDock,
+  AGENT_DOCK_MIN_WIDTH,
+  AGENT_DOCK_MAX_WIDTH,
+} from '../../../contexts/AgentDockContext';
 import { ChatBody } from './ChatBody';
 import { Header } from './Header';
 import { HistoryView } from './HistoryView';
 import { InputBar } from './InputBar';
-import { C, PANEL_H, PANEL_W } from './tokens';
+import { C } from './tokens';
 import type { ArchivedSession, VMsg } from './types';
 import { useAdaptedMessages } from './useAdaptedMessages';
 import { useBlink } from './useBlink';
 import { useSessions, buildSessionFromLogs } from './useSessions';
 
-// 保留与原 DraggableAIAssistant 完全一致的对外契约
-export interface DraggableAIAssistantProps {
-  isOpen: boolean;
-  onClose: () => void;
-  aiModel: string;
-  onAiModelChange: (model: string) => void;
-  agentState: AgentState;
-  isGeneratingPrompt: boolean;
-  onAIGenerate: (request: string, imageBase64?: string) => void;
-  onAIRegenerate?: (
-    request: string,
-    preState: {
-      positive: string;
-      negative: string;
-      characters: { positive: string; negative?: string; name: string }[];
-    },
-    imageBase64?: string,
-  ) => void;
-  onRestoreSnapshot?: (snapshot: {
-    positive: string;
-    negative: string;
-    characters: { positive: string; negative?: string; name: string }[];
-    vibes: string[];
-  }) => void;
-  initialRect?: DOMRect | null;
-}
-
 /**
- * Plana AI 助手浮窗 V2（重设计版）。
+ * Plana 助手停靠面板（悬浮窗 V2 的停靠形态）。
  *
- * 数据流：
- *   agentState.logs → useAdaptedMessages → VMsg[] → <ChatBody>
- *
- * 复刻自 design_handoff_ai_assistant/prototype.jsx，详细 spec 见同目录的 README.md。
+ * 数据流不变：agentState.logs → useAdaptedMessages → VMsg[] → <ChatBody>。
+ * 与旧悬浮窗的区别只有容器：右侧全高、可收起为窄条、左缘拖宽；
+ * 提示词写回经 AgentDockContext 由 LeftSidebar 注册的 handlers 完成。
  */
-export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
-  isOpen,
-  onClose,
-  aiModel,
-  onAiModelChange,
-  agentState,
-  isGeneratingPrompt,
-  onAIGenerate,
-  onAIRegenerate,
-  onRestoreSnapshot,
-  initialRect,
-}) => {
+export const AgentDock: React.FC = () => {
+  const {
+    aiModel,
+    setAiModel,
+    agentState,
+    isGeneratingPrompt,
+    agentAvailable,
+    agentUnavailableReason,
+    isDockOpen,
+    setDockOpen,
+    dockWidth,
+    setDockWidth,
+    handlersRef,
+    handlersReady,
+  } = useAgentDock();
   const agentModel = useAgentModelPresentation();
-  // ─────────────────────────────
-  // 渲染挂载（保留出现/退出动画）
-  // ─────────────────────────────
-  const [shouldRender, setShouldRender] = useState(isOpen);
-  const [isClosing, setIsClosing] = useState(false);
-  useEffect(() => {
-    if (isOpen) {
-      setShouldRender(true);
-      setIsClosing(false);
-    } else if (shouldRender) {
-      setIsClosing(true);
-      const t = window.setTimeout(() => setShouldRender(false), 220);
-      return () => window.clearTimeout(t);
-    }
-  }, [isOpen, shouldRender]);
 
   // ─────────────────────────────
-  // 位置 / 拖拽
-  // ─────────────────────────────
-  const [position, setPosition] = useState({
-    x: window.innerWidth - PANEL_W - 30,
-    y: 80,
-  });
-  const drag = useRef({ active: false, dx: 0, dy: 0 });
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (initialRect) {
-      const x = Math.min(initialRect.right + 10, window.innerWidth - PANEL_W - 10);
-      const y = Math.max(
-        10,
-        Math.min(initialRect.top, window.innerHeight - PANEL_H - 10),
-      );
-      setPosition({ x, y });
-    } else {
-      // 居中显示
-      setPosition({
-        x: Math.max(20, (window.innerWidth - PANEL_W) / 2),
-        y: Math.max(40, (window.innerHeight - PANEL_H) / 2),
-      });
-    }
-  }, [isOpen, initialRect]);
-
-  const onHeaderDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('.no-drag')) return;
-    drag.current.active = true;
-    drag.current.dx = e.clientX - position.x;
-    drag.current.dy = e.clientY - position.y;
-    try {
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-  };
-  const onHeaderMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return;
-    setPosition({
-      x: e.clientX - drag.current.dx,
-      y: e.clientY - drag.current.dy,
-    });
-  };
-  const onHeaderUp = (e: React.PointerEvent) => {
-    drag.current.active = false;
-    try {
-      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-  };
-
-  // ─────────────────────────────
-  // 内部状态
+  // 内部状态（与悬浮窗一致）
   // ─────────────────────────────
   const [view, setView] = useState<'chat' | 'history'>('chat');
   const [input, setInput] = useState('');
@@ -159,11 +68,11 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
 
   // 焦点 + 自动滚动
   useEffect(() => {
-    if (isOpen) {
+    if (isDockOpen) {
       const t = window.setTimeout(() => inputRef.current?.focus(), 100);
       return () => window.clearTimeout(t);
     }
-  }, [isOpen]);
+  }, [isDockOpen]);
   const scrollBodyToBottom = useCallback(() => {
     const scroll = () => {
       const el = bodyRef.current;
@@ -176,23 +85,51 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isOpen) scrollBodyToBottom();
-  }, [isOpen, shouldRender, msgs.length, isGeneratingPrompt, view, scrollBodyToBottom]);
+    if (isDockOpen) scrollBodyToBottom();
+  }, [isDockOpen, msgs.length, isGeneratingPrompt, view, scrollBodyToBottom]);
 
   // ─────────────────────────────
-  // 行为
+  // 左缘拖宽
   // ─────────────────────────────
+  const resize = useRef({ active: false, startX: 0, startWidth: 0 });
+  const onResizeDown = (e: React.PointerEvent) => {
+    resize.current = { active: true, startX: e.clientX, startWidth: dockWidth };
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+  };
+  const onResizeMove = (e: React.PointerEvent) => {
+    if (!resize.current.active) return;
+    setDockWidth(resize.current.startWidth + (resize.current.startX - e.clientX));
+  };
+  const onResizeUp = (e: React.PointerEvent) => {
+    resize.current.active = false;
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+  };
+
+  // ─────────────────────────────
+  // 行为（与悬浮窗一致，写回走注册 handlers）
+  // ─────────────────────────────
+  const canSend = agentAvailable && handlersReady;
+
   const handleSend = useCallback(
     (overrideText?: string) => {
       const text = (overrideText ?? input).trim();
       if (!text && !selectedImage) return;
-      if (isGeneratingPrompt) return;
-      onAIGenerate(text, selectedImage ?? undefined);
+      const handlers = handlersRef.current;
+      if (isGeneratingPrompt || !handlers) return;
+      handlers.generate(text, selectedImage ?? undefined);
       setInput('');
       setSelectedImage(null);
       if (inputRef.current) inputRef.current.style.height = 'auto';
     },
-    [input, selectedImage, isGeneratingPrompt, onAIGenerate],
+    [input, selectedImage, isGeneratingPrompt, handlersRef],
   );
 
   const handlePickImage = () => fileInputRef.current?.click();
@@ -208,7 +145,6 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
 
   /** 撤回最新一条 AI 回复 + 回填用户文本到输入框 */
   const handleUndoLast = useCallback(() => {
-    // 在原始 logs 里找到最后一条 success
     const logs = agentState.logs;
     let lastSuccessIdx = -1;
     for (let i = logs.length - 1; i >= 0; i--) {
@@ -220,13 +156,14 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
     if (lastSuccessIdx < 0) return;
     const snap = logs[lastSuccessIdx].snapshot;
 
-    // 1) 先把 prompt 提示词回滚到生成前的状态
-    if (snap && onRestoreSnapshot) {
-      onRestoreSnapshot({
+    // 1) 先把提示词回滚到生成前的状态
+    const handlers = handlersRef.current;
+    if (snap && handlers) {
+      handlers.restoreSnapshot({
+        ...snap,
         positive: snap.prePositive,
         negative: snap.preNegative,
         characters: snap.preCharacters,
-        vibes: snap.vibes,
       });
     }
     // 2) 把对应的 user request 拎出来 + 截掉 user log 及之后
@@ -236,7 +173,7 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
       if (payload.image) setSelectedImage(payload.image);
       window.setTimeout(() => inputRef.current?.focus(), 60);
     }
-  }, [agentState.logs, onRestoreSnapshot]);
+  }, [agentState.logs, handlersRef]);
 
   /** 复制某条 AI 回复的全部 tag（用 snapshot.positive 准确切） */
   const handleCopyAll = useCallback((m: VMsg) => {
@@ -258,38 +195,29 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
    */
   const handleRetry = useCallback(
     (m: VMsg) => {
+      const handlers = handlersRef.current;
+      if (!handlers) return;
       const snap = m.snapshot;
       const payload = agentService.truncateToUserRequest(m.logIndex);
       if (!payload?.request) return;
-      if (snap && onAIRegenerate) {
-        onAIRegenerate(payload.request, {
+      if (snap) {
+        handlers.regenerate(payload.request, {
           positive: snap.prePositive,
           negative: snap.preNegative,
           characters: snap.preCharacters,
         }, payload.image);
         return;
       }
-      if (snap && onRestoreSnapshot) {
-        onRestoreSnapshot({
-          positive: snap.prePositive,
-          negative: snap.preNegative,
-          characters: snap.preCharacters,
-          vibes: snap.vibes,
-        });
-      }
-      onAIGenerate(payload.request, payload.image);
+      handlers.generate(payload.request, payload.image);
     },
-    [onAIGenerate, onAIRegenerate, onRestoreSnapshot],
+    [handlersRef],
   );
 
   /** 点 + 新对话：归档当前对话 + 清空 logs */
   const handleNewChat = useCallback(() => {
     if (agentState.logs.length === 0) return;
-    const ok = archive(agentState.logs);
+    archive(agentState.logs);
     agentService.clearLogs();
-    if (ok) {
-      // 可以做个轻提示，这里保持安静
-    }
   }, [agentState.logs, archive]);
 
   /** 历史里点"打开"：当前会话 → 直接回到 chat；归档会话 → 先归档当前再灌回 */
@@ -326,33 +254,56 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
     return [{ ...current, current: true }, ...sessions];
   }, [agentState.logs, sessions]);
 
-  if (!shouldRender) return null;
-
-  // 进退场动画：复用现有 animate-assistant-popup / popout
-  const animClass = isClosing ? 'animate-assistant-popout' : 'animate-assistant-popup';
+  // ─────────────────────────────
+  // 收起态：右缘窄条
+  // ─────────────────────────────
+  if (!isDockOpen) {
+    return (
+      <div
+        className="shrink-0 flex flex-col items-center bg-nai-panel border-l border-gray-800 z-10"
+        style={{ width: 30 }}
+      >
+        <button
+          className={`mt-3 p-1 rounded-lg transition-colors ${isGeneratingPrompt
+            ? 'text-nai-accent bg-nai-accent/10'
+            : 'text-gray-400 hover:text-white hover:bg-white/10'
+            }`}
+          onClick={() => setDockOpen(true)}
+          title={isGeneratingPrompt ? 'Plana 正在思考，点击展开' : '展开助手栏'}
+        >
+          <Bot className="w-5 h-5" />
+        </button>
+        {isGeneratingPrompt && (
+          <div className="mt-2 relative w-2 h-2">
+            <div className="absolute inset-0 bg-nai-accent/40 rounded-full animate-ping" />
+            <div className="absolute inset-0.5 bg-nai-accent rounded-full" />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
-      className={animClass}
+      className="relative shrink-0 flex flex-col z-10 overflow-hidden"
       style={{
-        position: 'fixed',
-        left: position.x,
-        top: position.y,
-        width: PANEL_W,
-        height: PANEL_H,
+        width: dockWidth,
+        minWidth: AGENT_DOCK_MIN_WIDTH,
+        maxWidth: AGENT_DOCK_MAX_WIDTH,
         background: C.panel,
-        border: `1px solid ${C.border}`,
-        borderRadius: 18,
-        overflow: 'hidden',
-        boxShadow:
-          '0 30px 60px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05), 0 0 30px rgba(252, 237, 164, 0.04)',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 90,
-        touchAction: 'none',
+        borderLeft: `1px solid ${C.border}`,
         color: C.text,
       }}
     >
+      {/* 左缘拖宽把手 */}
+      <div
+        className="absolute top-0 left-0 bottom-0 w-1.5 cursor-ew-resize z-20 hover:bg-white/10 transition-colors"
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+        onPointerCancel={onResizeUp}
+        title="拖动调整面板宽度"
+      />
       <Header
         view={view}
         model={aiModel}
@@ -360,16 +311,22 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
         blink={blink}
         sending={isGeneratingPrompt}
         hasMessages={msgs.length > 0}
-        onModelChange={onAiModelChange}
+        onModelChange={setAiModel}
         onGoHistory={() => setView('history')}
         onBack={() => setView('chat')}
         onNewChat={handleNewChat}
-        onClose={onClose}
-        onPointerDown={onHeaderDown}
-        onPointerMove={onHeaderMove}
-        onPointerUp={onHeaderUp}
+        onClose={() => setDockOpen(false)}
+        closeTitle="收起助手栏"
       />
-      {view === 'chat' ? (
+      {!agentAvailable ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center">
+          <Bot className="w-8 h-8 text-gray-600" />
+          <div className="text-sm text-gray-400">Agent 未启用</div>
+          {agentUnavailableReason && (
+            <div className="text-xs text-gray-600">{agentUnavailableReason}</div>
+          )}
+        </div>
+      ) : view === 'chat' ? (
         <>
           <ChatBody
             ref={bodyRef}
@@ -395,7 +352,7 @@ export const DraggableAIAssistant: React.FC<DraggableAIAssistantProps> = ({
             value={input}
             onChange={setInput}
             onSend={() => handleSend()}
-            sending={isGeneratingPrompt}
+            sending={isGeneratingPrompt || !canSend}
             inputRef={inputRef}
             selectedImage={selectedImage}
             onPickImage={handlePickImage}

@@ -1,9 +1,7 @@
-import type { Dispatch, MouseEvent, MutableRefObject, RefObject, SetStateAction } from 'react';
+import type { MouseEvent, MutableRefObject, RefObject } from 'react';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
-import type { AgentState, GenerationSnapshot } from '../../services/agentService';
-import { appBackendApi } from '../../api/appBackendApi';
+import { useAgentDock } from '../../contexts/AgentDockContext';
 import { useAgentModelPresentation } from '../../hooks/useAgentModelPresentation';
-import { InlineAgentPanel } from './InlineAgentPanel';
 import {
   ChipModeToggle,
   FloatingAgentButton,
@@ -40,22 +38,6 @@ interface PromptComposerSectionProps {
   onOpenInspiration: () => void;
   onOpenTagManager: () => void;
   onOpenPresetModal: () => void;
-  aiModel: string;
-  onAiModelChange: (model: string) => void;
-  agentState: AgentState;
-  isGeneratingPrompt: boolean;
-  aiLogScrollRef: RefObject<HTMLDivElement | null>;
-  aiInputRef: RefObject<HTMLTextAreaElement | null>;
-  aiInputPrompt: string;
-  setAiInputPrompt: Dispatch<SetStateAction<string>>;
-  onAIGenerate: () => void;
-  onSuccessLogAction: (index: number, snapshot: GenerationSnapshot, isLastSuccess: boolean) => void;
-  onErrorLogRetry: (index: number) => void;
-  onToggleLogExpanded: (index: number) => void;
-  onClearAgentAll: () => void;
-  isFloatingAIOpen: boolean;
-  setIsFloatingAIOpen: Dispatch<SetStateAction<boolean>>;
-  onAssistantInitialRectChange: (rect: DOMRect) => void;
 }
 
 export function PromptComposerSection({
@@ -83,24 +65,17 @@ export function PromptComposerSection({
   onOpenInspiration,
   onOpenTagManager,
   onOpenPresetModal,
-  aiModel,
-  onAiModelChange,
-  agentState,
-  isGeneratingPrompt,
-  aiLogScrollRef,
-  aiInputRef,
-  aiInputPrompt,
-  setAiInputPrompt,
-  onAIGenerate,
-  onSuccessLogAction,
-  onErrorLogRetry,
-  onToggleLogExpanded,
-  onClearAgentAll,
-  isFloatingAIOpen,
-  setIsFloatingAIOpen,
-  onAssistantInitialRectChange,
 }: PromptComposerSectionProps) {
-  const agentAvailability = appBackendApi.desktopAgentAvailability();
+  // Agent 模型与开合状态来自停靠面板上下文；结果展示已整体迁往右侧 AgentDock。
+  const {
+    aiModel,
+    setAiModel,
+    isGeneratingPrompt,
+    agentAvailable,
+    agentUnavailableReason,
+    isDockOpen,
+    toggleDock,
+  } = useAgentDock();
   const agentModel = useAgentModelPresentation();
 
   return (
@@ -110,7 +85,7 @@ export function PromptComposerSection({
         onActiveTabChange={onActiveTabChange}
         aiModel={aiModel}
         localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
-        onAiModelChange={onAiModelChange}
+        onAiModelChange={setAiModel}
         onOpenInspiration={onOpenInspiration}
         onOpenTagManager={onOpenTagManager}
         onOpenPresetModal={onOpenPresetModal}
@@ -140,20 +115,6 @@ export function PromptComposerSection({
             onContentHeightChange={activeTab === 'prompt' ? onPromptContentHeightChange : undefined}
           />
 
-          <InlineAgentPanel
-            agentState={agentState}
-            isGeneratingPrompt={isGeneratingPrompt}
-            aiLogScrollRef={aiLogScrollRef}
-            aiInputRef={aiInputRef}
-            aiInputPrompt={aiInputPrompt}
-            setAiInputPrompt={setAiInputPrompt}
-            onAIGenerate={onAIGenerate}
-            onSuccessLogAction={onSuccessLogAction}
-            onErrorLogRetry={onErrorLogRetry}
-            onToggleLogExpanded={onToggleLogExpanded}
-            onClearAll={onClearAgentAll}
-          />
-
           <PromptPane
             visible={activeTab === 'undesired'}
             direction="right"
@@ -175,25 +136,20 @@ export function PromptComposerSection({
       <div className="px-2 pt-2 pb-1.5 flex items-center justify-between gap-2 border-t border-transparent">
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />
         <TokenMeter totalTokenCount={totalTokenCount} />
-        {!agentAvailability.available && (
+        {!agentAvailable && (
           <span
             className="shrink-0 text-[10px] text-gray-600"
-            title={agentAvailability.reason}
+            title={agentUnavailableReason}
           >
             Agent 未启用
           </span>
         )}
         <FloatingAgentButton
-          isOpen={isFloatingAIOpen}
+          isOpen={isDockOpen}
           isGenerating={isGeneratingPrompt}
-          disabled={!agentAvailability.available}
-          disabledReason={agentAvailability.reason}
-          onClick={() => {
-            if (!isFloatingAIOpen && promptAreaRef.current) {
-              onAssistantInitialRectChange(promptAreaRef.current.getBoundingClientRect());
-            }
-            setIsFloatingAIOpen((prev) => !prev);
-          }}
+          disabled={!agentAvailable}
+          disabledReason={agentUnavailableReason}
+          onClick={toggleDock}
         />
       </div>
 

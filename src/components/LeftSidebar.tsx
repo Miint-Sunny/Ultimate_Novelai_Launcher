@@ -16,9 +16,7 @@ import { useGeneration, type HistoryItemMetadata } from '../contexts/GenerationC
 import { useAuth } from '../contexts/AuthContext';
 import { useDragDrop } from '../contexts/DragDropContext';
 import { countTokens } from '../services/tokenizer';
-import { agentService, type AgentState, DEFAULT_AI_MODEL } from '../services/agentService';
-import { DraggableAIAssistant } from './desktop/DraggableAIAssistant';
-import { loadCurrentLogs, saveCurrentLogs } from './desktop/AIAssistant/useSessions';
+import { useAgentDock } from '../contexts/AgentDockContext';
 import { AISettingsPanel } from './left-sidebar/AISettingsPanel';
 import { CharacterPositionModal } from './left-sidebar/CharacterPositionModal';
 import { CharacterPromptsSection } from './left-sidebar/CharacterPromptsSection';
@@ -251,19 +249,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   }, []);
 
 
-  // AI Prompt Gen State
-  const [aiInputPrompt, setAiInputPrompt] = useState('');
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [isFloatingAIOpen, setIsFloatingAIOpen] = useState(false);
-  const [aiModel, setAiModel] = useState<string>(DEFAULT_AI_MODEL);
-  const aiInputRef = useRef<HTMLTextAreaElement>(null);
+  // Agent 会话/模型状态已上移到 AgentDockContext；左栏只保留提示词域并注册写回 handlers。
+  const { aiModel, setIsGeneratingPrompt, registerHandlers } = useAgentDock();
   const promptAreaRef = useRef<HTMLDivElement>(null);
-  const [aiAssistantInitialRect, setAiAssistantInitialRect] = useState<DOMRect | null>(null);
-  const desktopAgentAvailable = appBackendApi.desktopAgentAvailability().available;
-  const [agentState, setAgentState] = useState<AgentState>(() => ({
-    status: 'idle',
-    logs: loadCurrentLogs(),
-  }));
   const [roleTagMap, setRoleTagMap] = useState<
     Record<
       string,
@@ -293,53 +281,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   }, []);
 
 
-
-  // 监听Agent状态变化
-  useEffect(() => {
-    const unsubscribe = agentService.addEventListener((state) => {
-      setAgentState(state);
-      setIsGeneratingPrompt(state.status === 'thinking');
-    });
-    const restoredLogs = loadCurrentLogs();
-    const currentState = agentService.getState();
-    if (currentState.logs.length === 0 && restoredLogs.length > 0) {
-      agentService.loadLogs(restoredLogs);
-    } else {
-      setAgentState(currentState);
-      setIsGeneratingPrompt(currentState.status === 'thinking');
-    }
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    saveCurrentLogs(agentState.logs);
-  }, [agentState.logs]);
-
-  useEffect(() => {
-    if (desktopAgentAvailable) return;
-    setIsFloatingAIOpen(false);
-    agentService.cancel();
-  }, [desktopAgentAvailable]);
-
-  // 上一次的日志数量（用于检测新日志）
-  const prevLogCountRef = useRef(0);
-
-  // 日志变化时自动滚动到底部
-  useEffect(() => {
-    const totalLogs = agentState.logs.length;
-
-    if (totalLogs > prevLogCountRef.current) {
-      // 有新日志，滚动到底部
-      setTimeout(() => {
-        aiLogScrollRef.current?.scrollTo({
-          top: aiLogScrollRef.current.scrollHeight,
-          behavior: 'smooth'
-        });
-      }, 100);
-    }
-
-    prevLogCountRef.current = totalLogs;
-  }, [agentState.logs.length]);
 
   // Artist State (extracted to useArtistManager hook)
   const artistManager = useArtistManager();
@@ -708,9 +649,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   };
 
   const { handleAIGenerate, handleAIGenerateWithRequest } = useAgentPromptGeneration({
-    aiInputPrompt,
-    setAiInputPrompt,
-    aiInputRef,
     aiModel,
     setIsGeneratingPrompt,
     publicFiles,
@@ -735,8 +673,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
   const {
     restorePromptSnapshot,
-    handleSuccessLogAction,
-    handleErrorLogRetry,
   } = useAgentSnapshotActions({
     publicFiles,
     localFiles,
@@ -748,6 +684,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     setActiveVibes,
     handleAIGenerateWithRequest,
   });
+
+  // 把提示词写回入口注册给右侧停靠面板（提示词状态所有权留在左栏）。
+  useEffect(() => {
+    registerHandlers({
+      generate: (request, imageBase64) => { void handleAIGenerate(request, imageBase64); },
+      regenerate: (request, preState, imageBase64) => {
+        void handleAIGenerateWithRequest(request, preState, imageBase64);
+      },
+      restoreSnapshot: (snapshot) => restorePromptSnapshot(snapshot, { openCharacterSection: true }),
+    });
+  }, [registerHandlers, handleAIGenerate, handleAIGenerateWithRequest, restorePromptSnapshot]);
 
   const positiveEditorRef = useRef<PromptEditorRef>(null);
   const negativeEditorRef = useRef<PromptEditorRef>(null);
@@ -1010,29 +957,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onOpenInspiration={() => setIsInspirationModalOpen(true)}
             onOpenTagManager={() => setIsTagManagerOpen(true)}
             onOpenPresetModal={() => setIsPresetModalOpen(true)}
-            aiModel={aiModel}
-            onAiModelChange={setAiModel}
-            agentState={agentState}
-            isGeneratingPrompt={isGeneratingPrompt}
-            aiLogScrollRef={aiLogScrollRef}
-            aiInputRef={aiInputRef}
-            aiInputPrompt={aiInputPrompt}
-            setAiInputPrompt={setAiInputPrompt}
-            onAIGenerate={() => handleAIGenerate()}
-            onSuccessLogAction={handleSuccessLogAction}
-            onErrorLogRetry={handleErrorLogRetry}
-            onToggleLogExpanded={(index) => agentService.toggleLogExpanded(index)}
-            onClearAgentAll={() => {
-              setPositivePrompt('');
-              setNegativePrompt('');
-              setCharacterPrompts([]);
-              setActiveVibes([]);
-              setSelectedVibes([]);
-              agentService.resetLogs();
-            }}
-            isFloatingAIOpen={isFloatingAIOpen}
-            setIsFloatingAIOpen={setIsFloatingAIOpen}
-            onAssistantInitialRectChange={setAiAssistantInitialRect}
           />
 
           <CharacterPromptsSection
@@ -1291,19 +1215,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       {/* CR 编辑弹窗 */}
       <CREditModal manager={crManager} />
 
-      <DraggableAIAssistant
-        isOpen={isFloatingAIOpen}
-        onClose={() => setIsFloatingAIOpen(false)}
-        initialRect={aiAssistantInitialRect}
-        aiModel={aiModel}
-        onAiModelChange={setAiModel}
-        agentState={agentState}
-        isGeneratingPrompt={isGeneratingPrompt}
-        onAIGenerate={handleAIGenerate}
-        onAIRegenerate={handleAIGenerateWithRequest}
-        onRestoreSnapshot={(snapshot) => restorePromptSnapshot(snapshot, { openCharacterSection: true })}
-      />
-      
       {/* 侧边栏左右伸缩把手 */}
       <div 
         className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-20 hover:bg-white/10 transition-colors"
