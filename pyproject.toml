@@ -8,6 +8,8 @@ dependencies = [
   "aiohttp>=3.10,<4",
   "aiohttp-socks>=0.10,<1",
   "aiosqlite>=0.20,<1",
+  # SSH local port-forward for family-A cloud ComfyUI (AutoDL cannot expose ports).
+  "asyncssh>=2.21,<3",
   "curl-cffi>=0.7,<1",
   "fastapi>=0.115,<1",
   "gradio-client>=1.12,<2",
