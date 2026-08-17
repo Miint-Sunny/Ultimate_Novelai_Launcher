@@ -67,7 +67,7 @@ export const ThemeSettingsSection: React.FC<ThemeSettingsSectionProps> = ({
             </div>
           )}
         </div>
-        <p className="text-xs text-gray-500 mt-3">更多主题即将推出...</p>
+        <p className="text-xs text-gray-500 mt-3">石墨=中性基底(默认);经典蓝=初代海军蓝;曜黑=Apple 系统色纯黑</p>
       </div>
     </div>
   );

@@ -2,7 +2,9 @@ const APP_SETTINGS_KEY = 'novelai_app_settings';
 export const APP_SETTINGS_CHANGED_EVENT = 'app-settings-changed';
 
 export const THEME_OPTIONS = [
-  { id: 'default', name: '默认主题', color: '#ebd576' },
+  { id: 'default', name: '石墨', color: '#26282a' },
+  { id: 'classic', name: '经典蓝', color: '#232736' },
+  { id: 'obsidian', name: '曜黑', color: '#1c1c1e' },
 ];
 
 export type AutocompleteSourceId = 'artists' | 'ocs' | 'characters' | 'origins' | 'danbooru' | 'aiRecommend' | 'nl';

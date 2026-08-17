@@ -13,6 +13,18 @@
   --nai-text-dim: 140 142 143;
   --nai-accent: 252 237 164;
   --nai-accent-hover: 235 213 118;
+  /* 扩展阶梯(AIAssistant tokens.ts 同源消费) */
+  --nai-panel-2: 30 32 35;
+  --nai-surface: 38 40 42;
+  --nai-surface-hover: 48 50 53;
+  --nai-border: 48 50 53;
+  --nai-border-strong: 68 70 73;
+  --nai-text: 246 246 246;
+  --nai-text-2: 203 204 206;
+  --nai-text-mute: 93 95 97;
+  --nai-text-faint: 111 113 115;
+  --scroll-thumb: 45 47 49;
+  --scroll-thumb-hover: 62 64 67;
   /* 中性灰阶(取代 Tailwind 默认蓝调 gray) */
   --gray-50: 250 250 250;
   --gray-100: 244 244 244;
@@ -42,6 +54,70 @@
   background-color: rgb(var(--nai-bg));
 }
 
+/* ============ 皮肤:经典蓝(原版海军蓝紫基底,v0.1 起的初代视觉) ============ */
+[data-theme='classic'] {
+  --nai-dark: 6 8 14;
+  --nai-bg: 11 15 25;
+  --nai-panel: 18 22 36;
+  --nai-input: 28 32 48;
+  --nai-text-dim: 138 141 152;
+  --nai-panel-2: 26 31 48;
+  --nai-surface: 35 39 54;
+  --nai-surface-hover: 44 49 68;
+  --nai-border: 44 49 68;
+  --nai-border-strong: 62 69 92;
+  --nai-text: 245 246 248;
+  --nai-text-2: 200 204 214;
+  --nai-text-mute: 90 94 110;
+  --nai-text-faint: 107 112 128;
+  --scroll-thumb: 42 46 59;
+  --scroll-thumb-hover: 58 63 80;
+  /* Tailwind v3 默认 gray(蓝调) */
+  --gray-50: 249 250 251;
+  --gray-100: 243 244 246;
+  --gray-200: 229 231 235;
+  --gray-300: 209 213 219;
+  --gray-400: 156 163 175;
+  --gray-500: 107 114 128;
+  --gray-600: 75 85 99;
+  --gray-700: 55 65 81;
+  --gray-800: 31 41 55;
+  --gray-900: 17 24 39;
+  --gray-950: 3 7 18;
+}
+
+/* ============ 皮肤:曜黑(Apple 深色系统色值,systemGray 阶梯,OLED 纯黑舞台) ============ */
+[data-theme='obsidian'] {
+  --nai-dark: 0 0 0;
+  --nai-bg: 0 0 0;
+  --nai-panel: 28 28 30;      /* #1C1C1E secondarySystemBackground */
+  --nai-input: 44 44 46;      /* #2C2C2E tertiarySystemBackground */
+  --nai-text-dim: 142 142 147; /* #8E8E93 systemGray */
+  --nai-panel-2: 36 36 38;
+  --nai-surface: 44 44 46;
+  --nai-surface-hover: 58 58 60;  /* #3A3A3C systemGray4 */
+  --nai-border: 56 56 58;         /* #38383A separator */
+  --nai-border-strong: 72 72 74;  /* #48484A systemGray3 */
+  --nai-text: 255 255 255;
+  --nai-text-2: 199 199 204;      /* #C7C7CC */
+  --nai-text-mute: 99 99 102;     /* #636366 systemGray2 */
+  --nai-text-faint: 117 117 121;
+  --scroll-thumb: 58 58 60;
+  --scroll-thumb-hover: 72 72 74;
+  /* Apple systemGray 家族映射到 gray-* 档位 */
+  --gray-50: 242 242 247;   /* #F2F2F7 */
+  --gray-100: 229 229 234;  /* #E5E5EA */
+  --gray-200: 209 209 214;  /* #D1D1D6 */
+  --gray-300: 199 199 204;  /* #C7C7CC */
+  --gray-400: 174 174 178;  /* #AEAEB2 */
+  --gray-500: 142 142 147;  /* #8E8E93 */
+  --gray-600: 99 99 102;    /* #636366 */
+  --gray-700: 72 72 74;     /* #48484A */
+  --gray-800: 44 44 46;     /* #2C2C2E */
+  --gray-900: 28 28 30;     /* #1C1C1E */
+  --gray-950: 0 0 0;
+}
+
 /* 原生 <select> 展开列表在 Windows Edge/Chrome 下常忽略 color-scheme、渲染成白底，
    与暗色主题违和；显式给深色背景匹配 nai-input / nai-panel。 */
 select option {
@@ -50,7 +126,7 @@ select option {
 }
 select option:checked,
 select option:hover {
-  background-color: #2d2f31;
+  background-color: rgb(var(--nai-surface-hover));
 }
 
 /* Tag 专用字体样式（模仿 NovelAI 官方） */
@@ -94,12 +170,12 @@ select option:hover {
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #2d2f31;
+    background: rgb(var(--scroll-thumb));
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #3e4043;
+    background: rgb(var(--scroll-thumb-hover));
   }
 
   /* 保留类名以备特定需要覆盖的情况，虽然上面已经全局应用 */
@@ -113,12 +189,12 @@ select option:hover {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #2d2f31;
+    background: rgb(var(--scroll-thumb));
     border-radius: 3px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #3e4043;
+    background: rgb(var(--scroll-thumb-hover));
   }
 
   /* 隐藏滚动条 */
@@ -151,8 +227,8 @@ input[type="range"]::-webkit-slider-runnable-track {
     to right,
     #fceda4 0,
     #fceda4 var(--range-pct, 50%),
-    #2d2f31 var(--range-pct, 50%),
-    #2d2f31 100%
+    rgb(var(--scroll-thumb)) var(--range-pct, 50%),
+    rgb(var(--scroll-thumb)) 100%
   );
   border-radius: 9999px;
 }
@@ -160,7 +236,7 @@ input[type="range"]::-webkit-slider-runnable-track {
 /* Firefox 轨道 */
 input[type="range"]::-moz-range-track {
   height: 4px;
-  background: #2d2f31;
+  background: rgb(var(--scroll-thumb));
   border-radius: 9999px;
   border: none;
 }

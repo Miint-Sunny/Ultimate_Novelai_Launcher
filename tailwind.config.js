@@ -15,6 +15,11 @@ export default {
         'nai-accent-hover': 'rgb(var(--nai-accent-hover) / <alpha-value>)',
         'nai-text-dim': 'rgb(var(--nai-text-dim) / <alpha-value>)',
         'nai-dark': 'rgb(var(--nai-dark) / <alpha-value>)',
+        'nai-panel-2': 'rgb(var(--nai-panel-2) / <alpha-value>)',
+        'nai-surface': 'rgb(var(--nai-surface) / <alpha-value>)',
+        'nai-surface-hover': 'rgb(var(--nai-surface-hover) / <alpha-value>)',
+        'nai-border': 'rgb(var(--nai-border) / <alpha-value>)',
+        'nai-border-strong': 'rgb(var(--nai-border-strong) / <alpha-value>)',
         // 覆盖 Tailwind 默认 gray(默认带蓝调),整体拉回石墨中性
         gray: {
           50: 'rgb(var(--gray-50) / <alpha-value>)',

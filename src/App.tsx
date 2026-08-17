@@ -9,6 +9,7 @@ import { NaiStatusBanner } from './components/NaiStatusBanner';
 import { UpdateAvailableBanner } from './components/UpdateAvailableBanner';
 import { botService } from './services/botService';
 import { appBackendApi } from './api/appBackendApi';
+import { initTheme } from './services/theme';
 
 // Layout is chosen by WINDOW WIDTH, not device type: a wide tablet gets the
 // desktop layout, and a narrowed desktop window gets the narrow ("mobile")
@@ -73,6 +74,11 @@ const BillingSettlementCheck: React.FC = () => {
 
 function App() {
   const isMobile = useIsMobile();
+
+  // 皮肤:启动时应用 settings.theme 并跟随设置变更(见 services/theme.ts)
+  useEffect(() => {
+    initTheme();
+  }, []);
 
   // After first paint, prefetch the inactive layout during idle time so
   // resizing across the 768px breakpoint (or a tablet rotating) switches
