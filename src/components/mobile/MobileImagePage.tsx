@@ -164,7 +164,7 @@ export const MobileGalleryPage: React.FC = () => {
       {/* Error Toast */}
       {result && !result.success && showError && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-2 duration-300 px-4 w-full max-w-md">
-          <div className="bg-red-500/95 backdrop-blur-sm text-white px-4 py-3 rounded-xl shadow-xl flex items-start gap-3">
+          <div className="bg-red-500/95 text-white px-4 py-3 rounded-xl shadow-xl flex items-start gap-3">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-sm mb-1">生成失败</div>
@@ -205,7 +205,7 @@ export const MobileGalleryPage: React.FC = () => {
         {/* 顶部悬浮工具栏 - inpaint 模式下隐藏 */}
         {!isInpaintMode && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
-            <div className="bg-gray-900/80 backdrop-blur-xl rounded-xl flex items-center p-1 shadow-xl border border-white/5">
+            <div className="bg-gray-900/80 rounded-xl flex items-center p-1 shadow-xl border border-white/5">
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all ${hasImage ? 'text-gray-300 active:bg-white/10' : 'text-gray-600'
                   }`}

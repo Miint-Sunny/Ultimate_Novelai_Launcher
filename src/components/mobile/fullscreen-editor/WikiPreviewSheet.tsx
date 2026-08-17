@@ -29,7 +29,7 @@ export const WikiPreviewSheet: React.FC<WikiPreviewSheetProps> = ({
       <div className="fixed inset-0 z-[60] bg-black/60 animate-fade-in" onClick={onClose} />
       <div className="fixed left-0 right-0 bottom-0 z-[60] bg-nai-panel rounded-t-2xl shadow-[0_-18px_50px_-12px_rgba(0,0,0,0.8)] animate-slide-in-from-bottom safe-area-bottom overflow-hidden flex flex-col max-h-[75vh]">
         <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
-          <span className="font-tag text-[14px] text-[#fceda4] truncate flex-1">{data?.title || preview.tag}</span>
+          <span className="font-tag text-[14px] text-nai-accent truncate flex-1">{data?.title || preview.tag}</span>
           <button
             className="shrink-0 w-7 h-7 flex items-center justify-center text-white/40 active:text-white/80 rounded-md active:bg-white/10 transition-colors"
             onClick={onClose}
@@ -39,8 +39,8 @@ export const WikiPreviewSheet: React.FC<WikiPreviewSheetProps> = ({
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
           {preview.loading ? (
-            <div className="h-28 flex items-center justify-center gap-2 text-[#fceda4]/75">
-              <span className="inline-block w-4 h-4 border-2 border-[#fceda4]/20 border-t-[#fceda4] rounded-full animate-spin" />
+            <div className="h-28 flex items-center justify-center gap-2 text-nai-accent/75">
+              <span className="inline-block w-4 h-4 border-2 border-nai-accent/20 border-t-nai-accent rounded-full animate-spin" />
               <span className="text-xs">加载 Wiki...</span>
             </div>
           ) : data ? (
@@ -97,7 +97,7 @@ const WikiPreviewContent: React.FC<WikiPreviewContentProps> = ({
               {imageExamples.map((ex, idx) => (
                 <span
                   key={`${ex.type}-${ex.id}`}
-                  className={`h-1.5 rounded-full transition-all duration-200 ${idx === imageIndex ? 'w-4 bg-[#fceda4]' : 'w-1.5 bg-white/25'}`}
+                  className={`h-1.5 rounded-full transition-all duration-200 ${idx === imageIndex ? 'w-4 bg-nai-accent' : 'w-1.5 bg-white/25'}`}
                 />
               ))}
             </div>

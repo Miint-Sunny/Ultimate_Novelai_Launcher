@@ -56,8 +56,8 @@ export const SuggestionStrip: React.FC<SuggestionStripProps> = ({
   const renderSuggButton = (suggestion: TagSuggestion, index: number) => {
     const isSel = index === selectedSuggIdx;
     const baseClass = isSel
-      ? 'bg-[#fceda4]/20 text-[#fceda4]'
-      : 'bg-white/[0.06] text-white/80 active:bg-[#fceda4]/15';
+      ? 'bg-nai-accent/20 text-nai-accent'
+      : 'bg-white/[0.06] text-white/80 active:bg-nai-accent/15';
 
     const renderIcon = () => {
       const iconClass = 'w-3 h-3';
@@ -113,7 +113,7 @@ export const SuggestionStrip: React.FC<SuggestionStripProps> = ({
             )}
           </span>
           {subText ? (
-            <span className={`text-[11px] leading-tight whitespace-nowrap ${isSel ? 'text-[#fceda4]/50' : 'text-white/35'}`}>
+            <span className={`text-[11px] leading-tight whitespace-nowrap ${isSel ? 'text-nai-accent/50' : 'text-white/35'}`}>
               {subText}
             </span>
           ) : (
@@ -141,7 +141,7 @@ export const SuggestionStrip: React.FC<SuggestionStripProps> = ({
           {tagSuggestions.map((s) => renderSuggButton(s, suggestions.indexOf(s)))}
           {aiLoading && (
             <div className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-white/[0.04] flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 border-2 border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
+              <span className="inline-block w-3 h-3 border-2 border-nai-accent/20 border-t-nai-accent/60 rounded-full animate-spin" />
               <span className="text-[11px] text-white/30 whitespace-nowrap">AI 推荐中…</span>
             </div>
           )}

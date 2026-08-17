@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { CropRect } from '../../../utils/maskCrop';
 
+// 画布底色取自设计 token --nai-dark(src/index.css);canvas 无法消费 Tailwind 类,运行时读 CSS 变量
+const naiDarkCanvasFill = (): string => {
+  const triplet = getComputedStyle(document.documentElement).getPropertyValue('--nai-dark').trim();
+  return triplet ? `rgb(${triplet.split(/\s+/).join(', ')})` : 'rgb(7, 8, 9)';
+};
+
 interface UseInpaintCanvasLoaderArgs {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   maskCanvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -40,7 +46,7 @@ export const useInpaintCanvasLoader = ({
     totalHeight: number,
     savedMaskData: ImageData | null,
   ) => {
-    ctx.fillStyle = '#0a0a0f';
+    ctx.fillStyle = naiDarkCanvasFill();
     ctx.fillRect(0, 0, totalWidth, totalHeight);
     ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
 
@@ -117,7 +123,7 @@ export const useInpaintCanvasLoader = ({
       return;
     }
 
-    ctx.fillStyle = '#0a0a0f';
+    ctx.fillStyle = naiDarkCanvasFill();
     ctx.fillRect(0, 0, totalWidth, totalHeight);
 
     const img = new Image();

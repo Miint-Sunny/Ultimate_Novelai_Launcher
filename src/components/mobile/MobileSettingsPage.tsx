@@ -42,7 +42,7 @@ interface MobileSettingsPageProps {
 
 const SECTIONS: { id: Exclude<SettingsSection, null>; name: string; icon: React.FC<{ className?: string }>; color: string }[] = [
   { id: 'profile', name: '个人中心', icon: User, color: 'text-blue-400' },
-  { id: 'theme', name: '主题设置', icon: Palette, color: 'text-purple-400' },
+  { id: 'theme', name: '主题设置', icon: Palette, color: 'text-nai-accent' },
   { id: 'presets', name: '提示词预设', icon: Settings, color: 'text-nai-accent' },
   { id: 'ai', name: '辅助功能', icon: Bot, color: 'text-green-400' },
   { id: 'autocomplete', name: '补全设置', icon: Type, color: 'text-yellow-400' },

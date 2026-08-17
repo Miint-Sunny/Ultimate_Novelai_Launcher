@@ -237,7 +237,7 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#0a0a0f] flex flex-col"
+      className="fixed inset-0 z-50 bg-nai-dark flex flex-col"
       style={{
         opacity: isCanvasReady ? 1 : 0,
         transition: 'opacity 150ms ease-out',

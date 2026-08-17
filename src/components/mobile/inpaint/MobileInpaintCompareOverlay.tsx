@@ -39,10 +39,10 @@ export const MobileInpaintCompareOverlay: React.FC<MobileInpaintCompareOverlayPr
         position: 'absolute', top: `${offT}px`, left: `${offL}px`,
         width: `${origW}px`, height: `${origH}px`, display: 'block',
       }} />
-      {offT > 0 && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${offT}px`, background: '#0a0a0f' }} />}
-      {offT + origH < displayHeight && <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: `${displayHeight - offT - origH}px`, background: '#0a0a0f' }} />}
-      {offL > 0 && <div style={{ position: 'absolute', top: `${offT}px`, left: 0, width: `${offL}px`, height: `${origH}px`, background: '#0a0a0f' }} />}
-      {offL + origW < displayWidth && <div style={{ position: 'absolute', top: `${offT}px`, right: 0, width: `${displayWidth - offL - origW}px`, height: `${origH}px`, background: '#0a0a0f' }} />}
+      {offT > 0 && <div className="bg-nai-dark" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${offT}px` }} />}
+      {offT + origH < displayHeight && <div className="bg-nai-dark" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: `${displayHeight - offT - origH}px` }} />}
+      {offL > 0 && <div className="bg-nai-dark" style={{ position: 'absolute', top: `${offT}px`, left: 0, width: `${offL}px`, height: `${origH}px` }} />}
+      {offL + origW < displayWidth && <div className="bg-nai-dark" style={{ position: 'absolute', top: `${offT}px`, right: 0, width: `${displayWidth - offL - origW}px`, height: `${origH}px` }} />}
     </div>
   );
 };

@@ -62,28 +62,28 @@ export const MobileCurrentImageToolbar: React.FC<MobileCurrentImageToolbarProps>
     <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
       <button
         onClick={onUseSeed}
-        className="flex items-center gap-1.5 px-3 py-2 bg-black/70 backdrop-blur-sm rounded-lg text-sm"
+        className="flex items-center gap-1.5 px-3 py-2 bg-black/70 rounded-lg text-sm"
       >
         <FileDigit className="w-4 h-4" />
         {currentSeed}
       </button>
       <button
         onClick={onRegenerate}
-        className="p-2.5 bg-nai-accent/90 backdrop-blur-sm rounded-lg"
+        className="p-2.5 bg-nai-accent/90 rounded-lg"
         title="重新生成"
       >
         <RefreshCw className="w-5 h-5 text-black" />
       </button>
       <button
         onClick={onDownload}
-        className="p-2.5 bg-black/70 backdrop-blur-sm rounded-lg"
+        className="p-2.5 bg-black/70 rounded-lg"
         title="下载"
       >
         <Download className="w-5 h-5" />
       </button>
       <button
         onClick={handleImportMetadata}
-        className="p-2.5 bg-black/70 backdrop-blur-sm rounded-lg"
+        className="p-2.5 bg-black/70 rounded-lg"
         title="导入元数据"
       >
         <Settings2 className="w-5 h-5" />

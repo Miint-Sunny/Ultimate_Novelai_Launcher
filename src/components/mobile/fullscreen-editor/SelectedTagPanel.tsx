@@ -147,7 +147,7 @@ export const SelectedTagPanel: React.FC<SelectedTagPanelProps> = ({
                   if (e.key === 'Enter') { e.preventDefault(); onCommitTagEdit(); }
                   else if (e.key === 'Escape') { e.preventDefault(); onCancelTagEdit(); }
                 }}
-                className="flex-1 min-w-0 bg-white/5 text-[#fceda4] text-sm font-tag outline-none px-2 py-1 rounded-lg border border-[#fceda4]/30 focus:border-[#fceda4]/60"
+                className="flex-1 min-w-0 bg-white/5 text-nai-accent text-sm font-tag outline-none px-2 py-1 rounded-lg border border-nai-accent/30 focus:border-nai-accent/60"
                 autoFocus
               />
               <button
@@ -175,7 +175,7 @@ export const SelectedTagPanel: React.FC<SelectedTagPanelProps> = ({
             >
               <div className="flex-1 min-w-0 flex flex-col">
                 <span className="flex items-baseline gap-1.5 min-w-0">
-                  <span className="font-tag text-sm text-[#fceda4] truncate">{cleanTagName(selectedTag).replace(/ /g, '_')}</span>
+                  <span className="font-tag text-sm text-nai-accent truncate">{cleanTagName(selectedTag).replace(/ /g, '_')}</span>
                   {selectedPostCount != null && selectedPostCount > 0 && (
                     <span className="shrink-0 text-[11px] tabular-nums text-white/40" title={`Danbooru 引用数：${selectedPostCount}`}>
                       {selectedPostCount >= 1000 ? `${(selectedPostCount / 1000).toFixed(0)}k` : selectedPostCount}
@@ -188,7 +188,7 @@ export const SelectedTagPanel: React.FC<SelectedTagPanelProps> = ({
               </div>
             </button>
           ) : (
-            <span className="text-sm text-[#fceda4]">已选 {selectedTags.size} 个标签</span>
+            <span className="text-sm text-nai-accent">已选 {selectedTags.size} 个标签</span>
           )}
         </div>
         {editingTagText === null && (
@@ -229,7 +229,7 @@ export const SelectedTagPanel: React.FC<SelectedTagPanelProps> = ({
         )}
       </div>
       <div className="flex items-center gap-1.5">
-        <button className="h-8 px-3 text-sm bg-[#74270D]/60 active:bg-[#74270D] text-orange-200 rounded-lg transition-colors" onClick={() => tagActions.addBrace()}>{'{+}'}</button>
+        <button className="h-8 px-3 text-sm bg-amber-900/60 active:bg-amber-900 text-orange-200 rounded-lg transition-colors" onClick={() => tagActions.addBrace()}>{'{+}'}</button>
         <button className="h-8 px-3 text-sm bg-blue-500/20 active:bg-blue-500/40 text-blue-200 rounded-lg transition-colors" onClick={() => tagActions.addBracket()}>{'[-]'}</button>
         <div className="flex-1" />
         <button className="h-8 w-8 flex items-center justify-center text-sm bg-blue-500/15 active:bg-blue-500/30 text-blue-200 rounded-lg transition-colors"
@@ -237,22 +237,22 @@ export const SelectedTagPanel: React.FC<SelectedTagPanelProps> = ({
         <span className="h-8 w-10 flex items-center justify-center text-[11px] font-mono tabular-nums text-white/70 bg-white/5 rounded-lg">
           {(currentNumericWeight ?? 1).toFixed(1)}
         </span>
-        <button className="h-8 w-8 flex items-center justify-center text-sm bg-[#74270D]/40 active:bg-[#74270D]/70 text-orange-200 rounded-lg transition-colors"
+        <button className="h-8 w-8 flex items-center justify-center text-sm bg-amber-900/40 active:bg-amber-900/70 text-orange-200 rounded-lg transition-colors"
           onClick={() => tagActions.setNumeric(stepNumericWeight(currentNumericWeight ?? 1, 0.1))}>+</button>
       </div>
       <div className="flex items-center gap-1.5">
         {weightPresets.map(w => (
           <button
             key={w}
-            className={`h-8 flex-1 text-xs font-mono tabular-nums rounded-lg transition-colors ${currentNumericWeight !== null && Math.abs(currentNumericWeight - w) < 0.01 ? 'ring-1 ring-inset ring-[#fceda4]/50 ' : ''
-              }${w > 1 ? 'bg-[#74270D]/40 active:bg-[#74270D]/70 text-orange-200' : 'bg-blue-500/15 active:bg-blue-500/30 text-blue-200'}`}
+            className={`h-8 flex-1 text-xs font-mono tabular-nums rounded-lg transition-colors ${currentNumericWeight !== null && Math.abs(currentNumericWeight - w) < 0.01 ? 'ring-1 ring-inset ring-nai-accent/50 ' : ''
+              }${w > 1 ? 'bg-amber-900/40 active:bg-amber-900/70 text-orange-200' : 'bg-blue-500/15 active:bg-blue-500/30 text-blue-200'}`}
             onClick={() => tagActions.setNumeric(w)}
           >{w}</button>
         ))}
       </div>
       <div className="flex items-center gap-1.5">
         <button className="h-8 flex-1 text-xs bg-white/5 active:bg-white/15 text-white/50 rounded-lg transition-colors" onClick={() => tagActions.clearWeight()}>清除权重</button>
-        <button className="h-8 flex-1 text-xs bg-white/5 active:bg-white/15 text-white/40 active:text-[#fceda4] rounded-lg transition-colors flex items-center justify-center gap-1" onClick={() => tagActions.toggleHide()}>{(() => { const idx = selectedIdx[0]; return parsedTags[idx]?.trim().startsWith('~') ? <><Eye className="w-3.5 h-3.5" /> 启用</> : <><EyeOff className="w-3.5 h-3.5" /> 禁用</>; })()}</button>
+        <button className="h-8 flex-1 text-xs bg-white/5 active:bg-white/15 text-white/40 active:text-nai-accent rounded-lg transition-colors flex items-center justify-center gap-1" onClick={() => tagActions.toggleHide()}>{(() => { const idx = selectedIdx[0]; return parsedTags[idx]?.trim().startsWith('~') ? <><Eye className="w-3.5 h-3.5" /> 启用</> : <><EyeOff className="w-3.5 h-3.5" /> 禁用</>; })()}</button>
         <button className="h-8 flex-1 text-xs bg-red-500/10 active:bg-red-500/25 text-red-400/70 active:text-red-400 rounded-lg transition-colors flex items-center justify-center gap-1" onClick={() => tagActions.deleteTag()}>
           <Trash2 className="w-3.5 h-3.5" /> 删除
         </button>

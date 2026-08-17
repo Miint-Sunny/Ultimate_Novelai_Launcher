@@ -38,6 +38,14 @@
   --gray-900: 22 25 27;
   --gray-950: 6 7 9;
 
+  /* ============ 玻璃材质浓度 token(「标准」档 = :root 默认,等价显式 data-glass="standard") ============
+     供 .glass 工具类消费;clear/tinted/solid 三档覆写见下方 [data-glass] 选择器,
+     与 [data-theme] 同机制,挂在 <html>,由 src/services/theme.ts 应用与持久化。 */
+  --glass-blur: 16px;
+  --glass-saturate: 150%;
+  --glass-alpha: 0.72;
+  --glass-edge: 0.08;
+
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -116,6 +124,42 @@
   --gray-800: 44 44 46;     /* #2C2C2E */
   --gray-900: 28 28 30;     /* #1C1C1E */
   --gray-950: 0 0 0;
+}
+
+/* ============ 玻璃材质浓度档(与 [data-theme] 同机制,挂在 <html>) ============
+   standard = :root 默认,不写选择器;显式 data-glass="standard" 与默认等价。 */
+[data-glass='clear'] {
+  --glass-blur: 24px;
+  --glass-saturate: 180%;
+  --glass-alpha: 0.55;
+  --glass-edge: 0.14;
+}
+
+[data-glass='tinted'] {
+  --glass-blur: 6px;
+  --glass-saturate: 140%;
+  --glass-alpha: 0.85;
+  --glass-edge: 0.06;
+}
+
+[data-glass='solid'] {
+  --glass-blur: 0px;
+  --glass-saturate: 100%;
+  --glass-alpha: 0.92;
+  --glass-edge: 0.05;
+}
+
+/* 玻璃材质工具类:压在静态/低频背景上的悬浮件(sheet、浮层)统一用此类,
+   浓度由 --glass-* token 决定(上方三档可调,跟随 <html data-glass>)。
+   预算:同屏实时模糊不超过 2 层;压在高频重绘画布(图库大图、inpaint 画布)
+   上的悬浮件不用此类,用纯色半透明(如 bg-nai-panel/90)。
+   不放在 @layer 内:Tailwind v3 会摇树未被内容引用的 @layer 自定义类,
+   而 .glass 由后续阶段组件按需启用,必须始终出现在产物里。 */
+.glass {
+  background-color: rgb(var(--nai-panel) / var(--glass-alpha));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / var(--glass-edge));
 }
 
 /* 原生 <select> 展开列表在 Windows Edge/Chrome 下常忽略 color-scheme、渲染成白底，
@@ -333,15 +377,6 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-}
-
-/* 移动端安全区域支持 */
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0);
-}
-
-.safe-area-top {
-  padding-top: env(safe-area-inset-top, 0);
 }
 
 /* 移动端触摸优化 */

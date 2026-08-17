@@ -25,7 +25,7 @@ export const MobileImageStatusPill: React.FC<MobileImageStatusPillProps> = ({
       : 'opacity-0 translate-y-4 pointer-events-none'
       }`}
   >
-    <div className="bg-gray-900/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-xl border border-gray-600/50 h-9 flex items-center justify-center">
+    <div className="bg-gray-900/90 px-4 py-2 rounded-full shadow-xl border border-gray-600/50 h-9 flex items-center justify-center">
       {/* 排队状态 */}
       <div
         className={`flex items-center gap-3 transition-opacity duration-200 ${isQueuing ? 'opacity-100' : 'opacity-0 invisible absolute'

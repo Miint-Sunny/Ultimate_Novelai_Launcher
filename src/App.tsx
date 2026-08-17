@@ -10,6 +10,7 @@ import { UpdateAvailableBanner } from './components/UpdateAvailableBanner';
 import { botService } from './services/botService';
 import { appBackendApi } from './api/appBackendApi';
 import { initTheme } from './services/theme';
+import { MOBILE_BREAKPOINT_PX } from './constants';
 
 // Layout is chosen by WINDOW WIDTH, not device type: a wide tablet gets the
 // desktop layout, and a narrowed desktop window gets the narrow ("mobile")
@@ -26,12 +27,12 @@ function prefetchLayouts() {
   import('./MobileAppContent');
 }
 
-// 检测是否为移动设备
+// 检测是否为移动设备(窄窗口)
 const useIsMobile = () => {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < MOBILE_BREAKPOINT_PX);
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    const checkMobile = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT_PX);
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);

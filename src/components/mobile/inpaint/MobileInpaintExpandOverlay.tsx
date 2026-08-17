@@ -78,10 +78,10 @@ export const MobileInpaintExpandOverlay: React.FC<MobileInpaintExpandOverlayProp
       )}
 
       {hasExpand && (
-        <div style={{
+        <div className="text-gray-900" style={{
           position: 'absolute', left: `${-pLeft}px`, top: `${-pTop - 22}px`,
           background: 'rgba(252,237,164,0.9)',
-          color: '#1a1a1a', fontSize: '10px', fontWeight: 700,
+          fontSize: '10px', fontWeight: 700,
           padding: '1px 6px', borderRadius: '4px',
           zIndex: 11, pointerEvents: 'none',
           letterSpacing: '0.02em',

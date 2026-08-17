@@ -93,11 +93,11 @@ export const FullscreenChipEditorArea: React.FC<FullscreenChipEditorAreaProps> =
     if (!isDragging || dragOverIndex !== index || isNoOp || !dragGhost) return null;
 
     return (
-      <div key={`drop-${index}`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border-2 border-dashed border-[#fceda4]/50 bg-[#fceda4]/10">
+      <div key={`drop-${index}`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border-2 border-dashed border-nai-accent/50 bg-nai-accent/10">
         <span className="flex flex-col items-start">
-          <span className="font-tag text-[13px] leading-tight text-[#fceda4]/50">{dragGhost.text}</span>
+          <span className="font-tag text-[13px] leading-tight text-nai-accent/50">{dragGhost.text}</span>
           {dragGhost.sub && (
-            <span className="text-[10px] leading-tight text-[#fceda4]/25">{dragGhost.sub}</span>
+            <span className="text-[10px] leading-tight text-nai-accent/25">{dragGhost.sub}</span>
           )}
         </span>
       </div>
@@ -203,14 +203,14 @@ export const FullscreenChipEditorArea: React.FC<FullscreenChipEditorAreaProps> =
             <span className="flex items-center gap-1">
               {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalWeight}>⚠️</span>}
               {isSDFormat && !abnormalWeight && <span className="text-[9px] text-amber-300">SD</span>}
-              <span className={`font-tag text-[13px] leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-[#fceda4]' : isSDFormat ? 'text-amber-200' : 'text-white/85'}`}>
+              <span className={`font-tag text-[13px] leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-nai-accent' : isSDFormat ? 'text-amber-200' : 'text-white/85'}`}>
                 {rawTag.trim()}
               </span>
             </span>
             {abnormalWeight ? (
               <span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight}</span>
             ) : translation ? (
-              <span className={`text-[10px] leading-tight ${isSelected ? 'text-[#fceda4]/50' : 'text-white/35'}`}>{translation}</span>
+              <span className={`text-[10px] leading-tight ${isSelected ? 'text-nai-accent/50' : 'text-white/35'}`}>{translation}</span>
             ) : isTranslating ? (
               <span className="text-[10px] leading-tight text-white/20 animate-pulse">翻译中…</span>
             ) : needsTranslation ? (
@@ -260,11 +260,11 @@ export const FullscreenChipEditorArea: React.FC<FullscreenChipEditorAreaProps> =
           className="fixed z-[100] pointer-events-none"
           style={{ left: dragGhost.x, top: dragGhost.y, width: dragGhost.w }}
         >
-          <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[#fceda4]/70 bg-[#fceda4]/20 shadow-lg shadow-[#fceda4]/10 scale-105">
+          <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-nai-accent/70 bg-nai-accent/20 shadow-lg shadow-nai-accent/10 scale-105">
             <span className="flex flex-col items-start">
-              <span className="font-tag text-[13px] leading-tight text-[#fceda4]">{dragGhost.text}</span>
+              <span className="font-tag text-[13px] leading-tight text-nai-accent">{dragGhost.text}</span>
               {dragGhost.sub && (
-                <span className="text-[10px] leading-tight text-[#fceda4]/50">{dragGhost.sub}</span>
+                <span className="text-[10px] leading-tight text-nai-accent/50">{dragGhost.sub}</span>
               )}
             </span>
           </div>
