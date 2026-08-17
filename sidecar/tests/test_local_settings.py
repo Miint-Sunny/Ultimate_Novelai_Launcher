@@ -141,6 +141,46 @@ class LocalSettingsUrlGuardTests(unittest.TestCase):
             )
             self.assertEqual(settings.llm_backup_trusted_networks, ("172.16.0.0/12",))
 
+    def test_load_settings_reports_an_unusable_port_instead_of_a_bare_valueerror(self) -> None:
+        """端口无法解析时给出可读错误,且不静默回落到默认端口。"""
+
+        with tempfile.TemporaryDirectory() as temp:
+            for bad_port in ("not-a-port", "8080abc", "70000", "-1"):
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "ULTIMATE_NOVELAI_LAUNCHER_DATA_DIR": temp,
+                            "ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT": bad_port,
+                        },
+                        clear=True,
+                    ),
+                    patch("sidecar.config.get_stored_token", return_value=""),
+                    patch("sidecar.config.get_stored_llm_key", return_value=""),
+                    patch("sidecar.config.get_stored_llm_backup_key", return_value=""),
+                ):
+                    with self.assertRaises(ValueError) as caught:
+                        load_settings()
+                self.assertIn("SIDECAR_PORT", str(caught.exception))
+
+    def test_load_settings_accepts_a_valid_port_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "ULTIMATE_NOVELAI_LAUNCHER_DATA_DIR": temp,
+                        "ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT": "38999",
+                    },
+                    clear=True,
+                ),
+                patch("sidecar.config.get_stored_token", return_value=""),
+                patch("sidecar.config.get_stored_llm_key", return_value=""),
+                patch("sidecar.config.get_stored_llm_backup_key", return_value=""),
+            ):
+                settings = load_settings()
+            self.assertEqual(settings.port, 38999)
+
 
 if __name__ == "__main__":
     unittest.main()

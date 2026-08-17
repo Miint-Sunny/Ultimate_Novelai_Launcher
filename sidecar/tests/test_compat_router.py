@@ -70,3 +70,26 @@ def test_configured_web_origins_reject_unsafe_values(origin: str) -> None:
         pytest.raises(ValueError),
     ):
         _configured_web_origins()
+
+
+def test_delete_llm_key_rejects_unknown_slot_instead_of_dropping_primary() -> None:
+    """拼错的 slot 必须 422,而不是静默删掉主密钥。"""
+
+    with tempfile.TemporaryDirectory() as temp:
+        app = create_app(_settings(Path(temp)))
+        with TestClient(app) as client:
+            with patch("sidecar.api.compat.router.delete_stored_llm_key") as drop_primary, \
+                    patch("sidecar.api.compat.router.delete_stored_llm_backup_key") as drop_backup:
+                typo = client.delete("/auth/llm-key?slot=backupp")
+                wrong_case = client.delete("/auth/llm-key?slot=Backup")
+
+                assert typo.status_code == 422
+                assert wrong_case.status_code == 422
+                # 关键:两次都不许碰任何凭据。
+                drop_primary.assert_not_called()
+                drop_backup.assert_not_called()
+
+                assert client.delete("/auth/llm-key?slot=backup").status_code == 200
+                drop_backup.assert_called_once()
+                assert client.delete("/auth/llm-key").status_code == 200
+                drop_primary.assert_called_once()

@@ -122,11 +122,19 @@ def create_app(
         return {"ok": True, "pending_codes": len(_pending(app))}
 
     @app.post("/api/bot/auth/generate")
-    async def auth_generate(request: Request) -> Response:
+    async def auth_generate() -> Response:
+        # 宿主的该端点不声明请求体,故不转发下游的 {source:"app"}。
         resp = await _http(app).post("/api/bot/auth/generate")
         if resp.status_code != 200:
             return await _relay_json(resp)
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError:
+            # 200 但不是 JSON:多半是中间层(反代/门户)顶替了响应。原样交给
+            # 下游,别在适配器里炸成 500 —— 那会把上游故障伪装成适配器故障。
+            return await _relay_json(resp)
+        if not isinstance(body, dict):
+            return await _relay_json(resp)
         code = str(body.get("code") or "")
         poll_token = str(body.get("poll_token") or "")
         if code and poll_token:
@@ -163,10 +171,13 @@ def create_app(
         top_backend = payload.get("image_backend")
         if top_backend and "image_backend" not in params:
             params["image_backend"] = top_backend
-        forward = {"session_id": payload.get("session_id", ""), "params": params}
+        # 先解析会话再构造转发体:宿主的 /api/bot/generate 只认 body 里的
+        # session_id,而下游可能只用 Bearer 携带会话 —— 那样转发体会是空会话、
+        # 必然 401。两处用同一个解析结果。
         session_id = str(payload.get("session_id") or "") or _bearer(
             request.headers.get("authorization", "")
         )
+        forward = {"session_id": session_id, "params": params}
         # 后端开启配额账本时要求 Idempotency-Key;每次生成用唯一键(Plana 循环
         # 生成是同参数连抽,不能用 params hash,否则会被判成重放)。
         headers = _forward_headers(request, session_id)
