@@ -1,4 +1,5 @@
 import { appBackendApi } from '../../api/appBackendApi';
+import { getOptionalSessionId } from './session';
 
 export interface PublicVibeData {
   id: string;
@@ -201,9 +202,13 @@ export async function uploadVibeToPublic(
   name?: string
 ): Promise<{ success: boolean; message: string; filename?: string }> {
   try {
+    // 该端点是 body-session 双通道之一：Plana 方言要求 body 里带 session_id，
+    // 我们后端走请求头认证但也接受 body 里的 session_id，所以有会话时一并带上。
+    const sessionId = getOptionalSessionId();
     const data = await appBackendApi.postJson<{ message?: string; filename?: string }>('/api/vibes/upload', {
       vibe_data: vibeData,
       name,
+      ...(sessionId ? { session_id: sessionId } : {}),
     });
     clearPublicVibeCache();
     return { success: true, message: data.message || '上传成功', filename: data.filename };
