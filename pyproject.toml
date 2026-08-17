@@ -103,7 +103,7 @@ ignore = ["S101"]
 ]
 
 [tool.pyright]
-include = ["backend_core", "cloud_backend", "sidecar", "server/agent_router"]
+include = ["backend_core", "cloud_backend", "plana_adapter", "sidecar", "server/agent_router"]
 exclude = ["build", "dist"]
 # Imported compatibility code remains visible to dependency analysis, while its
 # pre-existing dynamic FastAPI surface is tracked as one explicit legacy exception.
