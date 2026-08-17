@@ -167,6 +167,27 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / var(--glass-edge));
 }
 
+/* ============ 宽触屏档(P7-2,方案 §6:平板不做第三套布局) ============
+   带宽 700–899px(900 起已切桌面壳):iPad 竖屏(≤834)与窄桌面窗口落入此带。
+   纯 CSS 媒体查询,零 JS 状态;<700px 时两类完全无效果。
+   与 .glass 同因不放在 @layer 内(避免摇树,保证始终出现在产物里)。 */
+@media (min-width: 700px) {
+  /* 内容列:生图页卡片列/创作室/AI 页/「我的」内容区,限宽 640 居中 */
+  .wide-touch-column {
+    max-width: 640px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  /* 底部 sheet:限宽 560 居中。配合各 sheet 既有 left-0 right-0(或 flex
+     justify-center)+ margin-inline auto 居中,禁止改用 transform 居中——
+     会与 animate-slide-in-from-bottom 的 translateY 动画打架。 */
+  .wide-touch-sheet {
+    max-width: 560px;
+    margin-inline: auto;
+  }
+}
+
 /* 原生 <select> 展开列表在 Windows Edge/Chrome 下常忽略 color-scheme、渲染成白底，
    与暗色主题违和；显式给深色背景匹配 nai-input / nai-panel。 */
 select option {

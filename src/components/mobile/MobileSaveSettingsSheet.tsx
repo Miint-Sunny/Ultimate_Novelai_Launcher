@@ -50,7 +50,7 @@ export function MobileSaveSettingsSheet({
       onClick={onClose}
     >
       <div
-        className="w-full bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom"
+        className="wide-touch-sheet w-full bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom"
         onClick={(event) => event.stopPropagation()}
       >
         {/* Sheet grabber(P7-1):顶部居中小横条 */}

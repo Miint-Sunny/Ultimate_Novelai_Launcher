@@ -116,7 +116,7 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
     switch (activeGroup) {
       case 'appearance':
         return (
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          <div className="wide-touch-column flex-1 overflow-y-auto p-4 flex flex-col gap-4">
             <MobileThemeSettingsSection
               settings={settings}
               updateSettingsImmediate={updateSettingsImmediate}
@@ -169,19 +169,19 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
         );
       case 'tools':
         return (
-          <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="wide-touch-column flex-1 overflow-hidden flex flex-col">
             <MobileToolsPage />
           </div>
         );
       case 'settings':
         return (
-          <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="wide-touch-column flex-1 overflow-hidden flex flex-col">
             <MobileSettingsPage onLogout={onLogout} />
           </div>
         );
       case 'about':
         return (
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="wide-touch-column flex-1 overflow-y-auto p-4">
             <section className="bg-nai-input rounded-xl border border-gray-700/50 p-4 flex flex-col gap-2">
               <div className="text-sm text-gray-300">Ultimate NovelAI Launcher</div>
               <div className="text-xs text-gray-500">版本 v{packageJson.version}</div>
@@ -202,7 +202,7 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
       <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in" onClick={onClose} />
 
       <div
-        className="fixed left-0 right-0 bottom-0 z-50 bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom flex flex-col"
+        className="wide-touch-sheet fixed left-0 right-0 bottom-0 z-50 bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom flex flex-col"
         style={{ height: '92vh' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -234,7 +234,7 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
         </div>
 
         {activeGroup === null ? (
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          <div className="wide-touch-column flex-1 overflow-y-auto p-4 flex flex-col gap-4">
             {/* 账户/后端模式状态卡 */}
             <section className="bg-nai-input rounded-xl border border-gray-700/50 p-4 flex flex-col gap-3">
               <div className="flex items-center gap-3">

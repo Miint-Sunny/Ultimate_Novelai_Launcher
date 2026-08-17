@@ -70,7 +70,7 @@ export function MobileAdvancedSettingsSheet({
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end animate-fade-in">
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative w-full bg-nai-panel rounded-t-2xl max-h-[80vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
+      <div className="wide-touch-sheet relative w-full bg-nai-panel rounded-t-2xl max-h-[80vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
         {/* Sheet grabber(P7-1):顶部居中小横条 */}
         <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-gray-600" />
         <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">

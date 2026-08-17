@@ -356,7 +356,7 @@ export function MobileExpandedGallerySheet({
 
       <div className="flex-1 overflow-y-auto p-2 space-y-3">
         {(isGenerating || isQueuing) && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 min-[700px]:grid-cols-5 gap-2">
             <div
               className={`relative aspect-square bg-gray-800 rounded-lg overflow-hidden ${!viewingHistory ? 'ring-2 ring-nai-accent' : ''}`}
               onClick={() => {
@@ -402,7 +402,8 @@ export function MobileExpandedGallerySheet({
                 <span className="text-sm font-medium text-gray-200">{group.label}</span>
                 <span className="text-xs text-gray-500">{group.items.length} 张</span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              {/* P7-2 宽触屏档:700px 起 3→5 列(§6 给 4~6 区间,640 列宽 ÷ ~120 格 ≈ 5) */}
+              <div className="grid grid-cols-3 min-[700px]:grid-cols-5 gap-2">
                 {group.items.map(renderHistoryCell)}
               </div>
             </section>

@@ -41,7 +41,7 @@ export function MobileResolutionSheet({
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end animate-fade-in">
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative w-full bg-nai-panel rounded-t-2xl animate-slide-in-from-bottom safe-area-bottom">
+      <div className="wide-touch-sheet relative w-full bg-nai-panel rounded-t-2xl animate-slide-in-from-bottom safe-area-bottom">
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h3 className="text-lg font-bold text-white">选择比例</h3>
           <button onClick={onClose} className="p-2 -mr-2 text-gray-400">

@@ -16,7 +16,7 @@ import { MOBILE_BREAKPOINT_PX } from './constants';
 // desktop layout, and a narrowed desktop window gets the narrow ("mobile")
 // layout. Both are split into separate chunks and lazy-loaded so startup only
 // parses the current width's tree. The inactive layout is prefetched during
-// idle (see App) so resizing across the 768px breakpoint switches instantly
+// idle (see App) so resizing across the 900px breakpoint switches instantly
 // with no Suspense flash.
 const AppContent = lazy(() => import('./AppContent'));
 const MobileAppContent = lazy(() => import('./MobileAppContent'));
@@ -82,7 +82,7 @@ function App() {
   }, []);
 
   // After first paint, prefetch the inactive layout during idle time so
-  // resizing across the 768px breakpoint (or a tablet rotating) switches
+  // resizing across the 900px breakpoint (or a tablet rotating) switches
   // instantly. The active layout is already loading via <Suspense> below.
   useEffect(() => {
     const w = window as typeof window & {

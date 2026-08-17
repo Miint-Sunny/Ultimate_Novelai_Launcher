@@ -43,7 +43,7 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-full bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom max-h-[85vh] overflow-y-auto"
+        className="wide-touch-sheet w-full bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 头部 */}

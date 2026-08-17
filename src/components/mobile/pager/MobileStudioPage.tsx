@@ -157,7 +157,9 @@ export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlaySta
     <div className="flex flex-col h-full bg-nai-bg">
       <MobilePageHeader title="创作室" scrolled={scrolled} />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      {/* P7-2 宽触屏档:内容列限宽居中(700px 以下无效果);滚动容器不变,scroll edge 不受影响 */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+        <div className="wide-touch-column flex flex-col gap-4">
         {/* 来源图区 */}
         <section className="bg-nai-panel border border-gray-800 rounded-xl p-3">
           <div className="flex items-center justify-between mb-2">
@@ -230,6 +232,7 @@ export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlaySta
             );
           })}
         </section>
+        </div>
       </div>
 
       {/* 全屏覆盖物:复用现有实现 */}

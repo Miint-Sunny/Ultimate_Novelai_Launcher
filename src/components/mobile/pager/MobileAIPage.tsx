@@ -130,7 +130,9 @@ export const MobileAIPage: React.FC<MobileAIPageProps> = ({ onOpenMine }) => {
       />
 
       {agentAvailability.available ? (
-        <>
+        // P7-2 宽触屏档:日志流 + 输入栏整体限宽居中(700px 以下无效果);
+        // 滚动节点仍是 AssistantLogList 自身,scroll edge 不受影响
+        <div className="wide-touch-column flex-1 flex flex-col min-h-0">
           <AssistantLogList
             logRef={bindLogRef}
             agentState={agentState}
@@ -153,7 +155,7 @@ export const MobileAIPage: React.FC<MobileAIPageProps> = ({ onOpenMine }) => {
               onClearLogs={() => agentService.clearLogs()}
             />
           </div>
-        </>
+        </div>
       ) : (
         // 能力不可用:页内说明卡,不白屏不自动跳走
         <div className="flex-1 flex items-center justify-center p-6">

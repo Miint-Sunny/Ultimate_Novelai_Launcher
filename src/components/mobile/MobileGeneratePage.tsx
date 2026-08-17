@@ -396,38 +396,41 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       {/* 可滚动内容区(相对定位容器:步数滑杆浮在其上、吸底栏之上,不占布局) */}
       <div className="flex-1 relative overflow-hidden">
         <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-hide">
-          <MobileGenerateCards
-            positivePrompt={positivePrompt}
-            setPositivePrompt={setPositivePrompt}
-            negativePrompt={negativePrompt}
-            setNegativePrompt={setNegativePrompt}
-            positiveTokens={positiveTokens}
-            negativeTokens={negativeTokens}
-            openPromptEditor={() => setEditorOpen('prompt')}
-            openNegativeEditor={() => setEditorOpen('undesired')}
-            openAIAssistant={
-              aiAssistantAsPage
-                ? () => window.dispatchEvent(new CustomEvent('pager-navigate', { detail: { page: 0 } }))
-                : () => setShowAIAssistant(true)
-            }
-            openArtistModal={() => setShowArtistModal(true)}
-            openInspirationModal={() => setIsInspirationModalOpen(true)}
-            openOCModal={() => setShowOCModal(true)}
-            hasChinesePrompt={hasChinesePrompt}
-            isTranslating={isTranslating}
-            onTranslate={handleTranslate}
-            characterPromptManager={characterPromptManager}
-            vibeLibrary={vibeLibrary}
-            preciseReferenceLibrary={preciseReferenceLibrary}
-            openVibeManager={() => setShowVibeModal(true)}
-            openCRManager={() => setShowCRModal(true)}
-            img2imgState={img2imgState}
-            width={localWidth}
-            height={localHeight}
-            moduleContext={moduleContext}
-            moduleOrder={moduleOrder}
-            onModuleOrderChange={setModuleOrder}
-          />
+          {/* P7-2 宽触屏档:卡片列限宽居中(700px 以下无效果);滚动容器不变,scroll edge 不受影响 */}
+          <div className="wide-touch-column">
+            <MobileGenerateCards
+              positivePrompt={positivePrompt}
+              setPositivePrompt={setPositivePrompt}
+              negativePrompt={negativePrompt}
+              setNegativePrompt={setNegativePrompt}
+              positiveTokens={positiveTokens}
+              negativeTokens={negativeTokens}
+              openPromptEditor={() => setEditorOpen('prompt')}
+              openNegativeEditor={() => setEditorOpen('undesired')}
+              openAIAssistant={
+                aiAssistantAsPage
+                  ? () => window.dispatchEvent(new CustomEvent('pager-navigate', { detail: { page: 0 } }))
+                  : () => setShowAIAssistant(true)
+              }
+              openArtistModal={() => setShowArtistModal(true)}
+              openInspirationModal={() => setIsInspirationModalOpen(true)}
+              openOCModal={() => setShowOCModal(true)}
+              hasChinesePrompt={hasChinesePrompt}
+              isTranslating={isTranslating}
+              onTranslate={handleTranslate}
+              characterPromptManager={characterPromptManager}
+              vibeLibrary={vibeLibrary}
+              preciseReferenceLibrary={preciseReferenceLibrary}
+              openVibeManager={() => setShowVibeModal(true)}
+              openCRManager={() => setShowCRModal(true)}
+              img2imgState={img2imgState}
+              width={localWidth}
+              height={localHeight}
+              moduleContext={moduleContext}
+              moduleOrder={moduleOrder}
+              onModuleOrderChange={setModuleOrder}
+            />
+          </div>
         </div>
 
         <MobileStepsSliderOverlay

@@ -4,6 +4,8 @@
 
 /**
  * 桌面/移动布局切换断点(px):窗口宽度小于该值走移动端树(MobileAppContent)。
- * 竖屏方案 P7 拟调整为 900(见 docs_and_plan);此刻不改值,仅抽常量。
+ * P7-2 定为 900(方案 §6/§10 #2):覆盖 iPad 竖屏(≤834)进移动壳;
+ * 窄桌面窗口(700–899)落入移动壳是 §10 #2 已拍板行为,
+ * 该带宽由宽触屏档(src/index.css 的 .wide-touch-*)做内容列限宽居中。
  */
-export const MOBILE_BREAKPOINT_PX = 768;
+export const MOBILE_BREAKPOINT_PX = 900;
