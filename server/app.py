@@ -19,6 +19,7 @@ import asyncio
 import collections
 import hashlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -119,6 +120,16 @@ from config import (
 # 整模块导入，供访问控制读取"可选、向后兼容"的安全配置项（老 config.py 缺字段时取默认）。
 import config as _appcfg
 
+# 本宿主原先只用 print 报告后台循环错误与异常堆栈,部署后无人消费即丢。改用 logger
+# 之后必须自己配一次 handler:uvicorn 只配 "uvicorn.*",root 停留在 WARNING,
+# 否则 INFO 级消息会静默消失(运维看不到启动信息)。级别可用 LOG_LEVEL 覆盖。
+logger = logging.getLogger("ultimate_novelai_launcher.server")
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
 _CLOUD_TENANT_ID = str(getattr(_appcfg, "CLOUD_TENANT_ID", "default") or "default")
 _DIRECT_TASK_TENANT_ID = f"{_CLOUD_TENANT_ID}:direct"
 _BOT_TASK_TENANT_ID = f"{_CLOUD_TENANT_ID}:bot"
@@ -209,7 +220,7 @@ class SafeJsonStore:
             with open(self.file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            print(f"[SafeJsonStore] 加载 {self.file_path} 失败: {e}，尝试备份恢复")
+            logger.exception(f"[SafeJsonStore] 加载 {self.file_path} 失败: {e}，尝试备份恢复")
             return self._try_restore_from_backup()
 
     def _try_restore_from_backup(self) -> dict:
@@ -222,7 +233,7 @@ class SafeJsonStore:
                 data = json.load(f)
             # 备份有效，恢复到主文件
             shutil.copy2(backup_path, self.file_path)
-            print(f"[SafeJsonStore] 已从备份恢复: {self.file_path}")
+            logger.info(f"[SafeJsonStore] 已从备份恢复: {self.file_path}")
             return data
         except Exception:
             return {}
@@ -243,7 +254,7 @@ class SafeJsonStore:
                 try:
                     shutil.copy2(self.file_path, backup_path)
                 except OSError as e:
-                    print(f"[SafeJsonStore] 创建备份失败: {e}")
+                    logger.exception(f"[SafeJsonStore] 创建备份失败: {e}")
 
             # 写入临时文件
             fd, temp_path = tempfile.mkstemp(
@@ -272,7 +283,7 @@ class SafeJsonStore:
                 raise
 
         except Exception as e:
-            print(f"[SafeJsonStore] 保存 {self.file_path} 失败: {e}")
+            logger.exception(f"[SafeJsonStore] 保存 {self.file_path} 失败: {e}")
             return False
 
     async def update(self, updater) -> bool:
@@ -394,7 +405,7 @@ class TokenManager:
                     "total_success": 0,
                     "total_errors": 0,
                 }
-                print(f"[TokenManager] 注册 Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
+                logger.info(f"[TokenManager] 注册 Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
     
     async def register_all(self):
         """注册配置中的所有 Token"""
@@ -427,7 +438,7 @@ class TokenManager:
             ):
                 info["disabled"] = True
                 info["disabled_at"] = time.time()
-                print(f"[TokenManager] ⚠ Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 已自动禁用"
+                logger.info(f"[TokenManager] ⚠ Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 已自动禁用"
                       f"（连续 {info['errors']} 次错误，最后错误: {error_msg}）")
                 # 状态发生变化，唤醒正在等待的协程以便重新评估
                 self._cond.notify_all()
@@ -618,7 +629,7 @@ class TrialAccountPool:
             with open(self._state_path, "r", encoding="utf-8") as f:
                 return json.load(f) or {}
         except Exception as e:
-            print(f"[boost] 加载 state {self._state_path} 失败（按空处理）: {e}")
+            logger.exception(f"[boost] 加载 state {self._state_path} 失败（按空处理）: {e}")
             return {}
 
     def _migrate_state_from_accounts(self, raw_accounts: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -636,9 +647,9 @@ class TrialAccountPool:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2, ensure_ascii=False)
             tmp.replace(self._state_path)
-            print(f"[boost] 已从 accounts.json 自动迁移生成 state.json（{len(state)} 个账号）")
+            logger.info(f"[boost] 已从 accounts.json 自动迁移生成 state.json（{len(state)} 个账号）")
         except Exception as e:
-            print(f"[boost] 写入 state.json 失败（内存继续使用快照）: {e}")
+            logger.exception(f"[boost] 写入 state.json 失败（内存继续使用快照）: {e}")
         return state
 
     async def load(self) -> None:
@@ -646,13 +657,13 @@ class TrialAccountPool:
         合并规则：accounts.json 提供 baseline + state.json 覆盖 STATE_FIELDS。
         """
         if not self._path.exists():
-            print(f"[boost] 账号文件不存在: {self._path}")
+            logger.info(f"[boost] 账号文件不存在: {self._path}")
             return
         try:
             with open(self._path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
         except Exception as e:
-            print(f"[boost] 加载 {self._path} 失败: {e}")
+            logger.exception(f"[boost] 加载 {self._path} 失败: {e}")
             return
 
         state = self._load_state_file()
@@ -682,7 +693,7 @@ class TrialAccountPool:
                     "exp": int(merged.get("novelai_token_exp", 0)),
                     "raw": info,  # 留 accounts.json 原值用于写回静态字段
                 }
-        print(f"[boost] 加载 trial 账号 {len(self._accounts)} 个，"
+        logger.info(f"[boost] 加载 trial 账号 {len(self._accounts)} 个，"
               f"剩余总额度 {sum(a['image_left'] for a in self._accounts.values())} 张（按本地 JSON 缓存）")
 
     def _active_accounts_locked(self) -> List[Tuple[str, Dict[str, Any]]]:
@@ -709,7 +720,7 @@ class TrialAccountPool:
         if self._active_emails != before:
             limit_text = str(self._active_limit) if self._active_limit else "dynamic"
             active = ", ".join(sorted(self._active_emails)) or "-"
-            print(f"[boost] active 小队列 {len(self._active_emails)}/{limit_text}: {active}")
+            logger.info(f"[boost] active 小队列 {len(self._active_emails)}/{limit_text}: {active}")
 
     def _prune_active_locked(self) -> None:
         """移除已用完账号；不主动补号，补号只在并发需要时发生。"""
@@ -752,7 +763,7 @@ class TrialAccountPool:
         """对指定账号调 /ai/trial-status，用 NovelAI 端真实余额覆盖本地 image_left。"""
         if not items:
             return
-        print(f"[boost] 首次使用前刷 active 余额：查 {len(items)} 个号的 remaining_image_actions…")
+        logger.info(f"[boost] 首次使用前刷 active 余额：查 {len(items)} 个号的 remaining_image_actions…")
         diff_count = 0
         async with httpx.AsyncClient(timeout=15) as cli:
             for email, acct in items:
@@ -763,11 +774,11 @@ class TrialAccountPool:
                         headers={"Authorization": f"Bearer {acct['bearer']}"},
                     )
                     if r.status_code != 200:
-                        print(f"[boost]   {email} HTTP {r.status_code}，跳过")
+                        logger.warning(f"[boost]   {email} HTTP {r.status_code}，跳过")
                     else:
                         real_left = int(r.json().get("remaining_image_actions", 0))
                 except Exception as e:
-                    print(f"[boost]   {email} 查询异常：{e}")
+                    logger.exception(f"[boost]   {email} 查询异常：{e}")
                 async with self._lock:
                     if email in self._accounts:
                         self._quota_refreshed_emails.add(email)
@@ -776,12 +787,12 @@ class TrialAccountPool:
                             self._accounts[email]["image_left"] = real_left
                             if old != real_left:
                                 diff_count += 1
-                                print(f"[boost]   {email}  本地={old} → 服务端={real_left}")
+                                logger.info(f"[boost]   {email}  本地={old} → 服务端={real_left}")
         async with self._lock:
             self._prune_active_locked()
             await self._save_unsafe()
             active_total = sum(a["image_left"] for _, a in self._active_accounts_locked())
-        print(f"[boost] active 余额刷新完成：{diff_count} 个号有偏差已纠正，"
+        logger.info(f"[boost] active 余额刷新完成：{diff_count} 个号有偏差已纠正，"
               f"active 缓存余额 {active_total} 张")
 
     async def refresh_quotas_from_server(self) -> None:
@@ -832,7 +843,7 @@ class TrialAccountPool:
         except Exception as e:
             async with self._lock:
                 self._quota_refreshed_emails.add(email)
-            print(f"[boost] {email} 首次余额刷新异常（忽略，用本地缓存值）: {e}")
+            logger.exception(f"[boost] {email} 首次余额刷新异常（忽略，用本地缓存值）: {e}")
 
     async def _save_unsafe(self) -> None:
         """无锁版（调用方必须已持锁）。只写 state.json；accounts.json 永不修改。"""
@@ -840,7 +851,7 @@ class TrialAccountPool:
             try:
                 shutil.copy2(self._state_path, self._state_bak)
             except Exception as e:
-                print(f"[boost] 备份 state .bak 失败（继续写主文件）: {e}")
+                logger.exception(f"[boost] 备份 state .bak 失败（继续写主文件）: {e}")
         try:
             existing = self._load_state_file()
             for email, acct in self._accounts.items():
@@ -856,7 +867,7 @@ class TrialAccountPool:
                 json.dump(existing, f, indent=2, ensure_ascii=False)
             tmp.replace(self._state_path)
         except Exception as e:
-            print(f"[boost] 保存 {self._state_path} 失败: {e}")
+            logger.exception(f"[boost] 保存 {self._state_path} 失败: {e}")
 
     async def acquire(self) -> Optional[Tuple[str, Dict[str, Any]]]:
         """挑一个 active 且 in_use=False AND image_left>0 AND 不在 cooldown 的号。
@@ -1023,11 +1034,11 @@ async def trial_pool_full_refresh_loop():
                 continue
             t0 = time.time()
             await trial_pool.refresh_all_quotas_from_server()
-            print(f"[boost/quota-refresh] 全量刷新完成，耗时 {time.time()-t0:.1f}s")
+            logger.info(f"[boost/quota-refresh] 全量刷新完成，耗时 {time.time()-t0:.1f}s")
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            print(f"[boost/quota-refresh] loop error: {e}")
+            logger.exception(f"[boost/quota-refresh] loop error: {e}")
 
 
 async def boost_token_refresher():
@@ -1049,15 +1060,15 @@ async def boost_token_refresher():
                     new_token, new_exp = await _refresh_nai_token(email, acct["password"])
                     await trial_pool.update_token(email, new_token, new_exp)
                     refreshed += 1
-                    print(f"[boost/refresh] {email}  新到期 {time.ctime(new_exp)}")
+                    logger.info(f"[boost/refresh] {email}  新到期 {time.ctime(new_exp)}")
                 except Exception as e:
-                    print(f"[boost/refresh] {email} 续期失败: {e}")
+                    logger.exception(f"[boost/refresh] {email} 续期失败: {e}")
             if refreshed:
-                print(f"[boost/refresh] 本轮续期 {refreshed} 个号")
+                logger.info(f"[boost/refresh] 本轮续期 {refreshed} 个号")
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            print(f"[boost/refresh] loop error: {e}")
+            logger.exception(f"[boost/refresh] loop error: {e}")
 
 
 # ==================== NovelAI 图片生成队列系统 ====================
@@ -1086,6 +1097,8 @@ async def _ensure_queue():
         _queue_lock = asyncio.Lock()
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:流式分块读取的超时包装。当前无调用方(流式读取已并入 _stream_generation 内联实现)。
 async def _iter_chunks_with_timeout(content, chunk_timeout: float):
     """带超时的异步 chunk 迭代器"""
     aiter = content.iter_any().__aiter__()
@@ -1248,7 +1261,7 @@ async def generate_novelai_image_stream(
             if total > 1:
                 strengths = [s / total for s in strengths]
         payload["parameters"]["reference_strength_multiple"] = strengths
-        print(f"[NovelAI] Vibe: count={len(params['reference_image_multiple'])}, "
+        logger.info(f"[NovelAI] Vibe: count={len(params['reference_image_multiple'])}, "
               f"strengths={strengths}, "
               f"normalize={normalize_reference_strength_multiple}")
     
@@ -1318,7 +1331,7 @@ async def generate_novelai_image_stream(
 
         if vibe_parts:
             sizes = ", ".join(f"{n}={len(r)/1024:.0f}KB" for n, r in vibe_parts)
-            print(f"[NovelAI/boost] multipart vibe parts {len(vibe_parts)} 个: {sizes}")
+            logger.info(f"[NovelAI/boost] multipart vibe parts {len(vibe_parts)} 个: {sizes}")
 
         boost_headers = dict(headers, **{
             "Content-Type": f"multipart/form-data; boundary={boundary}",
@@ -1340,16 +1353,16 @@ async def generate_novelai_image_stream(
                 async with boost_client.stream(
                     "POST", url, headers=boost_headers, content=multipart_body,
                 ) as response:
-                    print(f"[NovelAI/boost] HTTP响应耗时: {time.monotonic()-_t_req:.2f}s (HTTP/{response.http_version})")
+                    logger.info(f"[NovelAI/boost] HTTP响应耗时: {time.monotonic()-_t_req:.2f}s (HTTP/{response.http_version})")
                     if response.status_code != 200:
                         body_text = (await response.aread())[:500].decode("utf-8", errors="replace")
-                        print(f"[NovelAI/boost] 请求失败: {response.status_code}  body={body_text}")
+                        logger.error(f"[NovelAI/boost] 请求失败: {response.status_code}  body={body_text}")
                         raise Exception(f"请求失败: {response.status_code} {body_text}")
                     buffer = b""
                     _first_chunk = True
                     async for chunk in response.aiter_bytes():
                         if _first_chunk:
-                            print(f"[NovelAI/boost] 首个chunk耗时: {time.monotonic()-_t_req:.2f}s, size={len(chunk)}")
+                            logger.info(f"[NovelAI/boost] 首个chunk耗时: {time.monotonic()-_t_req:.2f}s, size={len(chunk)}")
                             _first_chunk = False
                         buffer += chunk
 
@@ -1366,7 +1379,7 @@ async def generate_novelai_image_stream(
                                 if "code" in message and message.get("code") != 200:
                                     err_code = message.get("code")
                                     err_msg = message.get("message", "未知错误")
-                                    print(f"[NovelAI/boost] API 错误: code={err_code}, message={err_msg}")
+                                    logger.error(f"[NovelAI/boost] API 错误: code={err_code}, message={err_msg}")
                                     if isinstance(err_code, int) and 100 <= err_code <= 599:
                                         raise _NaiStreamError(
                                             f"请求失败: {err_code} "
@@ -1385,7 +1398,7 @@ async def generate_novelai_image_stream(
                             except _NaiStreamError:
                                 raise
                             except Exception as e:
-                                print(f"[NovelAI/boost] 解析 msgpack 失败: {e}")
+                                logger.exception(f"[NovelAI/boost] 解析 msgpack 失败: {e}")
             finally:
                 await boost_client.aclose()
 
@@ -1405,17 +1418,17 @@ async def generate_novelai_image_stream(
             json=payload,
         )
         async with stream_ctx as response:
-            print(f"[NovelAI{'/boost' if is_boost else ''}] HTTP响应耗时: {time.monotonic()-_t_req:.2f}s (HTTP/{response.http_version})")
+            logger.info(f"[NovelAI{'/boost' if is_boost else ''}] HTTP响应耗时: {time.monotonic()-_t_req:.2f}s (HTTP/{response.http_version})")
             if response.status_code != 200:
                 await response.aread()
-                print(f"[NovelAI] 请求失败: {response.status_code}")
+                logger.error(f"[NovelAI] 请求失败: {response.status_code}")
                 raise Exception(f"请求失败: {response.status_code}")
 
             buffer = b""
             _first_chunk = True
             async for chunk in response.aiter_bytes():
                 if _first_chunk:
-                    print(f"[NovelAI] 首个chunk耗时: {time.monotonic()-_t_req:.2f}s, size={len(chunk)}")
+                    logger.info(f"[NovelAI] 首个chunk耗时: {time.monotonic()-_t_req:.2f}s, size={len(chunk)}")
                     _first_chunk = False
                 buffer += chunk
 
@@ -1436,7 +1449,7 @@ async def generate_novelai_image_stream(
                         if "code" in message and message.get("code") != 200:
                             err_code = message.get("code")
                             err_msg = message.get("message", "未知错误")
-                            print(f"[NovelAI] API 错误: code={err_code}, message={err_msg}")
+                            logger.error(f"[NovelAI] API 错误: code={err_code}, message={err_msg}")
                             if isinstance(err_code, int) and 100 <= err_code <= 599:
                                 raise _NaiStreamError(
                                     f"请求失败: {err_code} "
@@ -1458,7 +1471,7 @@ async def generate_novelai_image_stream(
                     except _NaiStreamError:
                         raise
                     except Exception as e:
-                        print(f"[NovelAI] 解析 msgpack 失败: {e}")
+                        logger.exception(f"[NovelAI] 解析 msgpack 失败: {e}")
 
         if last_image_data and progress_callback and not final_sent:
             final_b64 = base64.b64encode(last_image_data).decode('utf-8')
@@ -1471,7 +1484,7 @@ async def generate_novelai_image_stream(
     except httpx.TimeoutException:
         raise Exception(f"流式生成超时")
     except Exception as e:
-        print(f"[NovelAI] 流式生成失败: {e}")
+        logger.exception(f"[NovelAI] 流式生成失败: {e}")
         raise
 
 
@@ -1480,7 +1493,7 @@ async def novelai_worker(worker_id: int, token: str):
     global _current_task, _running_count
     
     worker_name = f"Worker-{worker_id + 1}"
-    print(f"[{worker_name}] 启动，Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
+    logger.info(f"[{worker_name}] 启动，Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}")
     
     while True:
         item = await _image_queue.get()
@@ -1497,7 +1510,7 @@ async def novelai_worker(worker_id: int, token: str):
         user_id = task.get("user_id", "unknown") if task else "unknown"
         
         if task and task.get("status") == "cancelled":
-            print(f"[{worker_name}] 跳过已取消的任务: id={task_id}, user={user_id}")
+            logger.warning(f"[{worker_name}] 跳过已取消的任务: id={task_id}, user={user_id}")
             # 减少用户待处理计数（仅当取消 API 未提前减过时）
             if not task.get("_pending_decremented"):
                 task_user_id = task.get("user_id", "")
@@ -1513,7 +1526,7 @@ async def novelai_worker(worker_id: int, token: str):
             await _broadcast_queue_position_update()
             continue
         
-        print(f"[{worker_name}] 开始处理任务: id={task_id}, user={user_id}, seq={task_seq}, size={width}x{height}, steps={steps}, seed={seed}")
+        logger.info(f"[{worker_name}] 开始处理任务: id={task_id}, user={user_id}, seq={task_seq}, size={width}x{height}, steps={steps}, seed={seed}")
         
         if task_seq > 0:
             with _state_lock:
@@ -1534,9 +1547,9 @@ async def novelai_worker(worker_id: int, token: str):
                     if is_final:
                         task["result"] = image_b64
                         task["status"] = "completed"
-                        print(f"[{worker_name}] 生成完成: id={task_id}, user={user_id}, step={step}/{total_steps}")
+                        logger.info(f"[{worker_name}] 生成完成: id={task_id}, user={user_id}, step={step}/{total_steps}")
                     elif step > 0:
-                        print(f"[{worker_name}] 生成进度: id={task_id}, user={user_id}, step={step}/{total_steps}")
+                        logger.info(f"[{worker_name}] 生成进度: id={task_id}, user={user_id}, step={step}/{total_steps}")
                     await _notify_task_update(task_id, task["status"], step, total_steps, image_b64 if is_final else None, image_b64 if not is_final else None)
             
             # 智能选择并独占一个可用的 Token（解决并发 429 报错）
@@ -1572,7 +1585,7 @@ async def novelai_worker(worker_id: int, token: str):
                         task["status"] = "completed"
                         await _notify_task_update(task_id, "completed", params.get("steps", 28), params.get("steps", 28), result_b64)
                     await token_manager.record_success(use_token)
-                    print(f"[{worker_name}] ✓ 任务完成: id={task_id}, user={user_id}, 耗时={elapsed:.1f}s")
+                    logger.info(f"[{worker_name}] ✓ 任务完成: id={task_id}, user={user_id}, 耗时={elapsed:.1f}s")
                     
                     # 记录 Web 端使用统计
                     bot_uid = (_generation_tasks.get(task_id) or {}).get("bot_user_id")
@@ -1586,14 +1599,14 @@ async def novelai_worker(worker_id: int, token: str):
                         task["error"] = "生成失败：服务器未返回图像数据，请稍后重试"
                         await _notify_task_update(task_id, "failed", error=task["error"])
                     await token_manager.record_error(use_token, "无返回数据")
-                    print(f"[{worker_name}] ✗ 任务失败: id={task_id}, user={user_id}, 原因=无返回数据, 耗时={elapsed:.1f}s")
+                    logger.error(f"[{worker_name}] ✗ 任务失败: id={task_id}, user={user_id}, 原因=无返回数据, 耗时={elapsed:.1f}s")
                         
             except Exception as e:
                 import traceback
                 tb = traceback.format_exc()
                 elapsed = time.time() - start_time
-                print(f"[{worker_name}] ✗ 任务异常: id={task_id}, user={user_id}, 错误={e}, 耗时={elapsed:.1f}s")
-                print(f"[{worker_name}] 异常堆栈:\n{tb}")
+                logger.exception(f"[{worker_name}] ✗ 任务异常: id={task_id}, user={user_id}, 错误={e}, 耗时={elapsed:.1f}s")
+                logger.exception(f"[{worker_name}] 异常堆栈:\n{tb}")
                 task = _generation_tasks.get(task_id)
                 cancelled = await _finish_cancel_if_requested(task_id)
                 if task and not cancelled:
@@ -1611,7 +1624,7 @@ async def novelai_worker(worker_id: int, token: str):
             import traceback
             tb = traceback.format_exc()
             elapsed = time.time() - start_time
-            print(f"[{worker_name}] ✗ 获取Token/初始化异常: id={task_id}, user={user_id}, 错误={e}, 耗时={elapsed:.1f}s")
+            logger.exception(f"[{worker_name}] ✗ 获取Token/初始化异常: id={task_id}, user={user_id}, 错误={e}, 耗时={elapsed:.1f}s")
             task = _generation_tasks.get(task_id)
             cancelled = await _finish_cancel_if_requested(task_id)
             if task and not cancelled:
@@ -1641,7 +1654,7 @@ async def novelai_worker(worker_id: int, token: str):
                 _running_count -= 1
                 remaining = _image_queue.qsize()
             _image_queue.task_done()
-            print(f"[{worker_name}] 队列剩余: {remaining} 个任务")
+            logger.info(f"[{worker_name}] 队列剩余: {remaining} 个任务")
             
             # 广播队列位置更新给所有排队中的任务
             await _broadcast_queue_position_update()
@@ -1663,7 +1676,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
 
     # 取消检查
     if task and task.get("status") == "cancelled":
-        print(f"[{worker_name}] 跳过已取消任务: id={task_id}, user={user_id}")
+        logger.warning(f"[{worker_name}] 跳过已取消任务: id={task_id}, user={user_id}")
         if task and not task.get("_pending_decremented"):
             tu = task.get("user_id", "")
             if tu:
@@ -1675,7 +1688,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         await _broadcast_queue_position_update()
         return
 
-    print(f"[{worker_name}] 接单: id={task_id}, user={user_id}, seq={task_seq}, "
+    logger.info(f"[{worker_name}] 接单: id={task_id}, user={user_id}, seq={task_seq}, "
           f"size={width}x{height}, steps={steps}")
 
     if task_seq > 0:
@@ -1699,10 +1712,10 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
                 if is_final:
                     t["result"] = image_b64
                     t["status"] = "completed"
-                    print(f"[{worker_name}] 生成完成: id={task_id}, user={user_id}, "
+                    logger.info(f"[{worker_name}] 生成完成: id={task_id}, user={user_id}, "
                           f"step={step}/{total_steps}")
                 elif step > 0:
-                    print(f"[{worker_name}] 生成进度: id={task_id}, user={user_id}, "
+                    logger.info(f"[{worker_name}] 生成进度: id={task_id}, user={user_id}, "
                           f"step={step}/{total_steps}")
                 await _notify_task_update(
                     task_id, t["status"], step, total_steps,
@@ -1713,11 +1726,11 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         # 1. 取 trial 账号
         acq = await trial_pool.acquire() if trial_pool else None
         if not acq:
-            print(f"[{worker_name}] 没有可用 trial 号，回退到队列")
+            logger.info(f"[{worker_name}] 没有可用 trial 号，回退到队列")
             fallback_to_queue = True
             return
         held_email, acct = acq
-        print(f"[{worker_name}] 用号 {held_email}  image_left={acct['image_left']}")
+        logger.info(f"[{worker_name}] 用号 {held_email}  image_left={acct['image_left']}")
 
         # 2. 解 captcha
         try:
@@ -1730,7 +1743,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
                 },
             )
         except (CaptchaError, CaptchaTimeout) as e:
-            print(f"[{worker_name}] captcha 失败: {e}")
+            logger.exception(f"[{worker_name}] captcha 失败: {e}")
             # captcha 失败不计入全局 403 计数（那是给 NovelAI 风控用的，不是 captcha 服务挂）
             # captcha 失败也不影响账号（不扣不冷却）；账号在 finally 里释放
             fallback_to_queue = True
@@ -1743,7 +1756,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         if not _all_paid_busy():
             t = _generation_tasks.get(task_id)
             if t and t.get("status") not in ("cancelled", "completed"):
-                print(f"[{worker_name}] captcha 解完时 paid 已空闲 → 撤回任务让 paid 接，"
+                logger.info(f"[{worker_name}] captcha 解完时 paid 已空闲 → 撤回任务让 paid 接，"
                       f"丢掉 captcha 但省 1 张 trial（号 {held_email}）")
                 # 账号 release 不扣 deduct 也不 cooldown
                 await trial_pool.release(held_email)
@@ -1786,7 +1799,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
                     params.get("steps", 28), params.get("steps", 28),
                     result_b64,
                 )
-            print(f"[{worker_name}] ✓ 完成: id={task_id}, user={user_id}, "
+            logger.info(f"[{worker_name}] ✓ 完成: id={task_id}, user={user_id}, "
                   f"号 {held_email}, 耗时={elapsed:.1f}s")
             # 滑动窗口记录成功
             _boost_recent_results.append(False)
@@ -1799,7 +1812,7 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
             await trial_pool.release(held_email, deduct=True)
             held_email = None
         elif (_generation_tasks.get(task_id) or {}).get("status") != "cancelled":
-            print(f"[{worker_name}] ✗ 无返回数据: id={task_id}, 号 {held_email}")
+            logger.info(f"[{worker_name}] ✗ 无返回数据: id={task_id}, 号 {held_email}")
             await trial_pool.release(held_email,
                                      cooldown_sec=NAI_BOOST_COOLDOWN_PER_ACCOUNT_SEC)
             held_email = None
@@ -1810,9 +1823,9 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         tb = traceback.format_exc()
         elapsed = time.time() - start_time
         msg = str(e)
-        print(f"[{worker_name}] ✗ 异常: id={task_id}, user={user_id}, "
+        logger.exception(f"[{worker_name}] ✗ 异常: id={task_id}, user={user_id}, "
               f"错误={msg}, 耗时={elapsed:.1f}s")
-        print(tb)
+        logger.exception(tb)
         cancelled = await _finish_cancel_if_requested(task_id)
         # 滑动窗口 403 熔断：最近 N 次任务里失败 ≥ 阈值 → 全局冷却。
         # 兜底，防止服务器 IP 被风控了仍然反复尝试浪费 trial / captcha 钱。
@@ -1825,18 +1838,18 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
         if is_403_or_captcha and not cancelled:
             _boost_recent_results.append(True)
             fail_count = _boost_recent_403_count()
-            print(f"[{worker_name}] 窗口 403 计数 {fail_count}/{NAI_BOOST_403_THRESHOLD} "
+            logger.exception(f"[{worker_name}] 窗口 403 计数 {fail_count}/{NAI_BOOST_403_THRESHOLD} "
                   f"(窗口大小 {len(_boost_recent_results)}/{NAI_BOOST_403_WINDOW})")
             if fail_count >= NAI_BOOST_403_THRESHOLD:
                 _boost_global_cooldown_until = time.time() + NAI_BOOST_GLOBAL_COOLDOWN_SEC
                 _boost_recent_results.clear()  # 进入冷却期，重置窗口
-                print(f"[{worker_name}] 窗口内 403 ≥ {NAI_BOOST_403_THRESHOLD}，"
+                logger.exception(f"[{worker_name}] 窗口内 403 ≥ {NAI_BOOST_403_THRESHOLD}，"
                       f"全局冷却 {NAI_BOOST_GLOBAL_COOLDOWN_SEC}s 到 "
                       f"{time.ctime(_boost_global_cooldown_until)}")
         # 分类：429 并发锁仅短冷却（NovelAI 在同账号下还在跑上一张），其它走标准冷却
         if "429" in msg or "Concurrent generation" in msg:
             cd = 5.0
-            print(f"[{worker_name}] 429 并发锁，号 {held_email} 短冷却 5s")
+            logger.exception(f"[{worker_name}] 429 并发锁，号 {held_email} 短冷却 5s")
         else:
             cd = NAI_BOOST_COOLDOWN_PER_ACCOUNT_SEC
         if held_email:
@@ -1867,9 +1880,9 @@ async def _boost_handle(task_id: str, params: dict, task_seq: int):
                     await _notify_task_update(task_id, "queued", 0, params.get("steps", 28))
                     try:
                         _image_queue.put_nowait((task_id, params, task_seq))
-                        print(f"[{worker_name}] 回退到队列: id={task_id}")
+                        logger.info(f"[{worker_name}] 回退到队列: id={task_id}")
                     except asyncio.QueueFull:
-                        print(f"[{worker_name}] 回退入队失败: queue full")
+                        logger.exception(f"[{worker_name}] 回退入队失败: queue full")
                         t["status"] = "failed"
                         t["error"] = "boost 失败且回退队列已满"
                         await _notify_task_update(task_id, "failed", error=t["error"])
@@ -2217,7 +2230,7 @@ async def _notify_task_update(task_id: str, status: str, step: int = 0, total_st
                 await ws.send_json(progress_msg)
             await ws.send_json(update_msg)
         except Exception as e:
-            print(f"[WebSocket] 发送任务更新失败: {e}")
+            logger.exception(f"[WebSocket] 发送任务更新失败: {e}")
             subscribers = _generation_websockets.get(task_id)
             if subscribers is not None:
                 subscribers.discard(ws)
@@ -2302,13 +2315,13 @@ async def start_novelai_workers():
 
     tokens = get_novelai_tokens()
     if not tokens:
-        print("[NovelAI] 没有配置 Token，无法启动 Worker")
+        logger.info("[NovelAI] 没有配置 Token，无法启动 Worker")
         return
 
     for i, token in enumerate(tokens):
         asyncio.create_task(novelai_worker(i, token))
 
-    print(f"[NovelAI] 启动 {len(tokens)} 个 Worker")
+    logger.info(f"[NovelAI] 启动 {len(tokens)} 个 Worker")
 
     # 启动 boost 通道（trial 账号池 + token 续期 task）
     if CAPSOLVER_CLIENT_KEY or NAI_RECAPTCHA_TOKEN_API_URL:
@@ -2326,17 +2339,17 @@ async def start_novelai_workers():
             target_active = NAI_BOOST_ACTIVE_ACCOUNTS or 1
             asyncio.create_task(pool.prewarm_active(target_active))
             stats = await trial_pool.stats()
-            print(f"[NAI/boost] 启用，active {stats['active']}/{stats['total']} 号，"
+            logger.info(f"[NAI/boost] 启用，active {stats['active']}/{stats['total']} 号，"
                   f"可用 {stats['eligible']}，active 剩余 {stats['total_image_left']} 张；"
                   f"启动时预热到 {target_active} 个号，"
                   f"每 {NAI_BOOST_QUOTA_REFRESH_SEC}s 全量刷新一次余额")
         except Exception as e:
             import traceback
-            print(f"[NAI/boost] 初始化失败，禁用 boost: {e}")
-            print(traceback.format_exc())
+            logger.exception(f"[NAI/boost] 初始化失败，禁用 boost: {e}")
+            logger.exception(traceback.format_exc())
             trial_pool = None
     else:
-        print("[NAI/boost] CAPSOLVER_CLIENT_KEY 未配置，boost 通道关闭")
+        logger.info("[NAI/boost] CAPSOLVER_CLIENT_KEY 未配置，boost 通道关闭")
 
     _workers_started = True
 
@@ -2349,6 +2362,8 @@ class _DuplicateGenerationTaskError(RuntimeError):
     pass
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:旧的任务归属推断。已被 _task_access(ResourceOwner + 策略校验)取代,无调用方。
 def _principal_for_task_record(task: dict[str, Any]) -> Principal:
     resource = _task_access.owner_of(task)
     if resource.owner_id is None:
@@ -2368,7 +2383,7 @@ async def _settle_generation_quota(task_id: str) -> None:
     if not job.quota_reservation_id:
         return
     if not _quota_ledger.enabled:
-        print(f"[quota] task={task_id} reservation remains unsettled because ledger is disabled")
+        logger.info(f"[quota] task={task_id} reservation remains unsettled because ledger is disabled")
         return
     try:
         principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
@@ -2391,11 +2406,11 @@ async def _settle_generation_quota(task_id: str) -> None:
             task["_quota_settled"] = True
     except CloudBackendError as exc:
         # Keep the failure visible for operators without leaking credentials.
-        print(f"[quota] task={task_id} settlement failed: {exc.code}")
+        logger.exception(f"[quota] task={task_id} settlement failed: {exc.code}")
     except Exception as exc:
         # A transient SQLite/disk failure must not terminate a long-lived worker.
         # Leave the record unsettled so cancellation/cleanup can retry safely.
-        print(f"[quota] task={task_id} settlement unavailable: {type(exc).__name__}")
+        logger.exception(f"[quota] task={task_id} settlement unavailable: {type(exc).__name__}")
 
 
 async def enqueue_generation(
@@ -2432,12 +2447,12 @@ async def enqueue_generation(
         )
         occupied = active_count + _generation_admitting
         if occupied >= _GENERATION_QUEUE_CAPACITY:
-            print(f"[队列] 全局容量已满 ({occupied}/{_GENERATION_QUEUE_CAPACITY})")
+            logger.info(f"[队列] 全局容量已满 ({occupied}/{_GENERATION_QUEUE_CAPACITY})")
             return "", -1, False
         if user_id:
             cnt = _user_pending.get(user_id, 0)
             if cnt >= 10:
-                print(f"[队列] 用户 {user_id} 待处理任务已达上限 ({cnt})")
+                logger.info(f"[队列] 用户 {user_id} 待处理任务已达上限 ({cnt})")
                 return "", -1, False
         
         _task_counter += 1
@@ -2522,7 +2537,7 @@ async def enqueue_generation(
     if can_boost:
         asyncio.create_task(_boost_handle(task_id, params, task_seq))
         queue_pos = 0  # 不在队列里，直接处理中
-        print(f"[队列/boost] 直派 boost: id={task_id}, seq={task_seq}, "
+        logger.info(f"[队列/boost] 直派 boost: id={task_id}, seq={task_seq}, "
               f"size={width}x{height}, steps={steps}, prompt=\"{prompt_preview}...\"")
         return task_id, queue_pos, True
 
@@ -2536,7 +2551,7 @@ async def enqueue_generation(
         await _settle_generation_quota(task_id)
         return "", -1, True
     queue_pos = _image_queue.qsize()
-    print(f"[队列] 新任务入队: id={task_id}, seq={task_seq}, pos={queue_pos}, "
+    logger.info(f"[队列] 新任务入队: id={task_id}, seq={task_seq}, pos={queue_pos}, "
           f"size={width}x{height}, steps={steps}, prompt=\"{prompt_preview}...\"")
     return task_id, queue_pos, True
 
@@ -2556,6 +2571,7 @@ def calculate_anlas_cost(width: int, height: int, steps: int, model: str,
 # 安全 JSON 存储实例
 _artist_store = SafeJsonStore(BOT_DATA_DIR / "artist_strings.json")
 _oc_store = SafeJsonStore(BOT_DATA_DIR / "oc_data.json")
+# [DEAD-CODE 2026-08-17] 仅被同样无调用方的 _load/_save_role_tag_mapping 使用。
 _role_mapping_store = SafeJsonStore(BOT_DATA_DIR / "role_tag_mapping.json")
 _cr_store = SafeJsonStore(BOT_DATA_DIR / "cr_data.json")
 
@@ -2730,8 +2746,9 @@ class QueueManager:
                         "action": "timeout",
                         "message": "生成超时，已从队列移除"
                     })
-                except:
-                    pass
+                except Exception:
+                    # 客户端已断开是常态;裸 except 会连 KeyboardInterrupt/CancelledError 一起吞掉。
+                    logger.debug("队列超时通知发送失败(连接已断开)", exc_info=True)
                 self.connections.pop(timed_out.ticket, None)
             
             # 处理下一个
@@ -2743,8 +2760,9 @@ class QueueManager:
                         "ticket": next_item.ticket,
                         "message": "轮到你了，请开始生成"
                     })
-                except:
+                except Exception:
                     # 连接断开，移除并继续
+                    logger.debug("轮次通知发送失败(连接已断开)", exc_info=True)
                     await queue.mark_done(next_item.ticket)
                     self.connections.pop(next_item.ticket, None)
     
@@ -2765,8 +2783,8 @@ class QueueManager:
                         "position": position,
                         "queue_size": queue.size
                     })
-                except:
-                    pass
+                except Exception:
+                    logger.debug("队列位置推送失败(连接已断开)", exc_info=True)
 
 
 # 全局实例
@@ -2814,7 +2832,7 @@ async def lifespan(app: FastAPI):
     for missing_job_id in missing_results:
         await _cloud_jobs.invalidate_missing_result(missing_job_id)
     if orphaned_results:
-        print(f"[App] 已隔离 {len(orphaned_results)} 个无任务引用的生成结果")
+        logger.info(f"[App] 已隔离 {len(orphaned_results)} 个无任务引用的生成结果")
     recovered_workshop_jobs = await _recover_workshop_jobs()
     recovered_jobs = await _cloud_jobs.recover_interrupted()
     await _quota_ledger.initialize()
@@ -2831,19 +2849,19 @@ async def lifespan(app: FastAPI):
         durable_workshop_jobs
     )
     if workshop_captured or workshop_refunded:
-        print(
+        logger.info(
             "[App] Workshop 额度恢复: "
             f"captured={workshop_captured}, refunded={workshop_refunded}"
         )
     if recovered_jobs:
-        print(f"[App] 已将 {len(recovered_jobs)} 个崩溃遗留任务标记为 interrupted")
+        logger.info(f"[App] 已将 {len(recovered_jobs)} 个崩溃遗留任务标记为 interrupted")
     if recovered_workshop_jobs:
-        print(f"[App] 已恢复 {len(recovered_workshop_jobs)} 个 Workshop 崩溃遗留任务")
+        logger.info(f"[App] 已恢复 {len(recovered_workshop_jobs)} 个 Workshop 崩溃遗留任务")
 
     # 初始化图片生成队列
     await _ensure_queue()
     await start_novelai_workers()
-    print("[App] NovelAI 图片生成队列已初始化")
+    logger.info("[App] NovelAI 图片生成队列已初始化")
 
     # 启动后台任务
     task = asyncio.create_task(queue_processor())
@@ -2858,9 +2876,9 @@ async def lifespan(app: FastAPI):
     try:
         from agent_router.anima_provider import start_anima_patrol
         start_anima_patrol()
-        print("[App] anima cnb 池巡检已启动")
+        logger.info("[App] anima cnb 池巡检已启动")
     except Exception as e:
-        print(f"[App] anima 池巡检启动失败（非致命，anima 路径仍可用）: {e}")
+        logger.exception(f"[App] anima 池巡检启动失败（非致命，anima 路径仍可用）: {e}")
 
     yield
 
@@ -2888,7 +2906,7 @@ async def lifespan(app: FastAPI):
         from agent_router.anima_provider import cancel_anima_background
         await asyncio.wait_for(cancel_anima_background(), timeout=15)
     except Exception as e:
-        print(f"[App] anima 池关闭异常（继续）: {e}")
+        logger.exception(f"[App] anima 池关闭异常（继续）: {e}")
 
     # 关闭
     task.cancel()
@@ -2916,9 +2934,9 @@ async def anlas_updater():
             if anlas > 0:
                 _anlas_cache["anlas"] = anlas
                 _anlas_cache["updated_at"] = time.time()
-                print(f"[Anlas] 点数已更新: {anlas}")
+                logger.info(f"[Anlas] 点数已更新: {anlas}")
         except Exception as e:
-            print(f"[Anlas] 更新失败: {e}")
+            logger.exception(f"[Anlas] 更新失败: {e}")
         await asyncio.sleep(60)  # 每分钟更新一次
 
 
@@ -3128,7 +3146,7 @@ async def nai_status_updater():
             _nai_status_cache["last_error"] = ""
         except Exception as e:
             _nai_status_cache["last_error"] = f"{type(e).__name__}: {e}"
-            print(f"[NaiStatus] 抓取失败: {_nai_status_cache['last_error']}")
+            logger.exception(f"[NaiStatus] 抓取失败: {_nai_status_cache['last_error']}")
         await asyncio.sleep(60)
 
 
@@ -3155,7 +3173,7 @@ async def queue_processor():
                     _wiki_cache.pop(k, None)
                     _wiki_cache_time.pop(k, None)
         except Exception as e:
-            print(f"Queue processor error: {e}")
+            logger.exception(f"Queue processor error: {e}")
         await asyncio.sleep(0.5)
 
 
@@ -3503,7 +3521,7 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
         _generation_tasks[task_id]["status"] = "completed"
         _generation_tasks[task_id]["step"] = 1
         await _notify_task_update(task_id, "completed", 1, 1, result_b64)
-        print(f"[anima] 任务完成: id={task_id}")
+        logger.info(f"[anima] 任务完成: id={task_id}")
     except asyncio.CancelledError:
         raise
     except Exception as e:
@@ -3514,7 +3532,7 @@ async def _run_anima_task(task_id: str, req: DirectGenerateRequest):
             current["status"] = "failed"
             current["error"] = err
             await _notify_task_update(task_id, "failed", error=err)
-        print(f"[anima] 任务失败: id={task_id} err={err}")
+        logger.exception(f"[anima] 任务失败: id={task_id} err={err}")
     finally:
         task = _generation_tasks.get(task_id)
         if task and not task.get("_pending_decremented"):
@@ -3561,7 +3579,7 @@ async def direct_generate(req: DirectGenerateRequest):
             return DirectGenerateResponse(success=False, message="队列已满，请稍后再试")
         if created:
             asyncio.create_task(_run_anima_task(queued_task_id, req))
-        print(
+        logger.info(
             f"[anima] 任务已入队: id={queued_task_id} "
             f"size={req.width}x{req.height} seed={req.seed} "
             f"prompt=\"{(req.positivePrompt or '')[:50]}...\""
@@ -3736,7 +3754,7 @@ async def cancel_task(
     )
     await _settle_generation_quota(task_id)
     
-    print(f"[队列] 任务已取消: id={task_id}")
+    logger.info(f"[队列] 任务已取消: id={task_id}")
     
     return {"success": True, "message": "任务已取消"}
 
@@ -3933,7 +3951,7 @@ async def anima_restart_all_endpoint():
                 await pool.ensure_account_restarting(acc)
                 triggered.append(pool.get_account_key(acc))
             except Exception as e:
-                print(f"[anima] restart-all 子任务异常 {pool.get_account_key(acc)}: {e}")
+                logger.exception(f"[anima] restart-all 子任务异常 {pool.get_account_key(acc)}: {e}")
         return AnimaRestartResponse(
             ok=True,
             message=f"已开始重启 {len(triggered)} 个 anima 账户",
@@ -4052,7 +4070,7 @@ async def websocket_queue(websocket: WebSocket):
             if current_token_hash:
                 await queue_manager.broadcast_positions(current_token_hash)
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.exception(f"WebSocket error: {e}")
         if current_ticket:
             await queue_manager.leave(current_ticket)
 
@@ -4155,7 +4173,7 @@ class BotAuthManager:
         if expired:
             self._save_sessions()
         if data:
-            print(f"[BotAuth] 已加载 {len(self.sessions)} 个会话")
+            logger.info(f"[BotAuth] 已加载 {len(self.sessions)} 个会话")
     
     def _save_sessions(self):
         """保存会话到文件（同步版本，内部使用）"""
@@ -4292,8 +4310,8 @@ class BotAuthManager:
                     if error is not None:
                         message["error"] = error
                     await ws.send_json(message)
-                except:
-                    pass
+                except Exception:
+                    logger.debug("任务状态推送失败(连接已断开)", exc_info=True)
     
     def cleanup_expired(self):
         """清理过期数据"""
@@ -4512,9 +4530,9 @@ try:
     from agent_router.router import router as agent_router
 
     app.include_router(agent_router)
-    print("[agent_router] PydanticAI 路由组已挂载: /api/agent/*")
+    logger.info("[agent_router] PydanticAI 路由组已挂载: /api/agent/*")
 except Exception as _agent_router_error:
-    print(f"[agent_router] 加载失败，跳过挂载: {_agent_router_error}")
+    logger.exception(f"[agent_router] 加载失败，跳过挂载: {_agent_router_error}")
 
 
 # 授权码校验限速：只统计"失败"尝试的滑动窗口，防止对短授权码（6 位十六进制）的暴力爆破。
@@ -5449,7 +5467,7 @@ async def websocket_bot(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"Bot WebSocket error: {e}")
+        logger.exception(f"Bot WebSocket error: {e}")
     finally:
         await subscriptions.close()
         if bot_auth_manager.session_websockets.get(session_id) is sender:
@@ -5503,7 +5521,7 @@ async def fetch_novelai_anlas() -> int:
                             await token_manager.update_anlas(token, anlas)
                             total_anlas += anlas
                         else:
-                            print(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 查询失败: HTTP {resp.status}")
+                            logger.error(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 查询失败: HTTP {resp.status}")
                     last_err = None
                     break  # 成功，跳出重试循环
                 except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
@@ -5514,7 +5532,7 @@ async def fetch_novelai_anlas() -> int:
                     last_err = e
                     break  # 非网络错误不重试
             if last_err is not None:
-                print(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 获取点数失败: {last_err}")
+                logger.error(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 获取点数失败: {last_err}")
     
     return total_anlas
 
@@ -5595,9 +5613,9 @@ async def _record_web_stats(bot_user_id: str, params: dict):
                 )
 
             await db.commit()
-        print(f"[统计] Web生成统计已记录: user={bot_user_id}, anlas={anlas_cost}")
+        logger.info(f"[统计] Web生成统计已记录: user={bot_user_id}, anlas={anlas_cost}")
     except Exception as e:
-        print(f"[统计] 记录Web生成统计失败: {e}")
+        logger.exception(f"[统计] 记录Web生成统计失败: {e}")
 
 
 async def _record_generation_duration(bot_user_id: str, duration_seconds: float):
@@ -5614,7 +5632,7 @@ async def _record_generation_duration(bot_user_id: str, duration_seconds: float)
             )
             await db.commit()
     except Exception as e:
-        print(f"[统计] 记录生成耗时失败: {e}")
+        logger.exception(f"[统计] 记录生成耗时失败: {e}")
 
 
 async def _record_web_stats_custom(bot_user_id: str, points: int, reason: str):
@@ -5633,7 +5651,7 @@ async def _record_web_stats_custom(bot_user_id: str, points: int, reason: str):
             (now, stats_key, str(bot_user_id), None, points, f"web_{reason}"),
         )
         await db.commit()
-    print(f"[统计] Web自定义统计已记录: user={bot_user_id}, points={points}, reason={reason}")
+    logger.info(f"[统计] Web自定义统计已记录: user={bot_user_id}, points={points}, reason={reason}")
 
 
 _paid_operations = PaidOperationService(_record_web_stats_custom)
@@ -6178,6 +6196,8 @@ async def _fetch_period_user_data(start: "datetime", end: "datetime") -> list[di
     return user_data
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:按月拉取用户数据。统计端点改走 _STATS_DB 后无调用方。
 async def _fetch_month_user_data(year: int, month: int) -> list[dict]:
     """兼容旧接口：按自然月获取数据（内部转为时间范围查询）"""
     month_start = datetime(year, month, 1)
@@ -6768,11 +6788,15 @@ async def _save_oc_data(data: dict) -> bool:
     return await _oc_store.save(data)
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:角色标签映射读写包装(连同全局 _role_mapping_store)。映射改由 /api/data 静态文件提供后无调用方。
 async def _load_role_tag_mapping() -> dict:
     """加载角色标签映射（安全读取，带备份恢复）"""
     return await _role_mapping_store.load()
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:同上,无调用方。
 async def _save_role_tag_mapping(data: dict) -> bool:
     """保存角色标签映射（原子写入，带备份）"""
     return await _role_mapping_store.save(data)
@@ -6782,6 +6806,8 @@ async def _save_role_tag_mapping(data: dict) -> bool:
 # OC的中文名映射现在直接从 oc_data.json 读取，不再同步到 role_tag_mapping.json
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:OC 预览图重新打标。入口已下线,无调用方。
 def _regenerate_labeled_image(en_name: str, clean_path: str, zh_name: str = "", zh_aliases: list = None) -> str:
     """根据现有的纯净预览图重新生成带名字的预览图
     用于中文名变化但没有上传新预览图的情况
@@ -6796,7 +6822,7 @@ def _regenerate_labeled_image(en_name: str, clean_path: str, zh_name: str = "", 
         # 读取纯净版图片
         clean_full_path = BOT_DATA_DIR / clean_path
         if not clean_full_path.exists():
-            print(f"纯净预览图不存在: {clean_full_path}")
+            logger.info(f"纯净预览图不存在: {clean_full_path}")
             return None
         
         img = Image.open(clean_full_path)
@@ -6869,7 +6895,7 @@ def _regenerate_labeled_image(en_name: str, clean_path: str, zh_name: str = "", 
                 start_y += ch_h + spacing
                 
         except Exception as e:
-            print(f"竖向文字绘制失败: {e}")
+            logger.exception(f"竖向文字绘制失败: {e}")
         
         # 上采样2倍
         try:
@@ -6886,7 +6912,7 @@ def _regenerate_labeled_image(en_name: str, clean_path: str, zh_name: str = "", 
         return f"oc_images/{labeled_filename}"
         
     except Exception as e:
-        print(f"重新生成带名字预览图失败: {e}")
+        logger.exception(f"重新生成带名字预览图失败: {e}")
         return None
 
 
@@ -6916,7 +6942,7 @@ def _save_preview_image(en_name: str, base64_data: str, zh_name: str = "", zh_al
             f.write(image_data)
         return f"oc_images_clean/{clean_filename}"
     except Exception as e:
-        print(f"保存预览图失败: {e}")
+        logger.exception(f"保存预览图失败: {e}")
         return None
 
 
@@ -7091,9 +7117,9 @@ async def delete_oc(oc_name: str, request: Request, session_id: str = ""):
         if full_path.exists():
             try:
                 os.remove(full_path)
-                print(f"已删除纯净预览图: {full_path}")
+                logger.info(f"已删除纯净预览图: {full_path}")
             except Exception as e:
-                print(f"删除纯净预览图失败: {e}")
+                logger.exception(f"删除纯净预览图失败: {e}")
     
     # 删除 oc_images/ 目录下的labeled图
     labeled_path = images.get("labeled")
@@ -7102,9 +7128,9 @@ async def delete_oc(oc_name: str, request: Request, session_id: str = ""):
         if full_path.exists():
             try:
                 os.remove(full_path)
-                print(f"已删除labeled预览图: {full_path}")
+                logger.info(f"已删除labeled预览图: {full_path}")
             except Exception as e:
-                print(f"删除labeled预览图失败: {e}")
+                logger.exception(f"删除labeled预览图失败: {e}")
     
     # 从数据中删除
     del oc_data[oc_name]
@@ -7180,7 +7206,7 @@ async def tags_autocomplete(query: str, limit: int = 10):
     try:
         return await asyncio.to_thread(_fetch)
     except Exception as e:
-        print(f"Danbooru API error: {e}")
+        logger.exception(f"Danbooru API error: {e}")
         return []
 
 
@@ -7216,7 +7242,7 @@ async def tags_verify(req: dict):
     try:
         return await asyncio.to_thread(_fetch)
     except Exception as e:
-        print(f"Danbooru tags verify error: {e}")
+        logger.exception(f"Danbooru tags verify error: {e}")
         return {}
 
 
@@ -7308,7 +7334,7 @@ async def _ds_fallback_related(anchor_tags: list[str], limit: int) -> list[dict]
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         return _parse_ds_fallback_results(content)[:limit]
     except Exception as e:
-        print(f"[tags_related] DS fallback error: {e}")
+        logger.exception(f"[tags_related] DS fallback error: {e}")
         return []
 
 
@@ -7358,7 +7384,7 @@ async def tags_related(req: TagsRelatedRequest):
     except asyncio.TimeoutError:
         upstream_error = "timeout"
     except Exception as e:
-        print(f"[tags_related] fetch error: {e}")
+        logger.exception(f"[tags_related] fetch error: {e}")
         upstream_error = "fetch_failed"
 
     if norm_categories:
@@ -7457,7 +7483,7 @@ async def tags_search(req: TagsSearchRequest):
     except asyncio.TimeoutError:
         upstream_error = "timeout"
     except Exception as e:
-        print(f"[tags_search] fetch error: {e}")
+        logger.exception(f"[tags_search] fetch error: {e}")
         upstream_error = "fetch_failed"
 
     _search_cache[cache_key] = (now, results)
@@ -7594,7 +7620,7 @@ def _check_wiki_page_exists(tag: str) -> Tuple[bool, bool]:
         page = data[0] if isinstance(data, list) else data
         return True, isinstance(page, dict) and not page.get("is_deleted")
     except Exception as e:
-        print(f"Wiki exists check request error for {tag}: {e}")
+        logger.exception(f"Wiki exists check request error for {tag}: {e}")
         return False, False
 
 
@@ -7673,7 +7699,7 @@ def _fetch_posts_examples(session, tag: str, limit: int = 4) -> List[dict]:
             return []
         data = resp.json()
     except Exception as e:
-        print(f"Wiki posts fallback fetch error for {tag}: {e}")
+        logger.exception(f"Wiki posts fallback fetch error for {tag}: {e}")
         return []
 
     if not isinstance(data, list):
@@ -7785,7 +7811,7 @@ async def tags_wiki_preview(tag: str):
             try:
                 example = _fetch_wiki_example(session, ref_type, ref_id)
             except Exception as e:
-                print(f"Wiki example fetch error for {normalized} {ref_type}#{ref_id}: {e}")
+                logger.exception(f"Wiki example fetch error for {normalized} {ref_type}#{ref_id}: {e}")
             if example:
                 examples.append(example)
             if len(examples) >= 6:
@@ -7796,7 +7822,7 @@ async def tags_wiki_preview(tag: str):
             try:
                 examples = _fetch_posts_examples(session, normalized, limit=4)
             except Exception as e:
-                print(f"Wiki posts fallback error for {normalized}: {e}")
+                logger.exception(f"Wiki posts fallback error for {normalized}: {e}")
 
         return {
             "hasWiki": True,
@@ -7820,7 +7846,7 @@ async def tags_wiki_preview(tag: str):
             _wiki_preview_cache_time[normalized] = now
         return payload
     except Exception as e:
-        print(f"Wiki preview fetch error for {normalized}: {e}")
+        logger.exception(f"Wiki preview fetch error for {normalized}: {e}")
         return {"hasWiki": False}
 
 
@@ -7983,7 +8009,7 @@ async def tags_wiki(tags: str):
             
             return tag, chinese_names[:3]
         except Exception as e:
-            print(f"Wiki fetch error for {tag}: {e}")
+            logger.exception(f"Wiki fetch error for {tag}: {e}")
             return tag, []
     
     # 用线程池并发获取，避免阻塞事件循环
@@ -8063,7 +8089,7 @@ async def _read_paid_response(response: Any, *, max_bytes: int) -> bytes:
 
 
 async def _encode_vibe_upstream(token: str, req: EncodeVibeRequest) -> str:
-    print(
+    logger.info(
         f"[Vibe Encode] Model: {req.model}, Image length: {len(req.image)}, "
         f"Token: {hashlib.sha256(token.encode()).hexdigest()[:8]}"
     )
@@ -8214,9 +8240,9 @@ async def _try_cache_public_vibe_encoding(image_b64: str, information_extracted:
         async with aiofiles.open(vibe_file, "w", encoding="utf-8") as f:
             await f.write(json.dumps(data, ensure_ascii=False))
 
-        print(f"[Vibe Cache] 已缓存公共 vibe 编码: {vibe_file.stem} model={enc_key} IE={information_extracted}")
+        logger.info(f"[Vibe Cache] 已缓存公共 vibe 编码: {vibe_file.stem} model={enc_key} IE={information_extracted}")
     except Exception as e:
-        print(f"[Vibe Cache] 缓存失败: {e}")
+        logger.exception(f"[Vibe Cache] 缓存失败: {e}")
 
 
 # ==================== 公共 Vibe API ====================
@@ -8302,7 +8328,7 @@ async def get_public_vibes(request: Request, session_id: str = ""):
             }
             vibes.append(vibe_info)
         except Exception as e:
-            print(f"Error reading vibe file {vibe_file}: {e}")
+            logger.exception(f"Error reading vibe file {vibe_file}: {e}")
             continue
     
     # 按创建时间倒序排列
@@ -8645,7 +8671,7 @@ async def get_user_vibes(request: Request, session_id: str = ""):
                 "meta_hash": meta_hash,
             })
         except Exception as e:
-            print(f"[user-vibes] 读取 {vibe_file} 失败: {e}")
+            logger.exception(f"[user-vibes] 读取 {vibe_file} 失败: {e}")
             continue
 
     vibes.sort(key=lambda x: x.get("updatedAt", 0) or x.get("createdAt", 0), reverse=True)
@@ -9453,7 +9479,7 @@ def _save_artist_preview_image(name: str, base64_data: str) -> Optional[str]:
         
         return str(filepath)
     except Exception as e:
-        print(f"保存画师串预览图失败: {e}")
+        logger.exception(f"保存画师串预览图失败: {e}")
         return None
 
 
@@ -9557,8 +9583,9 @@ async def update_artist(artist_name: str, req: UpdateArtistRequest, request: Req
             try:
                 import os
                 os.remove(old_preview)
-            except:
-                pass
+            except Exception:
+                # 静默失败会攒下孤儿预览图,磁盘涨了也无从查起。
+                logger.warning("旧预览图删除失败: %s", old_preview, exc_info=True)
         
         preview_path = _save_artist_preview_image(artist_name, req.preview_base64)
         if preview_path:
@@ -9616,7 +9643,7 @@ async def delete_artist_api(artist_name: str, request: Request, session_id: str 
         try:
             os.remove(preview_image)
         except Exception as e:
-            print(f"删除预览图失败: {e}")
+            logger.exception(f"删除预览图失败: {e}")
     
     # 从数据中删除
     del artist_data[artist_name]
@@ -9813,7 +9840,7 @@ async def delete_cr_api(cr_id: str, request: Request, session_id: str = ""):
             try:
                 os.remove(image_path)
             except Exception as e:
-                print(f"删除CR图片失败: {e}")
+                logger.exception(f"删除CR图片失败: {e}")
     
     # 从数据中删除
     del cr_data[cr_id]
@@ -10055,7 +10082,7 @@ async def _translate_wiki_preview_summary(tag: str, body: str, fallback_summary:
         result = await _call_translate_en2zh_chat(messages, temperature=0.2, max_tokens=300)
         return _limit_chinese_preview_text(_extract_chat_completion_text(result), 140)
     except Exception as e:
-        print(f"Wiki summary translation error for {tag}: {e}")
+        logger.exception(f"Wiki summary translation error for {tag}: {e}")
         return ""
 
 
@@ -10322,6 +10349,8 @@ async def banana_repaint(req: BananaRepaintRequest):
     )
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:banana 重绘处理。/api/banana/* 三个路由已是「功能已移除」桩,无调用方。
 async def _process_banana_repaint(task_id: str):
     """处理香蕉重绘任务 - 已禁用"""
     task = _banana_tasks.get(task_id)
@@ -10548,6 +10577,8 @@ class WorkshopGenerateResponse(BaseModel):
     elapsed: Optional[float] = None
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:Genspark 渠道调用。该渠道已无入口,无调用方。
 async def _workshop_call_genspark(
     model_id: str,
     prompt: str,
@@ -10589,7 +10620,7 @@ async def _workshop_call_genspark(
         payload["images"] = images
 
     t0 = time.time()
-    print(f"[Workshop] Genspark 请求: model={genspark_model}, aspect_ratio={aspect_ratio}, images={len(images or [])}")
+    logger.info(f"[Workshop] Genspark 请求: model={genspark_model}, aspect_ratio={aspect_ratio}, images={len(images or [])}")
 
     try:
         response = await _safe_outbound_large_json.post_json(
@@ -10602,7 +10633,7 @@ async def _workshop_call_genspark(
         resp_text = response.body.decode("utf-8", errors="replace")
 
         if status_code != 200:
-            print(f"[Workshop] Genspark 请求失败: status={status_code}")
+            logger.error(f"[Workshop] Genspark 请求失败: status={status_code}")
             err_msg = f"服务异常: {status_code}"
             try:
                 err_data = json.loads(resp_text) if resp_text else {}
@@ -10641,7 +10672,7 @@ async def _workshop_call_genspark(
                             mime_type = m.group(1)
                 img_bytes = base64.b64decode(b64_data)
             except Exception as e:
-                print(f"[Workshop] 解析 base64 失败: {e}")
+                logger.exception(f"[Workshop] 解析 base64 失败: {e}")
 
         # 如果没有 base64，尝试下载 URL
         if not img_bytes and image_url_result:
@@ -10671,22 +10702,22 @@ async def _workshop_call_genspark(
                     if ct:
                         mime_type = ct
                 else:
-                    print(f"[Workshop] 下载图片失败: status={img_resp.status}")
+                    logger.error(f"[Workshop] 下载图片失败: status={img_resp.status}")
             except Exception as e:
-                print(f"[Workshop] 下载图片异常: {e}")
+                logger.exception(f"[Workshop] 下载图片异常: {e}")
 
         if not img_bytes:
             return {"success": False, "error": "未获取到图片数据"}
 
         elapsed = time.time() - t0
         img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-        print(f"[Workshop] 生成完成: model={genspark_model}, elapsed={elapsed:.1f}s, size={len(img_bytes)}")
+        logger.info(f"[Workshop] 生成完成: model={genspark_model}, elapsed={elapsed:.1f}s, size={len(img_bytes)}")
         return {"success": True, "image_base64": img_b64, "mime_type": mime_type, "elapsed": elapsed}
 
     except asyncio.TimeoutError:
         return {"success": False, "error": "生成超时"}
     except Exception as e:
-        print(f"[Workshop] 异常: {e}")
+        logger.exception(f"[Workshop] 异常: {e}")
         return {"success": False, "error": f"生成错误: {e}"}
 
 
@@ -10764,7 +10795,7 @@ async def _workshop_call_big_gpt(
                 continue
             ref_files.append((decoded, mime))
         except Exception as e:
-            print(f"[Workshop] 大GPT 参考图解码失败: {e}")
+            logger.exception(f"[Workshop] 大GPT 参考图解码失败: {e}")
 
     common_fields = {
         "model": BIG_GPT_MODEL,
@@ -10781,7 +10812,7 @@ async def _workshop_call_big_gpt(
     url = f"{base_url}/images/edits" if ref_files else f"{base_url}/images/generations"
 
     t0 = time.time()
-    print(f"[Workshop] 大GPT 请求: model={BIG_GPT_MODEL}, size={size}, aspect_ratio={aspect_ratio}, refs={len(ref_files)}, endpoint={url.rsplit('/', 1)[-1]}")
+    logger.info(f"[Workshop] 大GPT 请求: model={BIG_GPT_MODEL}, size={size}, aspect_ratio={aspect_ratio}, refs={len(ref_files)}, endpoint={url.rsplit('/', 1)[-1]}")
 
     raw_bytes = b""
     resp_status = 0
@@ -10817,14 +10848,14 @@ async def _workshop_call_big_gpt(
             retryable = resp_status in (400, 408) or 500 <= resp_status < 600
             if retryable and attempt < max_attempts:
                 err_preview = raw_bytes[:300].decode("utf-8", errors="replace")
-                print(f"[Workshop] 大GPT {resp_status} 错误第{attempt}次重试: {err_preview}")
+                logger.error(f"[Workshop] 大GPT {resp_status} 错误第{attempt}次重试: {err_preview}")
                 await asyncio.sleep(1.0)
                 continue
             break
 
         if resp_status != 200:
             err_preview = raw_bytes[:500].decode("utf-8", errors="replace")
-            print(f"[Workshop] 大GPT 请求失败: status={resp_status} body={err_preview}")
+            logger.error(f"[Workshop] 大GPT 请求失败: status={resp_status} body={err_preview}")
             return {"success": False, "error": f"服务异常: status={resp_status}"}
 
         try:
@@ -10847,13 +10878,13 @@ async def _workshop_call_big_gpt(
             return {"success": False, "error": f"图片解码失败: {e}"}
 
         elapsed = time.time() - t0
-        print(f"[Workshop] 大GPT 完成: size={size}, elapsed={elapsed:.1f}s, bytes={len(img_bytes)}")
+        logger.info(f"[Workshop] 大GPT 完成: size={size}, elapsed={elapsed:.1f}s, bytes={len(img_bytes)}")
         return {"success": True, "image_base64": b64_data, "mime_type": "image/png", "elapsed": elapsed}
 
     except asyncio.TimeoutError:
         return {"success": False, "error": "生成超时"}
     except Exception as e:
-        print(f"[Workshop] 大GPT 异常: {e}")
+        logger.exception(f"[Workshop] 大GPT 异常: {e}")
         return {"success": False, "error": f"生成错误: {e}"}
 
 
@@ -10875,6 +10906,8 @@ def _record_workshop_elapsed(model_id: str, elapsed: float):
         _WORKSHOP_MODEL_HISTORY[model_id] = history[-_WORKSHOP_HISTORY_MAX:]
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:workshop 模型均值统计。无调用方。
 def _get_workshop_model_avg(model_id: str) -> float | None:
     """获取模型平均耗时，无记录返回 None"""
     history = _WORKSHOP_MODEL_HISTORY.get(model_id)
@@ -10918,7 +10951,7 @@ async def workshop_quota(session_id: str = ""):
     except ResourceNotFoundError:
         return {"daily_limit": 0, "daily_balance": 0, "extra_balance": 0, "total_available": 0}
     except Exception as e:
-        print(f"[Workshop] 额度查询失败: {e}")
+        logger.exception(f"[Workshop] 额度查询失败: {e}")
         return {"daily_limit": 0, "daily_balance": 0, "extra_balance": 0, "total_available": 0}
 
 
@@ -10963,7 +10996,7 @@ async def workshop_generate(req: WorkshopGenerateRequest):
             error=f"额度不足（需要{quota_cost}次，剩余{available}次），请明日再试",
         )
     except Exception as e:
-        print(f"[Workshop] 额度检查失败: {e}")
+        logger.exception(f"[Workshop] 额度检查失败: {e}")
         return WorkshopGenerateResponse(success=False, error="额度检查失败，请稍后重试")
 
     try:
@@ -11057,9 +11090,9 @@ async def _refund_workshop_quota(task_id: str) -> None:
     try:
         await _workshop_quota.refund(task_id)
     except CloudBackendError as exc:
-        print(f"[Workshop] 额度退款待恢复: task={task_id} code={exc.code}")
+        logger.exception(f"[Workshop] 额度退款待恢复: task={task_id} code={exc.code}")
     except Exception as exc:
-        print(f"[Workshop] 额度退款暂不可用: task={task_id} error={type(exc).__name__}")
+        logger.exception(f"[Workshop] 额度退款暂不可用: task={task_id} error={type(exc).__name__}")
 
 
 async def _workshop_process_task(
@@ -11117,7 +11150,7 @@ async def _workshop_process_task(
                         )
                     await db.commit()
             except Exception as e:
-                print(f"[Workshop] 调用统计记录失败: {e}")
+                logger.exception(f"[Workshop] 调用统计记录失败: {e}")
 
             if elapsed is not None:
                 _record_workshop_elapsed(req.model, elapsed)
@@ -11140,7 +11173,7 @@ async def _workshop_process_task(
             try:
                 await _workshop_quota.capture(task_id)
             except CloudBackendError as exc:
-                print(f"[Workshop] 成功任务额度待恢复: task={task_id} code={exc.code}")
+                logger.exception(f"[Workshop] 成功任务额度待恢复: task={task_id} code={exc.code}")
             _mirror_workshop_job(job, session_id=req.session_id)
             return
         if job is not None and not job.terminal:
@@ -11160,7 +11193,7 @@ async def _workshop_process_task(
             await _refund_workshop_quota(task_id)
         raise
     except Exception as e:
-        print(f"[Workshop] 任务异常: {e}")
+        logger.exception(f"[Workshop] 任务异常: {e}")
         job = await _cloud_jobs.get(task_id)
         if job is not None and job.status is JobStatus.SUCCEEDED:
             _mirror_workshop_job(job, session_id=req.session_id)
@@ -11292,9 +11325,12 @@ async def workshop_serve_image(filename: str, capability: str = "", job_id: str 
 
 # ==================== WD Tagger 反推接口 ====================
 
+# [DEAD-CODE 2026-08-17] 只有 shutdown 会清理它,没有任何路径会创建它(见 _get_wd_tagger_session)。
 _wd_tagger_session: aiohttp.ClientSession | None = None
 
 
+# [DEAD-CODE 2026-08-17] 全仓无调用方(已 grep 核实)。保留而非删除:待确认无外部/动态引用后统一清理。
+# 用途:WD Tagger 专用 session(连同全局 _wd_tagger_session 及其 shutdown 清理)。tagger 改用共享 client 后无调用方。
 def _get_wd_tagger_session() -> aiohttp.ClientSession:
     """获取或创建 WD Tagger 专用的全局 aiohttp Session"""
     global _wd_tagger_session
@@ -11400,5 +11436,5 @@ async def wd_tagger_predict(req: WDTaggerRequest):
     except asyncio.TimeoutError:
         return {"success": False, "error": "Tagger 请求超时"}
     except Exception as e:
-        print(f"[Tagger] Error: {e}")
+        logger.exception(f"[Tagger] Error: {e}")
         return {"success": False, "error": str(e)}
