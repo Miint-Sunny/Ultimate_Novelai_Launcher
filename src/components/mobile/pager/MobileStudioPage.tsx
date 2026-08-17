@@ -1,19 +1,51 @@
 import React, { useEffect, useState } from 'react';
-import { Image as ImageIcon, ImagePlus, Maximize2, Paintbrush, Wrench } from 'lucide-react';
+import { Image as ImageIcon, ImagePlus, Maximize2, Paintbrush, Video, Wrench, type LucideIcon } from 'lucide-react';
 import { useGeneration } from '../../../contexts/GenerationContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { registerBackHandler } from '../MobileLayout';
 import { MobileInpaintOverlay } from '../MobileInpaintOverlay';
 import { MobileUpscaleSheet } from '../MobileUpscaleSheet';
 import { useMobileInpaintBridge } from '../gallery/useMobileInpaintBridge';
 import { useMobileUpscaleCompletion } from '../gallery/useMobileUpscaleCompletion';
+import { useMobileGenModuleContext } from '../generate/useMobileGenModuleContext';
+import {
+  STUDIO_BACKEND_CAPABILITIES,
+  studioModuleDef,
+  visibleStudioModuleKeys,
+  type StudioModuleContext,
+  type StudioModuleKey,
+} from './studioModules';
 
 interface MobileStudioPageProps {
   onOverlayStateChange?: (open: boolean) => void;
 }
 
-// 创作室页(页 2,最小可用版,P3):
-// 来源图区(当前图 + 最近生成缩略条 + 导入入口)+ 操作卡两张(重绘/放大),
-// 覆盖物复用现有 MobileInpaintOverlay / MobileUpscaleSheet,不重写业务。
+// 注册表图标 token → lucide 组件(注册表只声明字符串 token,实际渲染在此映射,
+// 同 tag-manager/registry.ts 的 ICON_MAP 范式)
+const STUDIO_CARD_ICONS: Record<string, LucideIcon> = {
+  paintbrush: Paintbrush,
+  'maximize-2': Maximize2,
+  video: Video,
+};
+
+// 当前工作模型:读生图页持久化状态 mobile_generate_state(upscaleService.ts 已有
+// 同键直读先例),默认值与 useMobileGenerationParams 一致。注册表谓词只按模型家族
+// 分档,挂载时取值即可;模型选择的跨页实时同步非本期目标。
+const readWorkspaceModel = (): string => {
+  try {
+    const saved = localStorage.getItem('mobile_generate_state');
+    const parsed = saved ? JSON.parse(saved) : null;
+    return typeof parsed?.model === 'string' ? parsed.model : 'v4.5-full';
+  } catch {
+    return 'v4.5-full';
+  }
+};
+
+// 创作室页(页 2):
+// 来源图区(当前图 + 最近生成缩略条 + 导入入口)+ 注册表驱动的操作卡(P6:
+// studioModules 谓词 gating,重绘/放大两张已上线,图生视频为预注册 slot,
+// 后端能力未就绪整卡不渲染),覆盖物复用现有 MobileInpaintOverlay /
+// MobileUpscaleSheet,不重写业务。
 // 手势:本页出让水平竞技场给壳(缩略条用 grid 平铺,不做横滑);
 // 图库工具条的「重绘/放大」经壳跳本页后由 'studio-open-tool' 事件触发对应操作卡。
 export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlayStateChange }) => {
@@ -53,6 +85,34 @@ export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlaySta
 
   const hasImage = !!imageUrl && !isGenerating && !isInpaintMode;
 
+  // P6 注册表谓词输入:serverMode/登录态走与生图页同一组装 hook;
+  // 后端能力用常量占位(锚定《后端评审清单》#2,后端就绪时换成真实能力声明来源)
+  const { isAuthenticated } = useAuth();
+  const [model] = useState(readWorkspaceModel);
+  const genModuleContext = useMobileGenModuleContext(model, isAuthenticated);
+  const studioContext: StudioModuleContext = {
+    ...genModuleContext,
+    backendCapabilities: STUDIO_BACKEND_CAPABILITIES,
+  };
+
+  // 各卡行为:注册表只声明纯数据,onClick/title 留在页内(保持 P3 现状语义)
+  const cardHandlers: Record<StudioModuleKey, () => void> = {
+    inpaint: openInpaintMode,
+    upscale: () => setIsUpscaleOpen(true),
+    // 图生视频:预注册 slot,谓词当前恒 false 不会渲染;后端就绪后在此接参数面板
+    img2video: () => {},
+  };
+  const cardEnabledTitles: Record<StudioModuleKey, string> = {
+    inpaint: '对当前图局部重绘',
+    upscale: '放大当前图',
+    img2video: '当前图生成视频',
+  };
+  const cardIconColors: Record<StudioModuleKey, string> = {
+    inpaint: 'text-blue-400',
+    upscale: 'text-green-400',
+    img2video: 'text-purple-400',
+  };
+
   // 覆盖物打开期间上报壳(壳手势整体失效)
   useEffect(() => {
     onOverlayStateChange?.(isInpaintMode || isUpscaleOpen);
@@ -72,6 +132,8 @@ export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlaySta
   }), [isInpaintMode, isUpscaleOpen, handleCloseInpaint]);
 
   // 壳导航到本页后触发对应操作卡(图库工具条「重绘/放大」)
+  // 事件契约不变:tool ∈ 'inpaint' | 'upscale';
+  // 预留:图生视频就绪后图库操作轨长出「视频」入口,tool: 'img2video' 分支在此接入(方案 §5.4)
   useEffect(() => {
     const handler = (event: Event) => {
       const tool = (event as CustomEvent).detail?.tool;
@@ -141,37 +203,30 @@ export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlaySta
           )}
         </section>
 
-        {/* 操作卡 */}
+        {/* 操作卡:P6 注册表驱动,唯一可见性谓词不满足 = 整卡不渲染;
+            「无可用当前图」置灰是卡按钮运行时态,不进谓词 */}
         <section className="grid grid-cols-2 gap-3">
-          <button
-            onClick={openInpaintMode}
-            disabled={!hasImage}
-            title={hasImage ? '对当前图局部重绘' : '暂无可用当前图'}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-              hasImage
-                ? 'bg-nai-panel border-gray-700 active:bg-gray-800 text-white'
-                : 'bg-nai-panel border-gray-800 text-gray-600 cursor-not-allowed'
-            }`}
-          >
-            <Paintbrush className={`w-6 h-6 ${hasImage ? 'text-blue-400' : 'text-gray-600'}`} />
-            <span className="text-sm font-medium">重绘</span>
-            <span className="text-[11px] text-gray-500">局部重绘 / 裁切 / 扩图</span>
-          </button>
-
-          <button
-            onClick={() => setIsUpscaleOpen(true)}
-            disabled={!hasImage}
-            title={hasImage ? '放大当前图' : '暂无可用当前图'}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-              hasImage
-                ? 'bg-nai-panel border-gray-700 active:bg-gray-800 text-white'
-                : 'bg-nai-panel border-gray-800 text-gray-600 cursor-not-allowed'
-            }`}
-          >
-            <Maximize2 className={`w-6 h-6 ${hasImage ? 'text-green-400' : 'text-gray-600'}`} />
-            <span className="text-sm font-medium">放大</span>
-            <span className="text-[11px] text-gray-500">超分辨率 2x / 4x</span>
-          </button>
+          {visibleStudioModuleKeys(studioContext).map((key) => {
+            const def = studioModuleDef(key);
+            const Icon = STUDIO_CARD_ICONS[def.icon] ?? Wrench;
+            return (
+              <button
+                key={key}
+                onClick={cardHandlers[key]}
+                disabled={!hasImage}
+                title={hasImage ? cardEnabledTitles[key] : '暂无可用当前图'}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
+                  hasImage
+                    ? 'bg-nai-panel border-gray-700 active:bg-gray-800 text-white'
+                    : 'bg-nai-panel border-gray-800 text-gray-600 cursor-not-allowed'
+                }`}
+              >
+                <Icon className={`w-6 h-6 ${hasImage ? cardIconColors[key] : 'text-gray-600'}`} />
+                <span className="text-sm font-medium">{def.title}</span>
+                <span className="text-[11px] text-gray-500">{def.subtitle}</span>
+              </button>
+            );
+          })}
         </section>
       </div>
 
