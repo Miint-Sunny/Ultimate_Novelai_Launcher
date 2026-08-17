@@ -45,16 +45,16 @@ function PairingScreen() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
-      <section className="w-full max-w-md rounded-2xl border border-violet-400/30 bg-slate-900 p-6 shadow-xl">
+    <main className="flex min-h-screen items-center justify-center bg-nai-dark p-6 text-gray-100">
+      <section className="w-full max-w-md rounded-2xl border border-gray-700 bg-nai-panel p-6 shadow-xl">
         <h1 className="text-lg font-semibold">连接本地后端</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-300">
+        <p className="mt-3 text-sm leading-6 text-gray-300">
           输入 sidecar 终端显示的 6 位配对码。配对码 120 秒内有效且只能使用一次。
         </p>
         <input
           aria-label="Sidecar 配对码"
           autoComplete="one-time-code"
-          className="mt-5 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-center font-mono text-2xl tracking-[0.5em] outline-none focus:border-violet-400"
+          className="mt-5 w-full rounded-lg border border-gray-700 bg-nai-dark px-4 py-3 text-center font-mono text-2xl tracking-[0.5em] outline-none focus:border-nai-accent"
           inputMode="numeric"
           maxLength={6}
           onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -65,7 +65,7 @@ function PairingScreen() {
         />
         {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         <button
-          className="mt-5 w-full rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="mt-5 w-full rounded-lg bg-nai-accent px-4 py-2 text-sm font-bold text-black hover:bg-nai-accent-hover disabled:opacity-50"
           disabled={submitting}
           onClick={() => void pair()}
           type="button"
@@ -88,12 +88,12 @@ async function bootstrap() {
     }
     const message = error instanceof Error ? error.message : String(error)
     root.render(
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
-        <section className="max-w-lg rounded-2xl border border-red-400/30 bg-slate-900 p-6 shadow-xl">
+      <main className="flex min-h-screen items-center justify-center bg-nai-dark p-6 text-gray-100">
+        <section className="max-w-lg rounded-2xl border border-red-400/30 bg-nai-panel p-6 shadow-xl">
           <h1 className="text-lg font-semibold">本地后端未就绪</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300">{message}</p>
+          <p className="mt-3 text-sm leading-6 text-gray-300">{message}</p>
           <button
-            className="mt-5 rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white"
+            className="mt-5 rounded-lg bg-nai-accent px-4 py-2 text-sm font-bold text-black hover:bg-nai-accent-hover"
             onClick={() => window.location.reload()}
             type="button"
           >

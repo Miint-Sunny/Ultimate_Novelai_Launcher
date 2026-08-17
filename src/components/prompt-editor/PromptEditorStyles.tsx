@@ -28,7 +28,7 @@ export function PromptEditorStyles() {
       
       .prompt-editor-wrapper .ProseMirror p.is-editor-empty:first-child::before {
         content: attr(data-placeholder);
-        color: #6b7280;
+        color: #707274;
         pointer-events: none;
         float: left;
         height: 0;
@@ -38,7 +38,7 @@ export function PromptEditorStyles() {
       
       .prompt-editor-wrapper .ProseMirror.is-empty::before {
         content: attr(data-placeholder);
-        color: #6b7280;
+        color: #707274;
         pointer-events: none;
         float: left;
         height: 0;

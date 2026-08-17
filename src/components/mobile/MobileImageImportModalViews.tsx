@@ -212,7 +212,7 @@ export function MetadataImportView({
             {metadata.steps && <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300">Steps: {metadata.steps}</span>}
             {metadata.scale && <span className="px-2 py-1 bg-gray-800 rounded text-xs text-gray-300">CFG: {metadata.scale}</span>}
             {metadata.characterPrompts && metadata.characterPrompts.length > 0 && <span className="px-2 py-1 bg-nai-accent/20 rounded text-xs text-nai-accent">{metadata.characterPrompts.length} 角色</span>}
-            {metadata.vibes && metadata.vibes.length > 0 && <span className="px-2 py-1 bg-purple-500/20 rounded text-xs text-purple-400">{metadata.vibes.length} Vibe</span>}
+            {metadata.vibes && metadata.vibes.length > 0 && <span className="px-2 py-1 bg-cyan-500/15 rounded text-xs text-cyan-300">{metadata.vibes.length} Vibe</span>}
           </div>
 
           {metadata.prompt && (

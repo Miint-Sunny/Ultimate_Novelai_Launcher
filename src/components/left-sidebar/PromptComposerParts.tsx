@@ -59,7 +59,7 @@ export function PromptToolbar({
 
           <div className="flex items-center gap-3">
             <button className="relative group p-1.5" title="魔法" onClick={onOpenInspiration}>
-              <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-lg p-1 text-white shadow-sm ring-1 ring-white/20 group-hover:ring-white/50 group-hover:scale-110 transition-transform">
+              <div className="bg-gradient-to-r from-nai-accent to-amber-300 rounded-lg p-1 text-black shadow-sm ring-1 ring-white/20 group-hover:ring-white/50 group-hover:scale-110 transition-transform">
                 <Sparkles className="w-4 h-4" />
               </div>
             </button>

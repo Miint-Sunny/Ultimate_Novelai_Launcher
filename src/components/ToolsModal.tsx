@@ -178,10 +178,10 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {charMatches.map((ch, i) => (
-                    <span key={i} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs ${ch.isOC ? 'bg-purple-500/15 text-purple-400' : 'bg-nai-accent/15 text-nai-accent'}`}>
-                      {ch.isOC && <span className="text-[9px] font-bold bg-purple-500/30 rounded px-1 py-0.5 mr-0.5">OC</span>}
+                    <span key={i} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs ${ch.isOC ? 'bg-cyan-500/15 text-cyan-300' : 'bg-nai-accent/15 text-nai-accent'}`}>
+                      {ch.isOC && <span className="text-[9px] font-bold bg-cyan-500/30 rounded px-1 py-0.5 mr-0.5">OC</span>}
                       <span className="font-medium">{ch.zhName}</span>
-                      <span className={`text-[10px] ${ch.isOC ? 'text-purple-400/60' : 'text-nai-accent/60'}`}>[{ch.enTag}]</span>
+                      <span className={`text-[10px] ${ch.isOC ? 'text-cyan-300/60' : 'text-nai-accent/60'}`}>[{ch.enTag}]</span>
                     </span>
                   ))}
                 </div>

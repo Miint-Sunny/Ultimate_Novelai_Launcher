@@ -45,19 +45,19 @@ interface SettlementReport {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  '免费': '#6b7280',
+  '免费': '#707274',
   '一阶': '#3b82f6',
-  '二阶': '#8b5cf6',
+  '二阶': '#22d3ee',
   '三阶': '#ef4444',
-  '均摊': '#6366f1',
+  '均摊': '#38bdf8',
 };
 
 const TIER_BG: Record<string, string> = {
   '免费': 'bg-gray-600/20',
   '一阶': 'bg-blue-600/20',
-  '二阶': 'bg-purple-600/20',
+  '二阶': 'bg-cyan-600/20',
   '三阶': 'bg-red-600/20',
-  '均摊': 'bg-indigo-600/20',
+  '均摊': 'bg-sky-600/20',
 };
 
 const STATUS_CONFIG = {
@@ -161,7 +161,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
 
   const me = report?.current_user;
   const tierName = me?.tier_name ?? '免费';
-  const tierColor = TIER_COLORS[tierName] || '#6b7280';
+  const tierColor = TIER_COLORS[tierName] || '#707274';
   const rawStatus = report?.payment_status ?? 'unpaid';
   const status = rawStatus in STATUS_CONFIG ? rawStatus as keyof typeof STATUS_CONFIG : 'paid';
   const statusCfg = STATUS_CONFIG[status];

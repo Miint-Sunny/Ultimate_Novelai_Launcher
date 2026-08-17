@@ -36,7 +36,7 @@ export function PromptToolButton({
   title,
 }: PromptToolButtonProps) {
   const toneClass = {
-    purple: 'bg-purple-500/15 text-purple-400 active:bg-purple-500/25',
+    purple: 'bg-nai-accent/15 text-nai-accent active:bg-nai-accent/25',
     amber: 'bg-amber-500/15 text-amber-400 active:bg-amber-500/25',
     pink: 'bg-pink-500/15 text-pink-400 active:bg-pink-500/25',
     cyan: 'bg-cyan-500/15 text-cyan-400 active:bg-cyan-500/25',

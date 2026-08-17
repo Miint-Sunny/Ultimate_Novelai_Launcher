@@ -182,7 +182,7 @@ export function MobileInspirationSheet({ isOpen, onClose, onSelect, library }: M
                       >
                         {library.randomCodexItem.isR18 ? 'R18' : '全年龄'}
                       </span>
-                      <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs border border-indigo-500/30 whitespace-nowrap shrink-0">
+                      <span className="px-2 py-0.5 bg-nai-accent/10 text-nai-accent rounded text-xs border border-nai-accent/40 whitespace-nowrap shrink-0">
                         {library.randomCodexItem.category}
                       </span>
                     </div>
@@ -209,7 +209,7 @@ export function MobileInspirationSheet({ isOpen, onClose, onSelect, library }: M
                       </button>
                       <button
                         onClick={() => onSelect(library.randomCodexItem?.content || '')}
-                        className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        className="flex-1 py-3 bg-nai-accent hover:bg-nai-accent-hover text-black font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                       >
                         <Plus className="w-4 h-4" />
                         添加
@@ -224,7 +224,7 @@ export function MobileInspirationSheet({ isOpen, onClose, onSelect, library }: M
                     <button
                       onClick={library.handleRandomCodex}
                       disabled={library.filteredCodexData.length === 0}
-                      className="px-8 py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all flex items-center gap-2 disabled:opacity-50"
+                      className="px-8 py-3 bg-nai-accent hover:bg-nai-accent-hover text-black font-bold rounded-xl active:scale-[0.98] transition-all flex items-center gap-2 disabled:opacity-50"
                     >
                       <Dices className="w-5 h-5" />
                       开始随机

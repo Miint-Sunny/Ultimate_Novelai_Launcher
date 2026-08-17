@@ -37,10 +37,10 @@ export function MobileVibeReferencesCard({ library, onOpenManager }: MobileVibeR
               className={`w-5 h-5 text-gray-400 transition-transform ${isVibeExpanded ? '' : '-rotate-90'}`}
             />
           )}
-          <Palette className="w-5 h-5 text-purple-400" />
+          <Palette className="w-5 h-5 text-cyan-300" />
           <span className="text-sm font-bold text-gray-200">Vibes</span>
           {activeVibes.length > 0 && (
-            <span className="text-xs text-purple-400 bg-purple-500/20 px-1.5 py-0.5 rounded">
+            <span className="text-xs text-cyan-300 bg-cyan-500/15 px-1.5 py-0.5 rounded">
               {activeVibes.length}
             </span>
           )}
@@ -50,7 +50,7 @@ export function MobileVibeReferencesCard({ library, onOpenManager }: MobileVibeR
             event.stopPropagation();
             onOpenManager();
           }}
-          className="px-3 py-2 bg-purple-500/20 text-purple-400 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5"
+          className="px-3 py-2 bg-cyan-500/15 text-cyan-300 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5"
         >
           <Plus className="w-4 h-4" />
           添加
@@ -71,7 +71,7 @@ export function MobileVibeReferencesCard({ library, onOpenManager }: MobileVibeR
               >
                 {isLoading ? (
                   <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0">
-                    <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+                    <Loader2 className="w-6 h-6 text-cyan-300 animate-spin" />
                   </div>
                 ) : vibe.preview ? (
                   <img
@@ -101,7 +101,7 @@ export function MobileVibeReferencesCard({ library, onOpenManager }: MobileVibeR
                       step="0.05"
                       value={vibe.referenceStrength}
                       onChange={(event) => updateActiveVibe(vibe.id, 'referenceStrength', parseFloat(event.target.value))}
-                      className="flex-1 h-1.5 accent-purple-500"
+                      className="flex-1 h-1.5 accent-cyan-500"
                     />
                     <span className="text-xs text-gray-400 w-8 text-right">{vibe.referenceStrength.toFixed(2)}</span>
                   </div>

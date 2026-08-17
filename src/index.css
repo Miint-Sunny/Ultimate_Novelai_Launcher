@@ -3,7 +3,30 @@
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  /* ============ 设计 token:色板变量层 ============
+     石墨中性基底:与旧海军蓝色板逐档等亮(OKLab L 不变,仅去蓝紫色偏),
+     所有对比度关系与旧板一致。RGB 三元组格式供 Tailwind 透明度修饰符合成。 */
+  --nai-dark: 7 8 9;
+  --nai-bg: 14 15 17;
+  --nai-panel: 21 23 25;
+  --nai-input: 31 33 36;
+  --nai-text-dim: 140 142 143;
+  --nai-accent: 252 237 164;
+  --nai-accent-hover: 235 213 118;
+  /* 中性灰阶(取代 Tailwind 默认蓝调 gray) */
+  --gray-50: 250 250 250;
+  --gray-100: 244 244 244;
+  --gray-200: 230 231 232;
+  --gray-300: 212 213 214;
+  --gray-400: 161 163 165;
+  --gray-500: 112 114 116;
+  --gray-600: 82 84 87;
+  --gray-700: 62 65 67;
+  --gray-800: 38 41 43;
+  --gray-900: 22 25 27;
+  --gray-950: 6 7 9;
+
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -16,18 +39,18 @@
 
   color-scheme: dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #0b0f19;
+  background-color: rgb(var(--nai-bg));
 }
 
 /* 原生 <select> 展开列表在 Windows Edge/Chrome 下常忽略 color-scheme、渲染成白底，
    与暗色主题违和；显式给深色背景匹配 nai-input / nai-panel。 */
 select option {
-  background-color: #1c2030; /* nai-input */
+  background-color: rgb(var(--nai-input));
   color: rgba(255, 255, 255, 0.92);
 }
 select option:checked,
 select option:hover {
-  background-color: #2a2e3b;
+  background-color: #2d2f31;
 }
 
 /* Tag 专用字体样式（模仿 NovelAI 官方） */
@@ -71,12 +94,12 @@ select option:hover {
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #2a2e3b;
+    background: #2d2f31;
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #3a3f50;
+    background: #3e4043;
   }
 
   /* 保留类名以备特定需要覆盖的情况，虽然上面已经全局应用 */
@@ -90,12 +113,12 @@ select option:hover {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #2a2e3b;
+    background: #2d2f31;
     border-radius: 3px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #3a3f50;
+    background: #3e4043;
   }
 
   /* 隐藏滚动条 */
@@ -128,8 +151,8 @@ input[type="range"]::-webkit-slider-runnable-track {
     to right,
     #fceda4 0,
     #fceda4 var(--range-pct, 50%),
-    #2a2e3b var(--range-pct, 50%),
-    #2a2e3b 100%
+    #2d2f31 var(--range-pct, 50%),
+    #2d2f31 100%
   );
   border-radius: 9999px;
 }
@@ -137,7 +160,7 @@ input[type="range"]::-webkit-slider-runnable-track {
 /* Firefox 轨道 */
 input[type="range"]::-moz-range-track {
   height: 4px;
-  background: #2a2e3b;
+  background: #2d2f31;
   border-radius: 9999px;
   border: none;
 }
@@ -672,7 +695,7 @@ body,
 @keyframes img2img-flash {
   0% {
     box-shadow: 0 0 0 0 rgba(235, 213, 118, 0);
-    border-color: rgba(107, 114, 128, 0.5);
+    border-color: rgba(112, 114, 116, 0.5);
   }
 
   15% {
@@ -687,7 +710,7 @@ body,
 
   100% {
     box-shadow: 0 0 0 0 rgba(235, 213, 118, 0);
-    border-color: rgba(107, 114, 128, 0.5);
+    border-color: rgba(112, 114, 116, 0.5);
   }
 }
 
@@ -896,11 +919,11 @@ body,
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .aa-input-field::placeholder {
-  color: #8a8d98;
+  color: #8c8e8f;
   opacity: 1;
 }
 .aa-input-field:disabled::placeholder {
-  color: #5a5e6e;
+  color: #5d5f61;
 }
 
 /* 思考态光点脉动（3 个错开 0.16s） */

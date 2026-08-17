@@ -358,7 +358,7 @@ const KktMasonryGrid: React.FC<KktMasonryGridProps> = ({
                 <div
                   key={item.name}
                   style={{ width, height: rowHeight, flexShrink: 0 }}
-                  className="group relative rounded-xl overflow-hidden bg-gray-800 cursor-pointer border border-gray-800 hover:border-indigo-500 transition-all hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+                  className="group relative rounded-xl overflow-hidden bg-gray-800 cursor-pointer border border-gray-800 hover:border-nai-accent transition-all hover:shadow-[0_0_10px_rgba(252,237,164,0.3)]"
                   onClick={() => onItemClick(item)}
                 >
                   {imageUrl ? (
@@ -382,7 +382,7 @@ const KktMasonryGrid: React.FC<KktMasonryGridProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+                    <div className="w-full h-full bg-gradient-to-br from-nai-accent/10 to-nai-accent/5 flex items-center justify-center">
                       <ImageIcon className="w-12 h-12 text-gray-600" />
                     </div>
                   )}
@@ -399,9 +399,9 @@ const KktMasonryGrid: React.FC<KktMasonryGridProps> = ({
                     </div>
                     <div className="flex gap-1.5">
                       <button
-                        className={`flex-1 py-1.5 text-white text-[10px] font-bold rounded flex items-center justify-center gap-1 ${downloadingId === item.name
-                          ? 'bg-indigo-700 cursor-wait'
-                          : 'bg-indigo-600 hover:bg-indigo-500'
+                        className={`flex-1 py-1.5 text-black text-[10px] font-bold rounded flex items-center justify-center gap-1 ${downloadingId === item.name
+                          ? 'bg-nai-accent/70 cursor-wait'
+                          : 'bg-nai-accent hover:bg-nai-accent-hover'
                           }`}
                         onClick={e => { e.stopPropagation(); if (downloadingId !== item.name) { onImportImage ? onImportImage(item) : onSelectPrompt(item.content); } }}
                         disabled={downloadingId === item.name}
@@ -1004,8 +1004,8 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
             </button>
 
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-indigo-500/20 rounded-xl">
-                <Book className="w-8 h-8 text-indigo-400" />
+              <div className="p-3 bg-nai-accent/10 rounded-xl">
+                <Book className="w-8 h-8 text-nai-accent" />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">关于所长法典</h3>
@@ -1019,7 +1019,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               </p>
               <div className="bg-black/30 rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <Search className="w-4 h-4 text-indigo-400" />
+                  <Search className="w-4 h-4 text-nai-accent" />
                   <span>支持模糊搜索与标签筛选</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1059,8 +1059,8 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
             </button>
 
             <div className="flex items-center gap-3 mb-4 relative shrink-0">
-              <div className="p-3 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl">
-                <Dice5 className="w-8 h-8 text-indigo-400" />
+              <div className="p-3 bg-gradient-to-br from-nai-accent/10 to-nai-accent/5 rounded-xl">
+                <Dice5 className="w-8 h-8 text-nai-accent" />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">随机灵感</h3>
@@ -1078,7 +1078,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   }`}>
                   {randomPreviewItem.isR18 ? 'R18' : '全年龄'}
                 </span>
-                <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-xs border border-indigo-500/30 whitespace-nowrap shrink-0">
+                <span className="px-2 py-0.5 bg-nai-accent/10 text-nai-accent rounded text-xs border border-nai-accent/40 whitespace-nowrap shrink-0">
                   {randomPreviewItem.category}
                 </span>
               </div>
@@ -1117,7 +1117,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               </button>
               <button
                 onClick={handleConfirmRandomAdd}
-                className="flex-1 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-lg shadow-indigo-500/20 active:scale-95"
+                className="flex-1 py-2.5 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-[0_0_10px_rgba(252,237,164,0.3)] active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 添加到提示词
@@ -1148,7 +1148,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     id={`detail-img-skeleton-${kktDetailItem.name}`}
                     className="absolute inset-0 flex items-center justify-center"
                   >
-                    <div className="w-16 h-16 rounded-full border-4 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+                    <div className="w-16 h-16 rounded-full border-4 border-nai-accent/30 border-t-nai-accent animate-spin" />
                   </div>
                   <img
                     src={resolveKktImageUrl(kktDetailItem.image_url, false) || undefined}
@@ -1195,8 +1195,8 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               {/* Header */}
               <div className="p-6 border-b border-gray-800 bg-[#1e1e2e]/50 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl border border-indigo-500/30 shadow-inner">
-                    <Sparkles className="w-6 h-6 text-indigo-400" />
+                  <div className="p-2.5 bg-gradient-to-br from-nai-accent/10 to-nai-accent/5 rounded-xl border border-nai-accent/40 shadow-inner">
+                    <Sparkles className="w-6 h-6 text-nai-accent" />
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white leading-tight mb-1">{kktDetailItem.name}</h2>
@@ -1219,7 +1219,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   {kktDetailItem.model_name && (
                     <div className="bg-black/30 p-3 rounded-lg border border-gray-800 shadow-sm">
                       <p className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider flex items-center justify-between">Model</p>
-                      <p className="text-xs text-indigo-300 font-mono truncate" title={resolveModelName(kktDetailItem.model_name) || kktDetailItem.model_name}>
+                      <p className="text-xs text-nai-accent font-mono truncate" title={resolveModelName(kktDetailItem.model_name) || kktDetailItem.model_name}>
                         {resolveModelName(kktDetailItem.model_name)}
                       </p>
                     </div>
@@ -1300,9 +1300,9 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                 <button
                   onClick={() => { if (!downloadingKktId) handleKktImportImage(kktDetailItem, () => setKktDetailItem(null)); }}
                   disabled={!!downloadingKktId}
-                  className={`flex-1 py-3 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${downloadingKktId
-                    ? 'bg-indigo-700 cursor-wait'
-                    : 'bg-indigo-600 hover:bg-indigo-500'
+                  className={`flex-1 py-3 text-black rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${downloadingKktId
+                    ? 'bg-nai-accent/70 cursor-wait'
+                    : 'bg-nai-accent hover:bg-nai-accent-hover'
                     }`}
                 >
                   {downloadingKktId ? (
@@ -1345,8 +1345,8 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
             </button>
 
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-indigo-500/20 rounded-xl">
-                <ImageIcon className="w-8 h-8 text-indigo-400" />
+              <div className="p-3 bg-nai-accent/10 rounded-xl">
+                <ImageIcon className="w-8 h-8 text-nai-accent" />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">关于 KKT 收集</h3>
@@ -1360,7 +1360,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               </p>
               <div className="bg-black/30 rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-indigo-400" />
+                  <Filter className="w-4 h-4 text-nai-accent" />
                   <span>支持 OC、标签及 NSFW 筛选</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1388,7 +1388,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
           <div className="bg-[#1e1e2e] border border-gray-700 rounded-xl p-6 max-w-lg w-full shadow-2xl relative animate-in zoom-in-95 duration-200 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-gray-800 pb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <Filter className="w-5 h-5 text-indigo-400" />
+                <Filter className="w-5 h-5 text-nai-accent" />
                 高级筛选
               </h3>
               <button
@@ -1412,7 +1412,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                       value={kktFilterOcName}
                       onChange={e => setKktFilterOcName(e.target.value)}
                       placeholder="输入角色名..."
-                      className="w-full bg-black/30 border border-gray-700 rounded-lg h-10 px-3 pr-8 text-sm text-white outline-none focus:border-indigo-500 transition-all placeholder:text-gray-600"
+                      className="w-full bg-black/30 border border-gray-700 rounded-lg h-10 px-3 pr-8 text-sm text-white outline-none focus:border-nai-accent transition-all placeholder:text-gray-600"
                     />
                     {kktFilterOcName && (
                       <button
@@ -1454,7 +1454,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                             <button
                               key={oc.id}
                               onMouseDown={e => { e.preventDefault(); setKktFilterOcName(oc.name); }}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-indigo-500/20 hover:text-white transition-colors"
+                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-nai-accent/10 hover:text-white transition-colors"
                             >
                               {oc.name}{oc.aliases.length > 0 && <span className="text-gray-600 ml-1 text-xs">({oc.aliases[0]})</span>}
                             </button>
@@ -1472,7 +1472,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                       value={kktFilterCharacter}
                       onChange={e => setKktFilterCharacter(e.target.value)}
                       placeholder="输入角色英文名..."
-                      className="w-full bg-black/30 border border-gray-700 rounded-lg h-10 px-3 pr-8 text-sm text-white outline-none focus:border-indigo-500 transition-all placeholder:text-gray-600"
+                      className="w-full bg-black/30 border border-gray-700 rounded-lg h-10 px-3 pr-8 text-sm text-white outline-none focus:border-nai-accent transition-all placeholder:text-gray-600"
                     />
                     {kktFilterCharacter && (
                       <button
@@ -1501,7 +1501,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                           <button
                             key={i}
                             onMouseDown={e => { e.preventDefault(); setKktFilterCharacter(c.en); }}
-                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-indigo-500/20 hover:text-white transition-colors"
+                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-nai-accent/10 hover:text-white transition-colors"
                           >
                             {c.en}{c.zh && <span className="text-gray-600 ml-1 text-xs">({c.zh})</span>}
                           </button>
@@ -1519,7 +1519,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   value={kktSearchQuery}
                   onChange={e => setKktSearchQuery(e.target.value)}
                   placeholder="搜索 prompt 内容..."
-                  className="w-full bg-black/30 border border-gray-700 rounded-lg h-10 px-3 text-sm text-white outline-none focus:border-indigo-500 transition-all placeholder:text-gray-600"
+                  className="w-full bg-black/30 border border-gray-700 rounded-lg h-10 px-3 text-sm text-white outline-none focus:border-nai-accent transition-all placeholder:text-gray-600"
                 />
               </div>
 
@@ -1530,14 +1530,14 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     type="date"
                     value={kktFilterDateStart}
                     onChange={e => setKktFilterDateStart(e.target.value)}
-                    className="flex-1 bg-black/30 border border-gray-700 rounded-lg h-10 px-3 text-sm text-white outline-none focus:border-indigo-500 transition-all placeholder:text-gray-600"
+                    className="flex-1 bg-black/30 border border-gray-700 rounded-lg h-10 px-3 text-sm text-white outline-none focus:border-nai-accent transition-all placeholder:text-gray-600"
                   />
                   <span className="text-gray-500">-</span>
                   <input
                     type="date"
                     value={kktFilterDateEnd}
                     onChange={e => setKktFilterDateEnd(e.target.value)}
-                    className="flex-1 bg-black/30 border border-gray-700 rounded-lg h-10 px-3 text-sm text-white outline-none focus:border-indigo-500 transition-all placeholder:text-gray-600"
+                    className="flex-1 bg-black/30 border border-gray-700 rounded-lg h-10 px-3 text-sm text-white outline-none focus:border-nai-accent transition-all placeholder:text-gray-600"
                   />
                 </div>
               </div>
@@ -1560,7 +1560,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               </button>
               <button
                 onClick={() => { setIsKktFilterOpen(false); loadKktData(1, true); }}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-indigo-500/20"
+                className="px-6 py-2 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg font-bold transition-all shadow-[0_0_10px_rgba(252,237,164,0.3)]"
               >
                 确认筛选
               </button>
@@ -1573,7 +1573,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
 
         {/* Sidebar Navigation */}
         <div className="w-64 bg-black/30 border-r border-gray-800 flex flex-col p-4 gap-2 shrink-0">
-          <div className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-400 mb-6 flex items-center gap-2 px-2">
+          <div className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-nai-accent to-pink-400 mb-6 flex items-center gap-2 px-2">
             <Sparkles className="w-6 h-6 text-pink-400 animate-pulse" />
             灵感空间
           </div>
@@ -1619,7 +1619,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
             <button
               onClick={handleRandomCodex}
               title={`基于当前筛选设置随机 (${externalFilteredCodex.length} 条可选)`}
-              className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-lg hover:shadow-indigo-500/30 active:scale-95 group"
+              className="w-full py-3 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-lg hover:shadow-[0_0_10px_rgba(252,237,164,0.3)] active:scale-95 group"
             >
               <Dice5 className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
               随机灵感
@@ -1638,11 +1638,11 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                 <div className="flex justify-between items-center mb-3">
                   <div className="flex items-center gap-4 flex-1">
                     <div className="flex items-center gap-2 shrink-0">
-                      <Book className="w-6 h-6 text-indigo-400" />
+                      <Book className="w-6 h-6 text-nai-accent" />
                       <h2 className="text-xl font-bold text-white">所长法典</h2>
                       <button
                         onClick={() => setIsAboutOpen(true)}
-                        className="text-gray-600 hover:text-indigo-400 transition-colors"
+                        className="text-gray-600 hover:text-nai-accent transition-colors"
                         title="关于法典"
                       >
                         <Info className="w-4 h-4" />
@@ -1657,13 +1657,13 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
 
                     {/* Search Bar */}
                     <div className="relative group flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-indigo-500 transition-colors" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-nai-accent transition-colors" />
                       <input
                         type="text"
                         placeholder="搜索法典内容..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full bg-black/30 border border-gray-800 rounded-full pl-10 pr-4 h-10 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none placeholder:text-gray-600"
+                        className="w-full bg-black/30 border border-gray-800 rounded-full pl-10 pr-4 h-10 text-sm text-white focus:border-nai-accent focus:ring-1 focus:ring-nai-accent transition-all outline-none placeholder:text-gray-600"
                       />
                     </div>
                   </div>
@@ -1714,14 +1714,14 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     <button
                       onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
                       className={`flex items-center gap-2 px-4 h-9 rounded-lg border transition-all ${selectedCategories.length > 0
-                        ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300'
+                        ? 'bg-nai-accent/10 border-nai-accent text-nai-accent'
                         : 'bg-black/30 border-gray-800 text-gray-400 hover:text-white'
                         }`}
                     >
                       <Filter className="w-4 h-4" />
                       <span className="text-xs font-bold">筛选分类</span>
                       {selectedCategories.length > 0 && (
-                        <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.5 rounded-full min-w-[1.2em] text-center font-bold">
+                        <span className="bg-nai-accent text-black text-[10px] px-1.5 py-0.5 rounded-full min-w-[1.2em] text-center font-bold">
                           {selectedCategories.length}
                         </span>
                       )}
@@ -1812,7 +1812,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               >
                 {isCodexLoading ? (
                   <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-500">
-                    <Loader2 className="w-8 h-8 animate-spin mb-4 text-indigo-500" />
+                    <Loader2 className="w-8 h-8 animate-spin mb-4 text-nai-accent" />
                     <p>正在加载法典数据...</p>
                   </div>
                 ) : filteredCodex.length === 0 ? (
@@ -1826,7 +1826,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     {displayedCodex.map((item, index) => (
                       <div
                         key={item.id}
-                        className="group bg-[#1e1e2e] border border-gray-800 hover:border-indigo-500/50 hover:bg-[#252535] transition-all duration-200 flex items-center rounded-lg p-4 hover:translate-x-1"
+                        className="group bg-[#1e1e2e] border border-gray-800 hover:border-nai-accent/40 hover:bg-[#252535] transition-all duration-200 flex items-center rounded-lg p-4 hover:translate-x-1"
                       >
                         <div className="w-28 shrink-0">
                           <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${item.isR18 ? 'border-red-500/30 text-red-400 bg-red-500/10' : 'border-green-500/30 text-green-400 bg-green-500/10'}`}>
@@ -1863,7 +1863,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                             onClick={() => handleAddCodexTag(item.id, item.title, item.content)}
                             className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 shadow-lg ${addedItemId === item.id
                               ? 'bg-green-600 text-white shadow-green-500/20'
-                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                              : 'bg-nai-accent hover:bg-nai-accent-hover text-black shadow-nai-accent/20'
                               }`}
                           >
                             {addedItemId === item.id ? (
@@ -1907,11 +1907,11 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-4 flex-1">
                     <div className="flex items-center gap-2 shrink-0">
-                      <ImageIcon className="w-6 h-6 text-indigo-400" />
+                      <ImageIcon className="w-6 h-6 text-nai-accent" />
                       <h2 className="text-xl font-bold text-white">KKT 收集</h2>
                       <button
                         onClick={() => setIsKktAboutOpen(true)}
-                        className="text-gray-600 hover:text-indigo-400 transition-colors"
+                        className="text-gray-600 hover:text-nai-accent transition-colors"
                         title="关于 KKT"
                       >
                         <Info className="w-4 h-4" />
@@ -1920,13 +1920,13 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
 
                     {/* Search Bar */}
                     <div className="relative group flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-indigo-500 transition-colors" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-nai-accent transition-colors" />
                       <input
                         type="text"
                         placeholder="名称 / 标签 / 编号 / 种子..."
                         value={kktSearchQuery}
                         onChange={e => setKktSearchQuery(e.target.value)}
-                        className="w-full bg-black/30 border border-gray-800 rounded-full pl-10 pr-4 h-10 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none placeholder:text-gray-600"
+                        className="w-full bg-black/30 border border-gray-800 rounded-full pl-10 pr-4 h-10 text-sm text-white focus:border-nai-accent focus:ring-1 focus:ring-nai-accent transition-all outline-none placeholder:text-gray-600"
                       />
                     </div>
 
@@ -2001,7 +2001,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                           loadKktData(1, true);
                         }}
                         className={`h-7 px-2.5 rounded-full text-[11px] font-bold transition-all duration-300 active:scale-90 ${kktTimeRange === opt.value
-                          ? 'bg-indigo-500/20 text-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.15)]'
+                          ? 'bg-nai-accent/10 text-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
                           : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                           }`}
                       >
@@ -2015,7 +2015,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   {/* Add Tag Button / Input */}
                   <div className="shrink-0">
                     {isAddingTag ? (
-                      <div className="h-7 flex items-center bg-black/30 border border-indigo-500 rounded-full pl-3 pr-2 animate-in fade-in zoom-in duration-200">
+                      <div className="h-7 flex items-center bg-black/30 border border-nai-accent rounded-full pl-3 pr-2 animate-in fade-in zoom-in duration-200">
                         <input
                           autoFocus
                           type="text"
@@ -2041,7 +2041,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                             }
                             setIsAddingTag(false);
                           }}
-                          className={`p-0.5 rounded-full transition-colors ${kktTagInput.trim() ? 'hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300' : 'text-gray-500 hover:bg-white/10 hover:text-gray-300'}`}
+                          className={`p-0.5 rounded-full transition-colors ${kktTagInput.trim() ? 'hover:bg-nai-accent/10 text-nai-accent hover:text-nai-accent-hover' : 'text-gray-500 hover:bg-white/10 hover:text-gray-300'}`}
                           title={kktTagInput.trim() ? "添加标签" : "关闭"}
                         >
                           <Plus className="w-3 h-3" />
@@ -2050,7 +2050,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     ) : (
                       <button
                         onClick={() => setIsAddingTag(true)}
-                        className="h-8 w-8 rounded-full border border-gray-800 bg-gray-900/50 text-gray-400 hover:text-white hover:border-indigo-500 hover:bg-indigo-500/10 transition-all flex items-center justify-center group"
+                        className="h-8 w-8 rounded-full border border-gray-800 bg-gray-900/50 text-gray-400 hover:text-white hover:border-nai-accent hover:bg-nai-accent/10 transition-all flex items-center justify-center group"
                         title="添加标签"
                       >
                         <Plus className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
@@ -2063,7 +2063,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                       <button
                         onClick={() => toggleKktTag(tag)}
                         className={`shrink-0 h-8 px-3.5 rounded-full border text-[11px] font-bold transition-all duration-300 active:scale-95 flex items-center gap-2 pr-8 ${kktSelectedTags.includes(tag)
-                          ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.15)]'
+                          ? 'bg-nai-accent/10 border-nai-accent text-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
                           : 'border-gray-800 bg-gray-900/50 text-gray-400 hover:text-white hover:border-gray-600'
                           }`}
                       >
@@ -2101,7 +2101,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   </div>
                 ) : isKktLoading && kktItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-gray-500 h-full">
-                    <Loader2 className="w-8 h-8 animate-spin mb-4 text-indigo-500" />
+                    <Loader2 className="w-8 h-8 animate-spin mb-4 text-nai-accent" />
                     <p>正在加载 KKT 数据...</p>
                   </div>
                 ) : kktItems.length === 0 ? (
@@ -2123,7 +2123,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     />
                     {isKktLoading && (
                       <div className="flex justify-center py-6">
-                        <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                        <Loader2 className="w-5 h-5 animate-spin text-nai-accent" />
                       </div>
                     )}
                   </>
@@ -2171,19 +2171,19 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   <div className="flex bg-black/30 p-1 rounded-lg border border-gray-800">
                     <button
                       onClick={() => setFavoritesSubTab('codex')}
-                      className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${favoritesSubTab === 'codex' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                      className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${favoritesSubTab === 'codex' ? 'bg-nai-accent text-black shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
                       法典收藏
                     </button>
                     <button
                       onClick={() => setFavoritesSubTab('kkt')}
-                      className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${favoritesSubTab === 'kkt' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                      className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${favoritesSubTab === 'kkt' ? 'bg-nai-accent text-black shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
                       KKT 收藏
                     </button>
                     <button
                       onClick={() => setFavoritesSubTab('oc')}
-                      className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${favoritesSubTab === 'oc' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                      className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${favoritesSubTab === 'oc' ? 'bg-nai-accent text-black shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
                       角色收藏
                     </button>
@@ -2198,10 +2198,10 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     {favoriteCodexIds.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {codexData.filter(item => favoriteCodexIds.includes(item.id)).map(item => (
-                          <div key={item.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
+                          <div key={item.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 hover:border-nai-accent/40 transition-all group relative">
                             <div className="flex justify-between items-start mb-2">
                               <div className="flex flex-col">
-                                <span className="text-xs text-indigo-400 font-bold mb-0.5">{item.category}</span>
+                                <span className="text-xs text-nai-accent font-bold mb-0.5">{item.category}</span>
                                 <h3 className="font-bold text-white">{getCodexDisplayTitle(item)}</h3>
                               </div>
                               {item.isR18 && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[10px] rounded border border-red-500/20 font-bold">R18</span>}
@@ -2231,7 +2231,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                 onClick={() => handleAddCodexTag(item.id, item.title, item.content)}
                                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 shadow-lg ${addedItemId === item.id
                                   ? 'bg-green-600 text-white shadow-green-500/20'
-                                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                                  : 'bg-nai-accent hover:bg-nai-accent-hover text-black shadow-nai-accent/20'
                                   }`}
                               >
                                 {addedItemId === item.id ? (
@@ -2273,7 +2273,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                             <div
                               key={item.name}
                               style={{ width: `${width}px`, flexGrow: aspect * 100 }}
-                              className="relative group rounded-xl overflow-hidden cursor-pointer border border-gray-800 hover:border-indigo-500 transition-all h-[260px] max-w-full min-w-[160px]"
+                              className="relative group rounded-xl overflow-hidden cursor-pointer border border-gray-800 hover:border-nai-accent transition-all h-[260px] max-w-full min-w-[160px]"
                               onClick={() => setKktDetailItem(item)}
                             >
                               {imageUrl ? (
@@ -2290,7 +2290,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                   />
                                 </div>
                               ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+                                <div className="w-full h-full bg-gradient-to-br from-nai-accent/10 to-nai-accent/5 flex items-center justify-center">
                                   <ImageIcon className="w-12 h-12 text-gray-600" />
                                 </div>
                               )}
@@ -2303,9 +2303,9 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                 )}
                                 <div className="flex gap-1.5">
                                   <button
-                                    className={`flex-1 py-1.5 text-white text-[10px] font-bold rounded flex items-center justify-center gap-1 ${downloadingKktId === item.name
-                                      ? 'bg-indigo-700 cursor-wait'
-                                      : 'bg-indigo-600 hover:bg-indigo-500'
+                                    className={`flex-1 py-1.5 text-black text-[10px] font-bold rounded flex items-center justify-center gap-1 ${downloadingKktId === item.name
+                                      ? 'bg-nai-accent/70 cursor-wait'
+                                      : 'bg-nai-accent hover:bg-nai-accent-hover'
                                       }`}
                                     onClick={e => { e.stopPropagation(); if (downloadingKktId !== item.name) handleKktImportImage(item); }}
                                     disabled={downloadingKktId === item.name}
@@ -2347,7 +2347,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   <>
                     {isOcLoading ? (
                       <div className="flex flex-col items-center justify-center py-20 text-gray-500 w-full h-full">
-                        <Loader2 className="w-8 h-8 animate-spin mb-4 text-indigo-500" />
+                        <Loader2 className="w-8 h-8 animate-spin mb-4 text-nai-accent" />
                         <p>正在加载角色数据...</p>
                       </div>
                     ) : favoriteOCIds.length > 0 ? (
@@ -2355,7 +2355,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                         {ocData.filter(oc => favoriteOCIds.includes(oc.id)).map(oc => (
                           <div
                             key={oc.id}
-                            className="group relative aspect-[832/1216] rounded-xl overflow-hidden bg-gray-800 cursor-pointer border-2 border-gray-800 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+                            className="group relative aspect-[832/1216] rounded-xl overflow-hidden bg-gray-800 cursor-pointer border-2 border-gray-800 hover:border-nai-accent/40 transition-all duration-300 hover:shadow-[0_0_10px_rgba(252,237,164,0.3)]"
                           >
                             {oc.preview ? (
                               <img
@@ -2365,13 +2365,13 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+                              <div className="w-full h-full bg-gradient-to-br from-nai-accent/10 to-nai-accent/5 flex items-center justify-center">
                                 <User className="w-12 h-12 text-gray-600" />
                               </div>
                             )}
 
                             {/* Token数量 - 左上角, hover显示 */}
-                            <span className="absolute top-2 left-2 text-[10px] text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all">
+                            <span className="absolute top-2 left-2 text-[10px] text-nai-accent bg-nai-accent/10 px-1.5 py-0.5 rounded backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all">
                               {countTokens(oc.positive)} tokens
                             </span>
 
@@ -2420,7 +2420,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                   }}
                                   className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors flex items-center justify-center gap-1 ${addedItemId === oc.id
                                     ? 'bg-green-600 text-white'
-                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                                    : 'bg-nai-accent hover:bg-nai-accent-hover text-black'
                                     }`}
                                 >
                                   {addedItemId === oc.id ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
@@ -2453,11 +2453,11 @@ const NavButton = ({ active, onClick, icon, label, desc }: { active: boolean, on
   <button
     onClick={onClick}
     className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all duration-300 text-left group hover:translate-x-1 ${active
-      ? 'bg-gradient-to-r from-indigo-600/20 to-purple-600/20 border border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.1)]'
+      ? 'bg-gradient-to-r from-nai-accent/10 to-nai-accent/5 border border-nai-accent/40 shadow-[0_0_10px_rgba(252,237,164,0.3)]'
       : 'hover:bg-white/5 border border-transparent'
       }`}
   >
-    <div className={`p-2 rounded-lg ${active ? 'bg-indigo-500 text-white' : 'bg-gray-800 text-gray-400 group-hover:text-white group-hover:bg-gray-700'} transition-all duration-300 group-hover:scale-110`}>
+    <div className={`p-2 rounded-lg ${active ? 'bg-nai-accent text-black' : 'bg-gray-800 text-gray-400 group-hover:text-white group-hover:bg-gray-700'} transition-all duration-300 group-hover:scale-110`}>
       {icon}
     </div>
     <div>
