@@ -58,7 +58,7 @@ export const AssistantLogList: React.FC<AssistantLogListProps> = ({
           return (
             <div key={idx} className="animate-slide-in-from-bottom shrink-0 w-full">
               <div
-                className={`text-sm px-3 py-2.5 bg-[#232736] text-gray-200 border border-[#2c3144]/50 shadow-sm flex items-start justify-between gap-2 cursor-pointer ${
+                className={`text-sm px-3 py-2.5 bg-[#26282a] text-gray-200 border border-[#303235]/50 shadow-sm flex items-start justify-between gap-2 cursor-pointer ${
                   log.expanded && log.thinking ? 'rounded-t-xl' : 'rounded-xl'
                 }`}
                 onClick={() => agentService.toggleLogExpanded(idx)}
@@ -99,7 +99,7 @@ export const AssistantLogList: React.FC<AssistantLogListProps> = ({
                 </button>
               </div>
               {log.expanded && log.thinking && (
-                <div className="text-[10px] px-3 py-2 rounded-b-xl bg-[#1a1c23] text-nai-accent/60 tracking-wider flex items-center border-t border-[#2c3144]">
+                <div className="text-[10px] px-3 py-2 rounded-b-xl bg-[#1c1d1f] text-nai-accent/60 tracking-wider flex items-center border-t border-[#303235]">
                   <ChevronDown className="w-3.5 h-3.5 shrink-0 mr-1" />
                   <span className="truncate">{log.thinking}</span>
                 </div>
@@ -112,7 +112,7 @@ export const AssistantLogList: React.FC<AssistantLogListProps> = ({
           return (
             <div
               key={idx}
-              className="px-3 py-2.5 rounded-xl animate-slide-in-from-bottom bg-[#232736] border border-red-500/30 flex flex-col gap-2 shrink-0 w-full"
+              className="px-3 py-2.5 rounded-xl animate-slide-in-from-bottom bg-[#26282a] border border-red-500/30 flex flex-col gap-2 shrink-0 w-full"
             >
               <div className="text-[13px] font-mono whitespace-pre-wrap break-words text-red-400 overflow-x-auto custom-scrollbar opacity-90 pb-1">
                 {log.content}
@@ -140,7 +140,7 @@ export const AssistantLogList: React.FC<AssistantLogListProps> = ({
             className={`text-sm px-3 py-2 rounded-xl animate-slide-in-from-bottom shrink-0 ${
               log.type === 'user'
                 ? 'bg-nai-accent text-black font-medium self-end max-w-[90%]'
-                : 'bg-[#232736] text-gray-300 border border-[#2c3144] self-start max-w-[90%]'
+                : 'bg-[#26282a] text-gray-300 border border-[#303235] self-start max-w-[90%]'
             }`}
           >
             <span className="whitespace-pre-wrap break-words">{renderMessageContent(log.content, log.type === 'user')}</span>
@@ -149,7 +149,7 @@ export const AssistantLogList: React.FC<AssistantLogListProps> = ({
       })
     )}
     {isGeneratingPrompt && (
-      <div className="text-sm px-3 py-2.5 rounded-xl bg-[#232736] border border-[#2c3144] text-gray-300 animate-fade-in self-start max-w-[85%] shrink-0 flex items-center gap-2">
+      <div className="text-sm px-3 py-2.5 rounded-xl bg-[#26282a] border border-[#303235] text-gray-300 animate-fade-in self-start max-w-[85%] shrink-0 flex items-center gap-2">
         <Bot className="w-4 h-4 text-nai-accent animate-pulse shrink-0" />
         <span className="text-[14px] text-gray-300 font-medium leading-relaxed tracking-wide min-h-[22px] flex items-center animate-pulse">
           <TypewriterText text={agentState.progress || thinkingText} />

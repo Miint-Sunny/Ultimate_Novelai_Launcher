@@ -39,7 +39,7 @@ function getSectionInfo(suggestion: TagSuggestion) {
   if (suggestion.isNaturalLanguage) return { key: 'nl', label: '翻译', color: '#67e8f9', Icon: Languages };
   if (suggestion.isArtist) return { key: 'artists', label: '画师', color: '#f0abfc', Icon: Palette };
   if (suggestion.isOC) return { key: 'ocs', label: 'OC', color: '#86efac', Icon: Users };
-  if (suggestion.isOrigin) return { key: 'origins', label: '作品', color: '#d8b4fe', Icon: Dices };
+  if (suggestion.isOrigin) return { key: 'origins', label: '作品', color: '#67e8f9', Icon: Dices };
   if (suggestion.source === 'local') return { key: 'characters', label: '角色', color: '#7dd3fc', Icon: User };
   return { key: 'danbooru', label: '标签', color: '#fcd34d', Icon: Tag };
 }
@@ -48,7 +48,7 @@ function getTypeInfo(suggestion: TagSuggestion) {
   if (suggestion.isNaturalLanguage) return { color: '#67e8f9', Icon: Languages };
   if (suggestion.isArtist) return { color: '#f0abfc', Icon: Palette };
   if (suggestion.isOC) return { color: '#86efac', Icon: Users };
-  if (suggestion.isOrigin) return { color: '#d8b4fe', Icon: Dices };
+  if (suggestion.isOrigin) return { color: '#67e8f9', Icon: Dices };
   if (suggestion.source === 'local') return { color: '#7dd3fc', Icon: User };
   if (suggestion.verified && !suggestion.postCount) return { color: '#fceda4', Icon: Sparkles };
   return { color: '#fcd34d', Icon: Tag };

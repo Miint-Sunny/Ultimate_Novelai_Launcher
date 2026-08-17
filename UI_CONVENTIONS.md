@@ -6,29 +6,35 @@
 
 ## 1. 色彩
 
-主题色在 `tailwind.config.js` 的 `nai-*` token 中定义,组件一律用类名引用:
+色值统一定义在 `src/index.css` 的 `:root` CSS 变量层(RGB 三元组),
+`tailwind.config.js` 通过 `rgb(var(--…) / <alpha-value>)` 映射成 `nai-*` 与
+`gray-*` 类;组件一律用类名引用,不得裸写 hex。基底为**石墨中性**(2026-08
+起,取代旧海军蓝紫基底;各档与旧值逐档等亮,对比关系不变):
 
 | Token | 值 | 用途 |
 |---|---|---|
-| `nai-bg` | `#0b0f19` | 页面底色 |
-| `nai-dark` | `#06080e` | 更深底(遮罩下层) |
-| `nai-panel` | `#121624` | 面板底色 |
-| `nai-input` | `#1c2030` | 输入框/嵌套容器底色 |
-| `nai-accent` | `#fceda4` | **唯一主强调色**(黄):主按钮、选中态、进度 |
+| `nai-bg` | `#0e0f11` | 页面底色 |
+| `nai-dark` | `#070809` | 更深底(遮罩下层) |
+| `nai-panel` | `#151719` | 面板底色 |
+| `nai-input` | `#1f2124` | 输入框/嵌套容器底色 |
+| `nai-accent` | `#fceda4` | **唯一主强调色**(金):主按钮、选中态、进度 |
 | `nai-accent-hover` | `#ebd576` | 强调色 hover |
-| `nai-text-dim` | `#8a8d98` | 弱化文字 |
-| `nai-purple` / `nai-blue` / `nai-green` | — | 少量高亮,不作面性使用 |
+| `nai-text-dim` | `#8c8e8f` | 弱化文字 |
+
+`gray-*` 已在 theme 中整体重定义为中性石墨灰阶(Tailwind 默认 gray 带蓝调,
+勿恢复默认);用法不变:文字 `gray-200/300`(正文)、`gray-400/500`(次要)、
+`gray-600`(禁用);背景 `gray-800`(缩略图底/次级按钮)。
 
 - 选中/激活态的标准写法:`border-nai-accent` + 光晕
   `shadow-[0_0_10px_rgba(252,237,164,0.3)]`;半透明衬底用
   `bg-nai-accent/20`,描边用 `border-nai-accent/50`。
-- 语义色固定:绿=成功/超分标记,蓝=局部重绘标记,黄=香蕉重绘/主操作,
-  红=危险(删除、清空)。危险按钮写法 `bg-red-500/20 text-red-400 border-red-500/50`。
-- 灰阶直接用 Tailwind `gray-*`:文字 `gray-200/300`(正文)、`gray-400/500`(次要)、
-  `gray-600`(禁用);背景 `gray-800`(缩略图底/次级按钮)。
-- `desktop/AIAssistant` 是特区:它带完整设计交接稿,用 `tokens.ts` 的常量 +
-  arbitrary value(`bg-[#131724]`)实现,**不要**把它的 token 提进全局 theme,
-  也不要在别处模仿这种写法。
+- 语义色固定:绿=成功/超分标记,蓝=局部重绘标记,金=主操作,
+  红=危险(删除、清空),青(cyan)=vibe/来源标记。危险按钮写法
+  `bg-red-500/20 text-red-400 border-red-500/50`。
+- **紫/靛(purple/indigo/violet)已全面废除**,不得在任何新组件中引入;
+  装饰性强调用 `nai-accent` 低透明度档,分类数据色优先 cyan/sky/amber。
+- `desktop/AIAssistant` 的 `tokens.ts` 与全局同源(色值一致,面板底与
+  `nai-panel` 同值);新组件优先用全局类名,特区仅维持存量。
 
 ## 2. 面板与边框
 

@@ -249,11 +249,11 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
             <span>寻找公共OC库？现已迁移至</span>
             {onOpenInspiration ? (
               <button onClick={() => { onClose(); onOpenInspiration(); }}
-                className="ml-1 text-indigo-400 hover:text-indigo-300 underline">
+                className="ml-1 text-nai-accent hover:text-nai-accent/80 underline">
                 灵感空间
               </button>
             ) : (
-              <span className="ml-1 text-indigo-400">灵感空间</span>
+              <span className="ml-1 text-nai-accent">灵感空间</span>
             )}
           </div>
           <div className="flex justify-between items-center">

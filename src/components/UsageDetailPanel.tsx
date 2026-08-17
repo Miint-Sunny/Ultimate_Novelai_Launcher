@@ -36,7 +36,7 @@ type DetailTab = 'types' | 'daily' | 'records';
 function getReasonStyle(reason: string): { icon: string; color: string; bg: string } {
   if (!reason) return { icon: '?', color: '#71717a', bg: 'rgba(113,113,122,0.2)' };
   const r = reason.toLowerCase();
-  if (r.includes('vibe') || r.includes('编码')) return { icon: '🎨', color: '#a78bfa', bg: 'rgba(167,139,250,0.2)' };
+  if (r.includes('vibe') || r.includes('编码')) return { icon: '🎨', color: '#67e8f9', bg: 'rgba(103,232,249,0.2)' };
   if (r.includes('超分')) return { icon: '🔍', color: '#34d399', bg: 'rgba(52,211,153,0.2)' };
   if (r.includes('角色参考') || r.includes('precise') || r.includes('pr')) return { icon: '👤', color: '#60a5fa', bg: 'rgba(96,165,250,0.2)' };
   if (r.includes('生图') || r.includes('image') || r.includes('gen')) return { icon: '🖼', color: '#fb923c', bg: 'rgba(251,146,60,0.2)' };

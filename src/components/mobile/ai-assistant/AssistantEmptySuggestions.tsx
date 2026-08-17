@@ -20,7 +20,7 @@ export const AssistantEmptySuggestions: React.FC<AssistantEmptySuggestionsProps>
         <button
           key={index}
           onClick={() => onSelect(suggestion)}
-          className="text-left px-3.5 py-2.5 rounded-xl bg-[#232736]/60 border border-[#2c3144]/50 hover:bg-[#2c3144]/80 hover:border-nai-accent/40 hover:text-white transition-all text-[13px] text-gray-300 shadow-sm leading-snug break-words group/btn"
+          className="text-left px-3.5 py-2.5 rounded-xl bg-[#26282a]/60 border border-[#303235]/50 hover:bg-[#303235]/80 hover:border-nai-accent/40 hover:text-white transition-all text-[13px] text-gray-300 shadow-sm leading-snug break-words group/btn"
         >
           <span className="group-hover/btn:text-nai-accent transition-colors mr-1.5 opacity-60">"</span>
           {suggestion}

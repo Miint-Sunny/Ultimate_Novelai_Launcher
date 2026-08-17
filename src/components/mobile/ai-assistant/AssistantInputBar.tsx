@@ -20,8 +20,8 @@ export const AssistantInputBar: React.FC<AssistantInputBarProps> = ({
   onSend,
   onClearLogs,
 }) => (
-  <div className="flex-shrink-0 px-4 py-3 border-t border-[#2c3144]/80 bg-[#1a1c23]">
-    <div className="flex items-end bg-[#131620] border border-[#2c3144] rounded-2xl shadow-lg focus-within:border-nai-accent/60 focus-within:shadow-[0_0_15px_rgba(252,237,164,0.1)] transition-all">
+  <div className="flex-shrink-0 px-4 py-3 border-t border-[#303235]/80 bg-[#1c1d1f]">
+    <div className="flex items-end bg-[#151719] border border-[#303235] rounded-2xl shadow-lg focus-within:border-nai-accent/60 focus-within:shadow-[0_0_15px_rgba(252,237,164,0.1)] transition-all">
       <textarea
         ref={inputRef}
         value={aiInput}

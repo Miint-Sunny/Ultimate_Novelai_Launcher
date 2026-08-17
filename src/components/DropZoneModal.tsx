@@ -575,7 +575,7 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
                 </span>
               )}
               {metadata.vibes && metadata.vibes.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-purple-500/20 rounded text-[10px] text-purple-400">
+                <span className="px-1.5 py-0.5 bg-cyan-500/15 rounded text-[10px] text-cyan-300">
                   {metadata.vibes.length} Vibe
                 </span>
               )}

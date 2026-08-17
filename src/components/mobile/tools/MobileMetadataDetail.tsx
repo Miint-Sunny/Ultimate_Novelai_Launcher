@@ -114,10 +114,10 @@ export const MobileMetadataDetail: React.FC<{
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {charMatches.map((ch, i) => (
-                    <span key={i} className={`inline-flex items-center gap-0.5 rounded-lg px-2 py-1 text-[11px] ${ch.isOC ? 'bg-purple-500/15 text-purple-400' : 'bg-nai-accent/15 text-nai-accent'}`}>
-                      {ch.isOC && <span className="text-[8px] font-bold bg-purple-500/30 rounded px-0.5 py-0.5 mr-0.5">OC</span>}
+                    <span key={i} className={`inline-flex items-center gap-0.5 rounded-lg px-2 py-1 text-[11px] ${ch.isOC ? 'bg-cyan-500/15 text-cyan-300' : 'bg-nai-accent/15 text-nai-accent'}`}>
+                      {ch.isOC && <span className="text-[8px] font-bold bg-cyan-500/30 rounded px-0.5 py-0.5 mr-0.5">OC</span>}
                       <span className="font-medium">{ch.zhName}</span>
-                      <span className={`text-[9px] ${ch.isOC ? 'text-purple-400/60' : 'text-nai-accent/60'}`}>[{ch.enTag}]</span>
+                      <span className={`text-[9px] ${ch.isOC ? 'text-cyan-300/60' : 'text-nai-accent/60'}`}>[{ch.enTag}]</span>
                     </span>
                   ))}
                 </div>

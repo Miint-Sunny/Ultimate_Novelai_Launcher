@@ -7,23 +7,23 @@
  */
 
 export const C = {
-  bg: '#0b0f19',
-  bgDeep: '#06080e',
-  panel: '#131724',
-  panel2: '#1a1f30',
-  surface: '#232736',
-  surfaceHover: '#2c3144',
+  bg: '#0e0f11',
+  bgDeep: '#070809',
+  panel: '#151719', // 与全局 nai-panel 同值,治好展开/收起两态分界线变色的问题
+  panel2: '#1e2023',
+  surface: '#26282a',
+  surfaceHover: '#303235',
 
   line: 'rgba(255,255,255,0.06)',
   line2: 'rgba(255,255,255,0.10)',
-  border: '#2c3144',
-  borderStrong: '#3e455c',
+  border: '#303235',
+  borderStrong: '#444649',
 
-  text: '#f5f6f8',
-  text2: '#c8ccd6',
-  textDim: '#8a8d98',
-  textMute: '#5a5e6e',
-  textFaint: '#6b7080', // 比原稿 #3d4151 提亮一档，避免在深底上几乎不可见
+  text: '#f6f6f6',
+  text2: '#cbccce',
+  textDim: '#8c8e8f',
+  textMute: '#5d5f61',
+  textFaint: '#6f7173', // 比原稿提亮一档，避免在深底上几乎不可见
 
   accent: '#fceda4',
   accent2: '#ebd576',

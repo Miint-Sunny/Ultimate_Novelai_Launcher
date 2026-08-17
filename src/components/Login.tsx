@@ -176,11 +176,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       {/* 动态背景效果 */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-1/4 -left-32 w-64 sm:w-96 h-64 sm:h-96 bg-nai-accent/10 rounded-full blur-3xl animate-float-slow" />
-        <div className="absolute bottom-1/4 -right-32 w-56 sm:w-80 h-56 sm:h-80 bg-purple-500/10 rounded-full blur-3xl animate-float-slow-reverse" />
+        <div className="absolute bottom-1/4 -right-32 w-56 sm:w-80 h-56 sm:h-80 bg-gray-500/10 rounded-full blur-3xl animate-float-slow-reverse" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] sm:w-[600px] h-[400px] sm:h-[600px] bg-gradient-radial from-nai-accent/5 to-transparent rounded-full" />
         <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]" />
         <div className="absolute top-20 left-1/4 w-1 h-1 bg-nai-accent/40 rounded-full animate-particle-1" />
-        <div className="absolute top-1/3 right-1/4 w-1.5 h-1.5 bg-purple-400/30 rounded-full animate-particle-2" />
+        <div className="absolute top-1/3 right-1/4 w-1.5 h-1.5 bg-gray-400/30 rounded-full animate-particle-2" />
         <div className="absolute bottom-1/3 left-1/3 w-1 h-1 bg-nai-accent/30 rounded-full animate-particle-3" />
         <div className="absolute top-2/3 right-1/3 w-0.5 h-0.5 bg-white/20 rounded-full animate-particle-4" />
       </div>

@@ -835,8 +835,8 @@ const TagManagerOverviewMock: React.FC = () => (
 
         <div className="flex-1" />
 
-        {/* 灵感 (保留, 紫色渐变) */}
-        <div className="w-7 h-7 rounded-lg p-0.5 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ring-1 ring-white/20 grid place-items-center text-white shadow-sm">
+        {/* 灵感 (金色渐变) */}
+        <div className="w-7 h-7 rounded-lg p-0.5 bg-gradient-to-br from-nai-accent to-amber-300 ring-1 ring-white/20 grid place-items-center text-white shadow-sm">
           <Sparkles className="w-3.5 h-3.5" />
         </div>
 
