@@ -37,6 +37,11 @@ _BEARER_PREFIX = b"bearer "
 # the process without limit.  Least recently seen identities are dropped first.
 _DEFAULT_MAX_TRACKED_KEYS = 20_000
 
+# How much looser the per-address ceiling is than a single caller's budget.  It
+# has to absorb several honest users sharing one NAT egress while still binding
+# a single attacker who rotates credentials on every request.
+_DEFAULT_ADDRESS_CEILING_MULTIPLIER = 5
+
 
 @dataclass(frozen=True)
 class RateLimitRule:
@@ -87,6 +92,7 @@ class RateLimitMiddleware:
         exempt_paths: Iterable[str] = (),
         trusted_proxies: Iterable[str] = (),
         max_tracked_keys: int = _DEFAULT_MAX_TRACKED_KEYS,
+        address_ceiling_multiplier: int = _DEFAULT_ADDRESS_CEILING_MULTIPLIER,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.app = app
@@ -100,6 +106,9 @@ class RateLimitMiddleware:
         if max_tracked_keys < 1:
             raise ValueError("max_tracked_keys must be positive")
         self.max_tracked_keys = max_tracked_keys
+        if address_ceiling_multiplier < 1:
+            raise ValueError("address_ceiling_multiplier must be positive")
+        self.address_ceiling_multiplier = address_ceiling_multiplier
         self._clock = clock
         self._trusted_proxies = tuple(ip_network(entry, strict=False) for entry in trusted_proxies)
         self._buckets: OrderedDict[str, deque[float]] = OrderedDict()
@@ -179,6 +188,11 @@ class RateLimitMiddleware:
         if compat:
             return "session:" + _fingerprint(compat)
 
+        return self.address_identity(scope)
+
+    def address_identity(self, scope: Mapping[str, Any]) -> str | None:
+        """Bucket key for the caller address alone, or ``None`` when unusable."""
+
         address = self.client_address(scope)
         if not address:
             return None
@@ -248,16 +262,37 @@ class RateLimitMiddleware:
             return
 
         identity = self.identity_for(scope)
-        if identity is None:
+        address = self.address_identity(scope)
+        if identity is None and address is None:
             await self.app(scope, receive, send)
             return
 
         scope_prefix, rule = self.rule_for(path)
-        retry_after = self._consume(f"{scope_prefix}|{identity}", rule)
-        if retry_after is None:
-            await self.app(scope, receive, send)
-            return
-        await self._reject(send, rule, retry_after)
+
+        # Two budgets, because the identity above is unauthenticated: anyone can
+        # put a fresh random value in X-Bot-Session (or a bearer) on every
+        # request and land in a brand-new bucket, which is unlimited by
+        # construction.  The per-identity window keeps honest callers fair; the
+        # per-address ceiling is what an attacker cannot rotate out of.  The
+        # ceiling is deliberately looser so a shared NAT egress is not throttled
+        # as one caller.
+        if identity is not None:
+            retry_after = self._consume(f"{scope_prefix}|{identity}", rule)
+            if retry_after is not None:
+                await self._reject(send, rule, retry_after)
+                return
+
+        if address is not None and address != identity:
+            ceiling = RateLimitRule(
+                limit=rule.limit * self.address_ceiling_multiplier,
+                window_seconds=rule.window_seconds,
+            )
+            retry_after = self._consume(f"{scope_prefix}|ceiling|{address}", ceiling)
+            if retry_after is not None:
+                await self._reject(send, ceiling, retry_after)
+                return
+
+        await self.app(scope, receive, send)
 
     @staticmethod
     async def _reject(send: Send, rule: RateLimitRule, retry_after: float) -> None:

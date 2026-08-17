@@ -245,3 +245,66 @@ async def test_tracked_identities_stay_bounded() -> None:
         scope = _scope(headers=[(b"x-bot-session", f"session-{index}".encode())])
         assert _status(await _call(middleware, scope)) == 204
     assert len(middleware._buckets) <= 3
+
+
+@pytest.mark.asyncio
+async def test_rotating_a_forged_session_cannot_escape_the_address_ceiling() -> None:
+    """轮换未认证的 X-Bot-Session 曾经等于无限额度:每个随机值都是新桶。"""
+
+    clock = _Clock()
+    # 每身份 2 次/60s,地址上限 = 2 * 3 = 6 次/60s。
+    middleware = _build(clock=clock, address_ceiling_multiplier=3)
+
+    statuses = []
+    for index in range(8):
+        # 每个请求换一个全新的会话值 —— 身份桶永远是空的。
+        forged = f"forged-session-{index}".encode()
+        statuses.append(
+            _status(await _call(middleware, _scope(headers=[(b"x-bot-session", forged)])))
+        )
+
+    # 前 6 次吃满地址上限,之后被拦下 —— 而不是 8 次全放行。
+    assert statuses[:6] == [204] * 6
+    assert statuses[6:] == [429, 429]
+
+
+@pytest.mark.asyncio
+async def test_address_ceiling_is_looser_than_one_identity_budget() -> None:
+    """同一出口 IP 后的多个诚实用户不该被当成一个人限流。"""
+
+    clock = _Clock()
+    middleware = _build(clock=clock, address_ceiling_multiplier=3)
+
+    # 三个不同身份、同一个 IP,各自用满自己的 2 次预算 = 6 次,都应放行。
+    for user in range(3):
+        session = f"honest-user-{user}".encode()
+        for _ in range(2):
+            sent = await _call(middleware, _scope(headers=[(b"x-bot-session", session)]))
+            assert _status(sent) == 204
+
+    # 第 4 个用户此时才撞上地址上限(而不是撞自己的预算)。
+    sent = await _call(middleware, _scope(headers=[(b"x-bot-session", b"honest-user-3")]))
+    assert _status(sent) == 429
+
+    # 窗口过去后恢复。
+    clock.advance(61)
+    sent = await _call(middleware, _scope(headers=[(b"x-bot-session", b"honest-user-3")]))
+    assert _status(sent) == 204
+
+
+@pytest.mark.asyncio
+async def test_anonymous_caller_is_not_charged_to_two_buckets() -> None:
+    """无凭据时身份桶本身就是地址桶,不能重复扣两次额度。"""
+
+    clock = _Clock()
+    middleware = _build(clock=clock)
+
+    assert _status(await _call(middleware, _scope())) == 204
+    assert _status(await _call(middleware, _scope())) == 204
+    # 预算是 2:第三次才该被拒(若重复扣费,第二次就会 429)。
+    assert _status(await _call(middleware, _scope())) == 429
+
+
+def test_address_ceiling_multiplier_is_validated() -> None:
+    with pytest.raises(ValueError):
+        _build(address_ceiling_multiplier=0)
