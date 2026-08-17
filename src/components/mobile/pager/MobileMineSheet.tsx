@@ -21,6 +21,7 @@ import {
   type AppSettings,
 } from '../../../services/localLibrary';
 import { getGlass, setGlass, type GlassId } from '../../../services/theme';
+import { getShellMode, setShellMode, type ShellMode } from '../../../services/shellMode';
 import { registerBackHandler } from '../MobileLayout';
 import { MobileSettingsPage } from '../MobileSettingsPage';
 import { MobileToolsPage } from '../MobileToolsPage';
@@ -33,6 +34,12 @@ const GLASS_OPTIONS: { id: GlassId; label: string }[] = [
   { id: 'standard', label: '标准' },
   { id: 'tinted', label: '着色' },
   { id: 'solid', label: '实底' },
+];
+
+// 界面模式(P7-1):分页壳(默认)/旧标签壳;消费 P3 的 shellMode flag
+const SHELL_MODE_OPTIONS: { id: ShellMode; label: string }[] = [
+  { id: 'pager', label: '分页' },
+  { id: 'tabs', label: '标签' },
 ];
 
 interface MobileMineSheetProps {
@@ -50,13 +57,16 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
   const [activeGroup, setActiveGroup] = useState<MineGroup>(null);
   const [settings, setSettings] = useState<AppSettings>(() => getAppSettings());
   const [glass, setGlassState] = useState<GlassId>(() => getGlass());
+  const [shellMode, setShellModeState] = useState<ShellMode>(() => getShellMode());
+  const [isReloading, setIsReloading] = useState(false);
 
-  // sheet 每次打开回到分组列表并重读设置/玻璃浓度(组件常驻,状态需刷新)
+  // sheet 每次打开回到分组列表并重读设置/玻璃浓度/界面模式(组件常驻,状态需刷新)
   React.useEffect(() => {
     if (isOpen) {
       setActiveGroup(null);
       setSettings(getAppSettings());
       setGlassState(getGlass());
+      setShellModeState(getShellMode());
     }
   }, [isOpen]);
 
@@ -83,6 +93,16 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
   const handleSelectGlass = (id: GlassId) => {
     setGlass(id);
     setGlassState(id);
+  };
+
+  // 界面模式切换:MobileLayout 只在启动时读一次壳模式(services/shellMode.ts 头部约定),
+  // 持久化后需整页重载才生效;短暂停留让用户看到「已切换」反馈再 reload
+  const handleSelectShellMode = (mode: ShellMode) => {
+    if (mode === shellMode || isReloading) return;
+    setShellMode(mode);
+    setShellModeState(mode);
+    setIsReloading(true);
+    window.setTimeout(() => window.location.reload(), 600);
   };
 
   const groups: { id: Exclude<MineGroup, null>; name: string; desc: string; icon: React.FC<{ className?: string }>; color: string }[] = [
@@ -119,6 +139,31 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
                   </button>
                 ))}
               </div>
+            </section>
+
+            {/* 界面模式(P7-1):分页(默认)/标签;切换后自动重新载入生效 */}
+            <section className="bg-nai-input rounded-xl border border-gray-700/50 p-4">
+              <h3 className="text-sm font-medium text-white mb-1">界面模式</h3>
+              <p className="text-xs text-gray-500 mb-3">移动外壳形态,切换后自动重新载入生效</p>
+              <div className="grid grid-cols-2 gap-2">
+                {SHELL_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => handleSelectShellMode(option.id)}
+                    disabled={isReloading}
+                    className={`py-2 rounded-lg text-sm transition-colors border ${
+                      shellMode === option.id
+                        ? 'bg-nai-accent/20 border-nai-accent/50 text-nai-accent'
+                        : 'bg-gray-800 border-transparent text-gray-400 active:text-white'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {isReloading && (
+                <p className="text-xs text-nai-accent mt-2">已切换,正在重新载入…</p>
+              )}
             </section>
           </div>
         );
@@ -161,6 +206,10 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
         style={{ height: '92vh' }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Sheet grabber(P7-1,§4.3「Sheet」行):顶部居中小横条;
+            两档 detent/下滑关闭不做,保持现有高度与关闭语义 */}
+        <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-gray-600" />
+
         {/* 头部 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 flex-shrink-0">
           {activeGroup ? (
@@ -178,7 +227,7 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
           <button
             onClick={onClose}
             title="关闭"
-            className="p-2 -mr-2 text-gray-400 hover:text-white transition-colors"
+            className="p-2 -mr-2 text-gray-400 active:text-white transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -222,23 +271,26 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
               </button>
             </section>
 
-            {/* 分组列表 */}
-            <div className="flex flex-col gap-2">
-              {groups.map((group) => (
-                <button
-                  key={group.id}
-                  onClick={() => setActiveGroup(group.id)}
-                  className="w-full flex items-center justify-between p-4 bg-nai-input rounded-xl border border-gray-700/50 active:bg-gray-800/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <group.icon className={`w-5 h-5 ${group.color}`} />
-                    <div className="text-left">
-                      <div className="font-medium text-white text-sm">{group.name}</div>
-                      <div className="text-xs text-gray-500">{group.desc}</div>
+            {/* 分组列表(P7-1:iOS grouped inset list 形态——单圆角容器、
+                行分隔线自标题对齐处缩进、行高紧凑;沿用现有类名体系,不引新色) */}
+            <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden">
+              {groups.map((group, index) => (
+                <div key={group.id}>
+                  {index > 0 && <div className="h-px bg-gray-700/50 ml-[46px]" />}
+                  <button
+                    onClick={() => setActiveGroup(group.id)}
+                    className="w-full flex items-center justify-between px-3.5 py-3 active:bg-gray-800/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <group.icon className={`w-5 h-5 ${group.color}`} />
+                      <div className="text-left">
+                        <div className="font-medium text-white text-sm">{group.name}</div>
+                        <div className="text-xs text-gray-500">{group.desc}</div>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-gray-500" />
-                </button>
+                    <ChevronRight className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
               ))}
             </div>
 

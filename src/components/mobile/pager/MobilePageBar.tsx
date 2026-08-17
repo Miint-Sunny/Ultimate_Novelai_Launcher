@@ -28,7 +28,7 @@ export const MobilePageBar: React.FC<MobilePageBarProps> = ({ activePage, onNavi
       <div className="glass relative flex items-center rounded-full shadow-xl pointer-events-auto" style={{ padding: BAR_PADDING }}>
         <div
           aria-hidden
-          className="absolute rounded-full bg-nai-accent/20 border border-nai-accent/50 transition-all duration-300"
+          className="absolute rounded-full bg-nai-accent/20 border border-nai-accent/50 transition-all duration-300 ease-spring"
           style={{
             top: BAR_PADDING,
             bottom: BAR_PADDING,

@@ -180,7 +180,8 @@ export const MobilePagerShell: React.FC<MobilePagerShellProps> = ({ onLogout }) 
             style={{
               width: `${PAGE_COUNT * 100}%`,
               transform: `translateX(calc(${(-activePage * 100) / PAGE_COUNT}% + ${dragOffset ?? 0}px))`,
-              transition: dragOffset === null ? 'transform 300ms ease-out' : 'none',
+              // P7-1:松手后的归位过渡用 iOS 弹性曲线(拖动中无过渡,跟手)
+              transition: dragOffset === null ? 'transform 300ms var(--ease-spring)' : 'none',
             }}
           >
             <div className="h-full shrink-0 overflow-hidden" style={{ width: `${100 / PAGE_COUNT}%` }}>
@@ -204,12 +205,14 @@ export const MobilePagerShell: React.FC<MobilePagerShellProps> = ({ onLogout }) 
         <MobilePageBar activePage={activePage} onNavigate={navigate} />
       )}
 
-      {/* 头像钮:各页常驻右上角;覆盖物/编辑器打开时让位 */}
+      {/* 头像钮:各页常驻右上角;覆盖物/编辑器打开时让位。
+          不用 .glass:常驻页栏 + scrolled 页头已占满同屏 ≤2 层实时模糊预算(§4.2),
+          头像钮用纯色近似档 */}
       {!isEditorOpen && !isStudioOverlayOpen && (
         <button
           onClick={() => setIsMineOpen(true)}
           title="我的"
-          className="glass fixed z-30 w-9 h-9 rounded-full flex items-center justify-center text-gray-300 active:text-white transition-colors"
+          className="fixed z-30 w-9 h-9 rounded-full flex items-center justify-center bg-nai-panel/90 border border-white/10 text-gray-300 active:text-white transition-colors"
           style={{
             top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
             right: 12,

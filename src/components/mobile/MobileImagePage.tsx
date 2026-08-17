@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import {
-  Image as ImageIcon,
   Maximize2,
   X,
   Settings,
@@ -13,6 +12,8 @@ import { MobileUpscaleSheet } from './MobileUpscaleSheet';
 import { MobileFullscreenImageViewer } from './MobileFullscreenImageViewer';
 import { MobileExpandedGallerySheet } from './MobileExpandedGallerySheet';
 import { MobileSaveSettingsSheet } from './MobileSaveSettingsSheet';
+import { MobilePageHeader } from './pager/MobilePageHeader';
+import { useScrollEdge } from './pager/useScrollEdge';
 import { useMobileGalleryBackStack } from './gallery/useMobileGalleryBackStack';
 import { MobileCompactGalleryStrip } from './gallery/MobileCompactGalleryStrip';
 import { MobileGalleryFlipCanvas } from './gallery/MobileGalleryFlipCanvas';
@@ -159,6 +160,10 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
 
   const handleDeleteSelected = () => deleteSelectedDownloads(deleteHistoryItems);
 
+  // P7-1 scroll edge:图库页无纵向滚动容器(翻图画布横滑),ref 挂主内容区,
+  // scrolled 恒 false,页头保持大标题态(预期行为,见 MobilePageHeader 注释)
+  const { scrolled, scrollRef } = useScrollEdge();
+
   return (
     <div className="flex flex-col h-full bg-nai-bg">
       {/* Error Toast */}
@@ -177,31 +182,32 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
         </div>
       )}
 
-      {/* 顶部状态栏 */}
-      <header className="flex-shrink-0 flex items-center justify-between px-4 py-3 bg-nai-panel border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <ImageIcon className="w-5 h-5 text-gray-400" />
-          <span className="font-medium">图库</span>
-          <span className="text-sm text-gray-500">({history.length})</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {imageUrl && (
-            <span className="text-xs text-gray-500 font-mono">
-              {targetWidth}×{targetHeight}
-            </span>
-          )}
-          <button
-            onClick={() => setShowSaveSettings(true)}
-            className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/50 transition-colors"
-            title="保存设置"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
+      {/* 页头(P7-1 共享大标题形态):尺寸文本与保存设置钮收进 trailing slot;
+          本页无纵向滚动容器(翻图画布横滑),scrolled 恒 false,保持大标题态 */}
+      <MobilePageHeader
+        title="图库"
+        meta={`(${history.length})`}
+        scrolled={scrolled}
+        trailing={
+          <>
+            {imageUrl && (
+              <span className="text-xs text-gray-500 font-mono">
+                {targetWidth}×{targetHeight}
+              </span>
+            )}
+            <button
+              onClick={() => setShowSaveSettings(true)}
+              className="p-1.5 text-gray-400 active:text-white rounded-lg active:bg-gray-700/50 transition-colors"
+              title="保存设置"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </>
+        }
+      />
 
       {/* 主内容区 - 当前图片 */}
-      <div className="flex-1 relative bg-black/20 overflow-hidden">
+      <div ref={scrollRef} className="flex-1 relative bg-black/20 overflow-hidden">
         {/* 顶部悬浮工具栏 - inpaint 模式下隐藏 */}
         {!isInpaintMode && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">

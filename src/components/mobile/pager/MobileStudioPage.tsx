@@ -8,6 +8,8 @@ import { MobileUpscaleSheet } from '../MobileUpscaleSheet';
 import { useMobileInpaintBridge } from '../gallery/useMobileInpaintBridge';
 import { useMobileUpscaleCompletion } from '../gallery/useMobileUpscaleCompletion';
 import { useMobileGenModuleContext } from '../generate/useMobileGenModuleContext';
+import { MobilePageHeader } from './MobilePageHeader';
+import { useScrollEdge } from './useScrollEdge';
 import {
   STUDIO_BACKEND_CAPABILITIES,
   studioModuleDef,
@@ -148,14 +150,14 @@ export const MobileStudioPage: React.FC<MobileStudioPageProps> = ({ onOverlaySta
 
   const recentHistory = history.slice(0, 8);
 
+  // P7-1 scroll edge:内容列滚离顶部 → 页头转均匀玻璃材质并收起大标题
+  const { scrolled, scrollRef } = useScrollEdge();
+
   return (
     <div className="flex flex-col h-full bg-nai-bg">
-      <header className="flex-shrink-0 flex items-center gap-2 px-4 py-3 bg-nai-panel border-b border-gray-800">
-        <Wrench className="w-5 h-5 text-gray-400" />
-        <span className="font-medium">创作室</span>
-      </header>
+      <MobilePageHeader title="创作室" scrolled={scrolled} />
 
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
         {/* 来源图区 */}
         <section className="bg-nai-panel border border-gray-800 rounded-xl p-3">
           <div className="flex items-center justify-between mb-2">

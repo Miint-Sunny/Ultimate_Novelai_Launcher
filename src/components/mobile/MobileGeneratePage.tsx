@@ -30,6 +30,7 @@ import { useMobileReferenceLibraries } from './generate/useMobileReferenceLibrar
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import { useMobilePagerAIBridge } from './generate/useMobilePagerAIBridge';
+import { useScrollEdge } from './pager/useScrollEdge';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
   onEditorStateChange?: (isOpen: boolean) => void;
@@ -376,6 +377,9 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     closeInspirationSheet: () => setIsInspirationModalOpen(false),
   });
 
+  // P7-1 scroll edge:卡片列滚离顶部 → 页头转均匀玻璃材质并收起大标题
+  const { scrolled, scrollRef } = useScrollEdge();
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-nai-bg">
       <MobileGenerateHeader
@@ -386,11 +390,12 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         anlasInfo={anlasInfo}
         isLoadingAnlas={isLoadingAnlas}
         fetchAnlas={fetchAnlas}
+        scrolled={scrolled}
       />
 
       {/* 可滚动内容区(相对定位容器:步数滑杆浮在其上、吸底栏之上,不占布局) */}
       <div className="flex-1 relative overflow-hidden">
-        <div className="h-full overflow-y-auto scrollbar-hide">
+        <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-hide">
           <MobileGenerateCards
             positivePrompt={positivePrompt}
             setPositivePrompt={setPositivePrompt}

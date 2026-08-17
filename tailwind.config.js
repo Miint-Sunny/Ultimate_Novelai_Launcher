@@ -49,6 +49,10 @@ export default {
         'slide-in-from-bottom': 'slide-in-from-bottom 0.3s ease-out',
         'fade-in': 'fade-in 0.3s ease-out',
       },
+      transitionTimingFunction: {
+        // iOS 弹性曲线(P7-1);token 定义在 src/index.css :root --ease-spring
+        spring: 'var(--ease-spring)',
+      },
     },
   },
   plugins: [],

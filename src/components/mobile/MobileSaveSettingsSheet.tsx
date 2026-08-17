@@ -53,6 +53,8 @@ export function MobileSaveSettingsSheet({
         className="w-full bg-nai-panel rounded-t-2xl shadow-2xl animate-slide-in-from-bottom"
         onClick={(event) => event.stopPropagation()}
       >
+        {/* Sheet grabber(P7-1):顶部居中小横条 */}
+        <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-gray-600" />
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <Save className="w-5 h-5" />
@@ -60,7 +62,7 @@ export function MobileSaveSettingsSheet({
           </h3>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white"
+            className="p-1.5 active:bg-gray-700 rounded-lg text-gray-400 active:text-white"
           >
             <X className="w-5 h-5" />
           </button>

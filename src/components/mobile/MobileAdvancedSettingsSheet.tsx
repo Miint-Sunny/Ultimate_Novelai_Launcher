@@ -71,6 +71,8 @@ export function MobileAdvancedSettingsSheet({
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end animate-fade-in">
       <div className="absolute inset-0" onClick={onClose} />
       <div className="relative w-full bg-nai-panel rounded-t-2xl max-h-[80vh] flex flex-col animate-slide-in-from-bottom safe-area-bottom">
+        {/* Sheet grabber(P7-1):顶部居中小横条 */}
+        <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-gray-600" />
         <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-5 h-5 text-nai-accent" />
@@ -113,7 +115,7 @@ export function MobileAdvancedSettingsSheet({
                       }}
                       className={`w-full p-2.5 rounded-lg text-left transition-colors ${isActive
                         ? 'bg-nai-accent/20 border border-nai-accent/50'
-                        : 'bg-gray-800/50 border border-transparent hover:bg-gray-700/50'
+                        : 'bg-gray-800/50 border border-transparent active:bg-gray-700/50'
                         }`}
                     >
                       <div className="flex items-center justify-between">
@@ -169,7 +171,7 @@ export function MobileAdvancedSettingsSheet({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-300">Seed 种子</span>
-              <button onClick={() => setSeed('')} className="text-xs text-gray-500 hover:text-white">
+              <button onClick={() => setSeed('')} className="text-xs text-gray-500 active:text-white">
                 清空
               </button>
             </div>

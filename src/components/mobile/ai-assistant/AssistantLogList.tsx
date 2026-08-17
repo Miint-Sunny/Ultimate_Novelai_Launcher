@@ -11,7 +11,8 @@ type PromptSnapshot = {
 };
 
 interface AssistantLogListProps {
-  logRef: React.RefObject<HTMLDivElement | null>;
+  // P7-1:放宽为 React.Ref,AI 页需传入组合 callback ref(日志自动滚动 ref + scroll edge 监听)
+  logRef: React.Ref<HTMLDivElement>;
   agentState: AgentState;
   suggestions: string[];
   isGeneratingPrompt: boolean;

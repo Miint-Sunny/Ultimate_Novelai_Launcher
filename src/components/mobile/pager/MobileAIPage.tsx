@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Bot, PlusCircle } from 'lucide-react';
 import { appBackendApi } from '../../../api/appBackendApi';
 import {
@@ -11,6 +11,8 @@ import { useAgentModelPresentation } from '../../../hooks/useAgentModelPresentat
 import { AssistantInputBar } from '../ai-assistant/AssistantInputBar';
 import { AssistantLogList } from '../ai-assistant/AssistantLogList';
 import { useMobileAssistantSheetState } from '../ai-assistant/useMobileAssistantSheetState';
+import { MobilePageHeader } from './MobilePageHeader';
+import { useScrollEdge } from './useScrollEdge';
 
 type PromptSnapshot = {
   positive: string;
@@ -73,55 +75,64 @@ export const MobileAIPage: React.FC<MobileAIPageProps> = ({ onOpenMine }) => {
     window.dispatchEvent(new CustomEvent('pager-ai-restore', { detail: snapshot }));
   };
 
+  // P7-1 scroll edge:日志流是滚动容器;组合 callback ref —— aiLogRef(自动滚底)
+  // 与 scroll edge 监听挂同一节点(useRef 推断的 current 为只读,此处经可变断言写回)
+  const { scrolled, scrollRef } = useScrollEdge<HTMLDivElement>();
+  const bindLogRef = useCallback((node: HTMLDivElement | null) => {
+    (aiLogRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    scrollRef(node);
+  }, [aiLogRef, scrollRef]);
+
   return (
     <div
       className="flex flex-col h-full bg-nai-bg"
       style={viewportHeight ? { height: viewportHeight } : undefined}
     >
-      {/* 页头:沿用 AssistantHeader 的模式状态/模型选择形态,关闭钮换成「新会话」 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-nai-panel flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-nai-accent" />
-          <span className="text-base font-bold text-white">AI 助手</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {agentModel.isLocal ? (
-            <div
-              role="status"
-              title={`本地 sidecar 主模型:${agentModel.primaryModel || '未配置'}`}
-              className="h-8 max-w-[160px] px-2.5 inline-flex items-center gap-1.5 text-xs font-bold rounded-lg bg-nai-input border border-gray-700 text-white"
+      {/* 页头(P7-1,§5.3):大标题「助手」+ 模式状态(本地只读主模型/云模式模型选择)
+          + 新会话钮收进 trailing slot;多会话 UI 不建(后端未就绪,保持单会话兜底) */}
+      <MobilePageHeader
+        title="助手"
+        scrolled={scrolled}
+        trailing={
+          <>
+            {agentModel.isLocal ? (
+              <div
+                role="status"
+                title={`本地 sidecar 主模型:${agentModel.primaryModel || '未配置'}`}
+                className="h-8 max-w-[160px] px-2.5 inline-flex items-center gap-1.5 text-xs font-bold rounded-lg bg-nai-input border border-gray-700 text-white"
+              >
+                <span className="shrink-0">本地主模型</span>
+                <span className="text-gray-400 truncate">· {agentModel.primaryModel || '未配置'}</span>
+              </div>
+            ) : (
+              <select
+                value={aiModel}
+                onChange={(e) => {
+                  setAiModel(e.target.value);
+                  window.dispatchEvent(new CustomEvent('pager-ai-model-change', { detail: e.target.value }));
+                }}
+                className="h-8 px-2 text-sm font-bold rounded-lg bg-nai-input border border-gray-700 text-white max-w-[140px]"
+              >
+                {AI_MODEL_CHOICES.map((choice) => (
+                  <option key={choice.key} value={choice.key}>{choice.label}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => agentService.clearLogs()}
+              title="新会话(清空当前对话)"
+              className="p-2 active:bg-white/5 rounded-lg text-gray-400 active:text-white transition-colors"
             >
-              <span className="shrink-0">本地主模型</span>
-              <span className="text-gray-400 truncate">· {agentModel.primaryModel || '未配置'}</span>
-            </div>
-          ) : (
-            <select
-              value={aiModel}
-              onChange={(e) => {
-                setAiModel(e.target.value);
-                window.dispatchEvent(new CustomEvent('pager-ai-model-change', { detail: e.target.value }));
-              }}
-              className="h-8 px-2 text-sm font-bold rounded-lg bg-nai-input border border-gray-700 text-white max-w-[140px]"
-            >
-              {AI_MODEL_CHOICES.map((choice) => (
-                <option key={choice.key} value={choice.key}>{choice.label}</option>
-              ))}
-            </select>
-          )}
-          <button
-            onClick={() => agentService.clearLogs()}
-            title="新会话(清空当前对话)"
-            className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
-          >
-            <PlusCircle className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
+              <PlusCircle className="w-5 h-5" />
+            </button>
+          </>
+        }
+      />
 
       {agentAvailability.available ? (
         <>
           <AssistantLogList
-            logRef={aiLogRef}
+            logRef={bindLogRef}
             agentState={agentState}
             suggestions={randomSuggestions}
             isGeneratingPrompt={isGeneratingPrompt}
