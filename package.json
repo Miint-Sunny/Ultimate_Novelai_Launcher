@@ -18,9 +18,10 @@
     "test:sidecar": "uv run --frozen python -m pytest sidecar/tests -q",
     "test:agent": "uv run --frozen python -m pytest server/agent_router/tests -q",
     "test:cloud": "uv run --frozen python -m pytest tests -q",
-    "lint:python": "uv run --frozen ruff check backend_core cloud_backend sidecar server scripts/sidecar-entry.py",
+    "test:adapter": "uv run --frozen python -m pytest plana_adapter/tests -q",
+    "lint:python": "uv run --frozen ruff check backend_core cloud_backend plana_adapter sidecar server scripts/sidecar-entry.py",
     "typecheck:python": "uv run --frozen pyright",
-    "test:python": "uv run --frozen coverage erase && uv run --frozen coverage run -m pytest sidecar/tests -q && uv run --frozen coverage run --append -m pytest server/agent_router/tests -q && uv run --frozen coverage run --append -m pytest tests -q && uv run --frozen coverage report && uv run --frozen python sidecar/tests/check_coverage_gate.py",
+    "test:python": "uv run --frozen coverage erase && uv run --frozen coverage run -m pytest sidecar/tests -q && uv run --frozen coverage run --append -m pytest server/agent_router/tests -q && uv run --frozen coverage run --append -m pytest tests -q && uv run --frozen coverage run --append -m pytest plana_adapter/tests -q && uv run --frozen coverage report && uv run --frozen python sidecar/tests/check_coverage_gate.py",
     "scan:secrets": "node scripts/scan-secrets.mjs"
   },
   "devDependencies": {
