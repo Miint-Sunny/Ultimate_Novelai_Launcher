@@ -22,12 +22,15 @@ interface UseMobileAssistantSheetStateParams {
   isOpen: boolean;
   isGeneratingPrompt: boolean;
   logs: LogEntry[];
+  /** 打开后自动聚焦输入框(sheet 语义:true;P3 AI 整页传 false,避免常驻页 mount 弹键盘) */
+  autoFocus?: boolean;
 }
 
 export function useMobileAssistantSheetState({
   isOpen,
   isGeneratingPrompt,
   logs,
+  autoFocus = true,
 }: UseMobileAssistantSheetStateParams) {
   const [aiInput, setAiInput] = useState('');
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
@@ -85,10 +88,10 @@ export function useMobileAssistantSheetState({
   }, [logs]);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (autoFocus && isOpen && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [isOpen]);
+  }, [autoFocus, isOpen]);
 
   return {
     aiInput,

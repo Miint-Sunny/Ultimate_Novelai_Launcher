@@ -8,6 +8,8 @@ interface UseMobileInpaintBridgeOptions {
   targetHeight: number;
   isGenerating: boolean;
   isQueuing: boolean;
+  /** 是否监听全局 'open-inpaint-mode' 事件(图库页:true;P3 创作室页:false,避免双开覆盖物) */
+  listenGlobalOpenEvent?: boolean;
 }
 
 export function useMobileInpaintBridge({
@@ -16,6 +18,7 @@ export function useMobileInpaintBridge({
   targetHeight,
   isGenerating,
   isQueuing,
+  listenGlobalOpenEvent = true,
 }: UseMobileInpaintBridgeOptions) {
   const [isInpaintMode, setIsInpaintMode] = useState(false);
   const [isInpainting, setIsInpainting] = useState(false);
@@ -39,6 +42,7 @@ export function useMobileInpaintBridge({
   };
 
   useEffect(() => {
+    if (!listenGlobalOpenEvent) return;
     const handler = (event: Event) => {
       const detail = (event as CustomEvent).detail;
       setInitialMask(detail?.maskBase64 || null);
@@ -48,7 +52,7 @@ export function useMobileInpaintBridge({
     };
     window.addEventListener('open-inpaint-mode', handler);
     return () => window.removeEventListener('open-inpaint-mode', handler);
-  }, []);
+  }, [listenGlobalOpenEvent]);
 
   const handleInpaintGenerate = async (
     maskBase64: string,

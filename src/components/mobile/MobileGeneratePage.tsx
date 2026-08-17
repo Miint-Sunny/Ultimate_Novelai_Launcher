@@ -25,12 +25,16 @@ import { useMobilePromptAssistWorkflow } from './generate/useMobilePromptAssistW
 import { useMobileReferenceLibraries } from './generate/useMobileReferenceLibraries';
 import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker';
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
+import { useMobilePagerAIBridge } from './generate/useMobilePagerAIBridge';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
   onEditorStateChange?: (isOpen: boolean) => void;
+  /** P3 pager 壳:AI 助手以整页(页 0)呈现——提示词卡 AI 按钮改为导航到页 0,
+   *  并注册 pager-ai-* 事件桥;tabs 壳下缺省(false),保持原 sheet 行为不变 */
+  aiAssistantAsPage?: boolean;
 }
 
-export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditorStateChange }) => {
+export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditorStateChange, aiAssistantAsPage = false }) => {
   const {
     isGenerating,
     generate,
@@ -257,6 +261,15 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     closeArtistModal: () => setShowArtistModal(false),
   });
 
+  // P3 pager 壳:AI 整页(页 0)的事件桥(pager-ai-* → 上方工作流)
+  useMobilePagerAIBridge({
+    enabled: aiAssistantAsPage,
+    handleAIGenerate,
+    handleAIRegenerate,
+    handleRestoreSnapshot,
+    setAiModel,
+  });
+
   useMobileGeneratePageLifecycle({
     editorOpen,
     setEditorOpen,
@@ -375,7 +388,11 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           negativeTokens={negativeTokens}
           openPromptEditor={() => setEditorOpen('prompt')}
           openNegativeEditor={() => setEditorOpen('undesired')}
-          openAIAssistant={() => setShowAIAssistant(true)}
+          openAIAssistant={
+            aiAssistantAsPage
+              ? () => window.dispatchEvent(new CustomEvent('pager-navigate', { detail: { page: 0 } }))
+              : () => setShowAIAssistant(true)
+          }
           openArtistModal={() => setShowArtistModal(true)}
           openInspirationModal={() => setIsInspirationModalOpen(true)}
           openOCModal={() => setShowOCModal(true)}

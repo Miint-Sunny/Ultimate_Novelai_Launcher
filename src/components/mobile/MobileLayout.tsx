@@ -4,6 +4,8 @@ import { MobileGeneratePage } from './MobileGeneratePage';
 import { MobileGalleryPage } from './MobileImagePage';
 import { MobileSettingsPage } from './MobileSettingsPage';
 import { MobileToolsPage } from './MobileToolsPage';
+import { MobilePagerShell } from './pager/MobilePagerShell';
+import { getShellMode } from '../../services/shellMode';
 import { useGeneration } from '../../contexts/GenerationContext';
 
 type TabType = 'generate' | 'gallery' | 'tools' | 'settings';
@@ -34,7 +36,18 @@ export const registerBackHandler = (handler: BackHandler): (() => void) => {
   return () => { backHandlers.delete(handler); };
 };
 
-export const MobileLayout: React.FC<MobileLayoutProps> = ({ onLogout }) => {
+// P3 pager 壳专用:迭代已注册的返回处理器(与下方 tabs 壳 popstate 里的内联迭代同语义;
+// tabs 路径保持原样不改,pager 壳经此导出复用同一注册表)。
+export const dispatchBackHandlers = (): boolean => {
+  for (const handler of backHandlers) {
+    if (handler()) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const MobileTabsLayout: React.FC<MobileLayoutProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<TabType>('generate');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
@@ -241,4 +254,14 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ onLogout }) => {
       )}
     </div>
   );
+};
+
+// P3 feature flag 分叉:nai_shell_mode = 'tabs' 走上方旧壳(实现原样,一行未动);
+// 默认 'pager' 走新分页壳(src/components/mobile/pager/)。运行期不切换,启动读一次。
+export const MobileLayout: React.FC<MobileLayoutProps> = ({ onLogout }) => {
+  const [shellMode] = useState(getShellMode);
+  if (shellMode === 'tabs') {
+    return <MobileTabsLayout onLogout={onLogout} />;
+  }
+  return <MobilePagerShell onLogout={onLogout} />;
 };

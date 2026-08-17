@@ -23,7 +23,12 @@ import { useMobileInpaintBridge } from './gallery/useMobileInpaintBridge';
 import { useMobileSaveDownloadWorkflow } from './gallery/useMobileSaveDownloadWorkflow';
 import { useMobileUpscaleCompletion } from './gallery/useMobileUpscaleCompletion';
 
-export const MobileGalleryPage: React.FC = () => {
+interface MobileGalleryPageProps {
+  /** P3 pager 壳:重绘/放大改为带当前图跳创作室(页 2);tabs 壳下缺省,保持原覆盖物行为 */
+  onStudioTool?: (tool: 'inpaint' | 'upscale') => void;
+}
+
+export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTool }) => {
   const {
     isGenerating,
     currentStep,
@@ -209,7 +214,7 @@ export const MobileGalleryPage: React.FC = () => {
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all ${hasImage ? 'text-gray-300 active:bg-white/10' : 'text-gray-600'
                   }`}
-                onClick={openInpaintMode}
+                onClick={() => (onStudioTool ? onStudioTool('inpaint') : openInpaintMode())}
                 disabled={!hasImage}
               >
                 <Paintbrush className="w-4 h-4" />
@@ -221,7 +226,7 @@ export const MobileGalleryPage: React.FC = () => {
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all ${hasImage ? 'text-gray-300 active:bg-white/10' : 'text-gray-600'
                   }`}
-                onClick={() => setIsUpscaleModalOpen(true)}
+                onClick={() => (onStudioTool ? onStudioTool('upscale') : setIsUpscaleModalOpen(true))}
                 disabled={!hasImage}
               >
                 <Maximize2 className="w-4 h-4" />
