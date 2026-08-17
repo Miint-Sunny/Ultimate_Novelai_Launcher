@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import type { PromptPresetData } from '../../../services/localLibrary';
+import { getAISettings, type PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
 import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
 import { assembleGenerateParams } from '../../generation/generationPayload';
@@ -106,9 +106,9 @@ export function useMobileGenerateRunner({
         noiseSchedule,
         activePresetId,
         varietyPlus,
-        // 移动端没有 vibe 强度归一化开关:显式固定为 true,与此前省略该字段时的
-        // 后端默认行为(normalizeVibeStrength ?? true)一致
-        normalizeVibeStrength: true,
+        // 移动端无该开关的 UI:读取共享设置存储(novelai_ai_settings,桌面侧维护),
+        // 默认 true 与此前省略该字段的后端默认行为一致
+        normalizeVibeStrength: getAISettings().normalizeVibeStrength,
         characterPrompts,
         activePreciseRefs,
         activeVibes,

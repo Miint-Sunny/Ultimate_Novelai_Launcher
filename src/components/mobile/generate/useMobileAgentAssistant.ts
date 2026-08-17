@@ -2,9 +2,14 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 import {
   agentService,
   DEFAULT_AI_MODEL,
-  type AgentContext,
   type AgentState,
 } from '../../../services/agentService';
+import { getPublicVibeFile } from '../../../services/publicLibrary';
+import {
+  applyAgentResultToUI,
+  restoreGeneratedSnapshotToUI,
+  runAgent,
+} from '../../agent/agentOrchestration';
 import type {
   ActiveVibe,
   ArtistFile,
@@ -48,42 +53,12 @@ interface UseMobileAgentAssistantOptions {
   clearActiveCR: () => void;
 }
 
-const makeCharacterPrompts = (characters: CharacterSnapshot[]): CharacterPrompt[] => (
-  characters.map((character, index) => ({
-    id: `${Date.now()}-${index}`,
-    positive: character.positive,
-    negative: character.negative || '',
-    activeTab: 'prompt' as const,
-    enabled: true,
-    name: character.name || `角色${index + 1}`,
-  }))
-);
-
-const restoreVibes = (
-  snapshotVibes: string[],
-  vibeFiles: VibeFile[],
-  localVibeFiles: VibeFile[],
-  defaultInfoExtracted: number
-): ActiveVibe[] => {
-  const allVibes = [...vibeFiles, ...localVibeFiles];
-  const restoredVibes: ActiveVibe[] = [];
-  for (const vibeRef of snapshotVibes) {
-    const file = allVibes.find((vibe) =>
-      vibe.id === vibeRef ||
-      vibe.name === vibeRef ||
-      vibe.name.toLowerCase() === vibeRef.toLowerCase()
-    );
-    if (!file) continue;
-    restoredVibes.push({
-      ...file,
-      referenceStrength: file.defaultStrength ?? 0.5,
-      informationExtracted: file.defaultInfoExtracted ?? defaultInfoExtracted,
-      enabled: true,
-    });
-  }
-  return restoredVibes;
-};
-
+// 薄适配:编排逻辑全部走共享层 src/components/agent/agentOrchestration.ts(与桌面同一层)。
+// 此处只保留移动端既有差异:aiModel/agentState 本地状态、isGeneratingPrompt 并发门、
+// preState 角色缺名时按「角色N」兜底(UI 快照形状兼容)。
+// 移动端因此获得的对齐(见 P2 报告):AgentContext 发全量 vibe 库并带 currentVibes、
+// 结果应用用桌面 truthy 语义、公共 vibe 缺数据时静默回源懒加载、
+// 快照恢复对齐桌面(slice 6、id 匹配、ie 默认 0.5、不清 CR)。
 export function useMobileAgentAssistant({
   positivePrompt,
   setPositivePrompt,
@@ -111,91 +86,59 @@ export function useMobileAgentAssistant({
     return () => unsubscribe();
   }, []);
 
-  const buildSharedContext = useCallback((): Omit<AgentContext, 'currentPositive' | 'currentNegative' | 'currentCharacters'> => ({
-    vibes: activeVibes.map((vibe) => ({
-      id: vibe.id,
-      name: vibe.name,
-      supportedModels: vibe.supportedModels || [],
-    })),
-    artists: [...artistPublicFiles, ...artistLocalFiles].map((artist) => ({
-      id: artist.id,
-      name: artist.name,
-      prompt: artist.prompt,
-    })),
-    ocs: [...ocPublicFiles, ...ocLocalFiles].map((oc) => ({
-      id: oc.id,
-      name: oc.name,
-      zhName: oc.name,
-      positive: oc.positive,
-      negative: oc.negative || '',
-    })),
-    roleTags: roleTagMap,
-  }), [
+  const handleAIGenerate = useCallback(async (request: string) => {
+    if (!request || isGeneratingPrompt) return;
+    await runAgent({
+      contextSources: {
+        vibeFiles: [...vibeFiles, ...localVibeFiles],
+        artistFiles: [...artistPublicFiles, ...artistLocalFiles],
+        ocFiles: [...ocPublicFiles, ...ocLocalFiles],
+        roleTags: roleTagMap,
+        currentPositive: positivePrompt,
+        currentNegative: negativePrompt,
+        currentCharacters: characterPrompts,
+        selectedVibeIds: activeVibes.map((vibe) => vibe.id),
+      },
+      setIsGeneratingPrompt,
+      setAgentContext: (context) => agentService.setContext(context),
+      executeAgent: (input, model, skipUserLog, imageBase64) =>
+        agentService.execute(input, model, skipUserLog, imageBase64),
+      applyResult: (result) => applyAgentResultToUI(result, {
+        publicVibeFiles: vibeFiles,
+        localVibeFiles: localVibeFiles,
+        setPositivePrompt,
+        setNegativePrompt,
+        setCharacterPrompts,
+        setActiveVibes,
+        clearPreciseReference: clearActiveCR,
+        getPublicVibeFile,
+      }),
+      onError: (error) => console.error('AI generation failed:', error),
+    }, {
+      input: request,
+      aiModel,
+      skipUserLog: false,
+      allowImageOnly: false,
+    });
+  }, [
     activeVibes,
+    aiModel,
     artistLocalFiles,
     artistPublicFiles,
+    characterPrompts,
+    clearActiveCR,
+    isGeneratingPrompt,
+    localVibeFiles,
+    negativePrompt,
     ocLocalFiles,
     ocPublicFiles,
+    positivePrompt,
     roleTagMap,
-  ]);
-
-  const applyAgentResult = useCallback((result: Awaited<ReturnType<typeof agentService.execute>>) => {
-    if (!result) return;
-    if (result.positive !== undefined) setPositivePrompt(result.positive);
-    if (result.negative !== undefined) setNegativePrompt(result.negative);
-
-    if (result.characters && result.characters.length > 0) {
-      setCharacterPrompts(makeCharacterPrompts(result.characters).slice(0, 6));
-    }
-
-    if (result.vibes && result.vibes.length > 0) {
-      const newActiveVibes = restoreVibes(result.vibes, vibeFiles, localVibeFiles, 0.5);
-      if (newActiveVibes.length > 0) {
-        setActiveVibes(newActiveVibes);
-        clearActiveCR();
-      }
-    }
-  }, [
-    clearActiveCR,
-    localVibeFiles,
     setActiveVibes,
     setCharacterPrompts,
     setNegativePrompt,
     setPositivePrompt,
     vibeFiles,
-  ]);
-
-  const handleAIGenerate = useCallback(async (request: string) => {
-    if (!request || isGeneratingPrompt) return;
-    setIsGeneratingPrompt(true);
-    try {
-      agentService.setContext({
-        ...buildSharedContext(),
-        currentPositive: positivePrompt,
-        currentNegative: negativePrompt,
-        currentCharacters: characterPrompts
-          .filter((character) => character.enabled && character.positive.trim())
-          .map((character) => ({
-            name: character.name || '未命名角色',
-            positive: character.positive,
-            negative: character.negative || undefined,
-          })),
-      });
-      const result = await agentService.execute(request, aiModel);
-      applyAgentResult(result);
-    } catch (error) {
-      console.error('AI generation failed:', error);
-    } finally {
-      setIsGeneratingPrompt(false);
-    }
-  }, [
-    aiModel,
-    applyAgentResult,
-    buildSharedContext,
-    characterPrompts,
-    isGeneratingPrompt,
-    negativePrompt,
-    positivePrompt,
   ]);
 
   const handleAIRegenerate = useCallback(async (
@@ -204,49 +147,79 @@ export function useMobileAgentAssistant({
     imageBase64?: string,
   ) => {
     if (!request || isGeneratingPrompt) return;
-    setIsGeneratingPrompt(true);
-    try {
-      agentService.setContext({
-        ...buildSharedContext(),
-        currentPositive: preState.positive,
-        currentNegative: preState.negative,
-        currentCharacters: preState.characters.map((character, index) => ({
+    await runAgent({
+      contextSources: {
+        vibeFiles: [...vibeFiles, ...localVibeFiles],
+        artistFiles: [...artistPublicFiles, ...artistLocalFiles],
+        ocFiles: [...ocPublicFiles, ...ocLocalFiles],
+        roleTags: roleTagMap,
+        currentPositive: positivePrompt,
+        currentNegative: negativePrompt,
+        currentCharacters: characterPrompts,
+        selectedVibeIds: activeVibes.map((vibe) => vibe.id),
+      },
+      setIsGeneratingPrompt,
+      setAgentContext: (context) => agentService.setContext(context),
+      executeAgent: (input, model, skipUserLog, image) =>
+        agentService.execute(input, model, skipUserLog, image),
+      applyResult: (result) => applyAgentResultToUI(result, {
+        publicVibeFiles: vibeFiles,
+        localVibeFiles: localVibeFiles,
+        setPositivePrompt,
+        setNegativePrompt,
+        setCharacterPrompts,
+        setActiveVibes,
+        clearPreciseReference: clearActiveCR,
+        getPublicVibeFile,
+      }),
+      onError: (error) => console.error('AI regeneration failed:', error),
+    }, {
+      input: request,
+      aiModel,
+      skipUserLog: true,
+      allowImageOnly: false,
+      imageBase64,
+      preState: {
+        positive: preState.positive,
+        negative: preState.negative,
+        characters: preState.characters.map((character, index) => ({
           name: character.name || `角色${index + 1}`,
           positive: character.positive,
           negative: character.negative,
         })),
-      });
-      const result = await agentService.execute(request, aiModel, true, imageBase64);
-      applyAgentResult(result);
-    } catch (error) {
-      console.error('AI regeneration failed:', error);
-    } finally {
-      setIsGeneratingPrompt(false);
-    }
+      },
+    });
   }, [
+    activeVibes,
     aiModel,
-    applyAgentResult,
-    buildSharedContext,
+    artistLocalFiles,
+    artistPublicFiles,
+    characterPrompts,
+    clearActiveCR,
     isGeneratingPrompt,
+    localVibeFiles,
+    negativePrompt,
+    ocLocalFiles,
+    ocPublicFiles,
+    positivePrompt,
+    roleTagMap,
+    setActiveVibes,
+    setCharacterPrompts,
+    setNegativePrompt,
+    setPositivePrompt,
+    vibeFiles,
   ]);
 
   const handleRestoreSnapshot = useCallback((snapshot: RestoreSnapshot) => {
-    setPositivePrompt(snapshot.positive);
-    setNegativePrompt(snapshot.negative);
-    setCharacterPrompts(snapshot.characters.length > 0 ? makeCharacterPrompts(snapshot.characters) : []);
-
-    if (snapshot.vibes.length === 0) {
-      setActiveVibes([]);
-      return;
-    }
-
-    const restoredVibes = restoreVibes(snapshot.vibes, vibeFiles, localVibeFiles, 1);
-    setActiveVibes(restoredVibes);
-    if (restoredVibes.length > 0) {
-      clearActiveCR();
-    }
+    restoreGeneratedSnapshotToUI(snapshot, {
+      publicVibeFiles: vibeFiles,
+      localVibeFiles: localVibeFiles,
+      setPositivePrompt,
+      setNegativePrompt,
+      setCharacterPrompts,
+      setActiveVibes,
+    });
   }, [
-    clearActiveCR,
     localVibeFiles,
     setActiveVibes,
     setCharacterPrompts,

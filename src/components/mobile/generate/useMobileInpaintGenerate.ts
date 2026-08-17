@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { MutableRefObject } from 'react';
-import type { PromptPresetData } from '../../../services/localLibrary';
+import { getAISettings, type PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
 import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
 import { assembleInpaintParams } from '../../generation/generationPayload';
@@ -88,8 +88,8 @@ export function useMobileInpaintGenerate({
           noiseSchedule,
           activePresetId,
           varietyPlus,
-          // 与 useMobileGenerateRunner 一致:显式固定为后端默认值
-          normalizeVibeStrength: true,
+          // 与 useMobileGenerateRunner 一致:读取共享设置存储,默认 true
+          normalizeVibeStrength: getAISettings().normalizeVibeStrength,
           characterPrompts,
           activePreciseRefs,
           activeVibes,

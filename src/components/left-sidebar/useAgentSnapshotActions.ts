@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { agentService, type GenerationSnapshot } from '../../services/agentService';
+import {
+  restoreGeneratedSnapshotToUI,
+  restorePromptSnapshotToUI,
+} from '../agent/agentOrchestration';
 import type { ActiveVibe, VibeFile } from '../vibe';
 import type { CharacterPrompt } from './types';
 
@@ -35,74 +39,40 @@ interface UseAgentSnapshotActionsParams {
   handleAIGenerateWithRequest: RegenerateWithRequest;
 }
 
-function buildCharacterPrompts(characters: SnapshotCharacter[]): CharacterPrompt[] {
-  return characters.map((char, index) => ({
-    id: `${Date.now()}-${index}`,
-    positive: char.positive,
-    negative: char.negative || '',
-    activeTab: 'prompt' as const,
-    enabled: true,
-    position: '',
-    name: char.name || `角色${index + 1}`,
-  }));
-}
-
-function buildActiveVibes(vibeIds: string[], publicFiles: VibeFile[], localFiles: VibeFile[]) {
-  const allFiles = [...publicFiles, ...localFiles];
-  const activeVibes: ActiveVibe[] = [];
-
-  for (const id of vibeIds) {
-    const file = allFiles.find((candidate) => candidate.id === id);
-    if (!file) continue;
-
-    activeVibes.push({
-      id,
-      name: file.name,
-      preview: file.preview,
-      image: file.image,
-      encodings: file.encodings,
-      referenceStrength: file.defaultStrength ?? 0.5,
-      informationExtracted: file.defaultInfoExtracted ?? 0.5,
-      supportedModels: file.supportedModels,
-      enabled: true,
-    });
-  }
-
-  return activeVibes;
-}
-
+// 薄壳:快照恢复逻辑全部在共享层 src/components/agent/agentOrchestration.ts;
+// 日志截断/重试动作(agentService.truncate*)是桌面专属,留在壳内,行为不变。
 export function useAgentSnapshotActions(params: UseAgentSnapshotActionsParams) {
   const restorePromptSnapshot = useCallback((
     snapshot: PromptSnapshot,
     options: { openCharacterSection: boolean } = { openCharacterSection: false },
   ) => {
-    params.setPositivePrompt(snapshot.positive);
-    params.setNegativePrompt(snapshot.negative);
-
-    if (snapshot.characters.length > 0) {
-      params.setCharacterPrompts(buildCharacterPrompts(snapshot.characters).slice(0, 6));
-      if (options.openCharacterSection) {
-        params.setIsCharacterSectionOpen(true);
-      }
-    } else {
-      params.setCharacterPrompts([]);
-    }
+    restorePromptSnapshotToUI(snapshot, {
+      publicVibeFiles: params.publicFiles,
+      localVibeFiles: params.localFiles,
+      setPositivePrompt: params.setPositivePrompt,
+      setNegativePrompt: params.setNegativePrompt,
+      setCharacterPrompts: params.setCharacterPrompts,
+      setActiveVibes: params.setActiveVibes,
+      setSelectedVibes: params.setSelectedVibes,
+      openCharacterSection: () => params.setIsCharacterSectionOpen(true),
+    }, options);
   }, [params]);
 
   const restoreGeneratedSnapshot = useCallback((
     snapshot: GenerationSnapshot,
     options: { openCharacterSection: boolean } = { openCharacterSection: false },
   ) => {
-    restorePromptSnapshot(snapshot, options);
-
-    if (snapshot.vibes.length > 0) {
-      params.setSelectedVibes(snapshot.vibes);
-      params.setActiveVibes(buildActiveVibes(snapshot.vibes, params.publicFiles, params.localFiles));
-    } else {
-      params.setSelectedVibes([]);
-      params.setActiveVibes([]);
-    }
-  }, [params, restorePromptSnapshot]);
+    restoreGeneratedSnapshotToUI(snapshot, {
+      publicVibeFiles: params.publicFiles,
+      localVibeFiles: params.localFiles,
+      setPositivePrompt: params.setPositivePrompt,
+      setNegativePrompt: params.setNegativePrompt,
+      setCharacterPrompts: params.setCharacterPrompts,
+      setActiveVibes: params.setActiveVibes,
+      setSelectedVibes: params.setSelectedVibes,
+      openCharacterSection: () => params.setIsCharacterSectionOpen(true),
+    }, options);
+  }, [params]);
 
   const handleSuccessLogAction = useCallback((
     logIndex: number,

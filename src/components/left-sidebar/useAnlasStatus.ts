@@ -1,44 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
-import { getAppSettings } from '../../services/localLibrary';
-import { botService, onlineService } from '../../services/botService';
-import { getAnlas, type AnlasInfo, updateCachedIsOpus } from '../../services/novelai';
+import { useEffect, useState } from 'react';
+import { onlineService } from '../../services/botService';
+import { useSharedAnlasStatus } from '../../hooks/useSharedAnlasStatus';
 
-const MIN_LOADING_DURATION_MS = 500;
-
+// 薄壳:查询逻辑在 src/hooks/useSharedAnlasStatus.ts(500ms 最短 loading);
+// 这里保留桌面专属的在线人数订阅与挂载即查,行为与原实现一致。
 export function useAnlasStatus() {
-  const [anlasInfo, setAnlasInfo] = useState<AnlasInfo | null>(null);
-  const [isLoadingAnlas, setIsLoadingAnlas] = useState(false);
+  const { anlasInfo, isLoadingAnlas, fetchAnlas } = useSharedAnlasStatus({
+    minLoadingDurationMs: 500,
+  });
   const [onlineCount, setOnlineCount] = useState(0);
-
-  const fetchAnlas = useCallback(async () => {
-    setIsLoadingAnlas(true);
-    const startTime = Date.now();
-
-    try {
-      const settings = getAppSettings();
-      if (settings.loginMode === 'bot') {
-        const result = await botService.getAnlas();
-        if (result) {
-          setAnlasInfo({
-            fixedTrainingStepsLeft: result.anlas,
-            purchasedTrainingSteps: 0,
-            isOpus: true,
-          });
-          updateCachedIsOpus(true);
-        }
-      } else {
-        const info = await getAnlas();
-        setAnlasInfo(info);
-        if (info) updateCachedIsOpus(info.isOpus);
-      }
-    } finally {
-      const elapsed = Date.now() - startTime;
-      if (elapsed < MIN_LOADING_DURATION_MS) {
-        await new Promise((resolve) => setTimeout(resolve, MIN_LOADING_DURATION_MS - elapsed));
-      }
-      setIsLoadingAnlas(false);
-    }
-  }, []);
 
   useEffect(() => {
     void fetchAnlas();

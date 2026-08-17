@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useSharedCharacterPrompts } from '../../hooks/useSharedCharacterPrompts';
 import type { CharacterPrompt } from './types';
 
 const STORAGE_KEY = 'desktop_character_prompts';
-const MAX_CHARACTER_PROMPTS = 6;
 
 function loadCharacterPrompts(): CharacterPrompt[] {
   try {
@@ -39,60 +39,36 @@ function saveCharacterPrompts(characterPrompts: CharacterPrompt[]) {
   }
 }
 
+// 薄壳:编辑操作在 src/hooks/useSharedCharacterPrompts.ts;
+// 这里保留桌面专属的持久化(desktop_character_prompts 键不动)、
+// 区块展开状态与清空二次确认(UI 决策,移动端不引入),行为与原实现一致。
 export function useCharacterPrompts() {
   const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(loadCharacterPrompts);
   const [isCharacterSectionOpen, setIsCharacterSectionOpen] = useState(true);
   const [isClearConfirming, setIsClearConfirming] = useState(false);
-  const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
 
   useEffect(() => {
     saveCharacterPrompts(characterPrompts);
   }, [characterPrompts]);
 
-  const addCharacterPrompt = () => {
-    if (characterPrompts.length >= MAX_CHARACTER_PROMPTS) return;
-    setCharacterPrompts(prev => [...prev, {
-      id: Date.now().toString(),
-      positive: '',
-      negative: '',
-      activeTab: 'prompt',
-      enabled: true,
-      position: '',
-    }]);
-  };
+  const {
+    editingPositionId,
+    setEditingPositionId,
+    addCharacterPrompt,
+    removeCharacterPrompt,
+    updateCharacterPrompt,
+    moveCharacterPrompt,
+    clearAllCharacterPrompts: clearAll,
+  } = useSharedCharacterPrompts({ characterPrompts, setCharacterPrompts });
 
   const clearAllCharacterPrompts = () => {
     if (isClearConfirming) {
-      setCharacterPrompts([]);
+      clearAll();
       setIsClearConfirming(false);
     } else {
       setIsClearConfirming(true);
       setTimeout(() => setIsClearConfirming(false), 3000);
     }
-  };
-
-  const removeCharacterPrompt = (id: string) => {
-    setCharacterPrompts(prev => prev.filter(p => p.id !== id));
-  };
-
-  const updateCharacterPrompt = <K extends 'positive' | 'negative' | 'activeTab' | 'enabled' | 'position'>(
-    id: string,
-    field: K,
-    value: CharacterPrompt[K],
-  ) => {
-    setCharacterPrompts(prev => prev.map(p =>
-      p.id === id ? { ...p, [field]: value } : p
-    ));
-  };
-
-  const moveCharacterPrompt = (index: number, direction: -1 | 1) => {
-    setCharacterPrompts(prev => {
-      const newPrompts = [...prev];
-      if (index + direction >= 0 && index + direction < newPrompts.length) {
-        [newPrompts[index], newPrompts[index + direction]] = [newPrompts[index + direction], newPrompts[index]];
-      }
-      return newPrompts;
-    });
   };
 
   return {

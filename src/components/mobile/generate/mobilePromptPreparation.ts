@@ -1,9 +1,10 @@
-// 移动端专属提示词组装(自 mobileGenerationPreparation 原样迁移,行为不变):
-// 与桌面端 generationPrompts 的差异均为移动端既有行为,不在 P1 对齐范围内:
+// 移动端专属提示词组装(自 mobileGenerationPreparation 原样迁移):
+// 与桌面端 generationPrompts 的差异均为移动端既有行为,不在对齐范围内:
 //   - 正向提示词先经行级 filterHiddenTags(utils/promptTags)再展开折叠标记
 //   - 预设合并带空值分支(空 prompt 时直接使用预设内容)
 //   - 中译英翻译(containsChinese / translateChineseInPrompt)
-//   - 角色提示词额外按 positive.trim() 过滤
+// P2 起角色提示词过滤与桌面一致:仅按 enabled 过滤、保留空 positive 条目
+// (此前移动端额外按 positive.trim() 过滤,已对齐,见 P2 报告)。
 import type { GenerateImageParams } from '../../../services/novelai';
 import {
   containsChinese,
@@ -47,7 +48,7 @@ export function prepareMobileCharacterPrompts(
   characterPrompts: CharacterPromptContent[]
 ): GenerateImageParams['characterPrompts'] {
   return characterPrompts
-    .filter((characterPrompt) => characterPrompt.enabled && characterPrompt.positive.trim())
+    .filter((characterPrompt) => characterPrompt.enabled)
     .map((characterPrompt) => ({
       positive: filterHiddenTags(characterPrompt.positive),
       negative: filterHiddenTags(characterPrompt.negative),

@@ -1,59 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  getActivePresetId,
-  getPromptPresets,
-  saveActivePresetId,
-  type PromptPresetData,
-} from '../../../services/localLibrary';
+import { useCallback } from 'react';
+import { saveActivePresetId, type PromptPresetData } from '../../../services/localLibrary';
+import { useSharedPromptPresets } from '../../../hooks/useSharedPromptPresets';
 
 interface UseMobilePromptPresetsOptions {
   activePresetId: string;
   setActivePresetId: (presetId: string) => void;
 }
 
+// 薄壳:状态与存储同步在 src/hooks/useSharedPromptPresets.ts(受控模式,
+// activePresetId 仍由 useMobileGenerationParams 的 mobile_generate_state 托管);
+// 这里只保留移动端既有的 handleApplyPreset 语义(显式写共享存储)。
 export function useMobilePromptPresets({
   activePresetId,
   setActivePresetId,
 }: UseMobilePromptPresetsOptions) {
-  const [promptPresets, setPromptPresets] = useState<PromptPresetData[]>([]);
-
-  const activePreset = useMemo(
-    () => promptPresets.find((preset) => preset.id === activePresetId),
-    [activePresetId, promptPresets]
-  );
-
-  const loadPresets = useCallback(() => {
-    const presets = getPromptPresets();
-    setPromptPresets(presets);
-    setActivePresetId(getActivePresetId());
-  }, [setActivePresetId]);
+  const { promptPresets, activePreset } = useSharedPromptPresets({
+    activePresetId,
+    setActivePresetId,
+    persistPresetsList: false,
+    persistActivePresetId: false,
+    syncExternalUpdates: true,
+    resetActivePresetIdOnSync: true,
+  });
 
   const handleApplyPreset = useCallback((preset: PromptPresetData) => {
     setActivePresetId(preset.id);
     saveActivePresetId(preset.id);
   }, [setActivePresetId]);
-
-  useEffect(() => {
-    loadPresets();
-  }, [loadPresets]);
-
-  useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'prompt_presets') {
-        loadPresets();
-      }
-    };
-    const handlePresetsUpdate = () => {
-      loadPresets();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('presets-updated', handlePresetsUpdate);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('presets-updated', handlePresetsUpdate);
-    };
-  }, [loadPresets]);
 
   return {
     promptPresets,

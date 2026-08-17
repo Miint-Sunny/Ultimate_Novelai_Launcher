@@ -1,30 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  getActivePresetId,
-  getPromptPresets,
-  saveActivePresetId,
-  savePromptPresets,
-} from '../../services/localLibrary';
+import { useState } from 'react';
+import { useSharedPromptPresets } from '../../hooks/useSharedPromptPresets';
 import type { PromptPreset } from './types';
 
+// 薄壳:状态与存储同步在 src/hooks/useSharedPromptPresets.ts;
+// 这里保留桌面专属的弹窗状态与预设 CRUD,行为与原实现一致。
 export function usePromptPresets() {
-  const [promptPresets, setPromptPresets] = useState<PromptPreset[]>(() => getPromptPresets());
-  const [activePresetId, setActivePresetId] = useState<string>(() => getActivePresetId());
+  const {
+    promptPresets,
+    setPromptPresets,
+    activePreset,
+    activePresetId,
+    setActivePresetId,
+  } = useSharedPromptPresets({
+    persistPresetsList: true,
+    persistActivePresetId: true,
+    syncExternalUpdates: false,
+    resetActivePresetIdOnSync: false,
+  });
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
-
-  useEffect(() => {
-    savePromptPresets(promptPresets);
-  }, [promptPresets]);
-
-  useEffect(() => {
-    saveActivePresetId(activePresetId);
-  }, [activePresetId]);
-
-  const activePreset = useMemo(
-    () => promptPresets.find(p => p.id === activePresetId),
-    [activePresetId, promptPresets],
-  );
 
   const handleUpdatePreset = (id: string, field: 'positive' | 'negative' | 'name', value: string) => {
     setPromptPresets(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
