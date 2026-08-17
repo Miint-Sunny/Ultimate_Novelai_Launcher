@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Settings, SlidersHorizontal, X } from 'lucide-react';
 import type { PromptPresetData } from '../../services/localLibrary';
+import { STEPS_RANGE } from '../generation/modelResolutionOptions';
 import { SliderControl, OptionGrid } from './settings/AdvancedSettingControls';
 
 interface MobileAdvancedSettingsSheetProps {
@@ -131,8 +132,8 @@ export function MobileAdvancedSettingsSheet({
           <SliderControl
             label="Steps 步数"
             value={steps}
-            min={1}
-            max={50}
+            min={STEPS_RANGE.min}
+            max={STEPS_RANGE.max}
             step={1}
             onChange={(value) => setSteps(Math.round(value))}
           />

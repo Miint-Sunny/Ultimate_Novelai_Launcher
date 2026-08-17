@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getActivePresetId,
   getPromptPresets,
+  PROMPT_PRESETS_KEY,
   saveActivePresetId,
   savePromptPresets,
   type PromptPresetData,
@@ -67,7 +68,9 @@ export function useSharedPromptPresets({
     if (!syncExternalUpdates) return;
     reloadPresets();
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'prompt_presets') {
+      // P4 修死键:此前监听 'prompt_presets'(不存在),跨标签页同步从未生效;
+      // 实际键为 PROMPT_PRESETS_KEY('novelai_prompt_presets')
+      if (event.key === PROMPT_PRESETS_KEY) {
         reloadPresets();
       }
     };

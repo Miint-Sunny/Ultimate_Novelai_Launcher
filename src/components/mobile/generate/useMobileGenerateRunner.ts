@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import { getAISettings, type PromptPresetData } from '../../../services/localLibrary';
+import { getAISettings, getAppSettings, type PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
 import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
 import { assembleGenerateParams } from '../../generation/generationPayload';
+import { isGenModuleVisible, stripInvisibleModuleData, type GenModuleContext } from '../../generation/genModules';
 import { prepareImg2ImgParams, preparePreciseReferences, prepareVibeReferences } from '../../generation/generationReferences';
 import type { ActivePreciseRef, ActiveVibe, CharacterPrompt } from '../types';
 import type { SavedMobileInpaint } from './useMobileImg2Img';
@@ -91,6 +92,21 @@ export function useMobileGenerateRunner({
     setIsPreparing(true);
     try {
       let resolutionSource = `移动端 ${localWidth}×${localHeight}`;
+      // P4 注册表剥离(唯一可见性谓词的载荷消费):清掉当前型号不支持模块的数据,
+      // 只影响本次快照,不动工作区状态(条件恢复卡回来数据还在);入库快照即剥离后
+      // 状态,「重生成」复跑经 regenerate-image 走同一装配,剥离幂等不二次损失。
+      // serverMode 在点按当时读新值(与 getAISettings 同一时点约定)。
+      const moduleContext: GenModuleContext = {
+        model,
+        serverMode: getAppSettings().serverMode,
+        isAuthenticated,
+      };
+      const stripped = stripInvisibleModuleData(
+        { characterPrompts, activePreciseRefs, activeVibes, img2imgImage },
+        moduleContext,
+      );
+      // inpaint 是图生图卡内子模式:模块不可见时连同 savedInpaint 一起剥
+      const img2imgVisible = isGenModuleVisible('img2img', moduleContext);
       const { generateParams } = await assembleGenerateParams({
         positivePrompt,
         negativePrompt,
@@ -109,9 +125,9 @@ export function useMobileGenerateRunner({
         // 移动端无该开关的 UI:读取共享设置存储(novelai_ai_settings,桌面侧维护),
         // 默认 true 与此前省略该字段的后端默认行为一致
         normalizeVibeStrength: getAISettings().normalizeVibeStrength,
-        characterPrompts,
-        activePreciseRefs,
-        activeVibes,
+        characterPrompts: stripped.characterPrompts,
+        activePreciseRefs: stripped.activePreciseRefs,
+        activeVibes: stripped.activeVibes,
         vibeEncodingCache,
         fetchPublicVibeEncoding,
         refreshActiveVibeEncodings: (vibeId, encodings) => {
@@ -124,7 +140,7 @@ export function useMobileGenerateRunner({
         prepareCharacterPrompts: prepareMobileCharacterPrompts,
         preparePreciseReferences,
         prepareVibeReferences,
-        img2imgImage,
+        img2imgImage: stripped.img2imgImage,
         img2imgStrength,
         img2imgNoise,
         prepareImg2ImgParams,
@@ -138,7 +154,7 @@ export function useMobileGenerateRunner({
           setLocalWidth(generationSize.width);
           setLocalHeight(generationSize.height);
         },
-        readSavedInpaint: () => savedInpaintRef.current,
+        readSavedInpaint: () => (img2imgVisible ? savedInpaintRef.current : null),
       });
 
       await generate(generateParams);

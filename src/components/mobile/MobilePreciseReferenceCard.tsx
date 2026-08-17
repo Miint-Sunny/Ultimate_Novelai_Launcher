@@ -1,19 +1,23 @@
 import { ChevronDown, Plus, Power, User, X } from 'lucide-react';
 import type { PreciseReferenceMode } from './types';
 import type { useMobilePreciseReferences } from './generate/useMobilePreciseReferences';
+import type { MobileCardDragHandleProps } from './generate/useMobileCardDragSort';
 
 type MobilePreciseReferenceLibrary = ReturnType<typeof useMobilePreciseReferences>;
 
 interface MobilePreciseReferenceCardProps {
-  model: string;
   library: MobilePreciseReferenceLibrary;
   onOpenManager: () => void;
+  /** 卡头长按拖拽排序手势(P4 注册表);只挂本卡头,不挂输入区 */
+  dragHandleProps?: MobileCardDragHandleProps;
 }
 
+// P4 起模型能力判定收口到注册表(src/components/generation/genModules.ts):
+// 不支持的型号整卡不渲染,不再显示「V4 模型不支持」置灰占位。
 export function MobilePreciseReferenceCard({
-  model,
   library,
   onOpenManager,
+  dragHandleProps,
 }: MobilePreciseReferenceCardProps) {
   const {
     activePreciseRefs,
@@ -22,18 +26,6 @@ export function MobilePreciseReferenceCard({
     removePreciseRef,
     updatePreciseRefParam,
   } = library;
-
-  if (model === 'v4-full' || model === 'v4-curated-preview') {
-    return (
-      <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg opacity-50">
-        <div className="flex items-center gap-2 p-3">
-          <User className="w-5 h-5 text-gray-500" />
-          <span className="text-sm font-bold text-gray-500">精确参考</span>
-          <span className="text-xs text-gray-600 ml-auto">V4 模型不支持</span>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-nai-input rounded-xl border border-gray-700/50 overflow-hidden shadow-lg">
@@ -46,6 +38,7 @@ export function MobilePreciseReferenceCard({
             onOpenManager();
           }
         }}
+        {...dragHandleProps}
       >
         <div className="flex items-center gap-2">
           {activePreciseRefs.length > 0 && (

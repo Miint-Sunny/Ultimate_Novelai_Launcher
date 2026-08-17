@@ -1,14 +1,17 @@
 import { ChevronDown, Loader2, Palette, Plus, Power, X } from 'lucide-react';
 import type { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
+import type { MobileCardDragHandleProps } from './generate/useMobileCardDragSort';
 
 type MobileVibeLibrary = ReturnType<typeof useMobileVibeLibrary>;
 
 interface MobileVibeReferencesCardProps {
   library: MobileVibeLibrary;
   onOpenManager: () => void;
+  /** 卡头长按拖拽排序手势(P4 注册表);只挂本卡头,不挂输入区 */
+  dragHandleProps?: MobileCardDragHandleProps;
 }
 
-export function MobileVibeReferencesCard({ library, onOpenManager }: MobileVibeReferencesCardProps) {
+export function MobileVibeReferencesCard({ library, onOpenManager, dragHandleProps }: MobileVibeReferencesCardProps) {
   const {
     activeVibes,
     isVibeExpanded,
@@ -30,6 +33,7 @@ export function MobileVibeReferencesCard({ library, onOpenManager }: MobileVibeR
             onOpenManager();
           }
         }}
+        {...dragHandleProps}
       >
         <div className="flex items-center gap-2">
           {activeVibes.length > 0 && (

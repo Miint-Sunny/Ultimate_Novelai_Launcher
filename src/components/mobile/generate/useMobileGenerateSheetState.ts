@@ -12,6 +12,8 @@ export function useMobileGenerateSheetState() {
   const [isInspirationModalOpen, setIsInspirationModalOpen] = useState(false);
   const [showArtistModal, setShowArtistModal] = useState(false);
   const [showOCModal, setShowOCModal] = useState(false);
+  // 步数浮动滑杆开合(P4):局部于生图页,吸底栏「步数」chip 拨动
+  const [showStepsSlider, setShowStepsSlider] = useState(false);
 
   return {
     editorOpen,
@@ -32,5 +34,7 @@ export function useMobileGenerateSheetState() {
     setShowArtistModal,
     showOCModal,
     setShowOCModal,
+    showStepsSlider,
+    setShowStepsSlider,
   };
 }

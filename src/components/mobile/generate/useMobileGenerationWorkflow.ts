@@ -116,6 +116,7 @@ export function useMobileGenerationWorkflow({
     isGenerating,
     isQueuing,
     isPreparing,
+    isAuthenticated,
     positivePrompt,
     negativePrompt,
     promptPresets,

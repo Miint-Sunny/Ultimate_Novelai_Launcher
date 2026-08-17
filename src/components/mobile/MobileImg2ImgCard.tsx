@@ -1,5 +1,6 @@
 import { ChevronDown, Edit2, ImagePlus, Plus, X } from 'lucide-react';
 import type { useMobileImg2Img } from './generate/useMobileImg2Img';
+import type { MobileCardDragHandleProps } from './generate/useMobileCardDragSort';
 
 type MobileImg2ImgState = ReturnType<typeof useMobileImg2Img>;
 
@@ -7,9 +8,11 @@ interface MobileImg2ImgCardProps {
   imageState: MobileImg2ImgState;
   width: number;
   height: number;
+  /** 卡头长按拖拽排序手势(P4 注册表);只挂本卡头,不挂输入区 */
+  dragHandleProps?: MobileCardDragHandleProps;
 }
 
-export function MobileImg2ImgCard({ imageState, width, height }: MobileImg2ImgCardProps) {
+export function MobileImg2ImgCard({ imageState, width, height, dragHandleProps }: MobileImg2ImgCardProps) {
   const {
     img2imgImage,
     img2imgStrength,
@@ -59,6 +62,7 @@ export function MobileImg2ImgCard({ imageState, width, height }: MobileImg2ImgCa
             setIsImg2ImgExpanded(!isImg2ImgExpanded);
           }
         }}
+        {...dragHandleProps}
       >
         <div className="flex items-center gap-2">
           {img2imgImage && (

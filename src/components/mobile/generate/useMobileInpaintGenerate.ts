@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import type { MutableRefObject } from 'react';
-import { getAISettings, type PromptPresetData } from '../../../services/localLibrary';
+import { getAISettings, getAppSettings, type PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
 import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
 import { assembleInpaintParams } from '../../generation/generationPayload';
+import { stripInvisibleModuleData, type GenModuleContext } from '../../generation/genModules';
 import { preparePreciseReferences, prepareVibeReferences } from '../../generation/generationReferences';
 import { pasteBackInpaintResult } from '../../generation/inpaintPasteback';
 import type { ActivePreciseRef, ActiveVibe, CharacterPrompt } from '../types';
@@ -14,6 +15,7 @@ interface UseMobileInpaintGenerateOptions {
   isGenerating: boolean;
   isQueuing: boolean;
   isPreparing: boolean;
+  isAuthenticated: boolean;
   positivePrompt: string;
   negativePrompt: string;
   promptPresets: PromptPresetData[];
@@ -43,6 +45,7 @@ export function useMobileInpaintGenerate({
   isGenerating,
   isQueuing,
   isPreparing,
+  isAuthenticated,
   positivePrompt,
   negativePrompt,
   promptPresets,
@@ -73,6 +76,16 @@ export function useMobileInpaintGenerate({
       cropInfoRef.current = cropInfo || null;
 
       try {
+        // P4 注册表剥离(与 useMobileGenerateRunner 同口径):只清本次快照,不动工作区
+        const moduleContext: GenModuleContext = {
+          model,
+          serverMode: getAppSettings().serverMode,
+          isAuthenticated,
+        };
+        const stripped = stripInvisibleModuleData(
+          { characterPrompts, activePreciseRefs, activeVibes, img2imgImage: null },
+          moduleContext,
+        );
         const generateParams = await assembleInpaintParams({
           positivePrompt,
           negativePrompt,
@@ -90,9 +103,9 @@ export function useMobileInpaintGenerate({
           varietyPlus,
           // 与 useMobileGenerateRunner 一致:读取共享设置存储,默认 true
           normalizeVibeStrength: getAISettings().normalizeVibeStrength,
-          characterPrompts,
-          activePreciseRefs,
-          activeVibes,
+          characterPrompts: stripped.characterPrompts,
+          activePreciseRefs: stripped.activePreciseRefs,
+          activeVibes: stripped.activeVibes,
           vibeEncodingCache,
           fetchPublicVibeEncoding,
           preparePromptPair: prepareMobilePromptPair,
@@ -141,6 +154,7 @@ export function useMobileInpaintGenerate({
     isGenerating,
     isPreparing,
     isQueuing,
+    isAuthenticated,
     model,
     negativePrompt,
     noiseSchedule,

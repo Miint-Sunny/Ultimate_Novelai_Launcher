@@ -2,12 +2,14 @@ import React from 'react';
 import { useGeneration } from '../../contexts/GenerationContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPublicLibraryOwnerId } from '../../services/publicLibrary';
+import { isGenModuleVisible } from '../generation/genModules';
 import { MobileGenerateCards } from './MobileGenerateCards';
 import { MobileGenerateControls } from './MobileGenerateControls';
 import { MobileGenerateEditors } from './MobileGenerateEditors';
 import { MobileGenerateImageImportSheet } from './MobileGenerateImageImportSheet';
 import { MobileGenerateReferenceSheets } from './MobileGenerateReferenceSheets';
 import { MobileGenerateHeader } from './MobileGenerateHeader';
+import { MobileStepsSliderOverlay } from './MobileStepsSliderOverlay';
 import { useMobileGeneratePageLifecycle } from './generate/useMobileGeneratePageEffects';
 import { useMobileAnlas } from './generate/useMobileAnlas';
 import { useMobileArtistLibrary } from './generate/useMobileArtistLibrary';
@@ -15,9 +17,11 @@ import { useMobileCodexInspiration } from './generate/useMobileCodexInspiration'
 import { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
 import { useMobileGenerateSheetState } from './generate/useMobileGenerateSheetState';
 import { useMobileGenerationWorkflow } from './generate/useMobileGenerationWorkflow';
+import { useMobileGenModuleContext } from './generate/useMobileGenModuleContext';
 import { useMobileImg2Img } from './generate/useMobileImg2Img';
 import { useMobileImageImportWorkflow } from './generate/useMobileImageImportWorkflow';
 import { useMobileInspirationApply } from './generate/useMobileInspirationApply';
+import { useMobileModuleOrder } from './generate/useMobileModuleOrder';
 import { useMobileOCManager } from './generate/useMobileOCManager';
 import { useMobilePromptPresets } from './generate/useMobilePromptPresets';
 import { useMobilePromptTokenCounts } from './generate/useMobilePromptTokenCounts';
@@ -107,14 +111,19 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setShowArtistModal,
     showOCModal,
     setShowOCModal,
+    showStepsSlider,
+    setShowStepsSlider,
   } = useMobileGenerateSheetState();
+
+  // P4 模块注册表:可见性上下文(模型 × 后端模式 × 登录态)与卡片顺序持久化
+  const moduleContext = useMobileGenModuleContext(model, isAuthenticated);
+  const { order: moduleOrder, setOrder: setModuleOrder } = useMobileModuleOrder();
 
   const { anlasInfo, isLoadingAnlas, fetchAnlas } = useMobileAnlas(isGenerating);
 
   const {
     resolutionTab,
     setResolutionTab,
-    currentResLabel,
     currentOptions: currentResolutionOptions,
   } = useMobileResolutionPicker(localWidth, localHeight);
 
@@ -321,6 +330,8 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     negativePrompt,
     activePreset,
     characterPrompts,
+    // 与载荷剥离同口径:角色模块对当前型号不可见时不计入 token 读数
+    characterPromptsVisible: isGenModuleVisible('character', moduleContext),
   });
 
   const { isPreparing, handleGenerate } = useMobileGenerationWorkflow({
@@ -377,43 +388,53 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         fetchAnlas={fetchAnlas}
       />
 
-      {/* 可滚动内容区 */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <MobileGenerateCards
-          positivePrompt={positivePrompt}
-          setPositivePrompt={setPositivePrompt}
-          negativePrompt={negativePrompt}
-          setNegativePrompt={setNegativePrompt}
-          positiveTokens={positiveTokens}
-          negativeTokens={negativeTokens}
-          openPromptEditor={() => setEditorOpen('prompt')}
-          openNegativeEditor={() => setEditorOpen('undesired')}
-          openAIAssistant={
-            aiAssistantAsPage
-              ? () => window.dispatchEvent(new CustomEvent('pager-navigate', { detail: { page: 0 } }))
-              : () => setShowAIAssistant(true)
-          }
-          openArtistModal={() => setShowArtistModal(true)}
-          openInspirationModal={() => setIsInspirationModalOpen(true)}
-          openOCModal={() => setShowOCModal(true)}
-          hasChinesePrompt={hasChinesePrompt}
-          isTranslating={isTranslating}
-          onTranslate={handleTranslate}
-          characterPromptManager={characterPromptManager}
-          vibeLibrary={vibeLibrary}
-          preciseReferenceLibrary={preciseReferenceLibrary}
+      {/* 可滚动内容区(相对定位容器:步数滑杆浮在其上、吸底栏之上,不占布局) */}
+      <div className="flex-1 relative overflow-hidden">
+        <div className="h-full overflow-y-auto scrollbar-hide">
+          <MobileGenerateCards
+            positivePrompt={positivePrompt}
+            setPositivePrompt={setPositivePrompt}
+            negativePrompt={negativePrompt}
+            setNegativePrompt={setNegativePrompt}
+            positiveTokens={positiveTokens}
+            negativeTokens={negativeTokens}
+            openPromptEditor={() => setEditorOpen('prompt')}
+            openNegativeEditor={() => setEditorOpen('undesired')}
+            openAIAssistant={
+              aiAssistantAsPage
+                ? () => window.dispatchEvent(new CustomEvent('pager-navigate', { detail: { page: 0 } }))
+                : () => setShowAIAssistant(true)
+            }
+            openArtistModal={() => setShowArtistModal(true)}
+            openInspirationModal={() => setIsInspirationModalOpen(true)}
+            openOCModal={() => setShowOCModal(true)}
+            hasChinesePrompt={hasChinesePrompt}
+            isTranslating={isTranslating}
+            onTranslate={handleTranslate}
+            characterPromptManager={characterPromptManager}
+            vibeLibrary={vibeLibrary}
+            preciseReferenceLibrary={preciseReferenceLibrary}
+            openVibeManager={() => setShowVibeModal(true)}
+            openCRManager={() => setShowCRModal(true)}
+            img2imgState={img2imgState}
+            width={localWidth}
+            height={localHeight}
+            moduleContext={moduleContext}
+            moduleOrder={moduleOrder}
+            onModuleOrderChange={setModuleOrder}
+          />
+        </div>
+
+        <MobileStepsSliderOverlay
+          open={showStepsSlider}
+          steps={steps}
           model={model}
-          openVibeManager={() => setShowVibeModal(true)}
-          openCRManager={() => setShowCRModal(true)}
-          img2imgState={img2imgState}
-          width={localWidth}
-          height={localHeight}
+          onCommit={setSteps}
         />
       </div>
 
       <MobileGenerateControls
         toolbar={{
-          currentResLabel,
           openAdvancedSettings: () => setShowAdvancedSettings(true),
           openResolutionDropdown: () => setShowResolutionDropdown(true),
           openImageFile,
@@ -435,6 +456,8 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           img2imgStrength,
           activePreciseRefs,
           activeVibes,
+          stepsSliderOpen: showStepsSlider,
+          onToggleStepsSlider: () => setShowStepsSlider(!showStepsSlider),
         }}
         resolutionSheet={{
           isOpen: showResolutionDropdown,

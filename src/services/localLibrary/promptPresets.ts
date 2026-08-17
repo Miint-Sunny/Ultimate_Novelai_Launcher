@@ -1,4 +1,4 @@
-const PROMPT_PRESETS_KEY = 'novelai_prompt_presets';
+export const PROMPT_PRESETS_KEY = 'novelai_prompt_presets';
 const ACTIVE_PRESET_KEY = 'novelai_active_preset';
 
 export interface PromptPresetData {

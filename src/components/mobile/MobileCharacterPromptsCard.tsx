@@ -14,14 +14,17 @@ import {
 } from 'lucide-react';
 import { countTokens } from '../../services/tokenizer';
 import type { useMobileCharacterPrompts } from './generate/useMobileCharacterPrompts';
+import type { MobileCardDragHandleProps } from './generate/useMobileCardDragSort';
 
 type MobileCharacterPrompts = ReturnType<typeof useMobileCharacterPrompts>;
 
 interface MobileCharacterPromptsCardProps {
   manager: MobileCharacterPrompts;
+  /** 卡头长按拖拽排序手势(P4 注册表);只挂本卡头,不挂输入区 */
+  dragHandleProps?: MobileCardDragHandleProps;
 }
 
-export function MobileCharacterPromptsCard({ manager }: MobileCharacterPromptsCardProps) {
+export function MobileCharacterPromptsCard({ manager, dragHandleProps }: MobileCharacterPromptsCardProps) {
   const {
     characterPrompts,
     isCharacterExpanded,
@@ -44,6 +47,7 @@ export function MobileCharacterPromptsCard({ manager }: MobileCharacterPromptsCa
             setIsCharacterExpanded(!isCharacterExpanded);
           }
         }}
+        {...dragHandleProps}
       >
         <div className="flex items-center gap-2">
           {characterPrompts.length > 0 && (

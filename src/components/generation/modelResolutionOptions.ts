@@ -81,6 +81,13 @@ export const MOBILE_WALLPAPER_RESOLUTIONS: ResolutionPreset[] = [
   { label: '横屏', width: 1920, height: 1088 },
 ];
 
+// 合法 steps 范围:当前各模型一致为 1–50(桌面 AISettingsPanel 与移动端高级设置
+// 原本各自硬编码,此处收口为唯一来源);NAI 未按型号区分上限,若后续出现型号差异
+// 在 stepsRangeForModel 内分档。
+export const STEPS_RANGE = { min: 1, max: 50 } as const;
+
+export const stepsRangeForModel = (_model: string): { min: number; max: number } => STEPS_RANGE;
+
 export const getPixelCount = (width: number, height: number) => width * height;
 
 export const MAX_TOTAL_PIXELS = 1024 * 3072;

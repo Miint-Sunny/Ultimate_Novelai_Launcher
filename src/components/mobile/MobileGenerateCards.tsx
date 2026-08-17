@@ -1,4 +1,10 @@
 import type { Dispatch, SetStateAction } from 'react';
+import {
+  orderedVisibleGenModuleKeys,
+  type GenModuleContext,
+  type SortableGenModuleKey,
+} from '../generation/genModules';
+import { useMobileCardDragSort, type MobileCardDragHandleProps } from './generate/useMobileCardDragSort';
 import { MobileCharacterPromptsCard } from './MobileCharacterPromptsCard';
 import { MobileImg2ImgCard } from './MobileImg2ImgCard';
 import { MobilePreciseReferenceCard } from './MobilePreciseReferenceCard';
@@ -28,14 +34,20 @@ interface MobileGenerateCardsProps {
   characterPromptManager: ReturnType<typeof useMobileCharacterPrompts>;
   vibeLibrary: ReturnType<typeof useMobileVibeLibrary>;
   preciseReferenceLibrary: ReturnType<typeof useMobilePreciseReferences>;
-  model: string;
   openVibeManager: () => void;
   openCRManager: () => void;
   img2imgState: ReturnType<typeof useMobileImg2Img>;
   width: number;
   height: number;
+  /** 模块注册表:可见性上下文 + 持久化顺序(含当前不可见模块,隐藏保槽位) */
+  moduleContext: GenModuleContext;
+  moduleOrder: SortableGenModuleKey[];
+  onModuleOrderChange: (next: SortableGenModuleKey[]) => void;
 }
 
+// 注册表驱动渲染(对齐 Plana generate_page):提示词摘要卡居顶固定,其余模块卡按
+// orderedVisibleGenModuleKeys(持久化顺序 × 可见性谓词)渲染,不满足谓词的整卡不渲染
+// (无置灰占位);卡头长按起拖调序,手势经 dragHandleProps 只挂卡头/标题区。
 export function MobileGenerateCards({
   positivePrompt,
   setPositivePrompt,
@@ -55,13 +67,36 @@ export function MobileGenerateCards({
   characterPromptManager,
   vibeLibrary,
   preciseReferenceLibrary,
-  model,
   openVibeManager,
   openCRManager,
   img2imgState,
   width,
   height,
+  moduleContext,
+  moduleOrder,
+  onModuleOrderChange,
 }: MobileGenerateCardsProps) {
+  const visibleKeys = orderedVisibleGenModuleKeys(moduleContext, moduleOrder);
+  const { draggingKey, getDragHandleProps, registerCard } = useMobileCardDragSort({
+    order: moduleOrder,
+    visibleKeys,
+    onOrderChange: onModuleOrderChange,
+  });
+
+  const renderModuleCard = (key: SortableGenModuleKey) => {
+    const dragHandleProps = getDragHandleProps(key);
+    switch (key) {
+      case 'character':
+        return <MobileCharacterPromptsCard manager={characterPromptManager} dragHandleProps={dragHandleProps} />;
+      case 'vibe':
+        return <MobileVibeReferencesCard library={vibeLibrary} onOpenManager={openVibeManager} dragHandleProps={dragHandleProps} />;
+      case 'precise-reference':
+        return <MobilePreciseReferenceCard library={preciseReferenceLibrary} onOpenManager={openCRManager} dragHandleProps={dragHandleProps} />;
+      case 'img2img':
+        return <MobileImg2ImgCard imageState={img2imgState} width={width} height={height} dragHandleProps={dragHandleProps} />;
+    }
+  };
+
   return (
     <div className="p-3 space-y-3">
       <MobilePromptSummaryCard
@@ -82,23 +117,17 @@ export function MobileGenerateCards({
         onTranslate={onTranslate}
       />
 
-      <MobileCharacterPromptsCard manager={characterPromptManager} />
-
-      <MobileVibeReferencesCard
-        library={vibeLibrary}
-        onOpenManager={openVibeManager}
-      />
-      <MobilePreciseReferenceCard
-        model={model}
-        library={preciseReferenceLibrary}
-        onOpenManager={openCRManager}
-      />
-
-      <MobileImg2ImgCard
-        imageState={img2imgState}
-        width={width}
-        height={height}
-      />
+      {visibleKeys.map((key) => (
+        <div
+          key={key}
+          ref={registerCard(key)}
+          className={draggingKey === key
+            ? 'relative z-10 scale-[1.02] shadow-2xl rounded-xl transition-transform'
+            : 'transition-transform'}
+        >
+          {renderModuleCard(key)}
+        </div>
+      ))}
     </div>
   );
 }
