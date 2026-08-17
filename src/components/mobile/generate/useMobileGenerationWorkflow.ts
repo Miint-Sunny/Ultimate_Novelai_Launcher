@@ -1,4 +1,4 @@
-import type { MutableRefObject } from 'react';
+import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
 import type { ActivePreciseRef, ActiveVibe, CharacterPrompt } from '../types';
@@ -16,6 +16,7 @@ interface UseMobileGenerationWorkflowOptions {
   promptPresets: PromptPresetData[];
   activePresetId: string;
   activeVibes: ActiveVibe[];
+  setActiveVibes: Dispatch<SetStateAction<ActiveVibe[]>>;
   activePreciseRefs: ActivePreciseRef[];
   characterPrompts: CharacterPrompt[];
   savedInpaintRef: MutableRefObject<SavedMobileInpaint | null>;
@@ -25,6 +26,8 @@ interface UseMobileGenerationWorkflowOptions {
   img2imgNoise: number;
   localWidth: number;
   localHeight: number;
+  setLocalWidth: (width: number) => void;
+  setLocalHeight: (height: number) => void;
   model: string;
   seed: string;
   steps: number;
@@ -48,6 +51,7 @@ export function useMobileGenerationWorkflow({
   promptPresets,
   activePresetId,
   activeVibes,
+  setActiveVibes,
   activePreciseRefs,
   characterPrompts,
   savedInpaintRef,
@@ -57,6 +61,8 @@ export function useMobileGenerationWorkflow({
   img2imgNoise,
   localWidth,
   localHeight,
+  setLocalWidth,
+  setLocalHeight,
   model,
   seed,
   steps,
@@ -69,6 +75,10 @@ export function useMobileGenerationWorkflow({
   addInpaintedImage,
   clearInpaintParams,
 }: UseMobileGenerationWorkflowOptions) {
+  // 生成与 inpaint 两条链路共享同一份 vibe 编码缓存(对齐桌面 LeftSidebar 的模块级 Map;
+  // 这里用 ref 挂在工作流上,页面卸载后重建,仅影响缓存命中、不影响载荷内容)
+  const vibeEncodingCacheRef = useRef(new Map<string, string>());
+
   const { isPreparing, handleGenerate } = useMobileGenerateRunner({
     isGenerating,
     isQueuing,
@@ -79,6 +89,7 @@ export function useMobileGenerationWorkflow({
     promptPresets,
     activePresetId,
     activeVibes,
+    setActiveVibes,
     activePreciseRefs,
     characterPrompts,
     savedInpaintRef,
@@ -87,6 +98,8 @@ export function useMobileGenerationWorkflow({
     img2imgNoise,
     localWidth,
     localHeight,
+    setLocalWidth,
+    setLocalHeight,
     model,
     seed,
     steps,
@@ -95,6 +108,7 @@ export function useMobileGenerationWorkflow({
     cfgRescale,
     noiseSchedule,
     varietyPlus,
+    vibeEncodingCache: vibeEncodingCacheRef.current,
     generate,
   });
 
@@ -118,6 +132,7 @@ export function useMobileGenerationWorkflow({
     activePreciseRefs,
     activeVibes,
     cropInfoRef,
+    vibeEncodingCache: vibeEncodingCacheRef.current,
     generate,
     addInpaintedImage,
     clearInpaintParams,

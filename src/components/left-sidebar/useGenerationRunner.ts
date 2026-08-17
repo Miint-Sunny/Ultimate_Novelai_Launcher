@@ -1,22 +1,20 @@
 import { useCallback } from 'react';
 import type React from 'react';
 import type { GenerateImageParams, GenerateResult } from '../../services/novelai';
+import type { VibeData } from '../../services/localLibrary';
 import { fetchPublicVibeEncoding } from '../../services/publicLibrary';
-import { clampToMaxPixels, type ClampedSize, type ModelOption, type ResolutionPreset } from '../generation/modelResolutionOptions';
+import { type ClampedSize, type ModelOption, type ResolutionPreset } from '../generation/modelResolutionOptions';
+import {
+  assembleGenerateParams,
+  assembleInpaintParams,
+  type BaseGenerationParamsInput,
+  type SavedInpaintParams,
+} from '../generation/generationPayload';
+import { prepareImg2ImgParams, preparePreciseReferences, prepareVibeReferences } from '../generation/generationReferences';
+import { pasteBackInpaintResult, type InpaintCropInfo } from '../generation/inpaintPasteback';
 import type { ActivePreciseRef } from '../cr';
 import type { ActiveVibe } from '../vibe';
 import type { CharacterPrompt, PromptPreset } from './types';
-import { buildCharacterPromptParams, buildPromptPair } from './generationPromptBuilder';
-import { prepareImg2ImgParams, preparePreciseReferences, prepareVibeReferences } from './generationReferences';
-import { pasteBackInpaintResult, type InpaintCropInfo } from './inpaintPasteback';
-
-interface SavedInpaintParams {
-  imageBase64: string;
-  maskBase64: string;
-  strength: number;
-  width: number;
-  height: number;
-}
 
 interface UseGenerationRunnerParams {
   isGenerating: boolean;
@@ -61,6 +59,9 @@ interface UseGenerationRunnerParams {
   vibeEncodingCache: Map<string, string>;
 }
 
+// 薄壳:读取 UI 状态 → 调共享装配层(src/components/generation/generationPayload)→
+// GenerationContext.generate()。装配逻辑全部在共享层,这里只保留 React 生命周期、
+// 鉴权门、isPreparing 状态与分辨率兜底后的 UI 回写,行为与原实现逐字节一致。
 export function useGenerationRunner(params: UseGenerationRunnerParams) {
   const handleGenerate = useCallback(async () => {
     if (params.isGenerating || params.isPreparing) return;
@@ -75,46 +76,27 @@ export function useGenerationRunner(params: UseGenerationRunnerParams) {
     params.setIsPreparing(true);
 
     try {
-      const base = await buildBaseGenerationParams(params, params.customWidth, params.customHeight, params.resolutionSourceRef.current, true);
-      const generationSize = clampToMaxPixels(params.customWidth, params.customHeight);
-      if (generationSize.width !== params.customWidth || generationSize.height !== params.customHeight) {
-        const previousSource = params.resolutionSourceRef.current;
-        params.resolutionSourceRef.current = `${previousSource}；生成前兜底 ${params.customWidth}×${params.customHeight}`;
-        params.reportResolutionNormalization('生成前兜底', generationSize);
-        params.setCustomWidth(generationSize.width);
-        params.setCustomHeight(generationSize.height);
-        params.setCustomWidthInput(String(generationSize.width));
-        params.setCustomHeightInput(String(generationSize.height));
-        params.setResolution({ label: '自定义', width: generationSize.width, height: generationSize.height });
-        params.setIsCustomRes(true);
-      }
-
-      const img2img = await prepareImg2ImgParams({
+      const { generateParams } = await assembleGenerateParams({
+        ...sharedBaseInput(params, true),
+        width: params.customWidth,
+        height: params.customHeight,
         img2imgImage: params.img2imgImage,
-        width: generationSize.width,
-        height: generationSize.height,
-        strength: params.img2imgStrength,
-        noise: params.img2imgNoise,
+        img2imgStrength: params.img2imgStrength,
+        img2imgNoise: params.img2imgNoise,
+        prepareImg2ImgParams,
+        readResolutionSource: () => params.resolutionSourceRef.current,
+        applyClampedResolution: (generationSize, resolutionSource) => {
+          params.resolutionSourceRef.current = resolutionSource;
+          params.reportResolutionNormalization('生成前兜底', generationSize);
+          params.setCustomWidth(generationSize.width);
+          params.setCustomHeight(generationSize.height);
+          params.setCustomWidthInput(String(generationSize.width));
+          params.setCustomHeightInput(String(generationSize.height));
+          params.setResolution({ label: '自定义', width: generationSize.width, height: generationSize.height });
+          params.setIsCustomRes(true);
+        },
+        readSavedInpaint: () => params.savedInpaintRef.current,
       });
-
-      const generateParams: GenerateImageParams = {
-        ...base,
-        width: generationSize.width,
-        height: generationSize.height,
-        resolutionSource: params.resolutionSourceRef.current,
-        img2img: params.savedInpaintRef.current ? undefined : img2img,
-      };
-
-      if (params.savedInpaintRef.current) {
-        const saved = params.savedInpaintRef.current;
-        generateParams.width = saved.width;
-        generateParams.height = saved.height;
-        generateParams.inpaint = {
-          imageBase64: saved.imageBase64,
-          maskBase64: saved.maskBase64,
-          strength: saved.strength,
-        };
-      }
 
       params.setIsPreparing(false);
       await params.generate(generateParams);
@@ -133,15 +115,17 @@ export function useGenerationRunner(params: UseGenerationRunnerParams) {
     params.setIsPreparing(true);
 
     try {
-      const generateParams: GenerateImageParams = {
-        ...(await buildBaseGenerationParams(params, width, height, `局部重绘 ${width}×${height}`, false)),
+      const generateParams = await assembleInpaintParams({
+        ...sharedBaseInput(params, false),
+        width,
+        height,
         inpaint: {
           imageBase64,
           maskBase64,
           strength,
         },
         skipHistory: !!params.cropInfoRef.current,
-      };
+      });
 
       params.setIsPreparing(false);
       const result = await params.generate(generateParams);
@@ -166,53 +150,38 @@ export function useGenerationRunner(params: UseGenerationRunnerParams) {
   return { handleGenerate, handleInpaintGenerate };
 }
 
-async function buildBaseGenerationParams(
+function sharedBaseInput(
   params: UseGenerationRunnerParams,
-  width: number,
-  height: number,
-  resolutionSource: string,
   includePublicVibeCache: boolean,
-): Promise<GenerateImageParams> {
-  const { positive: finalPositive, negative: finalNegative } = buildPromptPair({
+): Omit<BaseGenerationParamsInput, 'width' | 'height' | 'resolutionSource'> {
+  return {
     positivePrompt: params.positivePrompt,
     negativePrompt: params.negativePrompt,
     activePreset: params.activePreset,
-  });
-  const preciseReferences = await preparePreciseReferences(params.activePreciseRefs);
-  const vibeReferences = await prepareVibeReferences({
+    model: params.selectedModel.id,
+    steps: params.steps,
+    scale: params.scale,
+    seed: params.seed,
+    sampler: params.sampler,
+    cfgRescale: params.scaleRescale,
+    noiseSchedule: params.noiseSchedule,
+    activePresetId: params.activePresetId,
+    varietyPlus: params.varietyPlus,
+    normalizeVibeStrength: params.normalizeVibeStrength,
+    characterPrompts: params.characterPrompts,
+    activePreciseRefs: params.activePreciseRefs,
     activeVibes: params.activeVibes,
-    selectedModelId: params.selectedModel.id,
     vibeEncodingCache: params.vibeEncodingCache,
     fetchPublicVibeEncoding: includePublicVibeCache ? fetchPublicVibeEncoding : undefined,
     refreshActiveVibeEncodings: includePublicVibeCache
-      ? (vibeId, encodings) => {
+      ? (vibeId: string, encodings: VibeData['encodings']) => {
         params.setActiveVibes(prev => prev.map(vibe =>
           vibe.id === vibeId ? { ...vibe, encodings } : vibe
         ));
       }
       : undefined,
     savePendingVibes: includePublicVibeCache,
-  });
-
-  return {
-    positivePrompt: finalPositive,
-    negativePrompt: finalNegative,
-    model: params.selectedModel.id,
-    width,
-    height,
-    steps: params.steps,
-    scale: params.scale,
-    seed: params.seed ? parseInt(params.seed, 10) : undefined,
-    sampler: params.sampler,
-    cfgRescale: params.scaleRescale,
-    noiseSchedule: params.noiseSchedule,
-    ucPreset: params.activePresetId,
-    qualityToggle: params.activePresetId === 'heavy',
-    varietyPlus: params.varietyPlus,
-    normalizeVibeStrength: params.normalizeVibeStrength,
-    resolutionSource,
-    characterPrompts: buildCharacterPromptParams(params.characterPrompts),
-    preciseReferences,
-    vibeReferences,
+    preparePreciseReferences,
+    prepareVibeReferences,
   };
 }

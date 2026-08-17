@@ -2,15 +2,13 @@ import { useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import type { PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
+import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
+import { assembleInpaintParams } from '../../generation/generationPayload';
+import { preparePreciseReferences, prepareVibeReferences } from '../../generation/generationReferences';
+import { pasteBackInpaintResult } from '../../generation/inpaintPasteback';
 import type { ActivePreciseRef, ActiveVibe, CharacterPrompt } from '../types';
 import type { MobileCropInfo } from './useMobileImg2Img';
-import { pasteBackInpaintResult } from './mobileInpaintPasteback';
-import {
-  prepareMobileCharacterPrompts,
-  prepareMobilePreciseReferences,
-  prepareMobilePrompts,
-  prepareMobileVibeReferences,
-} from './mobileGenerationPreparation';
+import { prepareMobileCharacterPrompts, prepareMobilePromptPair } from './mobilePromptPreparation';
 
 interface UseMobileInpaintGenerateOptions {
   isGenerating: boolean;
@@ -32,11 +30,15 @@ interface UseMobileInpaintGenerateOptions {
   activePreciseRefs: ActivePreciseRef[];
   activeVibes: ActiveVibe[];
   cropInfoRef: MutableRefObject<MobileCropInfo | null>;
+  vibeEncodingCache: Map<string, string>;
   generate: (params: GenerateImageParams) => Promise<GenerateResult>;
   addInpaintedImage: (imageUrl: string, width: number, height: number, seed: number) => void;
   clearInpaintParams: () => void;
 }
 
+// 薄适配:inpaint 载荷装配与回贴走共享装配层(generationPayload + inpaintPasteback)。
+// 保留移动端既有差异:失败时 clearInpaintParams、公共 vibe 远端编码缓存查询
+// (fetchPublicVibeEncoding,不带刷新激活 vibe / 保存 pending vibes——与移动端原行为一致)。
 export function useMobileInpaintGenerate({
   isGenerating,
   isQueuing,
@@ -57,6 +59,7 @@ export function useMobileInpaintGenerate({
   activePreciseRefs,
   activeVibes,
   cropInfoRef,
+  vibeEncodingCache,
   generate,
   addInpaintedImage,
   clearInpaintParams,
@@ -70,37 +73,32 @@ export function useMobileInpaintGenerate({
       cropInfoRef.current = cropInfo || null;
 
       try {
-        const { finalPrompt, finalNegative } = await prepareMobilePrompts({
+        const generateParams = await assembleInpaintParams({
           positivePrompt,
           negativePrompt,
-          promptPresets,
-          activePresetId,
-        });
-        const preciseReferences = await prepareMobilePreciseReferences(activePreciseRefs);
-        const vibeReferences = await prepareMobileVibeReferences({
-          activeVibes,
+          activePreset: promptPresets.find((preset) => preset.id === activePresetId),
           model,
-          includePublicRemoteCache: true,
-        });
-
-        const result = await generate({
-          model,
-          positivePrompt: finalPrompt,
-          negativePrompt: finalNegative,
           width,
           height,
-          seed: seed ? parseInt(seed) : undefined,
+          seed,
           steps,
           scale,
           sampler,
           cfgRescale,
           noiseSchedule,
-          ucPreset: 'heavy',
-          qualityToggle: true,
+          activePresetId,
           varietyPlus,
-          characterPrompts: prepareMobileCharacterPrompts(characterPrompts),
-          preciseReferences,
-          vibeReferences,
+          // 与 useMobileGenerateRunner 一致:显式固定为后端默认值
+          normalizeVibeStrength: true,
+          characterPrompts,
+          activePreciseRefs,
+          activeVibes,
+          vibeEncodingCache,
+          fetchPublicVibeEncoding,
+          preparePromptPair: prepareMobilePromptPair,
+          prepareCharacterPrompts: prepareMobileCharacterPrompts,
+          preparePreciseReferences,
+          prepareVibeReferences,
           inpaint: {
             imageBase64,
             maskBase64,
@@ -109,9 +107,16 @@ export function useMobileInpaintGenerate({
           skipHistory: !!cropInfoRef.current,
         });
 
+        const result = await generate(generateParams);
+
         const savedCropInfo = cropInfoRef.current;
         if (savedCropInfo && result.success && result.imageData) {
-          await pasteBackInpaintResult(result, savedCropInfo, addInpaintedImage);
+          await pasteBackInpaintResult({
+            cropInfo: savedCropInfo,
+            imageData: result.imageData,
+            seed: result.seed || 0,
+            addInpaintedImage,
+          });
           cropInfoRef.current = null;
         }
       } catch (error) {
@@ -146,5 +151,6 @@ export function useMobileInpaintGenerate({
     seed,
     steps,
     varietyPlus,
+    vibeEncodingCache,
   ]);
 }

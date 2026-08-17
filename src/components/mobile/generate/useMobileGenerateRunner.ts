@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
+import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
+import { assembleGenerateParams } from '../../generation/generationPayload';
+import { prepareImg2ImgParams, preparePreciseReferences, prepareVibeReferences } from '../../generation/generationReferences';
 import type { ActivePreciseRef, ActiveVibe, CharacterPrompt } from '../types';
 import type { SavedMobileInpaint } from './useMobileImg2Img';
-import {
-  prepareMobileCharacterPrompts,
-  prepareMobileImg2Img,
-  prepareMobilePreciseReferences,
-  prepareMobilePrompts,
-  prepareMobileVibeReferences,
-} from './mobileGenerationPreparation';
+import { prepareMobileCharacterPrompts, prepareMobilePromptPair } from './mobilePromptPreparation';
 
 interface UseMobileGenerateRunnerOptions {
   isGenerating: boolean;
@@ -21,6 +18,7 @@ interface UseMobileGenerateRunnerOptions {
   promptPresets: PromptPresetData[];
   activePresetId: string;
   activeVibes: ActiveVibe[];
+  setActiveVibes: Dispatch<SetStateAction<ActiveVibe[]>>;
   activePreciseRefs: ActivePreciseRef[];
   characterPrompts: CharacterPrompt[];
   savedInpaintRef: MutableRefObject<SavedMobileInpaint | null>;
@@ -29,6 +27,8 @@ interface UseMobileGenerateRunnerOptions {
   img2imgNoise: number;
   localWidth: number;
   localHeight: number;
+  setLocalWidth: (width: number) => void;
+  setLocalHeight: (height: number) => void;
   model: string;
   seed: string;
   steps: number;
@@ -37,9 +37,13 @@ interface UseMobileGenerateRunnerOptions {
   cfgRescale: number;
   noiseSchedule: string;
   varietyPlus: boolean;
+  vibeEncodingCache: Map<string, string>;
   generate: (params: GenerateImageParams) => Promise<GenerateResult>;
 }
 
+// 薄适配:载荷装配全部走共享装配层(src/components/generation/generationPayload),
+// 与桌面端同一条链路;此处只保留移动端既有差异——提示词组装(折叠标记展开/中译英,
+// 见 mobilePromptPreparation)、isQueuing 门、regenerate-image 事件。
 export function useMobileGenerateRunner({
   isGenerating,
   isQueuing,
@@ -50,6 +54,7 @@ export function useMobileGenerateRunner({
   promptPresets,
   activePresetId,
   activeVibes,
+  setActiveVibes,
   activePreciseRefs,
   characterPrompts,
   savedInpaintRef,
@@ -58,6 +63,8 @@ export function useMobileGenerateRunner({
   img2imgNoise,
   localWidth,
   localHeight,
+  setLocalWidth,
+  setLocalHeight,
   model,
   seed,
   steps,
@@ -66,6 +73,7 @@ export function useMobileGenerateRunner({
   cfgRescale,
   noiseSchedule,
   varietyPlus,
+  vibeEncodingCache,
   generate,
 }: UseMobileGenerateRunnerOptions) {
   const [isPreparing, setIsPreparing] = useState(false);
@@ -82,52 +90,58 @@ export function useMobileGenerateRunner({
 
     setIsPreparing(true);
     try {
-      const { finalPrompt, finalNegative } = await prepareMobilePrompts({
+      let resolutionSource = `移动端 ${localWidth}×${localHeight}`;
+      const { generateParams } = await assembleGenerateParams({
         positivePrompt,
         negativePrompt,
-        promptPresets,
-        activePresetId,
-      });
-      const vibeReferences = await prepareMobileVibeReferences({ activeVibes, model });
-      const preciseReferences = await prepareMobilePreciseReferences(activePreciseRefs);
-
-      const savedInpaint = savedInpaintRef.current;
-      const img2img = savedInpaint ? undefined : await prepareMobileImg2Img({
-        img2imgImage,
-        localWidth,
-        localHeight,
-        img2imgStrength,
-        img2imgNoise,
-      });
-      const inpaintParams = savedInpaint ? {
-        inpaint: {
-          imageBase64: savedInpaint.imageBase64,
-          maskBase64: savedInpaint.maskBase64,
-          strength: savedInpaint.strength,
-        },
-      } : {};
-
-      await generate({
+        activePreset: promptPresets.find((preset) => preset.id === activePresetId),
         model,
-        positivePrompt: finalPrompt,
-        negativePrompt: finalNegative,
-        width: savedInpaint ? savedInpaint.width : localWidth,
-        height: savedInpaint ? savedInpaint.height : localHeight,
-        seed: seed ? parseInt(seed) : Math.floor(Math.random() * 4294967295),
+        width: localWidth,
+        height: localHeight,
         steps,
         scale,
+        seed,
         sampler,
         cfgRescale,
         noiseSchedule,
-        ucPreset: 'heavy',
-        qualityToggle: true,
+        activePresetId,
         varietyPlus,
-        vibeReferences,
-        characterPrompts: prepareMobileCharacterPrompts(characterPrompts),
-        preciseReferences,
-        img2img,
-        ...inpaintParams,
+        // 移动端没有 vibe 强度归一化开关:显式固定为 true,与此前省略该字段时的
+        // 后端默认行为(normalizeVibeStrength ?? true)一致
+        normalizeVibeStrength: true,
+        characterPrompts,
+        activePreciseRefs,
+        activeVibes,
+        vibeEncodingCache,
+        fetchPublicVibeEncoding,
+        refreshActiveVibeEncodings: (vibeId, encodings) => {
+          setActiveVibes((prev) => prev.map((vibe) =>
+            vibe.id === vibeId ? { ...vibe, encodings } : vibe
+          ));
+        },
+        savePendingVibes: true,
+        preparePromptPair: prepareMobilePromptPair,
+        prepareCharacterPrompts: prepareMobileCharacterPrompts,
+        preparePreciseReferences,
+        prepareVibeReferences,
+        img2imgImage,
+        img2imgStrength,
+        img2imgNoise,
+        prepareImg2ImgParams,
+        readResolutionSource: () => resolutionSource,
+        applyClampedResolution: (generationSize, nextSource) => {
+          resolutionSource = nextSource;
+          console.warn('[Resolution] 生成前兜底,尺寸已调整:', {
+            from: `${generationSize.originalWidth}x${generationSize.originalHeight}`,
+            to: `${generationSize.width}x${generationSize.height}`,
+          });
+          setLocalWidth(generationSize.width);
+          setLocalHeight(generationSize.height);
+        },
+        readSavedInpaint: () => savedInpaintRef.current,
       });
+
+      await generate(generateParams);
     } finally {
       setIsPreparing(false);
     }
@@ -157,8 +171,12 @@ export function useMobileGenerateRunner({
     savedInpaintRef,
     scale,
     seed,
+    setActiveVibes,
+    setLocalHeight,
+    setLocalWidth,
     steps,
     varietyPlus,
+    vibeEncodingCache,
   ]);
 
   useEffect(() => {

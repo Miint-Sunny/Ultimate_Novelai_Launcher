@@ -22,7 +22,7 @@ import { CharacterPositionModal } from './left-sidebar/CharacterPositionModal';
 import { CharacterPromptsSection } from './left-sidebar/CharacterPromptsSection';
 import { GenerationFooterControls } from './left-sidebar/GenerationFooterControls';
 import { Image2ImageSection } from './left-sidebar/Image2ImageSection';
-import type { InpaintCropInfo } from './left-sidebar/inpaintPasteback';
+import type { InpaintCropInfo } from './generation/inpaintPasteback';
 import { PreciseReferenceSection } from './left-sidebar/PreciseReferenceSection';
 import { PromptComposerSection } from './left-sidebar/PromptComposerSection';
 import { PromptPresetModal } from './left-sidebar/PromptPresetModal';

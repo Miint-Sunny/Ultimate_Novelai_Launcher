@@ -8,7 +8,7 @@ import {
   type VibeReference,
 } from '../../services/novelai';
 import type { ActivePreciseRef } from '../cr';
-import { MODEL_MAP } from '../generation/modelResolutionOptions';
+import { MODEL_MAP } from './modelResolutionOptions';
 import type { ActiveVibe } from '../vibe';
 
 export async function preparePreciseReferences(activePreciseRefs: ActivePreciseRef[]) {
