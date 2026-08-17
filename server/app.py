@@ -3168,10 +3168,7 @@ async def queue_processor():
                 for k in expired_tasks:
                     _generation_tasks.pop(k, None)
                 # 清理过期的 wiki 缓存
-                expired_wiki = [k for k, t in _wiki_cache_time.items() if now - t > WIKI_CACHE_TTL]
-                for k in expired_wiki:
-                    _wiki_cache.pop(k, None)
-                    _wiki_cache_time.pop(k, None)
+                _wiki_zh_names.purge_expired()
         except Exception as e:
             logger.exception(f"Queue processor error: {e}")
         await asyncio.sleep(0.5)
@@ -7497,9 +7494,56 @@ async def tags_search(req: TagsSearchRequest):
     return body
 
 
-_wiki_cache: Dict[str, list] = {}
-_wiki_cache_time: Dict[str, float] = {}
 WIKI_CACHE_TTL = 3600  # 缓存1小时
+
+
+class _TtlCache:
+    """带 TTL 的内存缓存。
+
+    取代此前"值 dict + 时间戳 dict"两两配对的写法:那种写法把一条缓存的两半
+    交给调用方自己保持同步,漏写一半就会留下永不过期(或永远过期)的条目。
+
+    与原实现一样不加锁 —— 事件循环是单线程的,dict 操作之间不会被打断;跨 await
+    的读改写仍需调用方自己保证顺序,这一点未变。
+
+    注意:``get`` 用 ``None`` 表示"未命中或已过期",因此不能缓存 ``None`` 本身。
+    合法的假值(``False``、``[]``)则与未命中区分得开 —— wiki 链路依赖这一点:
+    "查过且确实没有 wiki" 必须命中缓存,而不是每次重查上游。
+    """
+
+    __slots__ = ("ttl", "_entries")
+
+    def __init__(self, ttl: float) -> None:
+        self.ttl = ttl
+        self._entries: dict[str, tuple[float, Any]] = {}
+
+    def get(self, key: str) -> Any | None:
+        """返回新鲜的值;缺失或已过期都返回 None。"""
+        entry = self._entries.get(key)
+        if entry is None:
+            return None
+        stamped, value = entry
+        if time.time() - stamped >= self.ttl:
+            self._entries.pop(key, None)
+            return None
+        return value
+
+    def has_fresh(self, key: str) -> bool:
+        return self.get(key) is not None
+
+    def set(self, key: str, value: Any) -> None:
+        self._entries[key] = (time.time(), value)
+
+    def purge_expired(self) -> int:
+        now = time.time()
+        stale = [key for key, (stamped, _) in self._entries.items() if now - stamped >= self.ttl]
+        for key in stale:
+            self._entries.pop(key, None)
+        return len(stale)
+
+
+# tag -> 中文名列表
+_wiki_zh_names = _TtlCache(WIKI_CACHE_TTL)
 
 
 # ==================== 标签翻译映射库 ====================
@@ -7525,20 +7569,13 @@ def _normalize_tag(tag: str) -> str:
     return tag.strip().lower().replace(" ", "_")
 
 
-_wiki_exists_cache: Dict[str, bool] = {}
-_wiki_exists_cache_time: Dict[str, float] = {}
-_wiki_preview_cache: Dict[str, dict] = {}
-_wiki_preview_cache_time: Dict[str, float] = {}
-_wiki_summary_zh_cache: Dict[str, str] = {}
-_wiki_summary_zh_cache_time: Dict[str, float] = {}
+_wiki_exists = _TtlCache(WIKI_CACHE_TTL)       # tag -> bool
+_wiki_preview = _TtlCache(WIKI_CACHE_TTL)      # tag -> payload dict
+_wiki_summary_zh = _TtlCache(WIKI_CACHE_TTL)   # tag -> 中文摘要
 
 
 def _normalize_danbooru_tag(tag: str) -> str:
     return tag.strip().lower().replace(" ", "_")
-
-
-def _wiki_cache_fresh(ts: float) -> bool:
-    return (time.time() - ts) < WIKI_CACHE_TTL
 
 
 def _wiki_example_refs(body: str) -> List[Tuple[str, int]]:
@@ -7753,10 +7790,10 @@ async def tags_wiki_exists_batch(req: dict):
     now = time.time()
 
     for tag in tags:
-        if tag in _wiki_preview_cache and _wiki_cache_fresh(_wiki_preview_cache_time.get(tag, 0)):
+        if _wiki_preview.has_fresh(tag):
             result[tag] = True
-        elif tag in _wiki_exists_cache and _wiki_cache_fresh(_wiki_exists_cache_time.get(tag, 0)):
-            result[tag] = _wiki_exists_cache[tag]
+        elif (cached_exists := _wiki_exists.get(tag)) is not None:
+            result[tag] = cached_exists
         else:
             tags_to_fetch.append(tag)
 
@@ -7774,8 +7811,7 @@ async def tags_wiki_exists_batch(req: dict):
         for tag, has_wiki in await asyncio.to_thread(_fetch_all):
             if has_wiki is None:
                 continue
-            _wiki_exists_cache[tag] = has_wiki
-            _wiki_exists_cache_time[tag] = now
+            _wiki_exists.set(tag, has_wiki)
             result[tag] = has_wiki
 
     return result
@@ -7788,10 +7824,9 @@ async def tags_wiki_preview(tag: str):
     if not normalized:
         return {"hasWiki": False}
 
-    if normalized in _wiki_preview_cache and _wiki_cache_fresh(_wiki_preview_cache_time.get(normalized, 0)):
-        cached = _wiki_preview_cache[normalized]
-        if normalized in _wiki_summary_zh_cache and _wiki_cache_fresh(_wiki_summary_zh_cache_time.get(normalized, 0)):
-            cached["summaryZh"] = _wiki_summary_zh_cache[normalized]
+    if (cached := _wiki_preview.get(normalized)) is not None:
+        if (summary := _wiki_summary_zh.get(normalized)) is not None:
+            cached["summaryZh"] = summary
         return cached
 
     def _fetch():
@@ -7837,13 +7872,11 @@ async def tags_wiki_preview(tag: str):
     try:
         payload = await asyncio.to_thread(_fetch)
         now = time.time()
-        _wiki_exists_cache[normalized] = bool(payload.get("hasWiki"))
-        _wiki_exists_cache_time[normalized] = now
+        _wiki_exists.set(normalized, bool(payload.get("hasWiki")))
         if payload.get("hasWiki"):
-            if normalized in _wiki_summary_zh_cache and _wiki_cache_fresh(_wiki_summary_zh_cache_time.get(normalized, 0)):
-                payload["summaryZh"] = _wiki_summary_zh_cache[normalized]
-            _wiki_preview_cache[normalized] = payload
-            _wiki_preview_cache_time[normalized] = now
+            if (summary := _wiki_summary_zh.get(normalized)) is not None:
+                payload["summaryZh"] = summary
+            _wiki_preview.set(normalized, payload)
         return payload
     except Exception as e:
         logger.exception(f"Wiki preview fetch error for {normalized}: {e}")
@@ -7857,13 +7890,13 @@ async def tags_wiki_preview_summary_zh(tag: str):
     if not normalized:
         return {"hasWiki": False, "summaryZh": ""}
 
-    if normalized in _wiki_summary_zh_cache and _wiki_cache_fresh(_wiki_summary_zh_cache_time.get(normalized, 0)):
-        return {"hasWiki": True, "summaryZh": _wiki_summary_zh_cache[normalized]}
+    if (summary := _wiki_summary_zh.get(normalized)) is not None:
+        return {"hasWiki": True, "summaryZh": summary}
 
     body = ""
     summary = ""
-    cached = _wiki_preview_cache.get(normalized)
-    if cached and _wiki_cache_fresh(_wiki_preview_cache_time.get(normalized, 0)):
+    cached = _wiki_preview.get(normalized)
+    if cached:
         body = cached.get("body") or ""
         summary = cached.get("summary") or ""
     else:
@@ -7882,11 +7915,10 @@ async def tags_wiki_preview_summary_zh(tag: str):
     summary_zh = await _translate_wiki_preview_summary(normalized, body, summary)
     now = time.time()
     if summary_zh:
-        _wiki_summary_zh_cache[normalized] = summary_zh
-        _wiki_summary_zh_cache_time[normalized] = now
+        _wiki_summary_zh.set(normalized, summary_zh)
         if cached:
             cached["summaryZh"] = summary_zh
-            _wiki_preview_cache[normalized] = cached
+            _wiki_preview.set(normalized, cached)
 
     return {"hasWiki": True, "summaryZh": summary_zh}
 
@@ -7961,9 +7993,9 @@ async def tags_wiki(tags: str):
     now = time.time()
     for tag in tag_list:
         # 1. 内存 wiki 缓存（TTL 1小时）
-        if tag in _wiki_cache and (now - _wiki_cache_time.get(tag, 0)) < WIKI_CACHE_TTL:
-            if _wiki_cache[tag]:
-                result[tag] = _wiki_cache[tag]
+        if (cached_names := _wiki_zh_names.get(tag)) is not None:
+            if cached_names:
+                result[tag] = cached_names
             continue
         
         # 2. 查 tag_translations.json 持久化映射库
@@ -7973,8 +8005,7 @@ async def tags_wiki(tags: str):
             zh_name = trans_entry["zh"]
             result[tag] = [zh_name]
             # 回填到内存缓存，避免重复查映射库
-            _wiki_cache[tag] = [zh_name]
-            _wiki_cache_time[tag] = now
+            _wiki_zh_names.set(tag, [zh_name])
             continue
         
         # 3. 都没有，需要从 Danbooru 获取
@@ -8025,8 +8056,7 @@ async def tags_wiki(tags: str):
         if isinstance(r, Exception):
             continue
         tag, chinese_names = r
-        _wiki_cache[tag] = chinese_names
-        _wiki_cache_time[tag] = now
+        _wiki_zh_names.set(tag, chinese_names)
         if chinese_names:
             result[tag] = chinese_names
     
