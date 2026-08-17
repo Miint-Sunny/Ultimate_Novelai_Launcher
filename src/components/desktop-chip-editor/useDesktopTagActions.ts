@@ -1,11 +1,18 @@
 import { useMemo, type Dispatch, type SetStateAction } from 'react';
 import {
   cleanTagName,
-  convertSDToNAI,
   extractTagsFromList,
-  isSDWeightFormat,
   type TagGroupInfo,
 } from '../../utils/promptTags';
+import {
+  applyBrace,
+  applyBracket,
+  applyNumericWeight,
+  clearWeights,
+  convertSDWeights,
+  resolveTargetIndices,
+  toggleHidden,
+} from '../../utils/promptWeightOps';
 
 interface TagPanelState {
   index: number;
@@ -43,108 +50,33 @@ export function useDesktopTagActions({
   setTagPanel,
 }: UseDesktopTagActionsParams) {
   return useMemo(() => {
-    const getIndices = (): number[] => {
-      const arr = Array.from(selectedTags).sort((a, b) => a - b);
-      if (arr.length === 0) return [];
-      if (arr.length === 1) {
-        const group = tagGroups[arr[0]];
-        if (group && group.groupId !== -1) {
-          return tagGroups.map((tagGroup, idx) => tagGroup.groupId === group.groupId ? idx : -1).filter(x => x >= 0);
-        }
-      }
-      return arr;
-    };
+    const getIndices = (): number[] => resolveTargetIndices(selectedTags, tagGroups);
 
     return {
       addBrace: () => {
         const indices = getIndices();
         if (indices.length === 0) return;
-        const tags = [...parsedTags];
-        const groups: number[][] = [];
-        let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) {
-          if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]);
-          else {
-            groups.push(cur);
-            cur = [indices[i]];
-          }
-        }
-        groups.push(cur);
-        for (const group of groups) {
-          tags[group[0]] = `{${tags[group[0]]}`;
-          tags[group[group.length - 1]] = `${tags[group[group.length - 1]]}}`;
-        }
-        rebuildValue(tags);
+        rebuildValue(applyBrace(parsedTags, indices));
       },
       addBracket: () => {
         const indices = getIndices();
         if (indices.length === 0) return;
-        const tags = [...parsedTags];
-        const groups: number[][] = [];
-        let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) {
-          if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]);
-          else {
-            groups.push(cur);
-            cur = [indices[i]];
-          }
-        }
-        groups.push(cur);
-        for (const group of groups) {
-          tags[group[0]] = `[${tags[group[0]]}`;
-          tags[group[group.length - 1]] = `${tags[group[group.length - 1]]}]`;
-        }
-        rebuildValue(tags);
+        rebuildValue(applyBracket(parsedTags, indices));
       },
       setNumeric: (weight: number) => {
         const indices = getIndices();
         if (indices.length === 0) return;
-        const tags = [...parsedTags];
-        const groups: number[][] = [];
-        let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) {
-          if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]);
-          else {
-            groups.push(cur);
-            cur = [indices[i]];
-          }
-        }
-        groups.push(cur);
-        for (const group of groups) {
-          if (group.length === 1) {
-            tags[group[0]] = `${weight}::${cleanTagName(tags[group[0]]).replace(/ /g, '_')}::`;
-          } else {
-            for (const i of group) tags[i] = cleanTagName(tags[i]);
-            tags[group[0]] = `${weight}::${tags[group[0]]}`;
-            tags[group[group.length - 1]] = `${tags[group[group.length - 1]]}::`;
-          }
-        }
-        rebuildValue(tags);
+        rebuildValue(applyNumericWeight(parsedTags, indices, weight));
       },
       clearWeight: () => {
         const indices = getIndices();
         if (indices.length === 0) return;
-        const tags = [...parsedTags];
-        const toClear = new Set<number>(indices);
-        for (const i of indices) {
-          const group = tagGroups[i];
-          if (group && group.groupId !== -1) {
-            tagGroups.forEach((tagGroup, idx) => {
-              if (tagGroup.groupId === group.groupId) toClear.add(idx);
-            });
-          }
-        }
-        for (const i of toClear) tags[i] = cleanTagName(tags[i]);
-        rebuildValue(tags);
+        rebuildValue(clearWeights(parsedTags, indices, tagGroups));
       },
       convertSDToNAI: () => {
         const indices = getIndices();
         if (indices.length === 0) return;
-        const tags = [...parsedTags];
-        for (const i of indices) {
-          if (isSDWeightFormat(tags[i])) tags[i] = convertSDToNAI(tags[i]);
-        }
-        rebuildValue(tags);
+        rebuildValue(convertSDWeights(parsedTags, indices));
       },
       deleteTag: () => {
         if (selectedTags.size === 0) return;
@@ -155,13 +87,7 @@ export function useDesktopTagActions({
       toggleHide: () => {
         if (selectedTags.size === 0) return;
         const indices = Array.from(selectedTags).sort((a, b) => a - b);
-        const tags = [...parsedTags];
-        const isHidden = tags[indices[0]]?.trim().startsWith('~');
-        for (const i of indices) {
-          if (isHidden) tags[i] = tags[i].replace(/^(\s*)~/, '$1');
-          else tags[i] = tags[i].replace(/^(\s*)/, '$1~');
-        }
-        rebuildValue(tags);
+        rebuildValue(toggleHidden(parsedTags, indices));
         setSelectedTags(new Set());
         setTagPanel(null);
       },
@@ -192,83 +118,35 @@ export function useDesktopPanelActions({
   return useMemo(() => {
     const getGroupIndices = (): number[] => {
       if (!tagPanel) return [];
-      const group = tagGroups[tagPanel.index];
-      if (group && group.groupId !== -1) {
-        return tagGroups.map((tagGroup, idx) => tagGroup.groupId === group.groupId ? idx : -1).filter(x => x >= 0);
-      }
-      return [tagPanel.index];
+      return resolveTargetIndices([tagPanel.index], tagGroups);
     };
 
     return {
       addWeight: () => {
         if (!tagPanel) return;
-        const tags = [...parsedTags];
-        const indices = getGroupIndices();
-        const groups: number[][] = [];
-        let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) {
-          if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]);
-          else {
-            groups.push(cur);
-            cur = [indices[i]];
-          }
-        }
-        groups.push(cur);
-        for (const group of groups) {
-          tags[group[0]] = `{${tags[group[0]]}`;
-          tags[group[group.length - 1]] = `${tags[group[group.length - 1]]}}`;
-        }
-        rebuildValue(tags);
+        rebuildValue(applyBrace(parsedTags, getGroupIndices()));
         setTagPanel(null);
       },
       reduceWeight: () => {
         if (!tagPanel) return;
-        const tags = [...parsedTags];
-        const indices = getGroupIndices();
-        const groups: number[][] = [];
-        let cur = [indices[0]];
-        for (let i = 1; i < indices.length; i++) {
-          if (indices[i] === indices[i - 1] + 1) cur.push(indices[i]);
-          else {
-            groups.push(cur);
-            cur = [indices[i]];
-          }
-        }
-        groups.push(cur);
-        for (const group of groups) {
-          tags[group[0]] = `[${tags[group[0]]}`;
-          tags[group[group.length - 1]] = `${tags[group[group.length - 1]]}]`;
-        }
-        rebuildValue(tags);
+        rebuildValue(applyBracket(parsedTags, getGroupIndices()));
         setTagPanel(null);
       },
       clearWeight: () => {
         if (!tagPanel) return;
-        const tags = [...parsedTags];
-        const toClear = new Set<number>(getGroupIndices());
-        for (const i of toClear) tags[i] = cleanTagName(tags[i]);
-        rebuildValue(tags);
+        // 下标已经 getGroupIndices 组展开,无需再连带展开(与原实现一致)
+        rebuildValue(clearWeights(parsedTags, getGroupIndices()));
         setTagPanel(null);
       },
       setNumericWeight: (weight: number) => {
         if (!tagPanel) return;
-        const tags = [...parsedTags];
-        const indices = getGroupIndices();
-        if (indices.length === 1) {
-          tags[indices[0]] = `${weight}::${cleanTagName(tags[indices[0]]).replace(/ /g, '_')}::`;
-        } else {
-          for (const i of indices) tags[i] = cleanTagName(tags[i]);
-          tags[indices[0]] = `${weight}::${tags[indices[0]]}`;
-          tags[indices[indices.length - 1]] = `${tags[indices[indices.length - 1]]}::`;
-        }
+        const tags = applyNumericWeight(parsedTags, getGroupIndices(), weight);
         rebuildValue(tags);
         setTagPanel(prev => prev ? { ...prev, rawTag: tags[tagPanel.index] } : null);
       },
       convertSDToNAI: () => {
         if (!tagPanel) return;
-        const tags = [...parsedTags];
-        tags[tagPanel.index] = convertSDToNAI(tags[tagPanel.index]);
-        rebuildValue(tags);
+        rebuildValue(convertSDWeights(parsedTags, [tagPanel.index]));
         setTagPanel(null);
       },
       deleteTag: () => {
@@ -289,14 +167,9 @@ export function useDesktopPanelActions({
       },
       toggleHide: () => {
         if (!tagPanel) return;
-        const tags = [...parsedTags];
         const indices = getGroupIndices();
-        const isHidden = tags[tagPanel.index]?.trim().startsWith('~');
-        for (const i of indices) {
-          if (isHidden) tags[i] = tags[i].replace(/^(\s*)~/, '$1');
-          else tags[i] = tags[i].replace(/^(\s*)/, '$1~');
-        }
-        rebuildValue(tags);
+        // 隐藏状态锚定在面板标签本身(与原实现一致,不取组首)
+        rebuildValue(toggleHidden(parsedTags, indices, tagPanel.index));
         setTagPanel(null);
         setSelectedTags(new Set());
       },
