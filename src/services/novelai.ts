@@ -709,14 +709,27 @@ async function generateImageViaBotMode(
   // 先注册监听器，再提交任务
   // 进度停滞检测：生成中如果 90 秒进度没有变化，判定为卡死
   const STALL_TIMEOUT_MS = 90 * 1000;
+  // starting（Plana 的“已出队、正在启动”）单独给更宽的阈值：这一阶段本来就没有 step 更新，
+  // 而对端是否会在整段生成里一直报 starting 我们无法验证 —— 用 90 秒会误杀健康任务。
+  // 3 分钟仍比 waitForTask 的 5 分钟总超时早，能把“卡在启动”和“生成超时”区分开。
+  const STARTING_STALL_TIMEOUT_MS = 180 * 1000;
   let lastProgressTime = Date.now();
   let lastStep = -1;
   let stallTimer: ReturnType<typeof setInterval> | null = null;
 
   const unsubscribe = botService.addEventListener((_, taskState) => {
-    // 排队状态显示：pending 和 queued 都显示排队中
-    if (taskState.status === 'pending' || taskState.status === 'queued') {
-      lastProgressTime = Date.now(); // 排队中也刷新时间，避免排队时误判
+    // 排队状态显示：pending / queued / starting 都显示排队中。
+    // starting 是 Plana 的“已出队、正在启动”状态，UI 层不认它的话整个阶段没有任何提示。
+    if (
+      taskState.status === 'pending'
+      || taskState.status === 'queued'
+      || taskState.status === 'starting'
+    ) {
+      if (taskState.status !== 'starting') {
+        // 排队中刷新时间，避免长队列被误判卡死；
+        // starting 不刷新 —— 卡在 starting 正是停滞检测要覆盖的场景。
+        lastProgressTime = Date.now();
+      }
       onQueueProgress?.({
         isQueuing: true,
         position: taskState.queuePosition,  // 0 表示位置未知，由 UI 显示为 "-"
@@ -772,11 +785,18 @@ async function generateImageViaBotMode(
   // 启动停滞检测定时器
   stallTimer = setInterval(() => {
     const taskState = botService.getTaskState();
-    if (taskState.status === 'generating' && Date.now() - lastProgressTime > STALL_TIMEOUT_MS) {
+    // starting 一并纳入停滞检测：任务卡在“正在启动”时不会有任何 step 更新，
+    // 只认 generating 的话要一路空转到 5 分钟总超时才报错。
+    const isStarting = taskState.status === 'starting';
+    if (!isStarting && taskState.status !== 'generating') return;
+    const limit = isStarting ? STARTING_STALL_TIMEOUT_MS : STALL_TIMEOUT_MS;
+    if (Date.now() - lastProgressTime > limit) {
       if (stallTimer) clearInterval(stallTimer);
       stallTimer = null;
       botService.abortTask(
-        `生成卡住: 进度停留在 ${lastStep > 0 ? lastStep + '步' : '开始阶段'} 超过 ${STALL_TIMEOUT_MS / 1000} 秒`
+        isStarting
+          ? `任务卡在启动阶段超过 ${limit / 1000} 秒，请重试`
+          : `生成卡住: 进度停留在 ${lastStep > 0 ? lastStep + '步' : '开始阶段'} 超过 ${limit / 1000} 秒`
       );
     }
   }, 5000);
@@ -793,9 +813,15 @@ async function generateImageViaBotMode(
     }
 
     // 处理结果
-    if (result.type === 'base64' && result.imageBase64) {
+    // 结果形状归一化：我们后端返回 { type:'base64', imageBase64 }，而 Plana 方言的 result
+    // 只有 { imageBase64 } 没有 type 字段。所以 type 缺失时按字段推断，两种方言落到同一分支；
+    // type 显式给出时仍以 type 为准，保持 file/data 等既有分支的判定不变。
+    const resultType: string | undefined = result.type;
+    const base64Image = (!resultType || resultType === 'base64') ? result.imageBase64 : undefined;
+
+    if (base64Image) {
       // 直接是base64图片数据
-      const binaryString = atob(result.imageBase64);
+      const binaryString = atob(base64Image);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
@@ -805,7 +831,7 @@ async function generateImageViaBotMode(
         imageData: new Blob([bytes], { type: 'image/png' }),
         seed: webParams.seed,
       };
-    } else if (result.type === 'file' && result.path) {
+    } else if (resultType === 'file' && result.path) {
       // 文件路径，需要从服务器获取
       try {
         const response = await appBackendApi.request('/api/bot/image', undefined, { path: result.path });
