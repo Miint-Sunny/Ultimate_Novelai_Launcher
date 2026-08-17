@@ -38,7 +38,7 @@ const TagButton: React.FC<{ tagText: string; isAccentBubble: boolean }> = ({ tag
         className={`inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded cursor-pointer border font-mono text-xs transition-all ${
           isAccentBubble
             ? 'bg-black/10 hover:bg-black/20 border-transparent text-black font-bold shadow-sm'
-            : 'bg-[#1c1d1f] border-[#303235]/80 hover:border-nai-accent/50 hover:bg-[#26282a] text-nai-accent shadow-sm'
+            : 'bg-nai-panel-2 border-nai-border/80 hover:border-nai-accent/50 hover:bg-nai-surface text-nai-accent shadow-sm'
         }`}
         title="点击复制标签"
       >

@@ -6,29 +6,31 @@
  *  - 用 arbitrary value（bg-[#131724]）+ 这里的命名常量做心智锚点
  */
 
+// 全部指向 src/index.css :root 的皮肤变量,inline style 里 var() 照常解析,
+// 因此 AgentDock 会跟随 data-theme 皮肤切换,与全局同源。
 export const C = {
-  bg: '#0e0f11',
-  bgDeep: '#070809',
-  panel: '#151719', // 与全局 nai-panel 同值,治好展开/收起两态分界线变色的问题
-  panel2: '#1e2023',
-  surface: '#26282a',
-  surfaceHover: '#303235',
+  bg: 'rgb(var(--nai-bg))',
+  bgDeep: 'rgb(var(--nai-dark))',
+  panel: 'rgb(var(--nai-panel))', // 与全局 nai-panel 同源,展开/收起两态分界线同色
+  panel2: 'rgb(var(--nai-panel-2))',
+  surface: 'rgb(var(--nai-surface))',
+  surfaceHover: 'rgb(var(--nai-surface-hover))',
 
   line: 'rgba(255,255,255,0.06)',
   line2: 'rgba(255,255,255,0.10)',
-  border: '#303235',
-  borderStrong: '#444649',
+  border: 'rgb(var(--nai-border))',
+  borderStrong: 'rgb(var(--nai-border-strong))',
 
-  text: '#f6f6f6',
-  text2: '#cbccce',
-  textDim: '#8c8e8f',
-  textMute: '#5d5f61',
-  textFaint: '#6f7173', // 比原稿提亮一档，避免在深底上几乎不可见
+  text: 'rgb(var(--nai-text))',
+  text2: 'rgb(var(--nai-text-2))',
+  textDim: 'rgb(var(--nai-text-dim))',
+  textMute: 'rgb(var(--nai-text-mute))',
+  textFaint: 'rgb(var(--nai-text-faint))', // 比原稿提亮一档，避免在深底上几乎不可见
 
-  accent: '#fceda4',
-  accent2: '#ebd576',
-  accentSoft: 'rgba(252,237,164,0.14)',
-  accentLine: 'rgba(252,237,164,0.28)',
+  accent: 'rgb(var(--nai-accent))',
+  accent2: 'rgb(var(--nai-accent-hover))',
+  accentSoft: 'rgb(var(--nai-accent) / 0.14)',
+  accentLine: 'rgb(var(--nai-accent) / 0.28)',
 
   ok: 'oklch(74% 0.15 152)',
   okBg: 'oklch(36% 0.08 152 / 0.35)',
