@@ -15,6 +15,7 @@ import { MobileExpandedGallerySheet } from './MobileExpandedGallerySheet';
 import { MobileSaveSettingsSheet } from './MobileSaveSettingsSheet';
 import { useMobileGalleryBackStack } from './gallery/useMobileGalleryBackStack';
 import { MobileCompactGalleryStrip } from './gallery/MobileCompactGalleryStrip';
+import { MobileGalleryFlipCanvas } from './gallery/MobileGalleryFlipCanvas';
 import { MobileCurrentImageToolbar } from './gallery/MobileCurrentImageToolbar';
 import { useMobileGallerySelection } from './gallery/useMobileGallerySelection';
 import { useMobileGenerationErrorToast } from './gallery/useMobileGenerationErrorToast';
@@ -44,9 +45,7 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
     cancelTask,
     history,
     selectHistoryItem,
-    setSeedSetting,
     addUpscaledImage,
-    deleteHistoryItem,
     deleteHistoryItems,
     viewingHistory,
     setViewingHistory,
@@ -84,6 +83,8 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
     setIsSelectionMode,
     clearSelection,
     toggleSelectItem,
+    enterSelectionWith,
+    convergeSelection,
     selectAll,
     deselectAll,
   } = useMobileGallerySelection(history);
@@ -116,9 +117,6 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
     setIsSelectionMode,
   });
 
-  const displayUrl = (isGenerating || isQueuing)
-    ? (viewingHistory ? imageUrl : previewUrl)
-    : imageUrl;
   const hasImage = !!imageUrl && !isGenerating && !isInpaintMode;
 
   const closeGallery = useCallback(() => {
@@ -144,16 +142,13 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
     closeInpaintMode,
   });
 
-  // 使用种子
-  const handleUseSeed = () => {
-    if (currentSeed) {
-      setSeedSetting(String(currentSeed));
-    }
-  };
-
-  // 重新生成
+  // 重新生成:画布翻到的老图有元数据时按入库快照换新种子复跑(不动编辑器),
+  // 否则维持原语义按编辑器现状重跑
   const handleRegenerate = () => {
-    window.dispatchEvent(new Event('regenerate-image'));
+    const currentItem = history.find((item) => item.imageUrl === imageUrl);
+    window.dispatchEvent(currentItem?.metadata
+      ? new CustomEvent('regenerate-image', { detail: { snapshot: currentItem } })
+      : new Event('regenerate-image'));
   };
 
   // 超分辨率完成处理
@@ -252,31 +247,20 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
           />
         )}
 
-        {displayUrl ? (
-          <div
-            className="relative w-full h-full flex items-center justify-center p-4"
-            onTouchStart={(e) => {
-              // 检测到双指触摸 → 进入全屏缩放模式
-              if (e.touches.length >= 2 && (!isGenerating || viewingHistory) && imageUrl) {
-                e.preventDefault();
-                setIsFullscreen(true);
-              }
-            }}
-          >
-            <img
-              src={displayUrl}
-              alt={isGenerating ? 'Preview' : 'Generated'}
-              className={`max-w-full max-h-full object-contain rounded-lg shadow-2xl ${isGenerating ? 'opacity-90' : ''
-                }`}
-              onClick={() => (!isGenerating || viewingHistory) && setIsFullscreen(true)}
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <ImageIcon className="w-12 h-12 opacity-20 mb-2" />
-            <span className="text-sm">{isQueuing || isGenerating ? '' : '未生成图像'}</span>
-          </div>
-        )}
+        {/* P5 翻图画布:在跑任务卡头页 + history 一项一页,横滑翻图;
+            双指/单击进全屏;inpaint 模式下被 overlay 取代(enabled=false 停手势) */}
+        <MobileGalleryFlipCanvas
+          history={history}
+          imageUrl={imageUrl}
+          previewUrl={previewUrl}
+          isGenerating={isGenerating}
+          isQueuing={isQueuing}
+          viewingHistory={viewingHistory}
+          enabled={!isInpaintMode}
+          selectHistoryItem={selectHistoryItem}
+          setViewingHistory={setViewingHistory}
+          onOpenFullscreen={() => setIsFullscreen(true)}
+        />
 
         {/* 统一状态条 - 排队 + 生成进度（与 web 端一致） */}
         <MobileImageStatusPill
@@ -293,9 +277,9 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
           isGenerating={isGenerating}
           currentSeed={currentSeed}
           history={history}
-          onUseSeed={handleUseSeed}
           onRegenerate={handleRegenerate}
           onDownload={handleDownload}
+          onOpenSaveSettings={() => setShowSaveSettings(true)}
         />
       </div>
 
@@ -312,6 +296,10 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
         setViewingHistory={setViewingHistory}
         selectHistoryItem={selectHistoryItem}
         onExpand={() => setIsGalleryExpanded(true)}
+        onLongPressItem={(id) => {
+          enterSelectionWith(id);
+          setIsGalleryExpanded(true);
+        }}
       />
 
       {/* 全屏预览 - 支持双指缩放 */}
@@ -371,7 +359,7 @@ export const MobileGalleryPage: React.FC<MobileGalleryPageProps> = ({ onStudioTo
         handleDownloadSelected={handleDownloadSelected}
         handleDeleteSelected={handleDeleteSelected}
         downloadAndSaveImage={downloadAndSaveImage}
-        deleteHistoryItem={deleteHistoryItem}
+        convergeSelection={convergeSelection}
       />
 
     </div>

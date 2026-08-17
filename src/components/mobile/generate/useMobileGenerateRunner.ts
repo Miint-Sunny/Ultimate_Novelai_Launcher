@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import type { HistoryItem } from '../../../contexts/GenerationContext';
 import { getAISettings, getAppSettings, type PromptPresetData } from '../../../services/localLibrary';
 import type { GenerateImageParams, GenerateResult } from '../../../services/novelai';
 import { fetchPublicVibeEncoding } from '../../../services/publicLibrary';
 import { assembleGenerateParams } from '../../generation/generationPayload';
 import { isGenModuleVisible, stripInvisibleModuleData, type GenModuleContext } from '../../generation/genModules';
 import { prepareImg2ImgParams, preparePreciseReferences, prepareVibeReferences } from '../../generation/generationReferences';
+import { buildSnapshotRegenerateParams } from '../../generation/snapshotRegenerate';
 import type { ActivePreciseRef, ActiveVibe, CharacterPrompt } from '../types';
 import type { SavedMobileInpaint } from './useMobileImg2Img';
 import { prepareMobileCharacterPrompts, prepareMobilePromptPair } from './mobilePromptPreparation';
@@ -196,14 +198,27 @@ export function useMobileGenerateRunner({
   ]);
 
   useEffect(() => {
-    const handleRegenerate = () => {
-      if (!isGenerating && !isQueuing && !isPreparing) {
+    const handleRegenerate = (event: Event) => {
+      if (isGenerating || isQueuing || isPreparing) return;
+      // 图库画布翻到老图时带快照复跑:用入库参数换新种子,不动编辑器工作区;
+      // 无快照 detail(或老图无元数据)时维持原语义——按编辑器现状重跑。
+      const snapshot = (event as CustomEvent<{ snapshot?: HistoryItem }>).detail?.snapshot;
+      const snapshotParams = snapshot ? buildSnapshotRegenerateParams(snapshot) : null;
+      if (!snapshotParams) {
         void handleGenerate();
+        return;
       }
+      if (!isAuthenticated) {
+        requireAuth(() => {
+          void generate(snapshotParams);
+        });
+        return;
+      }
+      void generate(snapshotParams);
     };
     window.addEventListener('regenerate-image', handleRegenerate);
     return () => window.removeEventListener('regenerate-image', handleRegenerate);
-  }, [handleGenerate, isGenerating, isPreparing, isQueuing]);
+  }, [generate, handleGenerate, isAuthenticated, isPreparing, isQueuing, requireAuth]);
 
   return {
     isPreparing,
