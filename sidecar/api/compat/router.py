@@ -8,6 +8,7 @@ protected mutations as defense in depth.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
