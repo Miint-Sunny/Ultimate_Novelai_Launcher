@@ -22,8 +22,13 @@ Plana 客户端  ──(Plana 协议)──▶  plana_adapter  ──(宿主原�
 | `image_backend` Plana 放顶层,宿主从 `params` 读 | 下沉进 `params` |
 | 宿主库/统计端点认 `X-Bot-Session`,Plana 只发 `Authorization: Bearer` | 通用透传时把 Bearer 桥成 `X-Bot-Session` |
 | 宿主开配额账本时要 `Idempotency-Key` | 每次生成代发唯一键(循环生成同参数连抽,故不用 params hash) |
+| WS 身份绑定:Plana 匿名连上后发 `bind_session`;宿主握手期从子协议 `bot-session.<sid>` 取会话,**收到 `bind_session` 会 close 4403** | `/ws/bot` 双向代理:对下游两种方言都接受,对上游一律用子协议连;`bind_session` 只用于绑定、绝不转发给宿主 |
 
 其余端点(`validate` / `verify` / `anlas` / `wd-tagger` / 公开 tags 等)原样透传。
+
+WS 在 Plana 协议里是**可选**链路(客户端有 2.5s 轮询兜底),代理里任何 WS 失败都以
+关闭连接收场,让客户端退回轮询 —— 不会把错误伪装成正常进度。走 WS 的收益是
+**中间预览图与细粒度进度**。
 
 ## 运行
 
@@ -42,6 +47,23 @@ Plana 客户端把后端地址填成适配器的 `http://<host>:<port>` 即可�
 | `PLANA_ADAPTER_TIMEOUT` | `30` | 转发上游超时(秒) |
 | `PLANA_ADAPTER_GENERATE_TIMEOUT` | `120` | 生成提交超时(秒) |
 | `PLANA_ADAPTER_MAX_PENDING_CODES` | `2000` | 代管 poll_token 的内存上限 |
+
+## dev 站联调拓扑
+
+```
+                          ┌── Plana 客户端(Android)──▶ plana_adapter ──┐
+                          │                              :8765          │
+   dev 站(我们的宿主)◀──┤                                             │
+                          └── 我们的 web 前端(custom 模式)────────────┘
+                                 │
+                                 └─ 直接填 dev 站地址 = 走我们自己的方言
+                                    填 adapter 地址   = 走 Plana 方言
+```
+
+**联调技巧**:我们的 web 前端在 `serverMode='custom'` 下把后端地址填成
+**适配器地址**,就能在不碰对方服务器的前提下,端到端验证"客户端说 Plana 方言"
+这条路(方向二)。适配器对下游同时接受两种方言,所以它既是 Plana 客户端的入口,
+也是我们自己客户端的 Plana 方言陪练。
 
 ## 安全须知
 

@@ -19,11 +19,12 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket
 from fastapi.responses import JSONResponse
 
 from .config import AdapterConfig, load_config
 from .pending_codes import PendingCodeStore
+from .ws_proxy import proxy_bot_socket
 
 # 后端多出的状态词 → Plana 词表(queued/starting/generating/completed/failed/cancelled)。
 _STATUS_TO_PLANA = {
@@ -73,6 +74,7 @@ def create_app(
     *,
     client: httpx.AsyncClient | None = None,
     token_factory: Callable[[], str] = lambda: secrets.token_hex(16),
+    ws_connect: Any = None,
 ) -> FastAPI:
     cfg = config or load_config()
 
@@ -195,6 +197,16 @@ def create_app(
             return body
 
         return await _relay_json(resp, transform=_map_status)
+
+    @app.websocket("/ws/bot")
+    async def bot_socket(websocket: WebSocket) -> None:
+        # 两边的身份绑定方式不同,由 ws_proxy 转译(详见该模块 docstring)。
+        await proxy_bot_socket(
+            websocket,
+            upstream_base=cfg.upstream_base,
+            status_mapping=_STATUS_TO_PLANA,
+            connect=ws_connect,
+        )
 
     @app.api_route(
         "/{path:path}",
