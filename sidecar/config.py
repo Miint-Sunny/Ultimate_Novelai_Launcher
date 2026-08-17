@@ -221,13 +221,26 @@ def load_settings() -> Settings:
         or os.environ.get("NAI_STUDIO_SIDECAR_PORT", "38176")
     ).strip()
     env_token = os.environ.get("NAI_TOKEN", "").strip()
+    # 端口不走 _env_int 的"越界即钳位"语义:操作员显式指定的监听端口若无法解析,
+    # 静默回落到默认端口会让 sidecar 悄悄听在非预期地址上。这里保持 fail-fast,
+    # 只是把裸 ValueError 换成能直接看懂的信息。
+    try:
+        port = int(port_raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT must be an integer, got {port_raw!r}"
+        ) from exc
+    if not 0 <= port <= 65535:
+        raise ValueError(
+            f"ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT must be between 0 and 65535, got {port}"
+        )
 
     return Settings(
         host=(
             os.environ.get("ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_HOST")
             or os.environ.get("NAI_STUDIO_SIDECAR_HOST", "127.0.0.1")
         ).strip() or "127.0.0.1",
-        port=int(port_raw),
+        port=port,
         data_dir=data_dir,
         nai_token=env_token or get_stored_token(data_dir),
         nai_base_url=(

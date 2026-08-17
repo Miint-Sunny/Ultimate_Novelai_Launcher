@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Request, Response
 from fastapi.responses import JSONResponse
 
 from plana_adapter.app import create_app
@@ -206,3 +206,44 @@ def test_pending_code_store_ttl_and_bound() -> None:
     clock["t"] = 100.0
     assert store.get("B") is None
     assert len(store) == 0
+
+
+@pytest.mark.asyncio
+async def test_non_json_200_from_upstream_is_relayed_not_crashed() -> None:
+    """上游 200 但不是 JSON(反代/门户顶替响应)时,原样转交而不是炸成 500。"""
+
+    upstream = FastAPI()
+
+    @upstream.post("/api/bot/auth/generate")
+    async def gen() -> Response:
+        return Response(content="<html>portal</html>", media_type="text/html")
+
+    _, adapter = _adapter_client(upstream)
+    transport = httpx.ASGITransport(app=adapter)
+    async with adapter.router.lifespan_context(adapter):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://adapter.test"
+        ) as client:
+            resp = await client.post("/api/bot/auth/generate")
+    assert resp.status_code == 200
+    assert b"portal" in resp.content
+
+
+@pytest.mark.asyncio
+async def test_generate_forwards_bearer_only_session_in_the_body() -> None:
+    """会话只在 Bearer 里时,转发体也要带上 —— 宿主只认 body 的 session_id。"""
+
+    upstream, calls = _build_fake_upstream()
+    _, adapter = _adapter_client(upstream)
+    transport = httpx.ASGITransport(app=adapter)
+    async with adapter.router.lifespan_context(adapter):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://adapter.test"
+        ) as client:
+            resp = await client.post(
+                "/api/bot/generate",
+                json={"params": {"positivePrompt": "cat"}},
+                headers={"Authorization": "Bearer sess-only-header"},
+            )
+    assert resp.status_code == 200
+    assert calls["generate_body"]["session_id"] == "sess-only-header"

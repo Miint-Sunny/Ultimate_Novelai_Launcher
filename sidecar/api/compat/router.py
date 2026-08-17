@@ -14,7 +14,7 @@ import logging
 import os
 from collections.abc import AsyncIterator, Callable, Coroutine
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -161,7 +161,11 @@ def create_compat_router(components: RuntimeComponents) -> APIRouter:
         return _llm_status(updated)
 
     @router.delete("/auth/llm-key", dependencies=[auth])
-    async def delete_llm_key(slot: str = "primary") -> dict[str, Any]:
+    async def delete_llm_key(
+        # 必须与 POST 侧同样收窄:裸 str 时任何拼错的值(slot=backupp、Backup)
+        # 都会落进 else 分支,把**主**密钥删掉。删错凭据不可撤销,故宁可 422。
+        slot: Literal["primary", "backup"] = "primary",
+    ) -> dict[str, Any]:
         settings = current_settings()
         remover = delete_stored_llm_backup_key if slot == "backup" else delete_stored_llm_key
         remover(settings.data_dir)
@@ -185,7 +189,9 @@ def create_compat_router(components: RuntimeComponents) -> APIRouter:
                     media_type=asset.media_type or "application/octet-stream",
                 )
         settings = current_settings()
-        record = get_generation(settings, image_id)
+        # get_generation 是同步 SQLite(每次新建连接 + 4 条 PRAGMA)。在 async
+        # 路由里直接调会阻塞事件循环,推到线程池执行。
+        record = await asyncio.to_thread(get_generation, settings, image_id)
         if not record or record.status != "success" or not record.image_path:
             raise HTTPException(status_code=404, detail="image not found")
         path = Path(record.image_path)
