@@ -3104,3 +3104,40 @@ async def test_expensive_path_class_rejects_a_flood_with_retry_after(
     assert blocked.json()["code"] == "rate_limited"
     assert int(blocked.headers["retry-after"]) >= 1
     assert other_class.status_code != 429
+
+
+def test_ttl_cache_expires_and_keeps_falsey_values_distinct_from_misses(
+    legacy_server: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """wiki 缓存的公共实现:过期即失效,且 False/空列表是命中而非未命中。"""
+
+    clock = {"now": 1_000.0}
+    monkeypatch.setattr(legacy_server.time, "time", lambda: clock["now"])
+    cache = legacy_server._TtlCache(ttl=60)
+
+    # 合法的假值必须与"没有这条缓存"区分开 —— 旧的成对 dict 写法靠 `in` 判断,
+    # 换成 .get() 后如果用真值判断就会把 False 当成未命中、反复重查上游。
+    cache.set("exists", False)
+    cache.set("names", [])
+    assert cache.get("exists") is False
+    assert cache.get("names") == []
+    assert cache.get("never-set") is None
+    # has_fresh 表示"存在新鲜条目",与值的真假无关。
+    assert cache.has_fresh("exists") is True
+    assert cache.has_fresh("never-set") is False
+
+    cache.set("fresh", "value")
+    assert cache.get("fresh") == "value"
+
+    # 过期后读取即失效,并顺带把这条清掉(惰性清除)。
+    clock["now"] += 61
+    assert cache.get("fresh") is None
+    assert cache.has_fresh("fresh") is False
+
+    # 批量清理只丢过期条目;"fresh" 上面已被惰性清除,故这里只剩 2 条过期。
+    cache.set("keep", "still-good")
+    clock["now"] += 1
+    assert cache.purge_expired() == 2  # exists / names
+    assert cache.purge_expired() == 0  # 幂等
+    assert cache.get("keep") == "still-good"
