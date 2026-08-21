@@ -508,6 +508,59 @@ class NovelAIGenerationExecutorTests(unittest.IsolatedAsyncioTestCase):
                 await canonical_executor(canonical_job)
             canonical_call.assert_awaited_once()
 
+    async def test_omitted_seed_is_rolled_once_and_echoed_in_result_params(self) -> None:
+        request = {
+            "input": "cat",
+            "mode": "tags",
+            "tags": "cat",
+            "negative": "",
+            "params": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            executor, job = await _persistent_executor_job(
+                Path(directory),
+                request,
+                mock_generation=False,
+                job_id="seedless-job",
+            )
+            canonical_call = AsyncMock(return_value=b"image")
+            with patch("sidecar.services.generation.generate_image", canonical_call):
+                result = await executor(job)
+
+            assert canonical_call.await_args is not None
+            effective_params = canonical_call.await_args.kwargs["params"]
+            self.assertIsNotNone(effective_params.seed)
+            result_params = result["params"]
+            assert isinstance(result_params, dict)
+            self.assertEqual(result_params["seed"], effective_params.seed)
+
+    async def test_legacy_payload_seed_is_echoed_when_params_seed_is_absent(self) -> None:
+        request = {
+            "input": "cat",
+            "mode": "tags",
+            "tags": "cat",
+            "negative": "",
+            "params": {},
+            "legacy_payload": {"input": "cat", "parameters": {"seed": 4242}},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            executor, job = await _persistent_executor_job(
+                Path(directory),
+                request,
+                mock_generation=False,
+                job_id="legacy-seed-job",
+            )
+            legacy_call = AsyncMock(return_value=b"legacy-image")
+            with patch(
+                "sidecar.services.generation.generate_image_from_payload",
+                legacy_call,
+            ):
+                result = await executor(job)
+
+            result_params = result["params"]
+            assert isinstance(result_params, dict)
+            self.assertEqual(result_params["seed"], 4242)
+
     def test_error_messages_expose_only_expected_domain_failures(self) -> None:
         long_message = "x" * 600
         self.assertEqual(

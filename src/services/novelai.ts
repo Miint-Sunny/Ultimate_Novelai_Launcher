@@ -6,6 +6,7 @@ import { queueService } from './queueService';
 import { botService } from './botService';
 import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenerationParams } from '../api/sidecar';
 import { appBackendApi } from '../api/appBackendApi';
+import { resolveUcPreset } from './naiUcPresets';
 
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
@@ -68,8 +69,6 @@ const MODEL_MAP: Record<string, string> = {
   'v4-curated-preview': 'nai-diffusion-4-curated-preview',
   v3: 'nai-diffusion-3',
 };
-
-const UC_PRESET_MAP: Record<string, number> = { heavy: 0, light: 1, none: 4 };
 
 export interface CharacterPrompt {
   positive: string;
@@ -361,7 +360,8 @@ export function buildRequestPayload(params: GenerateImageParams) {
   }
 
   const sampler = normalizeSamplerToId(params.sampler);
-  const ucPreset = UC_PRESET_MAP[params.ucPreset] ?? 4;
+  // ucPreset 枚举按模型族区分（0=Heavy 起），必须用 baseModel 解析（inpainting 变体共享基座枚举）
+  const ucPreset = resolveUcPreset(baseModel, params.ucPreset);
 
   const charCaptions: Array<{ char_caption: string; centers: Array<{ x: number; y: number }> }> = [];
   const negativeCharCaptions: Array<{ char_caption: string; centers: Array<{ x: number; y: number }> }> = [];
@@ -679,12 +679,12 @@ async function generateImageViaBotMode(
     'v4-curated-preview': 'nai-diffusion-4-curated-preview',
     'v3': 'nai-diffusion-3',
   };
-  const ucPresetMap: Record<string, number> = { heavy: 4, light: 3, humanFocus: 2, none: 0 };
+  const ucPresetModel = modelMap[params.model] || params.model;
 
   const webParams = {
     positivePrompt: cleanPromptMarkers(params.positivePrompt),
     negativePrompt: cleanPromptMarkers(params.negativePrompt),
-    model: modelMap[params.model] || params.model,  // 转换为 API 内部名
+    model: ucPresetModel,  // 转换为 API 内部名
     width: params.width,
     height: params.height,
     seed: params.seed ?? Math.floor(Math.random() * 4294967295),
@@ -693,7 +693,7 @@ async function generateImageViaBotMode(
     sampler: normalizeSamplerToId(params.sampler),  // 统一转 API id（兼容显示名/id 两种输入）
     cfgRescale: params.cfgRescale,
     noiseSchedule: normalizeNoiseSchedule(params.noiseSchedule),
-    ucPreset: ucPresetMap[params.ucPreset] ?? 4,  // 转换为数字
+    ucPreset: resolveUcPreset(ucPresetModel, params.ucPreset),  // 转换为按模型族的数字枚举
     qualityToggle: params.qualityToggle,
     varietyPlus: params.varietyPlus,
     normalizeVibeStrength: params.normalizeVibeStrength,

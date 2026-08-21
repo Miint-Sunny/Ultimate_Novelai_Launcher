@@ -4696,6 +4696,39 @@ class BotGenerateResponse(BaseModel):
     message: str
 
 
+# NAI ucPreset 数字枚举按模型族区分，且一律从 0 = Heavy 起编。
+# 数据来源：NAI 官方 WebUI 抓取 reference_repos/Aaalice_NAI_Launcher/scripts/
+# nai_presets_captured.json（2025-01-29）。前端权威表在
+# src/services/naiUcPresets.ts，两处需同步修改。
+# 历史教训：旧映射 {"heavy": 4, "light": 3, "humanFocus": 2, "none": 0} 是把
+# 枚举表倒读的结果——web/bot 链路选 Heavy 实际发出 None，选 None 实际发出 Heavy。
+_NAI_UC_PRESETS_BY_MODEL = {
+    "nai-diffusion-4-5-full": {"heavy": 0, "light": 1, "furryFocus": 2, "humanFocus": 3, "none": 4},
+    "nai-diffusion-4-5-curated": {"heavy": 0, "light": 1, "humanFocus": 2, "none": 3},
+    "nai-diffusion-4-full": {"heavy": 0, "light": 1, "none": 2},
+    "nai-diffusion-4-curated-preview": {"heavy": 0, "light": 1, "none": 2},
+    "nai-diffusion-3": {"heavy": 0, "light": 1, "humanFocus": 2, "none": 3},
+}
+# furry-3 等未出现在抓取样本中的模型按 v3 同代处理；heavy 在所有已知模型上
+# 都是 0，作为兜底最安全。
+_NAI_UC_PRESETS_FALLBACK = {"heavy": 0, "light": 1, "furryFocus": 2, "humanFocus": 2, "none": 3}
+
+
+def resolve_nai_uc_preset(model: str, preset: object) -> int:
+    """把 ucPreset 预设名解析为该模型族对应的数字枚举；数字原样透传。"""
+    base = model[: -len("-inpainting")] if model.endswith("-inpainting") else model
+    table = _NAI_UC_PRESETS_BY_MODEL.get(base, _NAI_UC_PRESETS_FALLBACK)
+    if isinstance(preset, bool):
+        return table["heavy"]
+    if isinstance(preset, int):
+        return preset
+    if isinstance(preset, str):
+        value = table.get(preset)
+        if value is not None:
+            return value
+    return table["heavy"]
+
+
 def convert_web_params_to_stream(web_params: dict) -> dict:
     """将 Web 端参数转换为流式生成参数格式"""
     positive_prompt = web_params.get("positivePrompt", "")
@@ -4711,7 +4744,7 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
     variety_plus = web_params.get("varietyPlus", False)
     normalize_vibe_strength = web_params.get("normalizeVibeStrength", True)
     quality_toggle = web_params.get("qualityToggle", False)
-    uc_preset = web_params.get("ucPreset", 4)
+    uc_preset_raw = web_params.get("ucPreset", "heavy")
     
     # 模型处理：支持前端已转换的 API 内部名，也支持显示名
     model_id = web_params.get("model", "nai-diffusion-4-5-full")
@@ -4725,12 +4758,9 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
     # 如果已经是 API 内部名则直接使用，否则尝试映射
     model = model_map.get(model_id, model_id)
     
-    # ucPreset 处理：支持数字和字符串
-    uc_preset_map = {"heavy": 4, "light": 3, "humanFocus": 2, "none": 0}
-    if isinstance(uc_preset, int):
-        uc_preset_value = uc_preset
-    else:
-        uc_preset_value = uc_preset_map.get(uc_preset, 4)
+    # ucPreset 处理：数字原样透传；字符串按模型族解析（默认 heavy，
+    # 与 DirectGenerateRequest.ucPreset 的缺省一致）
+    uc_preset_value = resolve_nai_uc_preset(model, uc_preset_raw)
     
     # 角色提示词转换
     character_prompts = web_params.get("characterPrompts", [])
@@ -8262,6 +8292,24 @@ def _is_multiple_of_005(value: float) -> bool:
     remainder = round(value % 0.05, 6)
     return remainder < 0.001 or (0.05 - remainder) < 0.001
 
+
+def _vibe_encoding_key(model: str) -> str | None:
+    """模型名 → vibe 编码 key。
+
+    子串匹配以兼容 ``-inpainting`` 等变体后缀；v3 无 vibe 编码返回 None。
+    精确别名表的权威来源是 sidecar 的 ``model_to_encoding_key``
+    （sidecar/library_assets.py），两侧需同步修改。
+    """
+    if "4-5-full" in model or "4-5full" in model:
+        return "v4-5full"
+    if "4-5-curated" in model or "4-5curated" in model:
+        return "v4-5curated"
+    if "4-full" in model or "4full" in model:
+        return "v4full"
+    if "4-curated" in model or "4curated" in model:
+        return "v4curated"
+    return None
+
 async def _try_cache_public_vibe_encoding(image_b64: str, information_extracted: float, model: str, encoding_b64: str):
     """尝试将编码结果缓存到公共 vibe 文件中"""
     if not _is_multiple_of_005(information_extracted):
@@ -8280,16 +8328,9 @@ async def _try_cache_public_vibe_encoding(image_b64: str, information_extracted:
         async with aiofiles.open(vibe_file, "r", encoding="utf-8") as f:
             data = json.loads(await f.read())
 
-        # 确定 encoding key
-        if "4-5-full" in model or "4-5full" in model:
-            enc_key = "v4-5full"
-        elif "4-5-curated" in model or "4-5curated" in model:
-            enc_key = "v4-5curated"
-        elif "4-full" in model or "4full" in model:
-            enc_key = "v4full"
-        elif "4-curated" in model or "4curated" in model:
-            enc_key = "v4curated"
-        else:
+        # 确定 encoding key（v3 等无编码的模型直接跳过）
+        enc_key = _vibe_encoding_key(model)
+        if enc_key is None:
             return
 
         enc_digest = hashlib.sha256(f"information_extracted:{information_extracted}".encode()).hexdigest()
@@ -8334,15 +8375,8 @@ async def get_vibe_encoding(filename: str, model: str, ie: float):
         raise HTTPException(status_code=404, detail="Vibe文件不存在")
 
     # 确定 encoding key
-    if "4-5-full" in model or "4-5full" in model:
-        enc_key = "v4-5full"
-    elif "4-5-curated" in model or "4-5curated" in model:
-        enc_key = "v4-5curated"
-    elif "4-full" in model or "4full" in model:
-        enc_key = "v4full"
-    elif "4-curated" in model or "4curated" in model:
-        enc_key = "v4curated"
-    else:
+    enc_key = _vibe_encoding_key(model)
+    if enc_key is None:
         raise HTTPException(status_code=400, detail="不支持的模型")
 
     try:

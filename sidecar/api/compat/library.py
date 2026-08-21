@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from backend_core.errors import AppError
 from sidecar.library_assets import (
     format_ms,
+    model_to_encoding_key,
     now_ms,
     safe_name,
     slug,
@@ -521,14 +522,7 @@ def _encoding(document: dict[str, Any], model: str, ie: float) -> str | None:
     encodings = document.get("encodings")
     if not isinstance(encodings, dict):
         return None
-    aliases = {
-        "nai-diffusion-4-full": "v4full",
-        "nai-diffusion-4-curated": "v4curated",
-        "nai-diffusion-4-5-full": "v4-5full",
-        "nai-diffusion-4-5-curated": "v4-5curated",
-        "nai-diffusion-3": "v3",
-    }
-    for key in (model, aliases.get(model, model)):
+    for key in (model, model_to_encoding_key(model)):
         value = encodings.get(key)
         if isinstance(value, str):
             return value

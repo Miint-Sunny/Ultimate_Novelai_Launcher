@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Any
 
@@ -354,6 +355,8 @@ class NovelAIGenerationExecutor:
         if not resolved.tags:
             raise InvalidArgumentError("prompt tags are empty", code="empty_prompt")
 
+        effective_params = resolved.params
+        legacy_seed: int | None = None
         if settings.mock_generation:
             # Keep the job in a running, cancellable state for the configured
             # window so cancellation can be exercised against instant mock output.
@@ -370,7 +373,7 @@ class NovelAIGenerationExecutor:
                 settings=settings,
                 tags=resolved.tags,
                 negative=resolved.negative,
-                params=resolved.params,
+                params=effective_params,
                 http=self.http,
                 on_progress=self._progress_reporter(job.id),
             )
@@ -380,12 +383,26 @@ class NovelAIGenerationExecutor:
                 payload=request.legacy_payload,
                 http=self.http,
             )
+            legacy_parameters = request.legacy_payload.get("parameters")
+            if isinstance(legacy_parameters, dict):
+                legacy_seed_value = legacy_parameters.get("seed")
+                if (
+                    isinstance(legacy_seed_value, int)
+                    and not isinstance(legacy_seed_value, bool)
+                ):
+                    legacy_seed = legacy_seed_value
         else:
+            if effective_params.provider == "nai" and effective_params.seed is None:
+                # 在执行器内摇定 seed 而不是依赖 client 的兜底：兜底摇出的
+                # 种子不会回传，响应/入库将丢失实际值，导致结果不可复现。
+                effective_params = effective_params.model_copy(
+                    update={"seed": secrets.randbits(32)}
+                )
             payload = await generate_image(
                 settings=settings,
                 tags=resolved.tags,
                 negative=resolved.negative,
-                params=resolved.params,
+                params=effective_params,
                 http=self.http,
             )
         asset = await self.assets.store_bytes(
@@ -398,6 +415,10 @@ class NovelAIGenerationExecutor:
             metadata={"tags": resolved.tags, "negative": resolved.negative},
         )
 
+        echo_params = effective_params.model_dump(mode="json")
+        if echo_params.get("seed") is None and legacy_seed is not None:
+            echo_params["seed"] = legacy_seed
+
         return {
             "asset_id": asset.id,
             "image_id": job.id,
@@ -407,7 +428,7 @@ class NovelAIGenerationExecutor:
             "mode": request.mode,
             "tags": resolved.tags,
             "negative": resolved.negative,
-            "params": resolved.params.model_dump(mode="json"),
+            "params": echo_params,
             "created_at": asset.created_at,
         }
 

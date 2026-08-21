@@ -1002,7 +1002,9 @@ async def delete_history(
 
 
 @router.get("/models")
-async def get_models():
+async def get_models(
+    _access: Annotated[AgentAccess, Depends(require_agent_access)],
+):
     """列出所有可选 model + 当前全局默认。"""
     from config import get_model_status  # type: ignore
 
@@ -1025,7 +1027,10 @@ async def switch_model(
 
 
 @router.post("/models/resolve")
-async def resolve_model(req: ModelSwitchRequest):
+async def resolve_model(
+    req: ModelSwitchRequest,
+    _access: Annotated[AgentAccess, Depends(require_agent_access)],
+):
     """解析目标 model（不改全局状态），供单次调用临时指定。"""
     try:
         from config import resolve_model as _resolve_model  # type: ignore

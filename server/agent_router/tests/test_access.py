@@ -217,6 +217,12 @@ async def test_entire_agent_router_fails_closed_without_application_wiring() -> 
 
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/agent/models")
+        resolved = await client.post(
+            "/api/agent/models/resolve",
+            json={"target": "deepseek"},
+        )
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Agent authentication is unavailable"
+    assert resolved.status_code == 503
+    assert resolved.json()["detail"] == "Agent authentication is unavailable"
