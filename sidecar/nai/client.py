@@ -22,7 +22,12 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 )
-SUBSCRIPTION_URL = "https://api.novelai.net/user/subscription"
+# NovelAI moved every /user/* route onto the image host with the V5 release; the old
+# api.novelai.net copies now answer HTTP 400 ("update to the image URL") for a valid
+# token, so this must stay on image.novelai.net. Kept as an absolute URL rather than
+# derived from settings.nai_base_url so a proxy configured for /ai/* only (which does
+# not have to serve /user/*) keeps working the way it does today.
+SUBSCRIPTION_URL = "https://image.novelai.net/user/subscription"
 
 
 class NovelAIError(Exception):
