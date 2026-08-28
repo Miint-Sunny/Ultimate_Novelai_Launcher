@@ -490,11 +490,15 @@ class NovelAIGenerationExecutorTests(unittest.IsolatedAsyncioTestCase):
             )
             legacy_call = AsyncMock(return_value=b"legacy-image")
             with patch(
-                "sidecar.services.generation.generate_image_from_payload",
+                "sidecar.services.generation.generate_image_from_payload_stream",
                 legacy_call,
             ):
                 await legacy_executor(legacy_job)
             legacy_call.assert_awaited_once()
+            # The stream path must receive the job-scoped progress reporter so
+            # preview frames feed the same advisory progress as ComfyUI runs.
+            assert legacy_call.await_args is not None
+            self.assertIn("on_progress", legacy_call.await_args.kwargs)
 
         with tempfile.TemporaryDirectory() as canonical_directory:
             canonical_executor, canonical_job = await _persistent_executor_job(
@@ -552,7 +556,7 @@ class NovelAIGenerationExecutorTests(unittest.IsolatedAsyncioTestCase):
             )
             legacy_call = AsyncMock(return_value=b"legacy-image")
             with patch(
-                "sidecar.services.generation.generate_image_from_payload",
+                "sidecar.services.generation.generate_image_from_payload_stream",
                 legacy_call,
             ):
                 result = await executor(job)

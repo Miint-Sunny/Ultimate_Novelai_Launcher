@@ -6,13 +6,20 @@ import json
 import logging
 import secrets
 import zipfile
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import Any, NamedTuple
 from urllib.parse import urljoin
 
 import httpx
+import msgpack
 
 from ..config import Settings
-from ..infrastructure import HttpClientPool, request_with_policy
+from ..infrastructure import (
+    HttpClientPool,
+    request_with_policy,
+    streaming_request_with_policy,
+)
 from ..security import OutboundPolicy
 from .models import GenerationParams
 
@@ -193,6 +200,388 @@ async def generate_image_from_payload(
         outbound_policy=outbound_policy,
     )
     return await _extract_image_from_zip(response.content)
+
+
+# --- multipart + msgpack stream path (coexists with the JSON+ZIP path above) ---
+#
+# The official web client posts binary-carrier generations to
+# /ai/generate-image-stream as multipart/form-data: the JSON payload rides in a
+# part named "request" and binary images travel as their own parts, so they stop
+# paying the ~33% base64 tax and the full-request memory copy. The framing of
+# the msgpack response is a 4-byte big-endian length prefix per message
+# (mirrored from the host implementation in server/app.py, which captured the
+# part naming and ordering from a live session).
+
+# A sane upper bound for one stream frame. Real frames are preview or final
+# PNGs (single-digit MiB); the cap exists so a corrupt length prefix cannot
+# turn the reader into an unbounded buffer.
+_MAX_STREAM_FRAME_BYTES = 64 * 1024 * 1024
+# The web client labels every binary part image/png; NovelAI does not police
+# the value (the host sends encoded vibe vectors under the same label).
+_STREAM_BINARY_CONTENT_TYPE = "image/png"
+
+
+class NovelAIStreamError(NovelAIError):
+    """Failure of the multipart stream path.
+
+    ``retry_safe`` marks failures that happened before any msgpack frame
+    arrived. Under those conditions NovelAI cannot have started billed work,
+    so retrying once through the JSON+ZIP endpoint is safe. Once a frame has
+    been seen the stream is terminal: a retry could double-charge the account.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 0,
+        response_body: str = "",
+        retry_safe: bool = False,
+    ) -> None:
+        super().__init__(message, status_code, response_body)
+        self.retry_safe = retry_safe
+
+
+class _StreamBinaryPart(NamedTuple):
+    name: str
+    data: bytes
+
+
+def _prepare_stream_payload(
+    payload: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[_StreamBinaryPart]] | None:
+    """Split base64 binary fields out of an official payload for the stream path.
+
+    Each extracted field's JSON value is replaced by its multipart part name
+    (``image``, ``mask``, ``ref_multiple_{i}``), matching how the host
+    implementation references vibe parts. Returns None when the payload has no
+    usable binary data, in which case the caller stays on the JSON+ZIP path
+    with byte-identical behavior.
+    """
+    parameters = payload.get("parameters")
+    if not isinstance(parameters, Mapping):
+        return None
+    parts: list[_StreamBinaryPart] = []
+    new_parameters = dict(parameters)
+    for field in ("image", "mask"):
+        value = new_parameters.get(field)
+        if isinstance(value, str) and value:
+            try:
+                raw = base64.b64decode(value, validate=True)
+            except Exception:
+                # Not valid base64: keep the JSON path so NovelAI itself
+                # reports the malformed field instead of a decode wrapper.
+                return None
+            if raw:
+                parts.append(_StreamBinaryPart(field, raw))
+                new_parameters[field] = field
+    references = new_parameters.get("reference_image_multiple")
+    if isinstance(references, list):
+        new_references: list[Any] = []
+        references_changed = False
+        for index, item in enumerate(references):
+            part_name = f"ref_multiple_{index}"
+            raw = b""
+            if isinstance(item, str) and item:
+                try:
+                    raw = base64.b64decode(item, validate=True)
+                except Exception:
+                    raw = b""
+            if raw:
+                parts.append(_StreamBinaryPart(part_name, raw))
+                new_references.append(part_name)
+                references_changed = True
+            else:
+                # Host precedent: an entry that does not decode stays in the
+                # JSON for the server to judge.
+                new_references.append(item)
+        if references_changed:
+            new_parameters["reference_image_multiple"] = new_references
+    if not parts:
+        return None
+    new_parameters["stream"] = "msgpack"
+    new_payload = dict(payload)
+    new_payload["parameters"] = new_parameters
+    return new_payload, parts
+
+
+def _build_stream_multipart_body(
+    payload: Mapping[str, Any],
+    parts: Sequence[_StreamBinaryPart],
+) -> tuple[bytes, str]:
+    """Assemble the multipart body in the captured order: binary parts first,
+    the JSON ``request`` part last."""
+    boundary = "----WebKitFormBoundary" + secrets.token_hex(8)
+    chunks: list[bytes] = []
+    for part in parts:
+        chunks.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{part.name}"; filename="blob"\r\n'
+                f"Content-Type: {_STREAM_BINARY_CONTENT_TYPE}\r\n\r\n"
+            ).encode()
+        )
+        chunks.append(part.data)
+        chunks.append(b"\r\n")
+    chunks.append(
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="request"; filename="blob"\r\n'
+            f"Content-Type: application/json\r\n\r\n"
+            f"{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\r\n"
+        ).encode()
+    )
+    chunks.append(f"--{boundary}--\r\n".encode())
+    return b"".join(chunks), boundary
+
+
+async def _iter_stream_messages(
+    chunks: AsyncIterator[bytes],
+) -> AsyncIterator[dict[str, Any]]:
+    buffer = b""
+    async for chunk in chunks:
+        buffer += chunk
+        while len(buffer) >= 4:
+            frame_length = int.from_bytes(buffer[:4], "big")
+            if frame_length > _MAX_STREAM_FRAME_BYTES:
+                raise NovelAIStreamError(
+                    f"msgpack stream frame length {frame_length} exceeds "
+                    f"{_MAX_STREAM_FRAME_BYTES} bytes"
+                )
+            if len(buffer) < 4 + frame_length:
+                break
+            frame = buffer[4 : 4 + frame_length]
+            buffer = buffer[4 + frame_length :]
+            try:
+                message = msgpack.unpackb(frame, raw=False)
+            except Exception as exc:
+                # One undecodable frame does not condemn the stream; the host
+                # implementation logs and continues, and so does this reader.
+                logger.warning("skipping undecodable msgpack stream frame: %s", exc)
+                continue
+            if isinstance(message, dict):
+                yield message
+
+
+def _streaming_runtime_request(
+    *,
+    http: HttpClientPool | None,
+    client: httpx.AsyncClient | None,
+    policy: OutboundPolicy,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    content: bytes,
+    timeout: httpx.Timeout,
+) -> AbstractAsyncContextManager[httpx.Response]:
+    if http is not None and client is not None:
+        raise ValueError("pass either http or client, not both")
+    if http is not None:
+        return http.streaming_request(
+            policy,
+            method,
+            url,
+            long_running=True,
+            headers=headers,
+            content=content,
+            timeout=timeout,
+        )
+    if client is not None:
+        return streaming_request_with_policy(
+            client,
+            policy,
+            method,
+            url,
+            headers=headers,
+            content=content,
+            timeout=timeout,
+        )
+
+    # Compatibility for direct library callers; mirrors _request_with_runtime_client.
+    @asynccontextmanager
+    async def _owned() -> AsyncIterator[httpx.Response]:
+        async with httpx.AsyncClient(follow_redirects=False) as owned_client:
+            async with streaming_request_with_policy(
+                owned_client,
+                policy,
+                method,
+                url,
+                headers=headers,
+                content=content,
+                timeout=timeout,
+            ) as response:
+                yield response
+
+    return _owned()
+
+
+async def _generate_via_stream(
+    *,
+    settings: Settings,
+    stream_payload: Mapping[str, Any],
+    parts: Sequence[_StreamBinaryPart],
+    http: HttpClientPool | None,
+    client: httpx.AsyncClient | None,
+    outbound_policy: OutboundPolicy | None,
+    on_progress: Callable[[float], Awaitable[None]] | None,
+) -> bytes:
+    body, boundary = _build_stream_multipart_body(stream_payload, parts)
+    headers = {
+        "Authorization": f"Bearer {settings.nai_token}",
+        "User-Agent": USER_AGENT,
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Accept": "*/*",
+        "Origin": "https://novelai.net",
+        "Referer": "https://novelai.net",
+    }
+    base_url = settings.nai_base_url.rstrip("/") + "/"
+    url = urljoin(base_url, "ai/generate-image-stream")
+    policy = outbound_policy or OutboundPolicy("public")
+
+    steps_value = stream_payload.get("parameters", {}).get("steps")
+    total_steps = steps_value if isinstance(steps_value, int) and steps_value > 0 else 0
+
+    frames_seen = 0
+    last_image: bytes | None = None
+    try:
+        async with _streaming_runtime_request(
+            http=http,
+            client=client,
+            policy=policy,
+            method="POST",
+            url=url,
+            headers=headers,
+            content=body,
+            timeout=httpx.Timeout(20.0, read=180.0),
+        ) as response:
+            if response.status_code != 200:
+                body_text = (await response.aread())[:500].decode("utf-8", errors="replace")
+                raise NovelAIStreamError(
+                    f"NovelAI stream request failed with HTTP {response.status_code} {body_text}",
+                    status_code=response.status_code,
+                    response_body=body_text,
+                    retry_safe=True,
+                )
+            async for message in _iter_stream_messages(response.aiter_bytes()):
+                frames_seen += 1
+                # Business errors ride inside an HTTP 200 stream. They must
+                # surface as a distinct failure (server/app.py learned the hard
+                # way that a bare ``except`` around the frame loop swallows
+                # them) and must never trigger the JSON+ZIP retry: a received
+                # frame means NovelAI engaged, so a retry could double-charge.
+                if "code" in message and message.get("code") != 200:
+                    error_code = message.get("code")
+                    error_message = message.get("message", "未知错误")
+                    raise NovelAIStreamError(
+                        f"NovelAI stream returned business error {error_code}: {error_message}",
+                        status_code=(
+                            error_code
+                            if isinstance(error_code, int) and 100 <= error_code <= 599
+                            else 0
+                        ),
+                        response_body=str(error_message),
+                        retry_safe=False,
+                    )
+                image_data = message.get("image")
+                if not (isinstance(image_data, bytes) and image_data):
+                    continue
+                last_image = image_data
+                if on_progress is not None:
+                    step_ix = message.get("step_ix")
+                    if isinstance(step_ix, int) and total_steps:
+                        # Frames are 0-based; the UI-visible fraction is
+                        # advisory only, clamped so a misbehaving upstream
+                        # cannot push it out of [0, 1].
+                        await on_progress(min(1.0, (step_ix + 1) / total_steps))
+                    elif not isinstance(step_ix, int):
+                        await on_progress(1.0)
+    except NovelAIStreamError as exc:
+        # Uniform retry rule: only a failure with zero decoded frames may fall
+        # back. One completed frame means NovelAI engaged with the request, so
+        # a JSON+ZIP retry could double-charge the account.
+        exc.retry_safe = frames_seen == 0
+        raise
+    except httpx.TimeoutException as exc:
+        raise NovelAIStreamError(
+            f"NovelAI stream timed out after {frames_seen} frame(s)",
+            retry_safe=frames_seen == 0,
+        ) from exc
+    except httpx.TransportError as exc:
+        raise NovelAIStreamError(
+            f"NovelAI stream transport failed: {exc}",
+            retry_safe=frames_seen == 0,
+        ) from exc
+
+    if last_image is None:
+        raise NovelAIStreamError(
+            "NovelAI stream ended without an image",
+            retry_safe=frames_seen == 0,
+        )
+    return last_image
+
+
+async def generate_image_from_payload_stream(
+    *,
+    settings: Settings,
+    payload: dict[str, Any],
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
+    on_progress: Callable[[float], Awaitable[None]] | None = None,
+) -> bytes:
+    """Generate via multipart + msgpack stream when the payload carries binary data.
+
+    Payloads with an i2i ``image``, infill ``mask``, or ``reference_image_multiple``
+    entries skip the base64-in-JSON encoding entirely: binaries travel as
+    multipart parts and preview frames stream back through ``on_progress``
+    (a float in [0, 1], advisory, exactly like the ComfyUI path). Text-only
+    payloads and every failure marked retry-safe fall back to the proven
+    JSON+ZIP path, so the existing route stays the default and the safety net.
+    Failures after the first stream frame raise NovelAIStreamError without a
+    retry. Cancellation is plain asyncio cancellation, like the JSON path.
+    """
+    if not settings.nai_token:
+        raise NovelAIError("NAI token is not configured")
+
+    prepared = _prepare_stream_payload(payload)
+    if prepared is None:
+        return await generate_image_from_payload(
+            settings=settings,
+            payload=payload,
+            http=http,
+            client=client,
+            outbound_policy=outbound_policy,
+        )
+    stream_payload, parts = prepared
+    logger.info(
+        "NovelAI stream request: %s",
+        ", ".join(f"{part.name}={len(part.data)}B" for part in parts),
+    )
+    try:
+        return await _generate_via_stream(
+            settings=settings,
+            stream_payload=stream_payload,
+            parts=parts,
+            http=http,
+            client=client,
+            outbound_policy=outbound_policy,
+            on_progress=on_progress,
+        )
+    except NovelAIStreamError as exc:
+        if not exc.retry_safe:
+            raise
+        logger.warning(
+            "NovelAI multipart stream failed before any frame (%s); "
+            "retrying through the JSON+ZIP path",
+            exc,
+        )
+        return await generate_image_from_payload(
+            settings=settings,
+            payload=payload,
+            http=http,
+            client=client,
+            outbound_policy=outbound_policy,
+        )
 
 
 async def encode_vibe(

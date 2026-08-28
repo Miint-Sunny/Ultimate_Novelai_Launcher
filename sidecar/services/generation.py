@@ -16,7 +16,11 @@ from sidecar.application.settings import SettingsStore
 from sidecar.comfy import ComfyUIError, generate_comfy_image
 from sidecar.infrastructure import HttpClientPool
 from sidecar.llm.client import LLMConversionError, LLMNotConfiguredError, convert_natural_to_tags
-from sidecar.nai.client import NovelAIError, generate_image, generate_image_from_payload
+from sidecar.nai.client import (
+    NovelAIError,
+    generate_image,
+    generate_image_from_payload_stream,
+)
 from sidecar.nai.models import GenerateRequest, ResolvedPrompt
 from sidecar.services.assets import AssetService
 from sidecar.services.jobs import JobNotCancellableError, JobService
@@ -378,10 +382,15 @@ class NovelAIGenerationExecutor:
                 on_progress=self._progress_reporter(job.id),
             )
         elif request.legacy_payload:
-            payload = await generate_image_from_payload(
+            # Legacy payloads are the only ones that can carry binary data
+            # (i2i image, infill mask, vibe references): route them through
+            # the multipart stream path, which internally falls back to the
+            # JSON+ZIP endpoint for text-only payloads and retry-safe failures.
+            payload = await generate_image_from_payload_stream(
                 settings=settings,
                 payload=request.legacy_payload,
                 http=self.http,
+                on_progress=self._progress_reporter(job.id),
             )
             legacy_parameters = request.legacy_payload.get("parameters")
             if isinstance(legacy_parameters, dict):
