@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any, cast
@@ -144,6 +144,121 @@ def _redirect_method(method: str, status_code: int) -> tuple[str, bool]:
     return normalized, False
 
 
+@asynccontextmanager
+async def streaming_request_with_policy(
+    client: httpx.AsyncClient,
+    policy: OutboundPolicy,
+    method: str,
+    url: str,
+    *,
+    headers: Mapping[str, str] | None = None,
+    json: Any = None,
+    content: bytes | str | None = None,
+    timeout: httpx.Timeout | float | None = None,
+    max_redirects: int = 5,
+) -> AsyncIterator[httpx.Response]:
+    """Send one request and yield the final response with its body still streaming.
+
+    Shares the redirect, DNS-approval, and credential-stripping rules of
+    ``request_with_policy`` (which is implemented on top of this helper); the
+    only difference is that the terminal response is handed over unread so the
+    caller can consume it incrementally. Redirect bodies are small control
+    responses and are closed eagerly. The context owns the final response's
+    close, so an abandoned stream never leaks a connection. Cancellation is not
+    shielded: cancelling the caller propagates into the transfer and cleanup.
+    """
+
+    if max_redirects < 0:
+        raise ValueError("max_redirects cannot be negative")
+    approved_hop = await asyncio.to_thread(policy.validate_url, url)
+    current_url = str(approved_hop)
+    current_method = method.upper()
+    current_headers = dict(headers or {})
+    current_json = json
+    current_content = content
+    credentials_stripped = False
+    response: httpx.Response | None = None
+    try:
+        for redirects_followed in range(max_redirects + 1):
+            request_kwargs: dict[str, Any] = {"headers": current_headers}
+            if current_json is not None:
+                request_kwargs["json"] = current_json
+            elif current_content is not None:
+                request_kwargs["content"] = current_content
+            if timeout is not None:
+                request_kwargs["timeout"] = timeout
+
+            request = client.build_request(
+                current_method,
+                current_url,
+                **request_kwargs,
+            )
+            if credentials_stripped:
+                # ``build_request`` merges client defaults and the cookie jar after
+                # our explicit headers. Strip those implicit credentials too.
+                for header in SENSITIVE_REDIRECT_HEADERS - {"host"}:
+                    request.headers.pop(header, None)
+            with _approve_endpoint(
+                approved_hop.host,
+                approved_hop.port,
+                approved_hop.addresses,
+            ):
+                response = await client.send(
+                    request,
+                    stream=True,
+                    follow_redirects=False,
+                )
+            location = response.headers.get("location")
+            if response.status_code not in _REDIRECT_STATUS_CODES or not location:
+                yield response
+                return
+
+            if redirects_followed >= max_redirects:
+                raise httpx.TooManyRedirects(
+                    "maximum redirect count exceeded",
+                    request=response.request,
+                )
+
+            try:
+                approved_hop = await asyncio.to_thread(
+                    policy.validate_redirect,
+                    current_url,
+                    location,
+                )
+                destination = str(approved_hop)
+                if not same_origin(current_url, destination):
+                    credentials_stripped = True
+                redirected_headers = strip_sensitive_headers_on_cross_origin(
+                    current_headers,
+                    current_url,
+                    destination,
+                )
+                current_headers = {
+                    str(name): str(value)
+                    for name, value in redirected_headers.items()
+                }
+                current_method, drop_content = _redirect_method(
+                    current_method,
+                    response.status_code,
+                )
+                if drop_content:
+                    current_json = None
+                    current_content = None
+                    current_headers = {
+                        name: value
+                        for name, value in current_headers.items()
+                        if name.casefold() not in _CONTENT_HEADERS
+                    }
+                current_url = destination
+            finally:
+                await response.aclose()
+                response = None
+        raise AssertionError("redirect loop terminated unexpectedly")
+    finally:
+        if response is not None and not response.is_closed:
+            await response.aclose()
+
+
 async def request_with_policy(
     client: httpx.AsyncClient,
     policy: OutboundPolicy,
@@ -164,84 +279,21 @@ async def request_with_policy(
     into httpx and its transport.
     """
 
-    if max_redirects < 0:
-        raise ValueError("max_redirects cannot be negative")
-    approved_hop = await asyncio.to_thread(policy.validate_url, url)
-    current_url = str(approved_hop)
-    current_method = method.upper()
-    current_headers = dict(headers or {})
-    current_json = json
-    current_content = content
-    credentials_stripped = False
-
-    for redirects_followed in range(max_redirects + 1):
-        request_kwargs: dict[str, Any] = {"headers": current_headers}
-        if current_json is not None:
-            request_kwargs["json"] = current_json
-        elif current_content is not None:
-            request_kwargs["content"] = current_content
-        if timeout is not None:
-            request_kwargs["timeout"] = timeout
-
-        request = client.build_request(
-            current_method,
-            current_url,
-            **request_kwargs,
-        )
-        if credentials_stripped:
-            # ``build_request`` merges client defaults and the cookie jar after
-            # our explicit headers. Strip those implicit credentials too.
-            for header in SENSITIVE_REDIRECT_HEADERS - {"host"}:
-                request.headers.pop(header, None)
-        with _approve_endpoint(
-            approved_hop.host,
-            approved_hop.port,
-            approved_hop.addresses,
-        ):
-            response = await client.send(request, follow_redirects=False)
-        location = response.headers.get("location")
-        if response.status_code not in _REDIRECT_STATUS_CODES or not location:
-            return response
-
-        if redirects_followed >= max_redirects:
-            await response.aclose()
-            raise httpx.TooManyRedirects(
-                "maximum redirect count exceeded",
-                request=response.request,
-            )
-
-        try:
-            approved_hop = await asyncio.to_thread(
-                policy.validate_redirect,
-                current_url,
-                location,
-            )
-            destination = str(approved_hop)
-            if not same_origin(current_url, destination):
-                credentials_stripped = True
-            redirected_headers = strip_sensitive_headers_on_cross_origin(
-                current_headers,
-                current_url,
-                destination,
-            )
-            current_headers = {str(name): str(value) for name, value in redirected_headers.items()}
-            current_method, drop_content = _redirect_method(
-                current_method,
-                response.status_code,
-            )
-            if drop_content:
-                current_json = None
-                current_content = None
-                current_headers = {
-                    name: value
-                    for name, value in current_headers.items()
-                    if name.casefold() not in _CONTENT_HEADERS
-                }
-            current_url = destination
-        finally:
-            await response.aclose()
-
-    raise AssertionError("redirect loop terminated unexpectedly")
+    async with streaming_request_with_policy(
+        client,
+        policy,
+        method,
+        url,
+        headers=headers,
+        json=json,
+        content=content,
+        timeout=timeout,
+        max_redirects=max_redirects,
+    ) as response:
+        # Buffer eagerly so callers get the same fully-read response this
+        # wrapper has always returned; the stream stays closed afterwards.
+        await response.aread()
+        return response
 
 
 class HttpClientPool:
@@ -308,6 +360,38 @@ class HttpClientPool:
             max_redirects=max_redirects,
         )
 
+    def streaming_request(
+        self,
+        policy: OutboundPolicy,
+        method: str,
+        url: str,
+        *,
+        long_running: bool = False,
+        headers: Mapping[str, str] | None = None,
+        json: Any = None,
+        content: bytes | str | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        max_redirects: int = 5,
+    ) -> AbstractAsyncContextManager[httpx.Response]:
+        """Streaming counterpart of ``request``: yields the unread final response.
+
+        Use as an async context manager; the pool picks the same lifecycle
+        client the buffered helper would (``long_running`` for paid upstreams)
+        and applies the identical outbound policy and redirect rules.
+        """
+        client = self.long_running if long_running else self.default
+        return streaming_request_with_policy(
+            client,
+            policy,
+            method,
+            url,
+            headers=headers,
+            json=json,
+            content=content,
+            timeout=timeout,
+            max_redirects=max_redirects,
+        )
+
     async def close(self) -> None:
         clients = [self._default, self._long_running]
         self._default = None
@@ -319,4 +403,4 @@ class HttpClientPool:
     stop = close
 
 
-__all__ = ["HttpClientPool", "request_with_policy"]
+__all__ = ["HttpClientPool", "request_with_policy", "streaming_request_with_policy"]
