@@ -1011,7 +1011,9 @@ async def _refresh_nai_token(email: str, password: str) -> Tuple[str, int]:
         proxy=PROXY_URL if PROXY_URL else None,
     ) as cli:
         r = await cli.post(
-            "https://api.novelai.net/user/login",
+            # /user/* moved to the image host with NAI's V5 release (2026-08-21);
+            # api.novelai.net now rejects authenticated calls with HTTP 400.
+            "https://image.novelai.net/user/login",
             json={"key": key},
         )
         if r.status_code not in (200, 201):
@@ -5507,7 +5509,8 @@ async def fetch_novelai_anlas() -> int:
             for attempt in range(2):  # 最多重试1次
                 try:
                     async with session.get(
-                        "https://api.novelai.net/user/subscription",
+                        # /user/* lives on the image host since NAI's V5 release.
+                        "https://image.novelai.net/user/subscription",
                         headers={"Authorization": f"Bearer {token}"},
                     ) as resp:
                         if resp.status == 200:
@@ -10255,7 +10258,10 @@ async def _upscale_upstream(token: str, req: UpscaleRequest) -> UpscaleResponse:
     }
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            "https://api.novelai.net/ai/upscale",
+            # The official client upscales against the image host; api.novelai.net is
+            # the legacy alias and is being retired route by route (its /user/* copies
+            # are already gone), so follow the host NovelAI itself ships.
+            "https://image.novelai.net/ai/upscale",
             headers=headers,
             json=payload,
             timeout=aiohttp.ClientTimeout(total=300),
