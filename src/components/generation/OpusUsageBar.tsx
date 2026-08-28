@@ -20,21 +20,21 @@ export function OpusUsageBar({ usage }: { usage: OpusUsage }) {
   return (
     <div className="px-0.5 py-1">
       <div className="flex items-baseline justify-between mb-1">
-        <span className="text-[10px] text-gray-400">
+        <span className="text-[10px] text-gray-500">
           剩余 V5 免费额度
         </span>
         <span
           className={`text-[10px] font-mono font-bold ${
-            exhausted ? 'text-red-400' : low ? 'text-yellow-400' : 'text-gray-300'
+            exhausted ? 'text-red-400' : low ? 'text-amber-400' : 'text-gray-300'
           }`}
         >
           {usage.percent}%
         </span>
       </div>
-      <div className="h-1 rounded-full bg-gray-700 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-gray-700/50 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-[width] duration-500 ${
-            exhausted ? 'bg-red-500' : low ? 'bg-yellow-500' : 'bg-nai-accent'
+          className={`h-full rounded-full transition-all ${
+            exhausted ? 'bg-red-500' : low ? 'bg-amber-500' : 'bg-nai-accent'
           }`}
           style={{ width: `${clamped}%` }}
         />

@@ -56,7 +56,7 @@ export function MobileGenerateHeader({
                     return (
                       <div key={item.id}>
                         {groupLabel && (
-                          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                          <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                             {groupLabel}
                           </div>
                         )}

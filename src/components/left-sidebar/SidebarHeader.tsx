@@ -122,7 +122,7 @@ export function SidebarHeader({
                   return (
                     <div key={model.id}>
                       {groupLabel && (
-                        <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                        <div className="px-2 pt-1.5 pb-0.5 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                           {groupLabel}
                         </div>
                       )}

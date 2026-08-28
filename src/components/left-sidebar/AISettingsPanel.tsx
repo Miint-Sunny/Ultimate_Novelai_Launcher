@@ -174,6 +174,7 @@ export function AISettingsPanel({
                     </div>
                     <button
                       onClick={() => onTransparentBackgroundChange(!transparentBackground)}
+                      title={transparentBackground ? '关闭透明背景' : '开启透明背景(输出带 alpha 通道)'}
                       className={`w-full px-2 py-1 text-xs rounded border flex items-center justify-center gap-1 transition-colors ${transparentBackground
                         ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
                         : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
