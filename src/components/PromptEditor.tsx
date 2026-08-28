@@ -37,10 +37,15 @@ interface PromptEditorProps {
   mobileMode?: boolean;
   /** 内容高度变化回调 */
   onContentHeightChange?: (height: number) => void;
+  /**
+   * V5 文字渲染:光标落在未闭合引号内时不弹 Danbooru 补全
+   * (引号在 V5 是「画进图里的文字」,弹 tag 补全是错误引导)。
+   */
+  suppressAutocompleteInQuotes?: boolean;
 }
 
 const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
-  ({ value = '', onChange, onTagsChange, className = '', containerClassName = '', style, placeholder, children, disableCollapsibleTags = false, mobileMode = false, onContentHeightChange }, ref) => {
+  ({ value = '', onChange, onTagsChange, className = '', containerClassName = '', style, placeholder, children, disableCollapsibleTags = false, mobileMode = false, onContentHeightChange, suppressAutocompleteInQuotes = false }, ref) => {
 
     // 权重预设
     const [weightPresets, setWeightPresets] = useState(() => getAppSettings().weightPresets || [-1, 0.5, 0.8, 1.5, 2.0]);
@@ -95,6 +100,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       setCursorPosition,
       setTagPanel,
       setMultiSelectPanel,
+      suppressAutocompleteInQuotes,
     });
     const {
       tagTooltip,
@@ -152,6 +158,7 @@ const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(
       setCurrentWord,
       setWordStart,
       setCursorPosition,
+      suppressAutocompleteInQuotes,
     });
 
     useSuggestionDismissal({

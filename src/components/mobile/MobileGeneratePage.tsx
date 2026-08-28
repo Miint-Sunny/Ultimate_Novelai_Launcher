@@ -519,6 +519,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       />
 
       <MobileGenerateEditors
+        model={model}
         maxTokens={maxPromptTokensForModel(model)}
         editorOpen={editorOpen}
         setEditorOpen={setEditorOpen}

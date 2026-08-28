@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ClipboardEvent, Dispatch, RefObject, SetStateAction } from 'react';
 import { getTagSuggestionsDebounced, type TagSuggestion } from '../../services/tagAutocomplete';
+import { isInsideUnclosedQuote } from '../../utils/textRenderHints';
 
 interface EditingTagState {
   index: number;
@@ -22,6 +23,8 @@ interface UseDesktopChipInputParams {
   setShowSuggestions: Dispatch<SetStateAction<boolean>>;
   setSuggestions: Dispatch<SetStateAction<TagSuggestion[]>>;
   setSelectedSuggIdx: Dispatch<SetStateAction<number>>;
+  /** V5 文字渲染:输入落在未闭合引号内时不弹 Danbooru 补全。 */
+  suppressAutocompleteInQuotes?: boolean;
 }
 
 export function useDesktopChipInput({
@@ -37,6 +40,7 @@ export function useDesktopChipInput({
   setShowSuggestions,
   setSuggestions,
   setSelectedSuggIdx,
+  suppressAutocompleteInQuotes = false,
 }: UseDesktopChipInputParams) {
   const [inputText, setInputText] = useState('');
 
@@ -52,6 +56,13 @@ export function useDesktopChipInput({
 
   const triggerAutocomplete = useCallback((text: string) => {
     const trimmed = text.trim();
+    // V5 文字渲染:输入落在未闭合引号内时这段是「要画进图里的文字」,
+    // 弹 Danbooru tag 补全是错误引导,直接让路。
+    if (suppressAutocompleteInQuotes && isInsideUnclosedQuote(trimmed)) {
+      setShowSuggestions(false);
+      setSuggestions([]);
+      return;
+    }
     const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);
     const minLen = hasChinese ? 1 : 2;
     if (trimmed.length >= minLen) {
@@ -74,7 +85,7 @@ export function useDesktopChipInput({
       setShowSuggestions(false);
       setSuggestions([]);
     }
-  }, [editingTag, editInputRef, inputRef, setSelectedSuggIdx, setShowSuggestions, setSuggestionPos, setSuggestions]);
+  }, [editingTag, editInputRef, inputRef, setSelectedSuggIdx, setShowSuggestions, setSuggestionPos, setSuggestions, suppressAutocompleteInQuotes]);
 
   const handleInputChange = useCallback((text: string) => {
     const commaMatch = text.match(/[,，]/);

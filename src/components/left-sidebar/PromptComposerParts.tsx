@@ -130,6 +130,7 @@ export function PromptPane({
   onTagsChange,
   disableCollapsibleTags,
   onContentHeightChange,
+  suppressAutocompleteInQuotes = false,
 }: {
   visible: boolean;
   direction: 'left' | 'right';
@@ -145,6 +146,11 @@ export function PromptPane({
   onTagsChange?: (tags: CollapsibleTag[]) => void;
   disableCollapsibleTags?: boolean;
   onContentHeightChange?: (height: number) => void;
+  /**
+   * V5 文字渲染:光标落在未闭合引号内时不弹 Danbooru 补全
+   * (引号在 V5 是「画进图里的文字」,弹 tag 补全是错误引导)。
+   */
+  suppressAutocompleteInQuotes?: boolean;
 }) {
   const hiddenClass = direction === 'left' ? '-translate-x-full' : 'translate-x-full';
   const editorType = promptType === 'positive' ? 'prompt' : 'undesired';
@@ -169,6 +175,7 @@ export function PromptPane({
           className={`w-full h-full ${showTranslation ? 'opacity-0' : ''}`}
           type={editorType}
           onContentHeightChange={onContentHeightChange}
+          suppressAutocompleteInQuotes={suppressAutocompleteInQuotes}
         />
       ) : (
         <PromptEditor
@@ -181,6 +188,7 @@ export function PromptPane({
           onTagsChange={onTagsChange}
           placeholder={placeholder}
           onContentHeightChange={onContentHeightChange}
+          suppressAutocompleteInQuotes={suppressAutocompleteInQuotes}
         />
       )}
     </div>

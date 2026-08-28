@@ -28,7 +28,8 @@
     "check:studio-parity": "node --experimental-strip-types scripts/check-studio-parity.mjs",
     "check:weightops-parity": "node --experimental-strip-types scripts/check-weightops-parity.mjs",
     "check:v5-parity": "node --experimental-strip-types scripts/check-v5-parity.mjs",
-    "check:v5-toggles": "node --experimental-strip-types scripts/check-v5-toggles.mjs"
+    "check:v5-toggles": "node --experimental-strip-types scripts/check-v5-toggles.mjs",
+    "check:text-render": "node --experimental-strip-types scripts/check-text-render.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2",

@@ -18,6 +18,8 @@ interface UseSuggestionInputEventsParams {
   setCurrentWord: Dispatch<SetStateAction<string>>;
   setWordStart: Dispatch<SetStateAction<number>>;
   setCursorPosition: Dispatch<SetStateAction<{ top: number; left: number } | null>>;
+  /** V5 文字渲染:光标在未闭合引号内时不弹 tag 补全。 */
+  suppressAutocompleteInQuotes?: boolean;
 }
 
 export function useSuggestionInputEvents({
@@ -35,6 +37,7 @@ export function useSuggestionInputEvents({
   setCurrentWord,
   setWordStart,
   setCursorPosition,
+  suppressAutocompleteInQuotes,
 }: UseSuggestionInputEventsParams) {
   useEffect(() => {
     if (!showSuggestions || !suggestionsRef.current) return;
@@ -128,6 +131,7 @@ export function useSuggestionInputEvents({
             setCurrentWord,
             setWordStart,
             setCursorPosition,
+            suppressAutocompleteInQuotes,
           });
         }, 20);
       });
@@ -140,5 +144,5 @@ export function useSuggestionInputEvents({
       editorDom.removeEventListener('compositionstart', handleCompositionStart);
       editorDom.removeEventListener('compositionend', handleCompositionEnd);
     };
-  }, [editor, isComposingRef, setCursorPosition, setCurrentWord, setSelectedIndex, setShowSuggestions, setSuggestions, setWordStart]);
+  }, [editor, isComposingRef, setCursorPosition, setCurrentWord, setSelectedIndex, setShowSuggestions, setSuggestions, setWordStart, suppressAutocompleteInQuotes]);
 }
