@@ -12,6 +12,7 @@ import type { MultiSelectPanelState } from './MultiSelectQuickPanel';
 import type { TagPanelState } from './TagQuickPanel';
 import type { CollapsibleTag } from './types';
 import { WeightHighlightExtension } from './weightHighlightExtension';
+import { isInsideUnclosedQuote } from '../../utils/textRenderHints';
 
 interface UsePromptTipTapEditorParams {
   className: string;
@@ -32,6 +33,8 @@ interface UsePromptTipTapEditorParams {
   setCursorPosition: Dispatch<SetStateAction<{ top: number; left: number } | null>>;
   setTagPanel: Dispatch<SetStateAction<TagPanelState | null>>;
   setMultiSelectPanel: Dispatch<SetStateAction<MultiSelectPanelState | null>>;
+  /** V5 文字渲染:光标在未闭合引号内时不弹 tag 补全。 */
+  suppressAutocompleteInQuotes?: boolean;
 }
 
 interface RequestAutocompleteParams {
@@ -43,6 +46,8 @@ interface RequestAutocompleteParams {
   setCurrentWord: Dispatch<SetStateAction<string>>;
   setWordStart: Dispatch<SetStateAction<number>>;
   setCursorPosition: Dispatch<SetStateAction<{ top: number; left: number } | null>>;
+  /** V5 文字渲染:光标在未闭合引号内时不弹 tag 补全。 */
+  suppressAutocompleteInQuotes?: boolean;
   debounceDelay?: number;
 }
 
@@ -55,6 +60,7 @@ export function requestAutocompleteAtSelection({
   setCurrentWord,
   setWordStart,
   setCursorPosition,
+  suppressAutocompleteInQuotes = false,
   debounceDelay = 250,
 }: RequestAutocompleteParams) {
   const { state } = editor;
@@ -65,6 +71,13 @@ export function requestAutocompleteAtSelection({
   const textAfter = $from.parent.textContent.slice(textIndex);
 
   if (!textBefore) return;
+
+  // V5 文字渲染:光标在未闭合引号内时这段是「要画进图里的文字」,
+  // 弹 Danbooru tag 补全是错误引导,直接让路。
+  if (suppressAutocompleteInQuotes && isInsideUnclosedQuote(textBefore)) {
+    setShowSuggestions(false);
+    return;
+  }
 
   const matchBefore = textBefore.match(/(?:^|[,，\s])([a-zA-Z0-9_\u4e00-\u9fa5]+)$/);
   const hasChinese = matchBefore && /[\u4e00-\u9fa5]/.test(matchBefore[1]);
@@ -150,6 +163,7 @@ export function usePromptTipTapEditor({
   setCursorPosition,
   setTagPanel,
   setMultiSelectPanel,
+  suppressAutocompleteInQuotes,
 }: UsePromptTipTapEditorParams) {
   return useEditor({
     extensions: [
@@ -216,6 +230,7 @@ export function usePromptTipTapEditor({
         setCurrentWord,
         setWordStart,
         setCursorPosition,
+        suppressAutocompleteInQuotes,
       });
     },
   });

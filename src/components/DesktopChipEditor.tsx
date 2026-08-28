@@ -34,10 +34,13 @@ interface DesktopChipEditorProps {
   className?: string;
   type?: 'prompt' | 'undesired';
   onContentHeightChange?: (height: number) => void;
+  /** V5 文字渲染:输入落在未闭合引号内时不弹 Danbooru 补全。 */
+  suppressAutocompleteInQuotes?: boolean;
 }
 
 export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   value, onChange, placeholder = '输入标签，逗号分隔...', className = '', type = 'prompt', onContentHeightChange,
+  suppressAutocompleteInQuotes = false,
 }) => {
   const weightPresets = useDesktopWeightPresets();
 
@@ -159,6 +162,7 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setShowSuggestions,
     setSuggestions,
     setSelectedSuggIdx,
+    suppressAutocompleteInQuotes,
   });
 
   const { nlTranslating, selectSuggestion } = useDesktopSuggestionSelection({

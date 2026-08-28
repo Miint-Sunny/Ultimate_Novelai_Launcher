@@ -23,6 +23,9 @@ import { useFullscreenUndoValue } from './fullscreen-editor/useFullscreenUndoVal
 import { useFullscreenViewportHeight } from './fullscreen-editor/useFullscreenViewportHeight';
 import { useSuggestionSelection } from './fullscreen-editor/useSuggestionSelection';
 import { WikiPreviewSheet } from './fullscreen-editor/WikiPreviewSheet';
+import { modelCapabilities } from '../generation/modelResolutionOptions';
+import { detectTextRenderHints, type TextRenderHint } from '../../utils/textRenderHints';
+import { TextRenderHintBar } from '../prompt-editor/TextRenderHintBar';
 
 // ==================== 全屏输入页面组件 ====================
 
@@ -38,6 +41,8 @@ export const expandCollapsibleMarkers = (prompt: string): string => {
 };
 
 export interface FullscreenEditorProps {
+  /** 当前模型 id(文字渲染提示与补全让路按能力位开关;不传则不启用)。 */
+  model?: string;
   /** 当前模型的 token 软阈值。 */
   maxTokens: number;
   isOpen: boolean;
@@ -50,6 +55,7 @@ export interface FullscreenEditorProps {
 }
 
 export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
+  model,
   maxTokens,
   isOpen, onClose, type, value, onChange, presetTokens = 0, totalTokens = 0,
 }) => {
@@ -158,6 +164,13 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
   // 分析权重组
   const tagGroups = useMemo(() => analyzeTagGroups(parsedTags), [parsedTags]);
 
+  // V5 文字渲染体检:只在正向提示词 + 能力位打开的家族下跑,只提示不改写输入。
+  const textRenderEnabled = model !== undefined && modelCapabilities(model).textRendering;
+  const textRenderHints: TextRenderHint[] = useMemo(() => {
+    if (!textRenderEnabled || type !== 'prompt') return [];
+    return detectTextRenderHints(value);
+  }, [textRenderEnabled, type, value]);
+
   // 选中标签越界校正
   useEffect(() => {
     if (selectedTags.size === 0) return;
@@ -185,6 +198,7 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
     saveValue,
     rebuildValue,
     scrollToBottom,
+    suppressAutocompleteInQuotes: textRenderEnabled,
   });
 
   const clearSuggestions = useCallback(() => {
@@ -293,6 +307,8 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
       )}
 
       <NaturalLanguageLoadingPill isVisible={nlTranslating && !showSuggestions} />
+
+      <TextRenderHintBar hints={textRenderHints} />
 
       <SuggestionStrip
         showSuggestions={showSuggestions}

@@ -967,6 +967,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         <div className="p-3 space-y-3 shrink-0">
 
           <PromptComposerSection
+            model={selectedModel.id}
             maxTokens={maxPromptTokensForModel(selectedModel.id)}
             promptAreaRef={promptAreaRef}
             promptBoxHeight={promptBoxHeight}

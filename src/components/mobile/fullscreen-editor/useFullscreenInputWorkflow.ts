@@ -3,6 +3,7 @@ import {
   getTagSuggestionsDebounced,
   type TagSuggestion,
 } from '../../../services/tagAutocomplete';
+import { isInsideUnclosedQuote } from '../../../utils/textRenderHints';
 
 interface UseFullscreenInputWorkflowArgs {
   value: string;
@@ -10,6 +11,8 @@ interface UseFullscreenInputWorkflowArgs {
   saveValue: (value: string) => void;
   rebuildValue: (tags: string[]) => void;
   scrollToBottom: () => void;
+  /** V5 文字渲染:输入落在未闭合引号内时不弹 Danbooru 补全。 */
+  suppressAutocompleteInQuotes?: boolean;
 }
 
 export function useFullscreenInputWorkflow({
@@ -18,6 +21,7 @@ export function useFullscreenInputWorkflow({
   saveValue,
   rebuildValue,
   scrollToBottom,
+  suppressAutocompleteInQuotes = false,
 }: UseFullscreenInputWorkflowArgs) {
   const [inputText, setInputText] = useState('');
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
@@ -36,6 +40,13 @@ export function useFullscreenInputWorkflow({
 
   const triggerAutocomplete = useCallback((text: string) => {
     const trimmed = text.trim();
+    // V5 文字渲染:输入落在未闭合引号内时这段是「要画进图里的文字」,
+    // 弹 Danbooru tag 补全是错误引导,直接让路。
+    if (suppressAutocompleteInQuotes && isInsideUnclosedQuote(trimmed)) {
+      setShowSuggestions(false);
+      setSuggestions([]);
+      return;
+    }
     const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);
     const minLen = hasChinese ? 1 : 2;
     if (trimmed.length >= minLen) {
@@ -54,7 +65,7 @@ export function useFullscreenInputWorkflow({
       setShowSuggestions(false);
       setSuggestions([]);
     }
-  }, [scrollToBottom]);
+  }, [scrollToBottom, suppressAutocompleteInQuotes]);
 
   const handleInputChange = useCallback((text: string) => {
     const commaMatch = text.match(/[,，]/);

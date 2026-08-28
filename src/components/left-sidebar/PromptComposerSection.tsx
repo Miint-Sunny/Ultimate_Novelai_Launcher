@@ -1,4 +1,4 @@
-import type { MouseEvent, MutableRefObject, RefObject } from 'react';
+import { useMemo, type MouseEvent, type MutableRefObject, type RefObject } from 'react';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import { useAgentDock } from '../../contexts/AgentDockContext';
 import { useAgentModelPresentation } from '../../hooks/useAgentModelPresentation';
@@ -12,8 +12,13 @@ import {
   type TranslationCache,
   type TranslationType,
 } from './PromptComposerParts';
+import { modelCapabilities } from '../generation/modelResolutionOptions';
+import { detectTextRenderHints } from '../../utils/textRenderHints';
+import { TextRenderHintBar } from '../prompt-editor/TextRenderHintBar';
 
 interface PromptComposerSectionProps {
+  /** 当前模型 id。文字渲染提示与补全让路按能力位开关。 */
+  model: string;
   /** 当前模型的 token 软阈值。 */
   maxTokens: number;
   promptAreaRef: RefObject<HTMLDivElement | null>;
@@ -43,6 +48,7 @@ interface PromptComposerSectionProps {
 }
 
 export function PromptComposerSection({
+  model,
   maxTokens,
   promptAreaRef,
   promptBoxHeight,
@@ -81,6 +87,13 @@ export function PromptComposerSection({
   } = useAgentDock();
   const agentModel = useAgentModelPresentation();
 
+  // V5 文字渲染体检:只在能力位打开的家族下跑,只提示不改写输入。
+  const textRenderEnabled = modelCapabilities(model).textRendering;
+  const textRenderHints = useMemo(
+    () => (textRenderEnabled && activeTab === 'prompt' ? detectTextRenderHints(positivePrompt) : []),
+    [textRenderEnabled, activeTab, positivePrompt],
+  );
+
   return (
     <div className="bg-nai-input rounded-lg border border-gray-800 p-1 relative group/prompt-container" ref={promptAreaRef}>
       <PromptToolbar
@@ -115,6 +128,7 @@ export function PromptComposerSection({
             onTranslationTagClick={onTranslationTagClick}
             editorRef={positiveEditorRef}
             onTagsChange={onPositiveTagsChange}
+            suppressAutocompleteInQuotes={textRenderEnabled}
             onContentHeightChange={activeTab === 'prompt' ? onPromptContentHeightChange : undefined}
           />
 
@@ -135,6 +149,8 @@ export function PromptComposerSection({
           />
         </div>
       </div>
+
+      <TextRenderHintBar hints={textRenderHints} />
 
       <div className="px-2 pt-2 pb-1.5 flex items-center justify-between gap-2 border-t border-transparent">
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />
