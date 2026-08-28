@@ -1,6 +1,10 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ImagePlus, Loader2, RefreshCw, X } from 'lucide-react';
 import { calculateCostFromUI } from '../../services/costCalculator';
+import { isOpusUsageExhausted } from '../../services/novelai';
+import type { OpusUsage } from '../../api/localSidecarApi';
+import { OpusUsageBar, shouldShowOpusUsage } from '../generation/OpusUsageBar';
+import { modelCapabilities } from '../generation/modelResolutionOptions';
 
 interface GenerationActionGroupProps {
   isGenerating: boolean;
@@ -21,6 +25,9 @@ interface GenerationActionGroupProps {
   selectedModelId: string;
   sampler: string;
   isOpus: boolean;
+  /** 体力条读数;来自 anlasInfo(React state),不能读模块缓存——
+   * 那样 anlas 拉回来后这里不会重渲染,条永远不出现。 */
+  opusUsage?: OpusUsage;
   img2imgStrengthForCost?: number;
   preciseRefCount: number;
   vibeRefCount: number;
@@ -46,6 +53,7 @@ export function GenerationActionGroup({
   selectedModelId,
   sampler,
   isOpus,
+  opusUsage,
   img2imgStrengthForCost,
   preciseRefCount,
   vibeRefCount,
@@ -53,6 +61,8 @@ export function GenerationActionGroup({
 }: GenerationActionGroupProps) {
   const isBusy = isGenerating || isLoopGenerating || isPreparing;
   const cost = calculateCostFromUI({
+    // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
+    opusUsageExhausted: isOpusUsageExhausted(),
     width: customWidth,
     height: customHeight,
     steps,
@@ -64,8 +74,19 @@ export function GenerationActionGroup({
     vibeRefCount,
   });
   const displayedCost = aprilFoolsEffect === 1 ? cost.total + aprilFoolsCost : cost.total;
+  const showUsageBar = shouldShowOpusUsage(
+    opusUsage,
+    isOpus,
+    modelCapabilities(selectedModelId).opusUsageLimit,
+  );
 
   return (
+    <>
+    {showUsageBar && (
+      <div className="px-3">
+        <OpusUsageBar usage={opusUsage} />
+      </div>
+    )}
     <div className="p-3 pt-1.5 flex gap-2">
       <div
         className={`flex-1 font-bold rounded-md flex items-stretch overflow-hidden transition-all ${isBusy ? 'bg-gray-600' : 'bg-nai-accent'}`}
@@ -149,5 +170,6 @@ export function GenerationActionGroup({
         />
       </label>
     </div>
+    </>
   );
 }

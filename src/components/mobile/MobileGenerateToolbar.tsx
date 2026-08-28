@@ -2,6 +2,10 @@ import { ImagePlus, Loader2, Send, SlidersHorizontal, Square } from 'lucide-reac
 import type { ReactNode } from 'react';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import type { ActivePreciseRef, ActiveVibe } from './types';
+import { isOpusUsageExhausted } from '../../services/novelai';
+import type { OpusUsage } from '../../api/localSidecarApi';
+import { OpusUsageBar, shouldShowOpusUsage } from '../generation/OpusUsageBar';
+import { modelCapabilities } from '../generation/modelResolutionOptions';
 
 interface MobileGenerateToolbarProps {
   openAdvancedSettings: () => void;
@@ -21,6 +25,9 @@ interface MobileGenerateToolbarProps {
   model: string;
   sampler: string;
   isOpus: boolean;
+  /** 体力条读数;来自 anlasInfo(React state),不能读模块缓存——
+   * 那样 anlas 拉回来后这里不会重渲染,条永远不出现。 */
+  opusUsage?: OpusUsage;
   img2imgImage: string | null;
   img2imgStrength: number;
   activePreciseRefs: ActivePreciseRef[];
@@ -81,6 +88,7 @@ export function MobileGenerateToolbar({
   model,
   sampler,
   isOpus,
+  opusUsage,
   img2imgImage,
   img2imgStrength,
   activePreciseRefs,
@@ -91,6 +99,8 @@ export function MobileGenerateToolbar({
   const isBusy = isGenerating || isQueuing || isPreparing;
   const showStopZone = isGenerating || isQueuing;
   const cost = calculateCostFromUI({
+    // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
+    opusUsageExhausted: isOpusUsageExhausted(),
     width,
     height,
     steps,
@@ -102,6 +112,12 @@ export function MobileGenerateToolbar({
     vibeRefCount: activeVibes.filter((vibe) => vibe.enabled).length,
   });
 
+  const showUsageBar = shouldShowOpusUsage(
+    opusUsage,
+    isOpus,
+    modelCapabilities(model).opusUsageLimit,
+  );
+
   const busyLabel = isQueuing
     ? `排队中 #${queuePosition}`
     : (isGenerating && currentStep > 0)
@@ -111,6 +127,7 @@ export function MobileGenerateToolbar({
   return (
     <div className="flex-shrink-0 bg-nai-panel border-t border-gray-800 safe-area-bottom">
       <div className="px-3 pt-2 pb-3 space-y-2">
+        {showUsageBar && <OpusUsageBar usage={opusUsage} />}
         {/* 第一行:参数读数 chips */}
         <div className="flex items-center gap-2">
           <ReadoutChip

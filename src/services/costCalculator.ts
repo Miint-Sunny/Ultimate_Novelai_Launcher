@@ -11,7 +11,15 @@
  */
 
 // 模型分组
-type ModelGroup = 'V4' | 'SDXL' | 'SDXL_FURRY' | 'LEGACY';
+type ModelGroup = 'V5' | 'V4' | 'SDXL' | 'SDXL_FURRY' | 'LEGACY';
+
+// V5 在与 V4 相同的维度公式之上再乘 1.5(官方 bundle 的 cost 函数里就是独立
+// 一行 `group === v5 && (cost *= 1.5)`)。实测锚点:832×1216 / 28 步 = 20 × 1.5
+// = 30 Anlas,与真实扣费一致。
+const V5_COST_MULTIPLIER = 1.5;
+
+// 单张封顶与保底(官方常量:超过 140 直接判错,最低 2)
+const MAX_COST_PER_IMAGE = 140;
 
 // 简单采样器列表（用于旧模型的 calculateStepsCost 路径）
 const SIMPLE_SAMPLERS = ['plms', 'ddim', 'k_euler', 'k_euler_ancestral', 'k_lms'];
@@ -20,8 +28,11 @@ const SIMPLE_SAMPLERS = ['plms', 'ddim', 'k_euler', 'k_euler_ancestral', 'k_lms'
 const NORMAL_RESOLUTION_THRESHOLD = 1048576;
 
 // 模型名称到分组的映射
+// V5 必须排在最前:漏掉它会掉进 LEGACY,而 LEGACY 对小图 + 简单采样器走的是
+// 另一条指数公式,算出来的价跟真实扣费差一大截。
 function getModelGroup(model: string): ModelGroup {
   const m = model.toLowerCase();
+  if (m.includes('nai-diffusion-5') || m.includes('v5')) return 'V5';
   if (m.includes('nai-diffusion-4') || m.includes('v4')) return 'V4';
   if (m.includes('nai-diffusion-3') || m.includes('v3')) return 'SDXL';
   if (m.includes('furry')) return 'SDXL_FURRY';
@@ -90,6 +101,13 @@ export interface CostCalculationParams {
   isOpus?: boolean;        // 是否 Opus 订阅
   preciseRefCount?: number; // 使用的 Precise Reference 数量（每张 +5 anlas）
   vibeRefCount?: number;    // 使用的 Vibe Transfer 参考图数量（第 5 张起每张 +2 anlas）
+  /**
+   * Opus「体力条」是否已耗尽（percent 为 0 或 isNegative）。
+   * 只对 V5 有意义：V5 是唯一会消耗这条额度的模型族，4.5 及以下对 Opus 仍是无限。
+   * 耗尽后 NAI 不报错，直接按 Anlas 收费——所以这里必须跟着算，否则界面会显示
+   * 「免费」而钱已经在扣。
+   */
+  opusUsageExhausted?: boolean;
 }
 
 export interface CostResult {
@@ -120,6 +138,7 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
     isOpus = false,
     preciseRefCount = 0,
     vibeRefCount = 0,
+    opusUsageExhausted = false,
   } = params;
 
   const modelGroup = getModelGroup(model);
@@ -132,9 +151,14 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
 
   let perImageCost: number;
 
-  // V4/SDXL 系列使用 calculateDimensionCost
-  if (modelGroup === 'V4' || modelGroup === 'SDXL' || modelGroup === 'SDXL_FURRY') {
+  // V5/V4/SDXL 系列使用 calculateDimensionCost
+  if (modelGroup === 'V5' || modelGroup === 'V4' || modelGroup === 'SDXL' || modelGroup === 'SDXL_FURRY') {
     perImageCost = calculateDimensionCost(width, height, steps, smea, smeaDyn);
+    if (modelGroup === 'V5') {
+      // 官方是「基数向上取整后再乘 1.5、然后再取整一次」的双重取整,不是一次算完
+      // 才取整——两种写法在很多尺寸上差 1 点。
+      perImageCost = Math.max(Math.ceil(perImageCost * V5_COST_MULTIPLIER), 2);
+    }
   } else {
     // 旧模型：小尺寸 + 简单采样器走 calculateStepsCost
     if (pixels <= NORMAL_RESOLUTION_THRESHOLD && SIMPLE_SAMPLERS.includes(normalizedSampler)) {
@@ -150,6 +174,10 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
     perImageCost = Math.max(Math.ceil(perImageCost * strength), 2);
   }
 
+  // 官方对单张有硬上限：超过 140 直接判为不可生成。这里夹住而不是报错，界面上
+  // 显示封顶价即可，真正的拒绝交给服务端。
+  perImageCost = Math.min(perImageCost, MAX_COST_PER_IMAGE);
+
   // Precise Reference 附加费：每张 +5 anlas（即使 Opus 免费生成也要付）
   const preciseRefCost = hasPreciseRef ? 5 * preciseRefCount : 0;
 
@@ -159,8 +187,16 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
   // Opus 免费额度判断
   // 条件: Opus 订阅 + steps <= 28 + 像素 <= 1048576
   // 图生图和重绘在小图范围内同样免费，只有超出分辨率阈值才收费
+  // V5 多一个条件：体力条没耗尽。这是 V5 引入的第四道闸——V5 是唯一按额度计的
+  // 模型族，条空之后同样的小图就开始花 Anlas 了。
   let opusFreeCount = 0;
-  if (isOpus && steps <= 28 && pixels <= NORMAL_RESOLUTION_THRESHOLD) {
+  const meteredByOpusUsage = modelGroup === 'V5';
+  if (
+    isOpus &&
+    steps <= 28 &&
+    pixels <= NORMAL_RESOLUTION_THRESHOLD &&
+    !(meteredByOpusUsage && opusUsageExhausted)
+  ) {
     // Opus 第一张免费（生成本身免费，但 PR 附加费仍需支付）
     opusFreeCount = 1;
   }
@@ -180,6 +216,8 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
 
 // 模型 ID 映射（前端 UI ID -> API 模型名）
 const UI_MODEL_MAP: Record<string, string> = {
+  'v5-full': 'nai-diffusion-5-full',
+  'v5-curated': 'nai-diffusion-5-curated',
   'v4.5-full': 'nai-diffusion-4-5-full',
   'v4.5-curated': 'nai-diffusion-4-5-curated',
   'v4-full': 'nai-diffusion-4-full',
@@ -200,6 +238,7 @@ export function calculateCostFromUI(params: {
   img2imgStrength?: number;
   preciseRefCount?: number;
   vibeRefCount?: number;
+  opusUsageExhausted?: boolean;
 }): CostResult {
   const apiModel = UI_MODEL_MAP[params.modelId] || params.modelId;
   return calculateAnlasCost({

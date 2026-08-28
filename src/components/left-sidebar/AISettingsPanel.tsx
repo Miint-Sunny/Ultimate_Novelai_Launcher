@@ -1,6 +1,7 @@
 import { useState, type ReactNode, type RefObject } from 'react';
 import { Check, ChevronDown, RotateCcw, X } from 'lucide-react';
 import { NOISE_SCHEDULES, SAMPLER_OPTIONS } from '../../utils/generationOptions';
+import { modelCapabilities } from '../generation/modelResolutionOptions';
 import { HelpTip } from './HelpTip';
 
 interface AISettingsPanelProps {
@@ -23,6 +24,10 @@ interface AISettingsPanelProps {
   onNoiseScheduleChange: (value: string) => void;
   varietyPlus: boolean;
   onVarietyPlusChange: (value: boolean) => void;
+  /** 当前模型(UI id 或后端名)。用于按能力位隐藏该模型不支持的控件。 */
+  model: string;
+  transparentBackground: boolean;
+  onTransparentBackgroundChange: (value: boolean) => void;
 }
 
 export function AISettingsPanel({
@@ -45,8 +50,14 @@ export function AISettingsPanel({
   onNoiseScheduleChange,
   varietyPlus,
   onVarietyPlusChange,
+  model,
+  transparentBackground,
+  onTransparentBackgroundChange,
 }: AISettingsPanelProps) {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  // 这两个控件在 V5 上是死的:噪声调度被官方强制写死 karras,Variety+ 整个不存在。
+  // 与其留着让用户调一个不会生效的旋钮,不如照官方客户端的做法整个不渲染。
+  const caps = modelCapabilities(model);
 
   return (
     <div ref={panelRef} className="bg-nai-panel border border-gray-700 rounded-lg p-2.5 space-y-3">
@@ -88,18 +99,20 @@ export function AISettingsPanel({
                 Prompt Guidance: {scale}
                 <HelpTip title="提示词引导强度 (CFG Scale)" body={"控制 AI 对提示词的遵循程度。\n· 值越低 → AI 越自由发挥，画面更绘画感、柔和、梦幻\n· 值越高 → 越严格遵循描述，细节更精细锐利\n💡 V3 及以上模型官方推荐 5~6\n💡 过高反而会反作用，色彩过饱和、画面崩坏"} />
               </span>
-              <span className="flex items-center gap-1">
-                <button
-                  onClick={() => onVarietyPlusChange(!varietyPlus)}
-                  className={`px-1 py-0.5 text-[10px] rounded border flex items-center gap-1 transition-colors ${varietyPlus
-                    ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
-                    : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
-                  }`}
-                >
-                  {varietyPlus ? <Check className="w-2 h-2" /> : <X className="w-2 h-2" />} Variety+
-                </button>
-                <HelpTip title="多样性增强模式 (Variety+)" body={"轻微调整采样过程，提升构图与姿势的多样性。\n开启 → 增加构图和姿势的变化\n关闭 → 出图更稳定一致\n💡 在低 Prompt Guidance 下效果更明显"} />
-              </span>
+              {caps.varietyPlus && (
+                <span className="flex items-center gap-1">
+                  <button
+                    onClick={() => onVarietyPlusChange(!varietyPlus)}
+                    className={`px-1 py-0.5 text-[10px] rounded border flex items-center gap-1 transition-colors ${varietyPlus
+                      ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
+                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                    }`}
+                  >
+                    {varietyPlus ? <Check className="w-2 h-2" /> : <X className="w-2 h-2" />} Variety+
+                  </button>
+                  <HelpTip title="多样性增强模式 (Variety+)" body={"轻微调整采样过程，提升构图与姿势的多样性。\n开启 → 增加构图和姿势的变化\n关闭 → 出图更稳定一致\n💡 在低 Prompt Guidance 下效果更明显"} />
+                </span>
+              )}
             </div>
             <RangeInput min={0} max={25} step={0.1} value={scale} onChange={onScaleChange} />
           </HighlightedSetting>
@@ -153,13 +166,35 @@ export function AISettingsPanel({
                   <RangeInput min={0} max={1} step={0.01} value={scaleRescale} onChange={onScaleRescaleChange} />
                 </div>
 
-                <div>
-                  <div className="text-xs text-gray-300 mb-1 flex items-center">
-                    Noise Schedule
-                    <HelpTip title="噪声衰减曲线 (Noise Schedule)" body={"决定 Sampler 在每一步的噪声衰减节奏，影响画面质感。\n· karras — 最常用，出图稳定细节好\n· exponential — 指数衰减，对比度更强\n· polyexponential — 多项式衰减，过渡平滑\n💡建议保持默认 karras"} />
+                {caps.transparency && (
+                  <div>
+                    <div className="text-xs text-gray-300 mb-1 flex items-center">
+                      透明背景
+                      <HelpTip title="透明背景 (V5)" body={"直接输出带 alpha 通道的图，省去后期抠图。\n开启后会在提示词里加入 transparent background，并让模型以透明方式生成。\n💡 不稳定时可在提示词里写 2.1::transparent background::\n💡 比导演工具的去背不消耗点数，效果也更好"} />
+                    </div>
+                    <button
+                      onClick={() => onTransparentBackgroundChange(!transparentBackground)}
+                      title={transparentBackground ? '关闭透明背景' : '开启透明背景(输出带 alpha 通道)'}
+                      className={`w-full px-2 py-1 text-xs rounded border flex items-center justify-center gap-1 transition-colors ${transparentBackground
+                        ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
+                        : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                      }`}
+                    >
+                      {transparentBackground ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                      {transparentBackground ? '已开启' : '关闭'}
+                    </button>
                   </div>
-                  <SelectInput value={noiseSchedule} onChange={onNoiseScheduleChange} options={[...NOISE_SCHEDULES]} />
-                </div>
+                )}
+
+                {caps.noiseSchedule && (
+                  <div>
+                    <div className="text-xs text-gray-300 mb-1 flex items-center">
+                      Noise Schedule
+                      <HelpTip title="噪声衰减曲线 (Noise Schedule)" body={"决定 Sampler 在每一步的噪声衰减节奏，影响画面质感。\n· karras — 最常用，出图稳定细节好\n· exponential — 指数衰减，对比度更强\n· polyexponential — 多项式衰减，过渡平滑\n💡建议保持默认 karras"} />
+                    </div>
+                    <SelectInput value={noiseSchedule} onChange={onNoiseScheduleChange} options={[...NOISE_SCHEDULES]} />
+                  </div>
+                )}
               </div>
             )}
           </div>

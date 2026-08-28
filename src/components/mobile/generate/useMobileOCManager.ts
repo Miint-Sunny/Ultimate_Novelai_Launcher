@@ -9,6 +9,8 @@ import {
 import { useMobileOCEditor } from './useMobileOCEditor';
 
 interface UseMobileOCManagerOptions {
+  /** 当前模型的同框角色上限。 */
+  maxCharacters: number;
   currentUserId: string | null;
   isAuthenticated: boolean;
   requireAuth: (callback: () => void) => void;
@@ -18,6 +20,7 @@ interface UseMobileOCManagerOptions {
 }
 
 export function useMobileOCManager({
+  maxCharacters,
   currentUserId,
   isAuthenticated,
   requireAuth,
@@ -54,7 +57,7 @@ export function useMobileOCManager({
         next.delete(oc.id);
         return next;
       }
-      if (next.size >= 6) {
+      if (next.size >= maxCharacters) {
         alert('最多只能选择 6 个 OC');
         return prev;
       }

@@ -5,9 +5,12 @@ import type { CollapsibleTagType, PromptEditorRef } from '../PromptEditor';
 import { parseCharacterPromptContent } from '../../utils/promptParser';
 import type { CharacterPrompt } from './types';
 
-const MAX_CHARACTER_PROMPTS = 6;
+// 上限按模型走(见 modelCapabilities);调用方未给时按 V4 系的 6 兜底。
+const DEFAULT_MAX_CHARACTER_PROMPTS = 6;
 
 interface UseInspirationActionsParams {
+  /** 当前模型的同框角色上限。 */
+  maxCharacters?: number;
   chipMode: boolean;
   positiveEditorRef: RefObject<PromptEditorRef | null>;
   characterPrompts: CharacterPrompt[];
@@ -23,6 +26,7 @@ export function useInspirationActions({
   setPositivePrompt,
   setCharacterPrompts,
   setIsCharacterSectionOpen,
+  maxCharacters = DEFAULT_MAX_CHARACTER_PROMPTS,
 }: UseInspirationActionsParams) {
   const handleSelectPrompt = useCallback((prompt: string) => {
     const parsed = parseCharacterPromptContent(prompt);
@@ -33,7 +37,7 @@ export function useInspirationActions({
       }
 
       const newCharacters = parsed.characters
-        .slice(0, MAX_CHARACTER_PROMPTS - characterPrompts.length)
+        .slice(0, maxCharacters - characterPrompts.length)
         .map((character, index) => ({
           id: `${Date.now()}-codex-${index}`,
           positive: character.content.replace(/,\s*$/, '').trim(),
@@ -45,7 +49,7 @@ export function useInspirationActions({
         }));
 
       if (newCharacters.length > 0) {
-        setCharacterPrompts((prev) => [...prev, ...newCharacters].slice(0, MAX_CHARACTER_PROMPTS));
+        setCharacterPrompts((prev) => [...prev, ...newCharacters].slice(0, maxCharacters));
         setIsCharacterSectionOpen(true);
       }
       return;
@@ -74,7 +78,7 @@ export function useInspirationActions({
   }, [chipMode, positiveEditorRef, setPositivePrompt]);
 
   const handleAddToCharacter = useCallback((tag: CollapsibleTagInfo) => {
-    if (characterPrompts.length >= MAX_CHARACTER_PROMPTS) return;
+    if (characterPrompts.length >= maxCharacters) return;
 
     const newCharacter: CharacterPrompt = {
       id: `${Date.now()}-oc`,
@@ -86,7 +90,7 @@ export function useInspirationActions({
       name: tag.label,
     };
 
-    setCharacterPrompts((prev) => [...prev, newCharacter].slice(0, MAX_CHARACTER_PROMPTS));
+    setCharacterPrompts((prev) => [...prev, newCharacter].slice(0, maxCharacters));
     setIsCharacterSectionOpen(true);
   }, [characterPrompts.length, setCharacterPrompts, setIsCharacterSectionOpen]);
 

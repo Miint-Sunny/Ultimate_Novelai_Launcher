@@ -3,6 +3,8 @@ import { useSharedCharacterPrompts, type CharacterPromptField } from '../../../h
 import type { CharacterPrompt } from '../types';
 
 interface UseMobileCharacterPromptsOptions {
+  /** 当前模型的同框角色上限。 */
+  maxCharacters?: number;
   characterPrompts: CharacterPrompt[];
   setCharacterPrompts: Dispatch<SetStateAction<CharacterPrompt[]>>;
 }
@@ -13,6 +15,7 @@ interface UseMobileCharacterPromptsOptions {
 export function useMobileCharacterPrompts({
   characterPrompts,
   setCharacterPrompts,
+  maxCharacters,
 }: UseMobileCharacterPromptsOptions) {
   const [isCharacterExpanded, setIsCharacterExpanded] = useState(true);
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
@@ -25,7 +28,7 @@ export function useMobileCharacterPrompts({
     updateCharacterPrompt,
     moveCharacterPrompt,
     clearAllCharacterPrompts,
-  } = useSharedCharacterPrompts({ characterPrompts, setCharacterPrompts });
+  } = useSharedCharacterPrompts({ characterPrompts, setCharacterPrompts, maxCharacters });
 
   return {
     characterPrompts,

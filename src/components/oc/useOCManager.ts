@@ -17,7 +17,9 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export function useOCManager(): UseOCManagerReturn {
+// maxCharacters 由调用方按当前模型给出(见 modelResolutionOptions 的能力表):
+// V4 系 6，V5 提到 32。默认 6 是为了让未传参的旧调用方保持原行为。
+export function useOCManager(maxCharacters: number = 6): UseOCManagerReturn {
   // --- Tab & Selection ---
   const [ocTab, setOcTab] = useState<'public' | 'local'>('public');
   const [selectedOCs, setSelectedOCs] = useState<string[]>([]);
@@ -115,16 +117,16 @@ export function useOCManager(): UseOCManagerReturn {
   const toggleOCSelection = useCallback((id: string) => {
     setSelectedOCs(prev => {
       if (prev.includes(id)) return prev.filter(item => item !== id);
-      if (prev.length >= 6) return prev;
+      if (prev.length >= maxCharacters) return prev;
       return [...prev, id];
     });
-  }, []);
+  }, [maxCharacters]);
 
   // --- Random OC ---
   const handleRandomOC = useCallback(() => {
     const currentFiles = ocTab === 'public' ? ocPublicFiles : ocLocalFiles;
     const availableFiles = currentFiles.filter(f => !selectedOCs.includes(f.id));
-    if (availableFiles.length === 0 || selectedOCs.length >= 6) return;
+    if (availableFiles.length === 0 || selectedOCs.length >= maxCharacters) return;
 
     const randomFile = availableFiles[Math.floor(Math.random() * availableFiles.length)];
     setSelectedOCs(prev => [...prev, randomFile.id]);
@@ -150,7 +152,7 @@ export function useOCManager(): UseOCManagerReturn {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setTimeout(() => observer.disconnect(), 5000);
     }, 50);
-  }, [ocTab, ocPublicFiles, ocLocalFiles, selectedOCs]);
+  }, [ocTab, ocPublicFiles, ocLocalFiles, selectedOCs, maxCharacters]);
 
   // --- Open / Create ---
   const openOCDetail = useCallback((oc: OCFile) => {

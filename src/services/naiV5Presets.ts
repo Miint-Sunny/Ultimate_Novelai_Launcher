@@ -1,0 +1,86 @@
+/**
+ * NAI Diffusion V5 的预设文本与预设 id。
+ *
+ * V5 把 V4 系那套「数字 ucPreset + 布尔 qualityToggle」换成了字符串 id
+ * (`ucPresetId` / `qualityPresetId`),所以本文件与 naiUcPresets.ts 是两套并行
+ * 的口径,不要互相套用:V5 走这里,4.5 及以下走那里。
+ *
+ * 文本逐字取自 NAI 官方前端 bundle(6750aa2-production)与 docs.novelai.net,
+ * 并与 2026-08-28 的真实抓包互校。逐字很重要——这些串是拼进提示词里发出去的,
+ * 差一个词就是另一条提示词。
+ *
+ * 与 V4.5 的差别值得记一笔:
+ *   - 质量尾去掉了 4.5 那个打头的 `location,`;
+ *   - V5 是第一个有两档质量尾的模型族(standard / light),4.5 只有一档;
+ *   - V5 Curated 不再像 4.5 Curated 那样自带 `-0.8::feet::, rating:general`;
+ *   - UC 的 heavy / furryFocus / humanFocus 与 4.5 Full 同文,但 light 是全新写法,
+ *     且用上了数字权重语法 `0::ai-generated::`。
+ */
+
+export type NaiV5UcPresetId = 'heavy' | 'light' | 'furryFocus' | 'humanFocus' | 'none';
+export type NaiV5QualityPresetId = 'standard' | 'light' | 'none';
+
+/** 质量尾。官方是「追加到提示词末尾」,前置逗号由调用方按需补。 */
+export const V5_QUALITY_SUFFIX: Record<NaiV5QualityPresetId, string> = {
+  standard: 'very aesthetic, masterpiece, no text',
+  light: 'very aesthetic, amazing quality, no text',
+  none: '',
+};
+
+/** UC 前缀。官方把它前置到用户 UC 之前。 */
+export const V5_UC_PREFIX: Record<NaiV5UcPresetId, string> = {
+  heavy:
+    'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, ' +
+    'jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, ' +
+    'screentone, multiple views, logo, too many watermarks, negative space, blank page',
+  light:
+    'lowres, bad hands, bad anatomy, artistic error, sepia, white haze, worst quality, ' +
+    'very displeasing, jpeg artifacts, 0::ai-generated::',
+  furryFocus:
+    '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, ' +
+    'upscale, {sequence}, {{grandfathered content}}, blurred foreground, ' +
+    'chromatic aberration, sketch, everyone, [sketch background], simple, ' +
+    '[flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic',
+  humanFocus:
+    'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, ' +
+    'jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, ' +
+    'screentone, multiple views, logo, too many watermarks, negative space, blank page, ' +
+    '@_@, mismatched pupils, glowing eyes, bad anatomy',
+  none: '',
+};
+
+/**
+ * 透明背景开关注入的词条。官方那个开关的 tooltip 原文就是
+ * "Adds \"transparent background\" to the prompt",即它只是替用户写词,
+ * 真正让 alpha 通道出来的是载荷里的 `straight_alpha`。
+ */
+export const V5_TRANSPARENT_BACKGROUND_TAG = 'transparent background';
+
+/**
+ * Furry 模式注入的数据集前缀(官方 tags 文档)。V5 用一个 Anime⇄Furry 开关
+ * 取代了 V3 时代独立的 furry 模型,底层就是往提示词前面加这个前缀。
+ */
+export const V5_FURRY_DATASET_PREFIX = 'fur dataset';
+
+/** 我们的 UC 预设名(全族通用)映射到 V5 的合法 id;V5 未提供的档位退到 heavy。 */
+export function toV5UcPresetId(preset: string): NaiV5UcPresetId {
+  return preset in V5_UC_PREFIX ? (preset as NaiV5UcPresetId) : 'heavy';
+}
+
+/**
+ * 现有 UI 只有「质量尾开/关」一个布尔。V5 有三档,先把布尔映到 standard / none,
+ * 等 UI 出了三档选择器再直接传 id。
+ */
+export function toV5QualityPresetId(qualityToggle: boolean): NaiV5QualityPresetId {
+  return qualityToggle ? 'standard' : 'none';
+}
+
+/**
+ * `-full` 会自动前置 `nsfw, `,curated 不会——官方 UC 组装器的行为,
+ * 条件是:模型不属于 curated 系、预设不是 none、且用户 UC 里还没写过 nsfw。
+ */
+export function shouldPrefixNsfw(backendModel: string, preset: NaiV5UcPresetId, uc: string): boolean {
+  if (preset === 'none') return false;
+  if (backendModel.includes('curated')) return false;
+  return !/\bnsfw\b/i.test(uc);
+}

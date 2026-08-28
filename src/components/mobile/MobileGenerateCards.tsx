@@ -16,6 +16,10 @@ import type { useMobilePreciseReferences } from './generate/useMobilePreciseRefe
 import type { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 
 interface MobileGenerateCardsProps {
+  /** 当前模型的同框角色上限。 */
+  maxCharacters: number;
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   positivePrompt: string;
   setPositivePrompt: Dispatch<SetStateAction<string>>;
   negativePrompt: string;
@@ -49,6 +53,8 @@ interface MobileGenerateCardsProps {
 // orderedVisibleGenModuleKeys(持久化顺序 × 可见性谓词)渲染,不满足谓词的整卡不渲染
 // (无置灰占位);卡头长按起拖调序,手势经 dragHandleProps 只挂卡头/标题区。
 export function MobileGenerateCards({
+  maxCharacters,
+  maxTokens,
   positivePrompt,
   setPositivePrompt,
   negativePrompt,
@@ -87,7 +93,7 @@ export function MobileGenerateCards({
     const dragHandleProps = getDragHandleProps(key);
     switch (key) {
       case 'character':
-        return <MobileCharacterPromptsCard manager={characterPromptManager} dragHandleProps={dragHandleProps} />;
+        return <MobileCharacterPromptsCard manager={characterPromptManager} maxCharacters={maxCharacters} dragHandleProps={dragHandleProps} />;
       case 'vibe':
         return <MobileVibeReferencesCard library={vibeLibrary} onOpenManager={openVibeManager} dragHandleProps={dragHandleProps} />;
       case 'precise-reference':
@@ -100,6 +106,7 @@ export function MobileGenerateCards({
   return (
     <div className="p-3 space-y-3">
       <MobilePromptSummaryCard
+        maxTokens={maxTokens}
         positivePrompt={positivePrompt}
         setPositivePrompt={setPositivePrompt}
         negativePrompt={negativePrompt}

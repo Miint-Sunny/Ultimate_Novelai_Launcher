@@ -28,6 +28,7 @@ interface UseMobileInpaintGenerateOptions {
   cfgRescale: number;
   noiseSchedule: string;
   varietyPlus: boolean;
+  transparentBackground?: boolean;
   characterPrompts: CharacterPrompt[];
   activePreciseRefs: ActivePreciseRef[];
   activeVibes: ActiveVibe[];
@@ -58,6 +59,7 @@ export function useMobileInpaintGenerate({
   cfgRescale,
   noiseSchedule,
   varietyPlus,
+  transparentBackground,
   characterPrompts,
   activePreciseRefs,
   activeVibes,
@@ -101,6 +103,7 @@ export function useMobileInpaintGenerate({
           noiseSchedule,
           activePresetId,
           varietyPlus,
+          transparentBackground,
           // 与 useMobileGenerateRunner 一致:读取共享设置存储,默认 true
           normalizeVibeStrength: getAISettings().normalizeVibeStrength,
           characterPrompts: stripped.characterPrompts,
@@ -165,6 +168,7 @@ export function useMobileInpaintGenerate({
     seed,
     steps,
     varietyPlus,
+    transparentBackground,
     vibeEncodingCache,
   ]);
 }

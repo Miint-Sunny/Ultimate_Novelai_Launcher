@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CharacterPrompt } from '../types';
+import { DEFAULT_MODEL_ID, NAI_MODELS } from '../../generation/modelResolutionOptions';
 
 const STORAGE_KEY = 'mobile_generate_state';
 
@@ -24,6 +25,7 @@ interface SavedMobileGenerateState {
   noiseSchedule?: string;
   cfgRescale?: number;
   varietyPlus?: boolean;
+  transparentBackground?: boolean;
   activePresetId?: string;
   characterPrompts?: StoredCharacterPrompt[];
 }
@@ -64,7 +66,13 @@ export function useMobileGenerationParams({
 
   const [localWidth, setLocalWidth] = useState(savedState?.localWidth ?? targetWidth);
   const [localHeight, setLocalHeight] = useState(savedState?.localHeight ?? targetHeight);
-  const [model, setModel] = useState(savedState?.model ?? 'v4.5-full');
+  // 记住上次选择;存量值可能已不在列表里(改过 id、下架过型号),那样会恢复出一个
+  // 选不中的空选择,所以校验后再用。
+  const [model, setModel] = useState(() =>
+    NAI_MODELS.some((option) => option.id === savedState?.model)
+      ? (savedState!.model as string)
+      : DEFAULT_MODEL_ID,
+  );
   const [positivePrompt, setPositivePrompt] = useState(savedState?.positivePrompt ?? '');
   const [negativePrompt, setNegativePrompt] = useState(savedState?.negativePrompt ?? '');
   const [steps, setSteps] = useState(savedState?.steps ?? 28);
@@ -73,6 +81,10 @@ export function useMobileGenerationParams({
   const [noiseSchedule, setNoiseSchedule] = useState(savedState?.noiseSchedule ?? 'karras');
   const [cfgRescale, setCfgRescale] = useState(savedState?.cfgRescale ?? 0);
   const [varietyPlus, setVarietyPlus] = useState(savedState?.varietyPlus ?? false);
+  // 透明背景(仅 V5;载荷里发 tag_hint_transparent_background)
+  const [transparentBackground, setTransparentBackground] = useState(
+    savedState?.transparentBackground ?? false,
+  );
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isPresetExpanded, setIsPresetExpanded] = useState(false);
   const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(
@@ -93,6 +105,7 @@ export function useMobileGenerationParams({
       noiseSchedule,
       cfgRescale,
       varietyPlus,
+      transparentBackground,
       activePresetId,
       characterPrompts: characterPrompts.map((prompt) => ({
         id: prompt.id,
@@ -116,6 +129,7 @@ export function useMobileGenerationParams({
     noiseSchedule,
     cfgRescale,
     varietyPlus,
+    transparentBackground,
     activePresetId,
     characterPrompts,
   ]);
@@ -143,6 +157,8 @@ export function useMobileGenerationParams({
     setCfgRescale,
     varietyPlus,
     setVarietyPlus,
+    transparentBackground,
+    setTransparentBackground,
     showAdvancedSettings,
     setShowAdvancedSettings,
     isPresetExpanded,

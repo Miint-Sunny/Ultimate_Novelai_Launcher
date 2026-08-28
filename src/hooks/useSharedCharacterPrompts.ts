@@ -14,11 +14,15 @@ export interface SharedCharacterPrompt {
 
 export type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 'name' | 'position';
 
-const MAX_CHARACTER_PROMPTS = 6;
+// 兜底上限:调用方未给 maxCharacters 时用 V4 系的 6。
+// 真正的上限按模型走 modelCapabilities(V5 为 32),由壳层传入。
+const DEFAULT_MAX_CHARACTER_PROMPTS = 6;
 
 interface UseSharedCharacterPromptsOptions<T extends SharedCharacterPrompt> {
   characterPrompts: T[];
   setCharacterPrompts: Dispatch<SetStateAction<T[]>>;
+  /** 当前模型的同框角色上限(见 modelCapabilities);缺省按 V4 系的 6。 */
+  maxCharacters?: number;
 }
 
 // 角色提示词编辑操作的双端共享核心。持久化走各自适配器(桌面壳:
@@ -29,11 +33,12 @@ interface UseSharedCharacterPromptsOptions<T extends SharedCharacterPrompt> {
 export function useSharedCharacterPrompts<T extends SharedCharacterPrompt>({
   characterPrompts,
   setCharacterPrompts,
+  maxCharacters = DEFAULT_MAX_CHARACTER_PROMPTS,
 }: UseSharedCharacterPromptsOptions<T>) {
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
 
   const addCharacterPrompt = useCallback(() => {
-    if (characterPrompts.length >= MAX_CHARACTER_PROMPTS) return;
+    if (characterPrompts.length >= maxCharacters) return;
     setCharacterPrompts((prev) => [
       ...prev,
       {
@@ -45,7 +50,7 @@ export function useSharedCharacterPrompts<T extends SharedCharacterPrompt>({
         position: '',
       } as T,
     ]);
-  }, [characterPrompts.length, setCharacterPrompts]);
+  }, [characterPrompts.length, setCharacterPrompts, maxCharacters]);
 
   const removeCharacterPrompt = useCallback((id: string) => {
     setCharacterPrompts((prev) => prev.filter((prompt) => prompt.id !== id));

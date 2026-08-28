@@ -46,12 +46,24 @@ export function applyImportedModel(
 ) {
   if (!metadata.source || metadata.sourceType !== 'novelai') return;
   const source = metadata.source.toLowerCase();
+  // 按「越具体越靠前」排,命中即停。
+  // V5 的 Source 串形如 `NovelAI Diffusion V5 0ADF9AB7`——注意它不像 V4 系那样
+  // 在串里写 Full/Curated,只有版本号加权重哈希,所以只能靠哈希区分两版。
+  // 0adf9ab7 是实测到的 V5 Full;Curated 的哈希还没采到,故留一条兜底行落到
+  // Full(采到 Curated 哈希后在兜底行之前补一条即可)。
   const modelMatchMap: Array<{ keywords: string[]; modelName: string }> = [
+    { keywords: ['v5 0adf9ab7'], modelName: 'NovelAI V5 Full' },
+    { keywords: ['v5 full'], modelName: 'NovelAI V5 Full' },
+    { keywords: ['v5 curated'], modelName: 'NovelAI V5 Curated' },
+    { keywords: ['diffusion v5'], modelName: 'NovelAI V5 Full' },
     { keywords: ['v4.5 full', 'v4.5 4bde'], modelName: 'NovelAI V4.5 Full' },
     { keywords: ['v4.5 curated', 'v4.5 c02d'], modelName: 'NovelAI V4.5 Curated' },
     { keywords: ['v4 full', 'v4 44fd'], modelName: 'NovelAI V4 Full' },
     { keywords: ['v4 curated', 'v4 c5e5'], modelName: 'NovelAI V4 Curated Preview' },
-    { keywords: ['v3', 'f4d5'], modelName: 'NovelAI V5' },
+    // 这行此前把 V3 的哈希写成了 modelName: 'NovelAI V5',是笔误。改回 V3 后它
+    // 仍然不会命中任何东西——下拉里本来就不提供 V3——但至少这张表现在是诚实的,
+    // 不会在真的 V5 出现后被误读成「已经支持 V5 导入」。
+    { keywords: ['v3', 'f4d5'], modelName: 'NovelAI V3' },
   ];
 
   for (const entry of modelMatchMap) {

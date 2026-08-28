@@ -5,14 +5,19 @@ import { decode } from '@msgpack/msgpack';
 import { queueService } from './queueService';
 import { botService } from './botService';
 import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenerationParams } from '../api/sidecar';
+import type { OpusUsage } from '../api/localSidecarApi';
 import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
+import { toV5QualityPresetId, toV5UcPresetId } from './naiV5Presets';
+import { isV5Model } from '../components/generation/modelResolutionOptions';
 
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
   purchasedTrainingSteps: number;
   /** 是否为 Opus 订阅（tier === 3 且 active） */
   isOpus: boolean;
+  /** Opus「体力条」；仅 Opus 返回，见 localSidecarApi 的 OpusUsage。 */
+  opusUsage?: OpusUsage;
 }
 
 /**
@@ -24,12 +29,26 @@ export async function getAnlas(): Promise<AnlasInfo | null> {
 
 // 模块级缓存：上次查询到的 Opus 状态
 let _cachedIsOpus = false;
+let _cachedOpusUsage: OpusUsage | undefined;
 
 /**
  * 更新 Opus 缓存（在 getAnlas 或 Bot 模式设置时调用）
  */
-export function updateCachedIsOpus(isOpus: boolean): void {
+export function updateCachedIsOpus(isOpus: boolean, opusUsage?: OpusUsage): void {
   _cachedIsOpus = isOpus;
+  _cachedOpusUsage = opusUsage;
+}
+
+/**
+ * 体力条是否已耗尽。供无 anlasInfo 的组件（重绘、放大等浮层）判断 V5 是否
+ * 还在免费额度内。
+ *
+ * 未知时返回 false（按未耗尽算）：这里返回 true 会让界面对着一个其实还有额度
+ * 的账号反复弹确认，比偶尔漏提示更烦人；真正的兜底是生成后余额会变。
+ */
+export function isOpusUsageExhausted(): boolean {
+  if (!_cachedOpusUsage) return false;
+  return _cachedOpusUsage.isNegative || _cachedOpusUsage.percent <= 0;
 }
 
 /**
@@ -63,11 +82,21 @@ export async function encodeVibeImage(
 }
 
 const MODEL_MAP: Record<string, string> = {
+  'v5-full': 'nai-diffusion-5-full',
+  'v5-curated': 'nai-diffusion-5-curated',
   'v4.5-full': 'nai-diffusion-4-5-full',
   'v4.5-curated': 'nai-diffusion-4-5-curated',
   'v4-full': 'nai-diffusion-4-full',
   'v4-curated-preview': 'nai-diffusion-4-curated-preview',
   v3: 'nai-diffusion-3',
+};
+
+// V5 Curated 的局部重绘模型「还在训练中」(官方原话),官方客户端在用户对 V5
+// Curated 发起重绘时,实际换成 V4.5 Curated 的重绘模型去跑。所以重绘点得下去、
+// 也确实出图,但那是 4.5 的模型在往 V5 的画面里补色,风格对不齐——用户看到的
+// 「能用但有点怪」就是这么来的。NAI 上线真模型后删掉这张表即可。
+const INPAINT_MODEL_OVERRIDES: Record<string, string> = {
+  'nai-diffusion-5-curated': 'nai-diffusion-4-5-curated-inpainting',
 };
 
 export interface CharacterPrompt {
@@ -130,6 +159,8 @@ export interface GenerateImageParams {
   ucPreset: string;
   qualityToggle: boolean;
   varietyPlus: boolean;
+  /** 透明背景（V5 专有；勾选后发 tag_hint_transparent_background） */
+  transparentBackground?: boolean;
   normalizeVibeStrength?: boolean;
   characterPrompts: CharacterPrompt[];
   preciseReferences?: PreciseReferenceItem[];  // Precise Reference 参数（多图）
@@ -349,18 +380,23 @@ export function buildRequestPayload(params: GenerateImageParams) {
   const baseModel = MODEL_MAP[params.model] || 'nai-diffusion-4-5-full';
 
   // 如果是 inpaint 模式，使用对应的 inpainting 模型
-  // v3 使用 nai-diffusion-3-inpainting，v4/v4.5 使用 {model}-inpainting
+  // v3 使用 nai-diffusion-3-inpainting，v4/v4.5/v5 使用 {model}-inpainting
+  // 例外见 INPAINT_MODEL_OVERRIDES（V5 Curated 暂借 4.5 Curated 的重绘模型）
   let model = baseModel;
   if (isInpaint) {
-    if (baseModel === 'nai-diffusion-3') {
+    if (INPAINT_MODEL_OVERRIDES[baseModel]) {
+      model = INPAINT_MODEL_OVERRIDES[baseModel];
+    } else if (baseModel === 'nai-diffusion-3') {
       model = 'nai-diffusion-3-inpainting';
     } else {
       model = `${baseModel}-inpainting`;
     }
   }
 
+  const isV5 = isV5Model(baseModel);
   const sampler = normalizeSamplerToId(params.sampler);
   // ucPreset 枚举按模型族区分（0=Heavy 起），必须用 baseModel 解析（inpainting 变体共享基座枚举）
+  // V5 不走这套数字枚举，改发字符串 ucPresetId（见下方 V5 分支与 naiV5Presets.ts）
   const ucPreset = resolveUcPreset(baseModel, params.ucPreset);
 
   const charCaptions: Array<{ char_caption: string; centers: Array<{ x: number; y: number }> }> = [];
@@ -395,24 +431,42 @@ export function buildRequestPayload(params: GenerateImageParams) {
     model,
     action: params.inpaint ? 'infill' : (params.img2img ? 'img2img' : 'generate'),
     parameters: {
-      params_version: 3,
+      // V5 需要 params_version 4：传 3 时它照样出图，但角色的自由定位坐标会被
+      // 静默丢弃——图是对的、人站错地方，最难查的那种。
+      params_version: isV5 ? 4 : 3,
       width: params.width,
       height: params.height,
       scale: params.scale,
       sampler,
       steps: params.steps,
       n_samples: 1,
-      ucPreset,
-      qualityToggle: params.qualityToggle,
+      // 数字 ucPreset + 布尔 qualityToggle 是 V4 系的口径；V5 换成字符串 id。
+      // 两套绝不能同时出现在一个载荷里。
+      ...(isV5
+        ? {
+            ucPresetId: toV5UcPresetId(params.ucPreset),
+            qualityPresetId: toV5QualityPresetId(params.qualityToggle),
+            // 32 通道 VAE 真正吐出 alpha 通道靠的是这个字段；官方对所有支持
+            // 透明的模型常发，与用户有没有要透明背景无关。
+            straight_alpha: true,
+            ...(params.transparentBackground ? { tag_hint_transparent_background: true } : {}),
+          }
+        : {
+            ucPreset,
+            qualityToggle: params.qualityToggle,
+          }),
       autoSmea: false,
       dynamic_thresholding: false,
       controlnet_strength: 1,
       legacy: false,
       add_original_image: true,
       cfg_rescale: params.cfgRescale,
-      noise_schedule: normalizeNoiseSchedule(params.noiseSchedule),
+      // V5 隐藏了噪声调度选择器并强制写死 karras（官方客户端的 sanitizer 就是
+      // 这么做的），所以这里不透传用户的选择。
+      noise_schedule: isV5 ? 'karras' : normalizeNoiseSchedule(params.noiseSchedule),
       legacy_v3_extend: false,
-      skip_cfg_above_sigma: params.varietyPlus ? 58 : null,
+      // V5 没有 Variety+，skip_cfg_above_sigma 无处可延迟。
+      skip_cfg_above_sigma: !isV5 && params.varietyPlus ? 58 : null,
       use_coords: charCaptions.length > 0,
       normalize_reference_strength_multiple: params.normalizeVibeStrength ?? true,
       inpaintImg2ImgStrength: 1,
@@ -449,8 +503,10 @@ export function buildRequestPayload(params: GenerateImageParams) {
         extra_noise_seed: seed,
         add_original_image: true,  // 保持原图质量
       }),
-      // Precise Reference 参数 - 支持多图（V4 模型不支持）
-      ...(params.preciseReferences && params.preciseReferences.length > 0 && baseModel !== 'nai-diffusion-4-full' && baseModel !== 'nai-diffusion-4-curated-preview' && (() => {
+      // Precise Reference 参数 - 支持多图
+      // 不发的两种情况：V4 基座从来不支持；V5 是「暂时」不支持——官方说还在训练，
+      // 上线后把 !isV5 去掉即可，功能代码保持原样不要删。
+      ...(params.preciseReferences && params.preciseReferences.length > 0 && !isV5 && baseModel !== 'nai-diffusion-4-full' && baseModel !== 'nai-diffusion-4-curated-preview' && (() => {
         console.log('[API] 构建 Precise Reference 参数:', params.preciseReferences.length, '张图片');
         params.preciseReferences.forEach((pr, i) => {
           console.log(`[API] PR ${i}: mode=${pr.mode}, ie=${pr.informationExtracted}, str=${pr.strength}, base64长度=${pr.imageBase64.length}`);
@@ -473,7 +529,7 @@ export function buildRequestPayload(params: GenerateImageParams) {
         };
       })()),
       // 旧版 CR 参数（向后兼容）- 如果没有 preciseReferences 则使用 crReference
-      ...(!params.preciseReferences?.length && params.crReference && {
+      ...(!params.preciseReferences?.length && params.crReference && !isV5 && {
         director_reference_images: [params.crReference.imageBase64],
         director_reference_descriptions: [
           {
@@ -491,7 +547,8 @@ export function buildRequestPayload(params: GenerateImageParams) {
       // Vibe参数 - 如果提供了vibeReferences则添加
       // NovelAI API 的 normalize_reference_strength_multiple 仅对缓存模式生效，
       // 直接传编码数据时需要前端自行归一化 strength
-      ...(params.vibeReferences && params.vibeReferences.length > 0 && (() => {
+      // V5 同样是「暂时」不支持（连 encode-vibe 都不能为它编码），故整段不发。
+      ...(params.vibeReferences && params.vibeReferences.length > 0 && !isV5 && (() => {
         let strengths = params.vibeReferences!.map(v => v.strength);
         // 前端归一化：开启时将所有 strength 按比例缩放，使总和 ≤ 1
         if ((params.normalizeVibeStrength ?? true) && strengths.length > 1) {
@@ -673,6 +730,8 @@ async function generateImageViaBotMode(
   // 构建Web端参数（与buildRequestPayload类似，但格式适配Bot端）
   // Sampler 和 Model 需要转换为 API 内部名
   const modelMap: Record<string, string> = {
+    'v5-full': 'nai-diffusion-5-full',
+    'v5-curated': 'nai-diffusion-5-curated',
     'v4.5-full': 'nai-diffusion-4-5-full',
     'v4.5-curated': 'nai-diffusion-4-5-curated',
     'v4-full': 'nai-diffusion-4-full',

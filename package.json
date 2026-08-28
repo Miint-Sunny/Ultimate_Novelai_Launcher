@@ -26,7 +26,8 @@
     "scan:secrets": "node scripts/scan-secrets.mjs",
     "check:gallery-parity": "node --experimental-strip-types scripts/check-gallery-parity.mjs",
     "check:studio-parity": "node --experimental-strip-types scripts/check-studio-parity.mjs",
-    "check:weightops-parity": "node --experimental-strip-types scripts/check-weightops-parity.mjs"
+    "check:weightops-parity": "node --experimental-strip-types scripts/check-weightops-parity.mjs",
+    "check:v5-parity": "node --experimental-strip-types scripts/check-v5-parity.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2",

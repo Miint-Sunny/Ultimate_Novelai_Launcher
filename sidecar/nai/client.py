@@ -50,6 +50,16 @@ def _sanitize_for_log(value: Any) -> Any:
     return value
 
 
+def is_v5_model(model: str) -> bool:
+    """Whether ``model`` belongs to the NAI Diffusion V5 family.
+
+    Matches the base ids and their ``-inpainting`` variants. ``custom`` was V5's
+    staging key during the beta and still turns up in older metadata, so it is
+    treated as V5 rather than falling through to the V4-shaped payload.
+    """
+    return model.startswith("nai-diffusion-5") or model == "custom"
+
+
 def build_official_payload(tags: str, negative: str, params: GenerationParams) -> dict[str, Any]:
     seed = params.seed if params.seed is not None else secrets.randbits(32)
     parameters = {
@@ -94,6 +104,41 @@ def build_official_payload(tags: str, negative: str, params: GenerationParams) -
         "reference_information_extracted_multiple": [],
         "reference_strength_multiple": [],
     }
+
+    if is_v5_model(params.model):
+        # V5 keeps the v4_prompt / v4_negative_prompt structure verbatim -- and in
+        # fact *requires* it: omitting the object makes NovelAI answer HTTP 500 even
+        # with zero characters. What changes is the envelope around it.
+        parameters["params_version"] = 4
+        # The numeric ucPreset / qualityToggle pair became string preset ids. The
+        # values here mirror what the V4 branch above already claims (ucPreset 0 is
+        # "heavy"; qualityToggle False is "no quality tags") so this path's semantics
+        # are unchanged -- the preset *text* is the caller's to supply either way.
+        parameters.pop("ucPreset", None)
+        parameters.pop("qualityToggle", None)
+        parameters["ucPresetId"] = "heavy"
+        parameters["qualityPresetId"] = "none"
+        # V5 exposes no noise schedule (the official client force-writes karras and
+        # hides the picker) and has no Variety+, so skip_cfg_above_sigma has nothing
+        # to delay. Sending sm/sm_dyn true is a 500 on V5; they are already False.
+        parameters["noise_schedule"] = "karras"
+        parameters.pop("skip_cfg_above_sigma", None)
+        # Alpha compositing mode. NovelAI's own client sends this for every model
+        # whose capability record has transparency, independently of whether the
+        # prompt asked for a transparent background.
+        parameters["straight_alpha"] = True
+        # Vibe transfer is not available on V5 yet -- not "never": NovelAI has said
+        # it is still being trained. Drop the arrays rather than the code path, so
+        # re-enabling is a matter of deleting these three lines.
+        parameters.pop("reference_image_multiple", None)
+        parameters.pop("reference_information_extracted_multiple", None)
+        parameters.pop("reference_strength_multiple", None)
+        # tag_hint_qt / tag_hint_uc_preset are deliberately not sent. They are
+        # pass-through hints the model does not interpret (they exist so the web UI
+        # can restore preset state from metadata), and the observed numbering does
+        # not match preset list order, so guessing one would only write a wrong hint
+        # into the PNG. This path applies no preset text, so it has none to declare.
+
     return {
         "input": tags,
         "model": params.model,
@@ -221,11 +266,33 @@ def parse_anlas_subscription(data: dict[str, Any]) -> dict[str, Any]:
     purchased = int(steps.get("purchasedTrainingSteps") or 0)
     tier = data.get("tier")
     active = data.get("active", True)
-    return {
+    parsed: dict[str, Any] = {
         "fixedTrainingStepsLeft": fixed,
         "purchasedTrainingSteps": purchased,
         "isOpus": tier == 3 and active is not False,
     }
+
+    # V5 metered Opus's previously unlimited free generations. NovelAI reports the
+    # remaining allowance here and nowhere else: an exhausted bar does not fail a
+    # request, it silently starts charging Anlas, so a client that does not read
+    # this cannot warn anyone before the money goes. Absent below Opus.
+    usage = data.get("usage")
+    if isinstance(usage, dict):
+        percent = usage.get("percent")
+        next_percent = usage.get("timeUntilNextPercent")
+        parsed["opusUsage"] = {
+            # Can exceed 100: NovelAI granted a one-time boost past the cap at
+            # launch, and 170 has been observed in the wild.
+            "percent": int(percent) if isinstance(percent, (int, float)) else 0,
+            "isNegative": bool(usage.get("isNegative")),
+            # Seconds until the bar gains its next percent; 0 while refill is
+            # paused because the bar is full.
+            "timeUntilNextPercent": (
+                int(next_percent) if isinstance(next_percent, (int, float)) else 0
+            ),
+        }
+
+    return parsed
 
 
 async def fetch_anlas(

@@ -187,15 +187,22 @@ export function PromptPane({
   );
 }
 
-export function TokenMeter({ totalTokenCount }: { totalTokenCount: number }) {
+export function TokenMeter({
+  totalTokenCount,
+  maxTokens,
+}: {
+  totalTokenCount: number;
+  /** 当前模型的 token 软阈值(V4 系 512 / V5 Full 1471 / V5 Curated 703)。 */
+  maxTokens: number;
+}) {
   return (
     <div className="flex-1 relative cursor-help h-[24px] bg-gray-800/80 rounded-full shadow-inner border border-gray-700/50 flex items-center justify-end px-3 overflow-hidden">
       <div
-        className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ease-out ${totalTokenCount > 512 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse' : 'bg-nai-accent shadow-[0_0_8px_rgba(252,237,164,0.4)]'}`}
-        style={{ width: `${Math.min((totalTokenCount / 512) * 100, 100)}%` }}
+        className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ease-out ${totalTokenCount > maxTokens ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse' : 'bg-nai-accent shadow-[0_0_8px_rgba(252,237,164,0.4)]'}`}
+        style={{ width: `${Math.min((totalTokenCount / maxTokens) * 100, 100)}%` }}
       />
-      <div className={`relative z-10 text-xs font-mono tracking-wide drop-shadow-sm ${totalTokenCount > 512 ? 'text-white font-bold drop-shadow' : 'text-gray-500 font-semibold'}`}>
-        {totalTokenCount} <span className={`text-[10px] ${totalTokenCount > 512 ? 'text-gray-300' : 'text-gray-500'}`}>/ 512</span>
+      <div className={`relative z-10 text-xs font-mono tracking-wide drop-shadow-sm ${totalTokenCount > maxTokens ? 'text-white font-bold drop-shadow' : 'text-gray-500 font-semibold'}`}>
+        {totalTokenCount} <span className={`text-[10px] ${totalTokenCount > maxTokens ? 'text-gray-300' : 'text-gray-500'}`}>/ {maxTokens}</span>
       </div>
     </div>
   );

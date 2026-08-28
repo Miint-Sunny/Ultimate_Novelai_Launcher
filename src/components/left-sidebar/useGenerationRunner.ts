@@ -36,6 +36,7 @@ interface UseGenerationRunnerParams {
   scaleRescale: number;
   noiseSchedule: string;
   varietyPlus: boolean;
+  transparentBackground?: boolean;
   normalizeVibeStrength: boolean;
   characterPrompts: CharacterPrompt[];
   activePreciseRefs: ActivePreciseRef[];
@@ -167,6 +168,7 @@ function sharedBaseInput(
     noiseSchedule: params.noiseSchedule,
     activePresetId: params.activePresetId,
     varietyPlus: params.varietyPlus,
+    transparentBackground: params.transparentBackground,
     normalizeVibeStrength: params.normalizeVibeStrength,
     characterPrompts: params.characterPrompts,
     activePreciseRefs: params.activePreciseRefs,

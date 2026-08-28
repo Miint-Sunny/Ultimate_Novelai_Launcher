@@ -1118,6 +1118,18 @@ async def _iter_chunks_with_timeout(content, chunk_timeout: float):
             break
 
 
+def _is_v5_model(model: str) -> bool:
+    """是否 V5 家族(含 -inpainting 变体与公测期的 custom 别名)。"""
+    return model.startswith("nai-diffusion-5") or model == "custom"
+
+
+# V5 在同一条维度公式之上再乘 1.5(官方 bundle 的计价函数里就是独立一行)。
+# 实测锚点:832×1216 / 28 步 = 20 × 1.5 = 30 Anlas。
+# 前端对应实现:src/services/costCalculator.ts,两处需同步修改。
+_V5_COST_MULTIPLIER = 1.5
+_MAX_ANLAS_PER_IMAGE = 140
+
+
 async def generate_novelai_image_stream(
     params: dict,
     progress_callback: Callable = None,
@@ -1199,7 +1211,9 @@ async def generate_novelai_image_stream(
         "action": params.get("action", "generate"),
         "use_new_shared_trial": True,
         "parameters": {
-            "params_version": 3,
+            # V5 需要 params_version 4：传 3 它照样出图，但角色的自由定位坐标会被
+            # 静默丢弃——人站错地方且不报错，是最难查的那类。
+            "params_version": 4 if _is_v5_model(model) else 3,
             "width": width,
             "height": height,
             "scale": scale,
@@ -1207,8 +1221,26 @@ async def generate_novelai_image_stream(
             "sampler": sampler,
             "steps": steps,
             "n_samples": 1,
-            "ucPreset": uc_preset,
-            "qualityToggle": quality_toggle,
+            # 数字 ucPreset + 布尔 qualityToggle 是 V4 系口径；V5 换字符串 id。
+            # 两套绝不能同时出现在同一个载荷里。
+            **(
+                {
+                    "ucPresetId": params.get("v5_uc_preset_id", "heavy"),
+                    "qualityPresetId": params.get("v5_quality_preset_id", "none"),
+                    # 让 32 通道 VAE 真正吐出 alpha 通道的就是这个字段
+                    "straight_alpha": bool(params.get("straight_alpha", True)),
+                    **(
+                        {"tag_hint_transparent_background": True}
+                        if params.get("tag_hint_transparent_background")
+                        else {}
+                    ),
+                }
+                if _is_v5_model(model)
+                else {
+                    "ucPreset": uc_preset,
+                    "qualityToggle": quality_toggle,
+                }
+            ),
             "cfg_rescale": cfg_rescale,
             "noise_schedule": noise_schedule,
             "skip_cfg_above_sigma": skip_cfg_above_sigma,
@@ -2565,13 +2597,30 @@ async def enqueue_generation(
 
 
 def calculate_anlas_cost(width: int, height: int, steps: int, model: str,
-                         img2img_strength: float = None, precise_ref_count: int = 0) -> int:
-    """计算 Anlas 点数消耗"""
+                         img2img_strength: float = None, precise_ref_count: int = 0,
+                         opus_usage_exhausted: bool = False) -> int:
+    """计算 Anlas 点数消耗
+
+    ``model`` 在 V5 之前是不参与计算的（各模型同价），V5 起必须看：它在同一条
+    维度公式之上再乘 1.5。漏掉这一乘等于给 V5 少算三分之一的账。
+
+    ``opus_usage_exhausted`` 是 V5 独有的第四道闸。V5 是唯一消耗 Opus「体力条」
+    的模型族，而条空之后 NAI 不报错、不返回 402，就是照生成、照扣 Anlas——所以
+    「免费」这个判断在条空时必须翻转，否则账面上永远显示免费而钱一直在走。
+    """
     pixels = width * height
     per_image = max(math.ceil(5.773e-7 * pixels * (steps + 5)), 2)
+    if _is_v5_model(model):
+        # 官方是双重取整：基数先 ceil，乘 1.5 后再 ceil 一次。一次算完再取整
+        # 在不少尺寸上会差 1 点。
+        per_image = max(math.ceil(per_image * _V5_COST_MULTIPLIER), 2)
+    # 官方对单张有硬上限，超过即判不可生成；这里夹住，真正的拒绝交给上游。
+    per_image = min(per_image, _MAX_ANLAS_PER_IMAGE)
     if img2img_strength is not None and img2img_strength > 0:
         per_image = max(math.ceil(per_image * img2img_strength), 2)
     is_free = (steps <= 28 and pixels <= 1048576)
+    if _is_v5_model(model) and opus_usage_exhausted:
+        is_free = False
     base_cost = 0 if is_free else per_image
     pr_cost = 5 * precise_ref_count
     return base_cost + pr_cost
@@ -4715,6 +4764,18 @@ _NAI_UC_PRESETS_BY_MODEL = {
 # 都是 0，作为兜底最安全。
 _NAI_UC_PRESETS_FALLBACK = {"heavy": 0, "light": 1, "furryFocus": 2, "humanFocus": 2, "none": 3}
 
+# V5 起 NAI 把这套数字枚举换成了字符串 id(ucPresetId / qualityPresetId),所以
+# 上面那张表对 V5 无效——V5 走 _is_v5_model 分支直接透传预设名。两套口径并行,
+# 别把 V5 的预设名拿去查上面的表。前端对应实现:src/services/naiV5Presets.ts。
+_V5_UC_PRESET_IDS = frozenset({"heavy", "light", "furryFocus", "humanFocus", "none"})
+
+
+def resolve_v5_uc_preset_id(preset: object) -> str:
+    """把 ucPreset 归一化成 V5 的字符串 id;不认识的一律退到 heavy。"""
+    if isinstance(preset, str) and preset in _V5_UC_PRESET_IDS:
+        return preset
+    return "heavy"
+
 
 def resolve_nai_uc_preset(model: str, preset: object) -> int:
     """把 ucPreset 预设名解析为该模型族对应的数字枚举；数字原样透传。"""
@@ -4751,6 +4812,8 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
     # 模型处理：支持前端已转换的 API 内部名，也支持显示名
     model_id = web_params.get("model", "nai-diffusion-4-5-full")
     model_map = {
+        "v5-full": "nai-diffusion-5-full",
+        "v5-curated": "nai-diffusion-5-curated",
         "v4.5-full": "nai-diffusion-4-5-full",
         "v4.5-curated": "nai-diffusion-4-5-curated",
         "v4-full": "nai-diffusion-4-full",
@@ -4762,7 +4825,10 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
     
     # ucPreset 处理：数字原样透传；字符串按模型族解析（默认 heavy，
     # 与 DirectGenerateRequest.ucPreset 的缺省一致）
+    # V5 例外：它用字符串 id，不查数字表（见 _V5_UC_PRESET_IDS 处的说明）
+    is_v5 = _is_v5_model(model)
     uc_preset_value = resolve_nai_uc_preset(model, uc_preset_raw)
+    v5_uc_preset_id = resolve_v5_uc_preset_id(uc_preset_raw) if is_v5 else None
     
     # 角色提示词转换
     character_prompts = web_params.get("characterPrompts", [])
@@ -4807,23 +4873,34 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
         "model": model,
         "sampler": sampler,
         "cfg_rescale": cfg_rescale,
-        "noise_schedule": noise_schedule,
-        "skip_cfg_above_sigma": 58 if variety_plus else None,
+        # V5 隐藏噪声调度选择器并强制 karras；也没有 Variety+ 可延迟
+        "noise_schedule": "karras" if is_v5 else noise_schedule,
+        "skip_cfg_above_sigma": None if is_v5 else (58 if variety_plus else None),
         "quality_toggle": quality_toggle,
         "uc_preset": uc_preset_value,
         "normalize_reference_strength_multiple": normalize_vibe_strength,
         "character_prompts": stream_character_prompts,
     }
-    
+
+    if is_v5:
+        # 下游 generate_novelai_image_stream 见到这些键就切 V5 形状的载荷
+        stream_params["v5_uc_preset_id"] = v5_uc_preset_id
+        stream_params["v5_quality_preset_id"] = "standard" if quality_toggle else "none"
+        stream_params["straight_alpha"] = True
+        if web_params.get("transparentBackground"):
+            stream_params["tag_hint_transparent_background"] = True
+
     # Vibe 参数
-    vibe_refs = web_params.get("vibeReferences", [])
+    # V5 暂不支持氛围转移与精确参考（官方说仍在训练）。这里按模型挡住，避免
+    # 老客户端把 4.5 的引用原样带到 V5 请求里去。上线后删掉 not is_v5 即可。
+    vibe_refs = [] if is_v5 else web_params.get("vibeReferences", [])
     if vibe_refs:
         stream_params["reference_image_multiple"] = [v.get("encodedVibe") for v in vibe_refs]
         stream_params["reference_strength_multiple"] = [v.get("strength", 0.5) for v in vibe_refs]
         stream_params["reference_information_extracted_multiple"] = [v.get("informationExtracted", 1) for v in vibe_refs]
     
-    # Precise Reference 参数
-    precise_refs = web_params.get("preciseReferences", [])
+    # Precise Reference 参数（V5 同上，暂缺）
+    precise_refs = [] if is_v5 else web_params.get("preciseReferences", [])
     if precise_refs:
         stream_params["director_reference_images"] = [pr.get("imageBase64") for pr in precise_refs]
         stream_params["director_reference_descriptions"] = [{
@@ -4851,7 +4928,12 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
         stream_params["noise"] = inpaint.get("noise", 0)
         # inpaint 需要使用 inpainting 模型
         base_model = stream_params.get("model", "nai-diffusion-4-5-full")
-        if base_model == "nai-diffusion-3":
+        if base_model == "nai-diffusion-5-curated":
+            # V5 Curated 的重绘模型「还在训练中」（官方原话），官方客户端在这种
+            # 情况下换用 V4.5 Curated 的重绘模型。所以重绘能点、也出图，只是那是
+            # 4.5 的模型在补 V5 的画面，风格对不齐。NAI 上线后删掉这一支即可。
+            stream_params["model"] = "nai-diffusion-4-5-curated-inpainting"
+        elif base_model == "nai-diffusion-3":
             stream_params["model"] = "nai-diffusion-3-inpainting"
         else:
             stream_params["model"] = f"{base_model}-inpainting"

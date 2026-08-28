@@ -57,6 +57,9 @@ import {
   MODELS,
   RESOLUTIONS,
   clampToMaxPixels,
+  defaultModelOption,
+  maxCharactersForModel,
+  maxPromptTokensForModel,
   type ModelOption,
 } from './generation/modelResolutionOptions';
 
@@ -284,8 +287,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
   // Artist State (extracted to useArtistManager hook)
   const artistManager = useArtistManager();
-  const ocManager = useOCManager();
   const crManager = useCRManager();
+
+  // 首次启动用 DEFAULT_MODEL_ID(经 defaultModelOption 查表,不取 MODELS[0]——
+  // 让列表顺序决定默认是本次已经犯过一次的 bug);之后恢复上次选择,由
+  // getAISettings 负责校验存量值仍然存在。
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(
+    () => MODELS.find((option) => option.id === getAISettings().model) ?? defaultModelOption(),
+  );
 
   const {
     characterPrompts,
@@ -300,7 +309,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     removeCharacterPrompt,
     updateCharacterPrompt,
     moveCharacterPrompt,
-  } = useCharacterPrompts();
+  } = useCharacterPrompts(maxCharactersForModel(selectedModel.id));
 
   const {
     promptPresets,
@@ -459,7 +468,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       artistManager.handleTagsChange(tags);
     }
   }, [chipMode, positivePrompt, artistManager.handleTagsChange]);
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+  const ocManager = useOCManager(maxCharactersForModel(selectedModel.id));
   const handleExportVibe = useVibeExport({
     exportingVibeId,
     setExportingVibeId,
@@ -553,13 +562,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const [scaleRescale, setScaleRescale] = useState(() => getAISettings().scaleRescale);
   const [noiseSchedule, setNoiseSchedule] = useState(() => getAISettings().noiseSchedule);
   const [varietyPlus, setVarietyPlus] = useState(() => getAISettings().varietyPlus);
+  // 透明背景(仅 V5)。不进 saveAISettings:那份设置是跨模型共享的生成参数,
+  // 而这是个模型专属能力,记住它会让切回 4.5 时留下一个不存在的开关状态。
+  const [transparentBackground, setTransparentBackground] = useState(false);
   const [normalizeVibeStrength, setNormalizeVibeStrength] = useState(() => getAISettings().normalizeVibeStrength);
   const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
 
   // 保存 AI 设置到 localStorage
   useEffect(() => {
-    saveAISettings({ steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength });
-  }, [steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength]);
+    saveAISettings({ steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength, model: selectedModel.id });
+  }, [steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength, selectedModel]);
 
   // 重置 AI 设置
   const resetAISettings = () => {
@@ -699,6 +711,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     setPositivePrompt,
     setCharacterPrompts,
     setIsCharacterSectionOpen,
+    maxCharacters: maxCharactersForModel(selectedModel.id),
   });
   const {
     handleConfirmArtistSelection,
@@ -757,6 +770,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     scaleRescale,
     noiseSchedule,
     varietyPlus,
+    transparentBackground,
     normalizeVibeStrength,
     characterPrompts,
     activePreciseRefs: crManager.activePreciseRefs,
@@ -953,6 +967,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         <div className="p-3 space-y-3 shrink-0">
 
           <PromptComposerSection
+            maxTokens={maxPromptTokensForModel(selectedModel.id)}
             promptAreaRef={promptAreaRef}
             promptBoxHeight={promptBoxHeight}
             isDraggingPromptBox={isDraggingPromptBox}
@@ -981,6 +996,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
           <CharacterPromptsSection
             characterPrompts={characterPrompts}
+            maxCharacters={maxCharactersForModel(selectedModel.id)}
             isCharacterSectionOpen={isCharacterSectionOpen}
             setIsCharacterSectionOpen={setIsCharacterSectionOpen}
             isClearConfirming={isClearConfirming}
@@ -1079,11 +1095,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onNoiseScheduleChange={setNoiseSchedule}
             varietyPlus={varietyPlus}
             onVarietyPlusChange={setVarietyPlus}
+            transparentBackground={transparentBackground}
+            onTransparentBackgroundChange={setTransparentBackground}
+            model={selectedModel.id}
           />
         </div>
       </div>
 
       <GenerationFooterControls
+        opusUsage={anlasInfo?.opusUsage}
         steps={steps}
         setSteps={setSteps}
         scale={scale}
@@ -1157,6 +1177,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         manager={ocManager}
         onConfirmSelection={handleConfirmOCSelection}
         characterPromptsCount={characterPrompts.length}
+        maxCharacters={maxCharactersForModel(selectedModel.id)}
         onOpenInspiration={() => setIsInspirationModalOpen(true)}
       />
 
@@ -1189,6 +1210,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         ocManager={ocManager}
         artistManager={artistManager}
         characterPromptsCount={characterPrompts.length}
+        maxCharacters={maxCharactersForModel(selectedModel.id)}
         showToast={showToast}
         onConfirm={handleTagManagerConfirm}
         onOpenInspiration={() => setIsInspirationModalOpen(true)}

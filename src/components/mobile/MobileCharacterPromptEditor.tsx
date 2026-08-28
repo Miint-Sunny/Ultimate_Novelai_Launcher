@@ -4,12 +4,15 @@ import type { useMobileCharacterPrompts } from './generate/useMobileCharacterPro
 type MobileCharacterPrompts = ReturnType<typeof useMobileCharacterPrompts>;
 
 interface MobileCharacterPromptEditorProps {
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   manager: MobileCharacterPrompts;
   positiveTokens: number;
   negativeTokens: number;
 }
 
 export function MobileCharacterPromptEditor({
+  maxTokens,
   manager,
   positiveTokens,
   negativeTokens,
@@ -28,6 +31,7 @@ export function MobileCharacterPromptEditor({
 
   return (
     <FullscreenEditor
+      maxTokens={maxTokens}
       isOpen={true}
       onClose={() => setEditingCharacterId(null)}
       type={characterPrompt.activeTab === 'prompt' ? 'prompt' : 'undesired'}

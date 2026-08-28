@@ -109,11 +109,24 @@ export function SidebarHeader({
                 ))}
               </div>
               <div className="px-1 pb-1">
-                {(MODEL_PROVIDERS.find((provider) => provider.id === modelProvider)?.models || NAI_MODELS).map((model) => {
+                {(MODEL_PROVIDERS.find((provider) => provider.id === modelProvider)?.models || NAI_MODELS).map((model, index, list) => {
                   const isSelected = selectedModel.id === model.id;
+                  // 分组小标题:官方自 V5 起把 4.5 及以下整体归为 Legacy。
+                  // 只在分组变化处插一行,列表本身仍是扁平的。
+                  const groupLabel =
+                    model.group && model.group !== list[index - 1]?.group
+                      ? model.group === 'new'
+                        ? '最新'
+                        : '旧版'
+                      : null;
                   return (
+                    <div key={model.id}>
+                      {groupLabel && (
+                        <div className="px-2 pt-1.5 pb-0.5 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                          {groupLabel}
+                        </div>
+                      )}
                     <button
-                      key={model.id}
                       className={`relative w-full pl-2.5 pr-2 py-1.5 rounded-md text-left transition-all duration-150 flex items-center justify-between gap-2 ${
                         isSelected
                           ? 'bg-nai-accent/10 text-nai-accent'
@@ -132,6 +145,7 @@ export function SidebarHeader({
                       </div>
                       {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-nai-accent" />}
                     </button>
+                    </div>
                   );
                 })}
               </div>
@@ -140,25 +154,36 @@ export function SidebarHeader({
         </div>
 
         <div
-          className="flex items-center gap-3 bg-nai-input hover:bg-gray-700 px-3 rounded border border-gray-700 h-[38px] shrink-0 transition-all group cursor-pointer min-w-[100px] justify-between"
+          className="flex items-center gap-2 bg-nai-input hover:bg-gray-700 px-2.5 rounded border border-gray-700 h-[38px] shrink-0 transition-all group cursor-pointer justify-between"
           onClick={onRefreshAnlas}
           title="点击刷新"
         >
           <div className="flex flex-col items-start justify-center h-full">
             <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-none mb-0.5 group-hover:text-yellow-500/70 transition-colors">Anlas</span>
-            <span className={`font-mono font-bold text-sm group-hover:text-yellow-400 transition-colors leading-none ${isLoadingAnlas ? 'text-gray-500' : 'text-gray-300'}`}>
+            <span className={`font-mono font-bold text-sm tabular-nums group-hover:text-yellow-400 transition-colors leading-none ${isLoadingAnlas ? 'text-gray-500' : 'text-gray-300'}`}>
               {anlasInfo ? (anlasInfo.fixedTrainingStepsLeft + anlasInfo.purchasedTrainingSteps).toLocaleString() : '—'}
             </span>
           </div>
           <div className="flex items-center justify-center">
-            <span className={`text-2xl filter drop-shadow-[0_0_8px_rgba(234,179,8,0.3)] -mt-1.5 inline-block ${isLoadingAnlas ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} style={isLoadingAnlas ? { animationDuration: '0.8s' } : undefined}>💎</span>
+            <span className={`text-2xl leading-none filter drop-shadow-[0_0_8px_rgba(234,179,8,0.3)] inline-block ${isLoadingAnlas ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} style={isLoadingAnlas ? { animationDuration: '0.8s' } : undefined}>💎</span>
           </div>
         </div>
       </div>
 
-      <div className="relative">
+      {/* shrink-0:侧栏可拖窄,而 Anlas 盒子是 shrink-0 且随余额位数变宽。
+          不锁住这里的话,被挤掉的就是菜单按钮(余额从「—」变成真实数字后就会发生)。
+          该让位的是模型按钮,它有 flex-1 + min-w-0。
+
+          尺寸写死 38×38 而不是 `h-full aspect-square`:后者是个循环依赖——外层
+          宽度取决于按钮宽度,按钮宽度由 aspect-ratio 从高度推出,而高度又要等这一
+          行的交叉轴定下来。测量那一刻 h-full 还没有可解析的高度,按钮按图标高度
+          (约 22px)算宽,外层就照这个偏窄的值排版;等交叉轴拉伸到 38px,按钮才
+          画成 38px,于是右侧溢出外层约 16px,吃掉 p-3 的 12px 内边距后还多出几个
+          像素,被滚动容器的 overflow-x-hidden 削掉——表现就是右边框缺一条。
+          两个尺寸都显式给,依赖链就断了。 */}
+      <div className="relative shrink-0 w-[38px] h-[38px]">
         <button
-          className={`h-full aspect-square bg-nai-input hover:bg-gray-700 rounded flex items-center justify-center transition-colors border border-gray-700 ${isMenuOpen ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+          className={`w-full h-full bg-nai-input hover:bg-gray-700 rounded flex items-center justify-center transition-colors border border-gray-700 ${isMenuOpen ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
           <Menu className="w-5 h-5" />

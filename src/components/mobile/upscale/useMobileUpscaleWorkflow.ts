@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { calculateCostFromUI } from '../../../services/costCalculator';
-import { getCachedIsOpus } from '../../../services/novelai';
+import { getCachedIsOpus, isOpusUsageExhausted } from '../../../services/novelai';
 import {
   isModelLoaded,
   UPSCALE_15X_MAX_PIXELS,
@@ -159,6 +159,8 @@ export function useMobileUpscaleWorkflow({
     if (scale !== 1.5 || !imageSize) return null;
     const preset = MAGNITUDE_PRESETS[magnitude];
     const result = calculateCostFromUI({
+    // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
+    opusUsageExhausted: isOpusUsageExhausted(),
       width: resultWidth,
       height: resultHeight,
       steps: 28,

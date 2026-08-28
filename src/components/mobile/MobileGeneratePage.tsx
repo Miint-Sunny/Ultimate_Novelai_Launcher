@@ -31,6 +31,7 @@ import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker'
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import { useMobilePagerAIBridge } from './generate/useMobilePagerAIBridge';
 import { useScrollEdge } from './pager/useScrollEdge';
+import { maxCharactersForModel, maxPromptTokensForModel } from '../generation/modelResolutionOptions';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
   onEditorStateChange?: (isOpen: boolean) => void;
@@ -83,6 +84,8 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     setCfgRescale,
     varietyPlus,
     setVarietyPlus,
+    transparentBackground,
+    setTransparentBackground,
     showAdvancedSettings,
     setShowAdvancedSettings,
     isPresetExpanded,
@@ -168,6 +171,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   } = img2imgState;
 
   const characterPromptManager = useMobileCharacterPrompts({
+    maxCharacters: maxCharactersForModel(model),
     characterPrompts,
     setCharacterPrompts,
   });
@@ -187,6 +191,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   } = useMobileArtistLibrary();
 
   const ocManager = useMobileOCManager({
+    maxCharacters: maxCharactersForModel(model),
     currentUserId,
     isAuthenticated,
     requireAuth,
@@ -365,6 +370,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     cfgRescale,
     noiseSchedule,
     varietyPlus,
+    transparentBackground,
     generate,
     addInpaintedImage,
     clearInpaintParams,
@@ -399,6 +405,8 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           {/* P7-2 宽触屏档:卡片列限宽居中(700px 以下无效果);滚动容器不变,scroll edge 不受影响 */}
           <div className="wide-touch-column">
             <MobileGenerateCards
+          maxCharacters={maxCharactersForModel(model)}
+          maxTokens={maxPromptTokensForModel(model)}
               positivePrompt={positivePrompt}
               setPositivePrompt={setPositivePrompt}
               negativePrompt={negativePrompt}
@@ -460,6 +468,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           model,
           sampler,
           isOpus: anlasInfo?.isOpus ?? false,
+          opusUsage: anlasInfo?.opusUsage,
           img2imgImage,
           img2imgStrength,
           activePreciseRefs,
@@ -496,6 +505,9 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           setSampler,
           cfgRescale,
           setCfgRescale,
+          model,
+          transparentBackground,
+          setTransparentBackground,
           noiseSchedule,
           setNoiseSchedule,
           varietyPlus,
@@ -504,6 +516,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       />
 
       <MobileGenerateEditors
+        maxTokens={maxPromptTokensForModel(model)}
         editorOpen={editorOpen}
         setEditorOpen={setEditorOpen}
         positivePrompt={positivePrompt}
@@ -539,6 +552,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         showOCModal={showOCModal}
         closeOCModal={() => setShowOCModal(false)}
         characterPromptCount={characterPrompts.length}
+        maxCharacters={maxCharactersForModel(model)}
         ocManager={ocManager}
         isInspirationModalOpen={isInspirationModalOpen}
         closeInspirationModal={() => setIsInspirationModalOpen(false)}

@@ -36,6 +36,7 @@ interface UseMobileGenerationWorkflowOptions {
   cfgRescale: number;
   noiseSchedule: string;
   varietyPlus: boolean;
+  transparentBackground?: boolean;
   generate: (params: GenerateImageParams) => Promise<GenerateResult>;
   addInpaintedImage: (imageUrl: string, width: number, height: number, seed: number) => void;
   clearInpaintParams: () => void;
@@ -71,6 +72,7 @@ export function useMobileGenerationWorkflow({
   cfgRescale,
   noiseSchedule,
   varietyPlus,
+  transparentBackground,
   generate,
   addInpaintedImage,
   clearInpaintParams,
@@ -108,6 +110,7 @@ export function useMobileGenerationWorkflow({
     cfgRescale,
     noiseSchedule,
     varietyPlus,
+    transparentBackground,
     vibeEncodingCache: vibeEncodingCacheRef.current,
     generate,
   });
@@ -129,6 +132,7 @@ export function useMobileGenerationWorkflow({
     cfgRescale,
     noiseSchedule,
     varietyPlus,
+    transparentBackground,
     characterPrompts,
     activePreciseRefs,
     activeVibes,

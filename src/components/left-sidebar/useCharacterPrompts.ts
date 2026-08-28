@@ -42,7 +42,7 @@ function saveCharacterPrompts(characterPrompts: CharacterPrompt[]) {
 // 薄壳:编辑操作在 src/hooks/useSharedCharacterPrompts.ts;
 // 这里保留桌面专属的持久化(desktop_character_prompts 键不动)、
 // 区块展开状态与清空二次确认(UI 决策,移动端不引入),行为与原实现一致。
-export function useCharacterPrompts() {
+export function useCharacterPrompts(maxCharacters?: number) {
   const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(loadCharacterPrompts);
   const [isCharacterSectionOpen, setIsCharacterSectionOpen] = useState(true);
   const [isClearConfirming, setIsClearConfirming] = useState(false);
@@ -59,7 +59,7 @@ export function useCharacterPrompts() {
     updateCharacterPrompt,
     moveCharacterPrompt,
     clearAllCharacterPrompts: clearAll,
-  } = useSharedCharacterPrompts({ characterPrompts, setCharacterPrompts });
+  } = useSharedCharacterPrompts({ characterPrompts, setCharacterPrompts, maxCharacters });
 
   const clearAllCharacterPrompts = () => {
     if (isClearConfirming) {
