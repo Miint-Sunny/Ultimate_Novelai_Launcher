@@ -2,6 +2,7 @@ import type { CSSProperties, DragEvent, MouseEvent, MutableRefObject } from 'rea
 import {
   cleanTagName,
   detectAbnormalWeight,
+  formatAbnormalWeightTip,
   getEffectiveWeight,
   getWeightStyle,
   isSDWeightFormat,
@@ -108,6 +109,7 @@ export function DesktopTagChip({
   const effectiveWeight = getEffectiveWeight(rawTag, group, parsedTags, tagGroups);
   const isSDFormat = isSDWeightFormat(rawTag);
   const abnormalWeight = detectAbnormalWeight(rawTag);
+  const abnormalTip = abnormalWeight ? formatAbnormalWeightTip(abnormalWeight) : undefined;
   const isHidden = rawTag.trim().startsWith('~');
   const roundedClass = group.position === 'first' ? 'rounded-l rounded-r-none' : group.position === 'middle' ? 'rounded-none' : group.position === 'last' ? 'rounded-r rounded-l-none' : 'rounded';
   const gapClass = (group.position === 'first' || group.position === 'middle') ? '-mr-[2px]' : '';
@@ -138,15 +140,18 @@ export function DesktopTagChip({
       style={chipStyle}
       onClick={(event) => handleChipClick(event, index)}
       onDoubleClick={(event) => handleChipDoubleClick(event, index)}
-      title={abnormalWeight ? `⚠️ ${abnormalWeight}` : isSDFormat ? `SD格式: ${rawTag.trim()} - 点击转换` : rawTag.trim()}
+      title={abnormalTip ? `⚠️ ${abnormalTip}` : isSDFormat ? `SD格式: ${rawTag.trim()} - 点击转换` : rawTag.trim()}
     >
       <span className="flex flex-col items-start">
         <span className="flex items-center gap-1">
-          {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalWeight}>⚠️</span>}
+          {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalTip}>⚠️</span>}
           {isSDFormat && !abnormalWeight && <span className="text-[9px] text-amber-300" title="SD WebUI 格式">SD</span>}
           <span className={`font-tag text-sm leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-[#fceda4]' : isSDFormat ? 'text-amber-200' : 'text-white/85'}`}>{rawTag.trim()}</span>
         </span>
-        {abnormalWeight ? (<span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight}</span>)
+        {abnormalWeight ? (<>
+          <span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight.message}</span>
+          {abnormalWeight.suggestion && <span className="text-[10px] leading-tight text-red-300/60">{abnormalWeight.suggestion}</span>}
+        </>)
           : translation ? (<span className={`text-[10px] leading-tight ${isSelected ? 'text-[#fceda4]/50' : 'text-white/35'}`}>{translation}</span>)
             : isTranslating ? (<span className="text-[10px] leading-tight text-white/20 animate-pulse">翻译中…</span>)
               : needsTranslation ? (<span className="text-[10px] leading-tight text-white/15">…</span>) : <span className="text-[10px] leading-tight">&nbsp;</span>}
