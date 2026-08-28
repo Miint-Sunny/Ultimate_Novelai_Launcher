@@ -51,6 +51,13 @@ const visibleSet = (c) => ALL_KEYS.filter((key) => isGenModuleVisible(key, c));
 // ---- 1. 可见性矩阵 ----
 const MATRIX = [
   // [模型, 期望可见集(含居顶 prompt-summary)]
+  // V5:有角色与图生图;没有 vibe 与精确参考——这两项是官方「尚未随 V5 发布、
+  // 后续会推出」的功能,所以这两行断言记录的是**当前**状态,官方放出来时应当
+  // 连同能力表一起更新,而不是被当成回归。
+  ['v5-full', ['prompt-summary', 'character', 'img2img']],
+  ['v5-curated', ['prompt-summary', 'character', 'img2img']],
+  ['nai-diffusion-5-full', ['prompt-summary', 'character', 'img2img']],
+  ['nai-diffusion-5-full-inpainting', ['prompt-summary', 'character', 'img2img']],
   ['v4.5-full', ['prompt-summary', 'character', 'vibe', 'precise-reference', 'img2img']],
   ['v4.5-curated', ['prompt-summary', 'character', 'vibe', 'precise-reference', 'img2img']],
   ['v4-full', ['prompt-summary', 'character', 'vibe', 'img2img']],
@@ -77,6 +84,9 @@ check('可见性矩阵: serverMode(public/custom)与登录态暂不影响任何�
 });
 
 check('modelFamilyOf: UI id / 后端名 / inpainting 变体归一到同一家族', () => {
+  assert.equal(modelFamilyOf('v5-full'), 'nai-5');
+  assert.equal(modelFamilyOf('nai-diffusion-5-curated'), 'nai-5');
+  assert.equal(modelFamilyOf('nai-diffusion-5-full-inpainting'), 'nai-5');
   assert.equal(modelFamilyOf('v4.5-full'), 'nai-4.5');
   assert.equal(modelFamilyOf('nai-diffusion-4-5-curated'), 'nai-4.5');
   assert.equal(modelFamilyOf('v4-full'), 'nai-4');

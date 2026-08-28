@@ -24,11 +24,14 @@ export type GenModuleKey =
 /** 提示词摘要卡始终居顶、不参与排序;其余四张可拖拽调序。 */
 export type SortableGenModuleKey = Exclude<GenModuleKey, 'prompt-summary'>;
 
-export type NaiModelFamily = 'nai-4.5' | 'nai-4' | 'nai-3' | 'nai-legacy' | 'other';
+export type NaiModelFamily = 'nai-5' | 'nai-4.5' | 'nai-4' | 'nai-3' | 'nai-legacy' | 'other';
 
 /** 归一化模型判定:UI 模型 id(经 MODEL_MAP)与后端模型名均可,兼容 -inpainting 变体。 */
 export function modelFamilyOf(model: string): NaiModelFamily {
   const backendId = MODEL_MAP[model] ?? model;
+  // 顺序即优先级:更长的前缀必须先判。V5 漏判会掉进 nai-legacy,
+  // 那一档会把角色提示词卡整张藏掉。
+  if (backendId.startsWith('nai-diffusion-5')) return 'nai-5';
   if (backendId.startsWith('nai-diffusion-4-5')) return 'nai-4.5';
   if (backendId.startsWith('nai-diffusion-4')) return 'nai-4';
   if (backendId.startsWith('nai-diffusion-3')) return 'nai-3';
@@ -65,8 +68,14 @@ export interface GenModuleDef {
 //     (预留进 GenModuleContext,后端确认后在此补行,三处消费自动跟随);
 //   - precise-reference(精确参考/CR)仅 nai-4.5 系:沿用移动端原卡内判定
 //     (v4-full / v4-curated-preview 此前显示「V4 模型不支持」占位,现整卡不渲染);
-//   - character(角色提示词)仅 v4 及以上:charCaptions 是 v4 系载荷格式;
-//   - vibe 按 MODEL_TO_ENCODING_KEY 数据驱动(前端已知可编码的型号才可见);
+//     nai-5 落在这条之外是**暂时**的——官方说 V5 的精确参考还在训练,上线后
+//     把 nai-5 加进这行即可,功能代码不要删;
+//   - character(角色提示词)v4 及以上(含 v5):charCaptions 是 v4 系载荷格式,
+//     V5 原样沿用(且 V5 缺这个对象会直接 500),角色上限从 6 提到 32、坐标改自由浮点;
+//   - vibe 按 MODEL_TO_ENCODING_KEY 数据驱动(前端已知可编码的型号才可见)。
+//     V5 没有编码键,所以自动落在不可见——这正是它现在该有的状态:V5 的
+//     氛围转移尚未开放,连 encode-vibe 都不为它编码。等官方放出来,加一条
+//     编码键映射就会自己亮起来,不必改这里的谓词;
 //   - img2img 全 NAI 型号;inpaint 是其卡内子模式,载荷层会为各 NAI 基座自动派生
 //     -inpainting 变体(buildRequestPayload),故不单独建行;
 //   - 非 NAI / 未知型号:仅提示词摘要卡(安全兜底)。
@@ -86,7 +95,7 @@ export const GEN_MODULE_DEFS: readonly GenModuleDef[] = [
     icon: 'users',
     supports: (ctx) => {
       const family = modelFamilyOf(ctx.model);
-      return family === 'nai-4.5' || family === 'nai-4';
+      return family === 'nai-5' || family === 'nai-4.5' || family === 'nai-4';
     },
   },
   {

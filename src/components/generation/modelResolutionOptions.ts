@@ -2,14 +2,28 @@ export interface ModelOption {
   id: string;
   name: string;
   desc: string;
+  /** 下拉分组:NAI 官方自 V5 起把 4.5 及以下整体标为 Legacy。 */
+  group?: 'new' | 'legacy';
 }
 
 export const NAI_MODELS: ModelOption[] = [
-  { id: 'v4.5-full', name: 'NovelAI V4.5 Full', desc: '最新旗舰模型，NSFW' },
-  { id: 'v4.5-curated', name: 'NovelAI V4.5 Curated', desc: '最新旗舰模型精选版，SFW' },
-  { id: 'v4-full', name: 'NovelAI V4 Full', desc: 'V4旧模型，NSFW' },
-  { id: 'v4-curated-preview', name: 'NovelAI V4 Curated', desc: 'V4旧模型精选版，SFW' },
+  { id: 'v5-full', name: 'NovelAI V5 Full', desc: '最新旗舰模型，数据集最全，NSFW', group: 'new' },
+  { id: 'v5-curated', name: 'NovelAI V5 Curated', desc: '最新精选版，风格更稳，SFW', group: 'new' },
+  { id: 'v4.5-full', name: 'NovelAI V4.5 Full', desc: 'V4.5 模型，NSFW', group: 'legacy' },
+  { id: 'v4.5-curated', name: 'NovelAI V4.5 Curated', desc: 'V4.5 精选版，SFW', group: 'legacy' },
+  { id: 'v4-full', name: 'NovelAI V4 Full', desc: 'V4旧模型，NSFW', group: 'legacy' },
+  { id: 'v4-curated-preview', name: 'NovelAI V4 Curated', desc: 'V4旧模型精选版，SFW', group: 'legacy' },
 ];
+
+// 默认模型与列表顺序解耦:列表按官方 NEW → LEGACY 排,但默认仍是 V4.5 Full。
+// V5 是当下旗舰,却有两点让它不适合无声地成为默认:单张 1.5 倍 Anlas,以及它
+// 是唯一会消耗 Opus「体力条」的模型族(4.5 及以下对 Opus 仍是无限)。把默认换成
+// V5 等于替用户动钱和额度,该是一次明确的产品决定,不是加模型的副作用。
+export const DEFAULT_MODEL_ID = 'v4.5-full';
+
+export function defaultModelOption(): ModelOption {
+  return NAI_MODELS.find((m) => m.id === DEFAULT_MODEL_ID) ?? NAI_MODELS[0];
+}
 
 export const SD_MODELS: ModelOption[] = [
   { id: 'sd-xl', name: 'Stable Diffusion XL', desc: '高质量通用模型' },
@@ -27,6 +41,8 @@ export const MODEL_PROVIDERS: { id: ModelProvider; label: string; models: ModelO
 ];
 
 export const MODEL_MAP: Record<string, string> = {
+  'v5-full': 'nai-diffusion-5-full',
+  'v5-curated': 'nai-diffusion-5-curated',
   'v4.5-full': 'nai-diffusion-4-5-full',
   'v4.5-curated': 'nai-diffusion-4-5-curated',
   'v4-full': 'nai-diffusion-4-full',
@@ -36,6 +52,17 @@ export const MODEL_MAP: Record<string, string> = {
   'sd-3': 'stable-diffusion-3',
   'sd-1.5': 'stable-diffusion-1-5',
 };
+
+/**
+ * 是否 V5 家族。接受 UI id 与后端模型名,兼容 -inpainting 变体。
+ *
+ * `custom` 是 V5 公测期的暂存 id,官方 bundle 里与 V5 走同一分支,旧图元数据里
+ * 还能见到,所以一并认成 V5——否则它会掉进 V4 形状的载荷里。
+ */
+export function isV5Model(model: string): boolean {
+  const backendId = MODEL_MAP[model] ?? model;
+  return backendId.startsWith('nai-diffusion-5') || backendId === 'custom';
+}
 
 export const MODEL_TO_ENCODING_KEY: Record<string, string> = {
   'nai-diffusion-4-full': 'v4full',
