@@ -16,6 +16,8 @@ import type { useMobilePreciseReferences } from './generate/useMobilePreciseRefe
 import type { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 
 interface MobileGenerateCardsProps {
+  /** 当前模型 id。 */
+  model: string;
   /** 当前模型的同框角色上限。 */
   maxCharacters: number;
   /** 当前模型的 token 软阈值。 */
@@ -53,6 +55,7 @@ interface MobileGenerateCardsProps {
 // orderedVisibleGenModuleKeys(持久化顺序 × 可见性谓词)渲染,不满足谓词的整卡不渲染
 // (无置灰占位);卡头长按起拖调序,手势经 dragHandleProps 只挂卡头/标题区。
 export function MobileGenerateCards({
+  model,
   maxCharacters,
   maxTokens,
   positivePrompt,
@@ -106,6 +109,7 @@ export function MobileGenerateCards({
   return (
     <div className="p-3 space-y-3">
       <MobilePromptSummaryCard
+        model={model}
         maxTokens={maxTokens}
         positivePrompt={positivePrompt}
         setPositivePrompt={setPositivePrompt}

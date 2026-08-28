@@ -2,6 +2,8 @@ import type { MouseEvent, MutableRefObject, RefObject } from 'react';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import { useAgentDock } from '../../contexts/AgentDockContext';
 import { useAgentModelPresentation } from '../../hooks/useAgentModelPresentation';
+import { modelCapabilities } from '../generation/modelResolutionOptions';
+import { V5TogglePanel } from './V5TogglePanel';
 import {
   ChipModeToggle,
   FloatingAgentButton,
@@ -14,6 +16,8 @@ import {
 } from './PromptComposerParts';
 
 interface PromptComposerSectionProps {
+  /** 当前模型 id。开关词条面板按它的能力位决定出不出现。 */
+  model: string;
   /** 当前模型的 token 软阈值。 */
   maxTokens: number;
   promptAreaRef: RefObject<HTMLDivElement | null>;
@@ -43,6 +47,7 @@ interface PromptComposerSectionProps {
 }
 
 export function PromptComposerSection({
+  model,
   maxTokens,
   promptAreaRef,
   promptBoxHeight,
@@ -135,6 +140,10 @@ export function PromptComposerSection({
           />
         </div>
       </div>
+
+      {modelCapabilities(model).toggleWords && activeTab === 'prompt' && (
+        <V5TogglePanel prompt={positivePrompt} onPromptChange={onPositivePromptChange} />
+      )}
 
       <div className="px-2 pt-2 pb-1.5 flex items-center justify-between gap-2 border-t border-transparent">
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />

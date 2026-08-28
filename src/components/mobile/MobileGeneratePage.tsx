@@ -405,6 +405,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           {/* P7-2 宽触屏档:卡片列限宽居中(700px 以下无效果);滚动容器不变,scroll edge 不受影响 */}
           <div className="wide-touch-column">
             <MobileGenerateCards
+          model={model}
           maxCharacters={maxCharactersForModel(model)}
           maxTokens={maxPromptTokensForModel(model)}
               positivePrompt={positivePrompt}

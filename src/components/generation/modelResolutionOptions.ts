@@ -93,6 +93,14 @@ export interface ModelCapabilities {
   /** 是否消耗 Opus「体力条」:目前只有 V5。 */
   opusUsageLimit: boolean;
   /**
+   * 是否有 V5 那批「开关词条」(complexity 四档 / depthness / has alpha / …)。
+   *
+   * 它们是写进提示词就整体改变出图取向的特殊词,词表见 services/naiV5Toggles.ts。
+   * 单列一位而不是复用 transparency:那一位管的是 alpha 通道能力,和词表没有关系,
+   * 借用它会让将来任何一方变化时另一方跟着错。
+   */
+  toggleWords: boolean;
+  /**
    * 提示词 token 上限。V4 系 512;V5 Full 1471、V5 Curated 703——同一家族两个值,
    * 所以这一项按型号分,不按家族。
    *
@@ -115,6 +123,7 @@ const V5_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: false,
   preciseReference: false,
   opusUsageLimit: true,
+  toggleWords: true,
   maxPromptTokens: 1471,
 };
 
@@ -134,6 +143,7 @@ const LEGACY_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: true,
   preciseReference: true,
   opusUsageLimit: false,
+  toggleWords: false,
   maxPromptTokens: 512,
 };
 
