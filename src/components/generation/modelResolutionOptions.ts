@@ -15,11 +15,13 @@ export const NAI_MODELS: ModelOption[] = [
   { id: 'v4-curated-preview', name: 'NovelAI V4 Curated', desc: 'V4旧模型精选版，SFW', group: 'legacy' },
 ];
 
-// 默认模型与列表顺序解耦:列表按官方 NEW → LEGACY 排,但默认仍是 V4.5 Full。
-// V5 是当下旗舰,却有两点让它不适合无声地成为默认:单张 1.5 倍 Anlas,以及它
-// 是唯一会消耗 Opus「体力条」的模型族(4.5 及以下对 Opus 仍是无限)。把默认换成
-// V5 等于替用户动钱和额度,该是一次明确的产品决定,不是加模型的副作用。
-export const DEFAULT_MODEL_ID = 'v4.5-full';
+// 默认模型与列表顺序解耦:即便列表顺序变了,默认也只跟着这个常量走。
+//
+// 默认为 V5 Full 是一次明确的产品决定(2026-08-28),不是「排在第一位所以成了默认」
+// 的副作用——两者的区别在这里很重要,因为 V5 比 4.5 贵 1.5 倍,而且是唯一会消耗
+// Opus「体力条」的模型族(4.5 及以下对 Opus 仍是无限)。这个代价由体力条 UI 与
+// 成本徽章如实呈现给用户,而不是靠把默认压在旧模型上来回避。
+export const DEFAULT_MODEL_ID = 'v5-full';
 
 export function defaultModelOption(): ModelOption {
   return NAI_MODELS.find((m) => m.id === DEFAULT_MODEL_ID) ?? NAI_MODELS[0];

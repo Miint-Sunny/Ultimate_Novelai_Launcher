@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CharacterPrompt } from '../types';
+import { DEFAULT_MODEL_ID } from '../../generation/modelResolutionOptions';
 
 const STORAGE_KEY = 'mobile_generate_state';
 
@@ -65,7 +66,7 @@ export function useMobileGenerationParams({
 
   const [localWidth, setLocalWidth] = useState(savedState?.localWidth ?? targetWidth);
   const [localHeight, setLocalHeight] = useState(savedState?.localHeight ?? targetHeight);
-  const [model, setModel] = useState(savedState?.model ?? 'v4.5-full');
+  const [model, setModel] = useState(savedState?.model ?? DEFAULT_MODEL_ID);
   const [positivePrompt, setPositivePrompt] = useState(savedState?.positivePrompt ?? '');
   const [negativePrompt, setNegativePrompt] = useState(savedState?.negativePrompt ?? '');
   const [steps, setSteps] = useState(savedState?.steps ?? 28);

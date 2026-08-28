@@ -57,12 +57,14 @@ check('注册表: 列表按 NEW → LEGACY 排,V5 在最前', () => {
   assert.ok(NAI_MODELS.slice(2).every((m) => m.group === 'legacy'));
 });
 
-check('注册表: 默认模型仍是 V4.5 Full,不随列表顺序漂移', () => {
-  // V5 单张贵 1.5 倍,且是唯一吃 Opus 体力条的模型族。把它变成默认等于替用户
-  // 动钱和额度,得是一次明确的产品决定——所以默认值与数组下标解耦。
-  assert.equal(DEFAULT_MODEL_ID, 'v4.5-full');
-  assert.equal(defaultModelOption().id, 'v4.5-full');
-  assert.notEqual(defaultModelOption().id, NAI_MODELS[0].id);
+check('注册表: 默认模型是显式常量,不是数组第一项', () => {
+  // 默认为 V5 Full 是一次明确的产品决定。这条断言的重点不在「值是 v5-full」,
+  // 而在默认值走的是 DEFAULT_MODEL_ID 而非 NAI_MODELS[0]——两者当下恰好同值,
+  // 所以要额外证明 defaultModelOption 真的在查表,否则将来重排列表会静默改掉
+  // 默认模型(这个 bug 本次已经犯过一次:桌面壳曾用 MODELS[0] 播种状态)。
+  assert.equal(DEFAULT_MODEL_ID, 'v5-full');
+  assert.equal(defaultModelOption().id, 'v5-full');
+  assert.equal(defaultModelOption(), NAI_MODELS.find((m) => m.id === DEFAULT_MODEL_ID));
 });
 
 check('注册表: 角色上限按模型分档(V4 系 6,V5 为 32)', () => {

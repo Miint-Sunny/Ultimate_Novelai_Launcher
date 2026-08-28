@@ -460,8 +460,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       artistManager.handleTagsChange(tags);
     }
   }, [chipMode, positivePrompt, artistManager.handleTagsChange]);
-  // 用显式默认而不是 MODELS[0]:列表已按 NEW → LEGACY 排,首位是 V5,
-  // 但默认仍应是 V4.5(V5 贵 1.5 倍且消耗 Opus 体力条,见 DEFAULT_MODEL_ID)
+  // 用 defaultModelOption() 而不是 MODELS[0]:默认模型是 DEFAULT_MODEL_ID 说了算,
+  // 不能由列表顺序决定——两者当下同值,正因如此更要写对,否则将来重排列表会
+  // 静默改掉默认模型(这个 bug 已经犯过一次)。
   const [selectedModel, setSelectedModel] = useState(defaultModelOption);
   const ocManager = useOCManager(maxCharactersForModel(selectedModel.id));
   const handleExportVibe = useVibeExport({
