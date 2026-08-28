@@ -58,7 +58,10 @@ export function V5TogglePanel({ model, prompt, onPromptChange, touch = false }: 
       </button>
 
       {isOpen && (
-        <div className="mt-1.5 space-y-2 animate-in slide-in-from-top-1 duration-150">
+        // 展开体量不小(10 组 45 项,实测 516px 高)。侧栏是一列滚动区,
+        // 不封顶的话它会把下面的 token 计数、Agent 按钮、角色提示词整个推出视野。
+        // 所以给它自己一个滚动区,展开不再挤走别人。
+        <div className="mt-1.5 max-h-[45vh] overflow-y-auto overscroll-contain space-y-2 animate-in slide-in-from-top-1 duration-150">
           {conflicts.map((conflict) => (
             <div
               key={conflict.groupId}

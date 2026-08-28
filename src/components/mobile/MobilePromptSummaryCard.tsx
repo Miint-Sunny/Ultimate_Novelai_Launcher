@@ -90,12 +90,12 @@ export function MobilePromptSummaryCard({
             </div>
           </div>
           <div
-            className={`text-sm leading-relaxed line-clamp-3 cursor-pointer active:bg-gray-800/50 -mx-3 -mb-3 px-3 pb-3 pt-1 transition-colors ${positivePrompt ? 'text-gray-300' : 'text-gray-600'}`}
+            className={`text-sm leading-relaxed line-clamp-3 cursor-pointer active:bg-gray-800/50 -mx-3 px-3 pb-1 pt-1 transition-colors ${positivePrompt ? 'text-gray-300' : 'text-gray-600'}`}
             onClick={openPromptEditor}
           >
             {positivePrompt ? renderPromptSummary(positivePrompt) : '点击输入提示词...'}
           </div>
-          <div className="-mx-3 -mb-3 mt-2 border-t border-gray-700/30 pt-1">
+          <div className="-mx-3 -mb-3 mt-2 border-t border-gray-700/30 px-1 pt-1">
             <V5TogglePanel model={model} prompt={positivePrompt} onPromptChange={setPositivePrompt} touch />
           </div>
         </div>

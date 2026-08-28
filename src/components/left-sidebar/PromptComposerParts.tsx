@@ -42,8 +42,10 @@ export function PromptToolbar({
     <div className="flex items-center justify-between px-2 pt-1 pb-2 border-b border-gray-700/50 gap-3 relative overflow-hidden">
       <div className="flex-1 relative h-10 overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-between gap-3 transition-all duration-300 ease-out translate-x-0 opacity-100">
-          <div className="flex items-center gap-2 h-full min-w-0">
-          <div className="relative flex items-center bg-black/40 rounded-full p-1 border border-gray-700/50 w-[200px] h-full select-none shrink-0">
+          <div className="flex items-center gap-2 h-full min-w-0 flex-1">
+          {/* 胶囊可压缩:侧栏最窄 400px 时,挤不下要让它变窄,而不是整行重叠。
+              里面的滑块是百分比定位,跟着宽度走没问题。 */}
+          <div className="relative flex items-center bg-black/40 rounded-full p-1 border border-gray-700/50 w-full max-w-[200px] min-w-[132px] h-full select-none">
             <div className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out shadow-sm ${activeTab === 'prompt' ? 'left-1 w-[calc(50%-6px)] bg-nai-accent shadow-[0_0_8px_rgba(235,213,118,0.4)]' : 'left-[calc(50%+2px)] w-[calc(50%-6px)] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`} />
             <div
               className={`relative z-10 w-1/2 flex items-center justify-center gap-1.5 text-sm font-bold transition-colors duration-200 cursor-pointer ${activeTab === 'prompt' ? 'text-black' : 'text-gray-500 hover:text-gray-400'}`}
