@@ -1079,6 +1079,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onNoiseScheduleChange={setNoiseSchedule}
             varietyPlus={varietyPlus}
             onVarietyPlusChange={setVarietyPlus}
+            model={selectedModel.id}
           />
         </div>
       </div>

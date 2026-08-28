@@ -109,11 +109,24 @@ export function SidebarHeader({
                 ))}
               </div>
               <div className="px-1 pb-1">
-                {(MODEL_PROVIDERS.find((provider) => provider.id === modelProvider)?.models || NAI_MODELS).map((model) => {
+                {(MODEL_PROVIDERS.find((provider) => provider.id === modelProvider)?.models || NAI_MODELS).map((model, index, list) => {
                   const isSelected = selectedModel.id === model.id;
+                  // 分组小标题:官方自 V5 起把 4.5 及以下整体归为 Legacy。
+                  // 只在分组变化处插一行,列表本身仍是扁平的。
+                  const groupLabel =
+                    model.group && model.group !== list[index - 1]?.group
+                      ? model.group === 'new'
+                        ? '最新'
+                        : '旧版'
+                      : null;
                   return (
+                    <div key={model.id}>
+                      {groupLabel && (
+                        <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                          {groupLabel}
+                        </div>
+                      )}
                     <button
-                      key={model.id}
                       className={`relative w-full pl-2.5 pr-2 py-1.5 rounded-md text-left transition-all duration-150 flex items-center justify-between gap-2 ${
                         isSelected
                           ? 'bg-nai-accent/10 text-nai-accent'
@@ -132,6 +145,7 @@ export function SidebarHeader({
                       </div>
                       {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-nai-accent" />}
                     </button>
+                    </div>
                   );
                 })}
               </div>

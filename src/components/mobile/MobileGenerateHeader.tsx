@@ -45,19 +45,34 @@ export function MobileGenerateHeader({
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowModelDropdown(false)} />
                 <div className="absolute right-0 z-50 w-56 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden animate-fade-in">
-                  {MODELS.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setModel(item.id);
-                        setShowModelDropdown(false);
-                      }}
-                      className={`w-full px-3 py-2.5 text-left text-sm ${model === item.id ? 'bg-gray-700 text-nai-accent' : 'active:bg-gray-700'}`}
-                    >
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-xs text-gray-500">{item.desc}</div>
-                    </button>
-                  ))}
+                  {MODELS.map((item, index, list) => {
+                    // 与桌面同源的分组小标题(官方自 V5 起把 4.5 及以下归为旧版)
+                    const groupLabel =
+                      item.group && item.group !== list[index - 1]?.group
+                        ? item.group === 'new'
+                          ? '最新'
+                          : '旧版'
+                        : null;
+                    return (
+                      <div key={item.id}>
+                        {groupLabel && (
+                          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                            {groupLabel}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => {
+                            setModel(item.id);
+                            setShowModelDropdown(false);
+                          }}
+                          className={`w-full px-3 py-2.5 text-left text-sm ${model === item.id ? 'bg-gray-700 text-nai-accent' : 'active:bg-gray-700'}`}
+                        >
+                          <div className="font-medium">{item.name}</div>
+                          <div className="text-xs text-gray-500">{item.desc}</div>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}

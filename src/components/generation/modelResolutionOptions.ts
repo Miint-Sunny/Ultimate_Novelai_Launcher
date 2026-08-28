@@ -64,6 +64,67 @@ export function isV5Model(model: string): boolean {
   return backendId.startsWith('nai-diffusion-5') || backendId === 'custom';
 }
 
+/**
+ * 按模型族的能力位。结构照搬 NAI 官方前端 bundle 里那张 capability record——
+ * 它把「这个模型能不能用某功能」集中成一张表,而不是散落的 `if (isV5)`。
+ *
+ * 这样组织的实际好处:V5 缺的 vibe / 精确参考是**暂时**缺的(官方说仍在训练),
+ * 上线那天只要把对应位改成 true,所有消费方一起跟着亮,不必回头找散落的判断。
+ */
+export interface ModelCapabilities {
+  /** 噪声调度可选:V5 隐藏选择器并强制 karras。 */
+  noiseSchedule: boolean;
+  /** Variety+(skip_cfg_above_sigma):V5 没有。 */
+  varietyPlus: boolean;
+  /** 同框角色上限:V4 系 6,V5 提到 32。 */
+  maxCharacters: number;
+  /** 角色位置是否自由浮点(V5)还是 5×5 网格(V4 系)。 */
+  freeformCharacterPosition: boolean;
+  /** 透明背景输出(straight_alpha + 三个透明词条)。 */
+  transparency: boolean;
+  /** Anime⇄Furry 数据集开关(V5 用它取代独立的 furry 模型)。 */
+  furryMode: boolean;
+  /** 氛围转移。V5 暂缺——官方后续会上,不是永久没有。 */
+  vibeTransfer: boolean;
+  /** 精确参考。V5 暂缺,同上。 */
+  preciseReference: boolean;
+  /** 是否消耗 Opus「体力条」:目前只有 V5。 */
+  opusUsageLimit: boolean;
+}
+
+const V5_CAPABILITIES: ModelCapabilities = {
+  noiseSchedule: false,
+  varietyPlus: false,
+  maxCharacters: 32,
+  freeformCharacterPosition: true,
+  transparency: true,
+  furryMode: true,
+  vibeTransfer: false,
+  preciseReference: false,
+  opusUsageLimit: true,
+};
+
+const LEGACY_CAPABILITIES: ModelCapabilities = {
+  noiseSchedule: true,
+  varietyPlus: true,
+  maxCharacters: 6,
+  freeformCharacterPosition: false,
+  transparency: false,
+  furryMode: false,
+  vibeTransfer: true,
+  preciseReference: true,
+  opusUsageLimit: false,
+};
+
+export function modelCapabilities(model: string): ModelCapabilities {
+  return isV5Model(model) ? V5_CAPABILITIES : LEGACY_CAPABILITIES;
+}
+
+/** 同框角色上限。UI 各处的「已满」判断都应问这里,不要再写死 6。 */
+export function maxCharactersForModel(model: string): number {
+  return modelCapabilities(model).maxCharacters;
+}
+
 export const MODEL_TO_ENCODING_KEY: Record<string, string> = {
   'nai-diffusion-4-full': 'v4full',
   'nai-diffusion-4-curated': 'v4curated',
