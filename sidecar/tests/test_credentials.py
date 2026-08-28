@@ -130,8 +130,7 @@ class CredentialsTests(unittest.TestCase):
                 credentials.get_stored_token(self._data_dir())
         self.assertEqual(legacy.read_text(encoding="utf-8"), "token-orphan-value")
 
-    def test_macos_keychain_write_uses_resolved_executable_and_stdin(self) -> None:
-        completed = mock.Mock(returncode=0)
+    def test_macos_keychain_write_verifies_the_round_trip(self) -> None:
         secret = "super-secret-value"
         with (
             mock.patch.object(
@@ -139,26 +138,58 @@ class CredentialsTests(unittest.TestCase):
                 "which",
                 return_value="/usr/bin/security",
             ),
-            mock.patch.object(credentials.subprocess, "run", return_value=completed) as run,
+            mock.patch.object(
+                credentials, "_macos_answer_password_prompt", return_value=True
+            ) as prompt,
+            mock.patch.object(credentials, "_macos_get_password", return_value=secret),
         ):
             self.assertTrue(credentials._macos_set_password("account", secret))
 
-        args = run.call_args.args[0]
+        prompt.assert_called_once_with("/usr/bin/security", "account", secret)
+
+    def test_macos_keychain_write_keeps_the_secret_out_of_argv(self) -> None:
+        # Passing the secret on argv would work, and would also publish it to
+        # every `ps` on the machine. It goes down the pty instead.
+        secret = "super-secret-value"
+        process = mock.Mock(returncode=0)
+        with (
+            mock.patch.object(credentials.subprocess, "Popen", return_value=process) as popen,
+            mock.patch.object(credentials.os, "write"),
+            mock.patch.object(credentials.os, "close"),
+        ):
+            credentials._macos_answer_password_prompt("/usr/bin/security", "account", secret)
+
+        args = popen.call_args.args[0]
         self.assertEqual(args[0], "/usr/bin/security")
         self.assertEqual(args[-1], "-w")
         self.assertNotIn(secret, args)
-        self.assertEqual(run.call_args.kwargs["input"], f"{secret}\n")
+
+    def test_macos_keychain_write_fails_when_the_secret_does_not_round_trip(self) -> None:
+        # The regression this guards: `security add-generic-password -w` prompts
+        # on a terminal rather than reading stdin, so a sidecar's piped write
+        # stored an empty password and still exited 0. Success was reported, the
+        # keychain held nothing, and the loss only showed up later as a token
+        # that would not save. A zero exit is therefore not enough -- the value
+        # has to read back.
+        process = mock.Mock(returncode=0)
+        with (
+            mock.patch.object(
+                credentials.shutil,
+                "which",
+                return_value="/usr/bin/security",
+            ),
+            mock.patch.object(credentials.subprocess, "Popen", return_value=process),
+            mock.patch.object(credentials, "_macos_get_password", return_value=""),
+        ):
+            self.assertFalse(credentials._macos_set_password("account", "super-secret-value"))
 
     def test_macos_keychain_write_requires_resolved_executable(self) -> None:
         with (
             mock.patch.object(credentials.shutil, "which", return_value=None),
-            mock.patch.object(
-                credentials.subprocess,
-                "run",
-            ) as run,
+            mock.patch.object(credentials.subprocess, "Popen") as popen,
         ):
             self.assertFalse(credentials._macos_set_password("account", "secret"))
-        run.assert_not_called()
+        popen.assert_not_called()
 
     def test_macos_keychain_read_and_delete_use_resolved_executable(self) -> None:
         completed = mock.Mock(returncode=0, stdout="stored-secret\n")
