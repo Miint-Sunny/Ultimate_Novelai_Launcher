@@ -91,6 +91,8 @@ check('注册表: 角色上限按模型分档(V4 系 6,V5 为 32)', () => {
   assert.equal(v5.transparency, true);
   assert.equal(v5.opusUsageLimit, true);
   assert.equal(v5.freeformCharacterPosition, true);
+  // 文字渲染是 V5 独有:引号 → teXt: 块。编辑器提示与补全让路都问这一位。
+  assert.equal(v5.textRendering, true);
   // 这两项是「暂缺」不是「不支持」——官方上线后改成 true,这两行断言应随之更新
   assert.equal(v5.vibeTransfer, false);
   assert.equal(v5.preciseReference, false);
@@ -98,6 +100,7 @@ check('注册表: 角色上限按模型分档(V4 系 6,V5 为 32)', () => {
   const legacy = modelCapabilities('v4.5-full');
   assert.equal(legacy.noiseSchedule, true);
   assert.equal(legacy.opusUsageLimit, false);
+  assert.equal(legacy.textRendering, false);
 });
 
 check('注册表: token 软阈值按型号分档(Full 与 Curated 不同)', () => {

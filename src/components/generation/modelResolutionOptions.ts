@@ -93,6 +93,11 @@ export interface ModelCapabilities {
   /** 是否消耗 Opus「体力条」:目前只有 V5。 */
   opusUsageLimit: boolean;
   /**
+   * 文字渲染(引号内容翻译成 teXt: 块画进图里):V5 新增,V4 系没有。
+   * 编辑器里的引号提示、载体检查与补全让路都问这一位,不写 if (isV5)。
+   */
+  textRendering: boolean;
+  /**
    * 提示词 token 上限。V4 系 512;V5 Full 1471、V5 Curated 703——同一家族两个值,
    * 所以这一项按型号分,不按家族。
    *
@@ -115,6 +120,7 @@ const V5_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: false,
   preciseReference: false,
   opusUsageLimit: true,
+  textRendering: true,
   maxPromptTokens: 1471,
 };
 
@@ -134,6 +140,7 @@ const LEGACY_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: true,
   preciseReference: true,
   opusUsageLimit: false,
+  textRendering: false,
   maxPromptTokens: 512,
 };
 
