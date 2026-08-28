@@ -10,6 +10,8 @@ type MobileCharacterPrompts = ReturnType<typeof useMobileCharacterPrompts>;
 type AssistantProps = ComponentProps<typeof MobileAIAssistantSheet>;
 
 interface MobileGenerateEditorsProps {
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   editorOpen: MobileEditorOpenState;
   setEditorOpen: Dispatch<SetStateAction<MobileEditorOpenState>>;
   positivePrompt: string;
@@ -33,6 +35,7 @@ interface MobileGenerateEditorsProps {
 }
 
 export function MobileGenerateEditors({
+  maxTokens,
   editorOpen,
   setEditorOpen,
   positivePrompt,
@@ -57,6 +60,7 @@ export function MobileGenerateEditors({
   return (
     <>
       <FullscreenEditor
+        maxTokens={maxTokens}
         isOpen={editorOpen === 'prompt'}
         onClose={() => setEditorOpen(null)}
         type="prompt"
@@ -66,6 +70,7 @@ export function MobileGenerateEditors({
         totalTokens={positiveTokens}
       />
       <FullscreenEditor
+        maxTokens={maxTokens}
         isOpen={editorOpen === 'undesired'}
         onClose={() => setEditorOpen(null)}
         type="undesired"
@@ -87,6 +92,7 @@ export function MobileGenerateEditors({
       />
 
       <MobileCharacterPromptEditor
+        maxTokens={maxTokens}
         manager={characterPromptManager}
         positiveTokens={positiveTokens}
         negativeTokens={negativeTokens}

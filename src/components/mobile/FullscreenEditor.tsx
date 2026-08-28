@@ -38,6 +38,8 @@ export const expandCollapsibleMarkers = (prompt: string): string => {
 };
 
 export interface FullscreenEditorProps {
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   isOpen: boolean;
   onClose: () => void;
   type: 'prompt' | 'undesired';
@@ -48,6 +50,7 @@ export interface FullscreenEditorProps {
 }
 
 export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
+  maxTokens,
   isOpen, onClose, type, value, onChange, presetTokens = 0, totalTokens = 0,
 }) => {
   const viewportHeight = useFullscreenViewportHeight(isOpen);
@@ -326,6 +329,7 @@ export const FullscreenEditor: React.FC<FullscreenEditorProps> = ({
       />
 
       <EditorToolbar
+        maxTokens={maxTokens}
         totalTokens={totalTokens}
         undoDepth={undoDepth}
         rawMode={rawMode}

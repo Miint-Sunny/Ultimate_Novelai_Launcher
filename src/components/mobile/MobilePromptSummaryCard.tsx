@@ -18,6 +18,8 @@ interface MobilePromptSummaryCardProps {
   setNegativePrompt: (prompt: string) => void;
   positiveTokens: number;
   negativeTokens: number;
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   openPromptEditor: () => void;
   openNegativeEditor: () => void;
   openAIAssistant: () => void;
@@ -36,6 +38,7 @@ export function MobilePromptSummaryCard({
   setNegativePrompt,
   positiveTokens,
   negativeTokens,
+  maxTokens,
   openPromptEditor,
   openNegativeEditor,
   openAIAssistant,
@@ -59,8 +62,8 @@ export function MobilePromptSummaryCard({
             >
               <div className="w-2 h-2 rounded-full bg-nai-accent shadow-[0_0_8px_rgba(235,213,118,0.5)]" />
               <span className="text-sm font-bold text-nai-accent">提示词</span>
-              <span className={`text-xs font-mono ${positiveTokens > 512 ? 'text-red-400' : 'text-gray-500'}`}>
-                {positiveTokens}/512
+              <span className={`text-xs font-mono ${positiveTokens > maxTokens ? 'text-red-400' : 'text-gray-500'}`}>
+                {positiveTokens}/{maxTokens}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -98,8 +101,8 @@ export function MobilePromptSummaryCard({
             >
               <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
               <span className="text-sm font-bold text-red-400">排除内容</span>
-              <span className={`text-xs font-mono ${negativeTokens > 512 ? 'text-red-400' : 'text-gray-500'}`}>
-                {negativeTokens}/512
+              <span className={`text-xs font-mono ${negativeTokens > maxTokens ? 'text-red-400' : 'text-gray-500'}`}>
+                {negativeTokens}/{maxTokens}
               </span>
             </div>
             <div className="flex items-center gap-1">

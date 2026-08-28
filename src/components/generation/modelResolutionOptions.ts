@@ -92,6 +92,17 @@ export interface ModelCapabilities {
   preciseReference: boolean;
   /** 是否消耗 Opus「体力条」:目前只有 V5。 */
   opusUsageLimit: boolean;
+  /**
+   * 提示词 token 上限。V4 系 512;V5 Full 1471、V5 Curated 703——同一家族两个值,
+   * 所以这一项按型号分,不按家族。
+   *
+   * 注意这是**软阈值**不是硬上限:超了照样出图,只是更费额度。所以 UI 用它做
+   * 进度与提示,不拦截生成。
+   *
+   * 另注:V5 换成了 Qwen 分词器,而本地计数器仍是 T5/CLIP 口径,所以 V5 下的
+   * 计数是近似值(见 docs_and_plan/v5-upgrade-plan.md 的 P7 backlog)。
+   */
+  maxPromptTokens: number;
 }
 
 const V5_CAPABILITIES: ModelCapabilities = {
@@ -104,6 +115,13 @@ const V5_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: false,
   preciseReference: false,
   opusUsageLimit: true,
+  maxPromptTokens: 1471,
+};
+
+// V5 Curated 的训练母体更小,token 上限也更低——除此之外能力位与 Full 相同。
+const V5_CURATED_CAPABILITIES: ModelCapabilities = {
+  ...V5_CAPABILITIES,
+  maxPromptTokens: 703,
 };
 
 const LEGACY_CAPABILITIES: ModelCapabilities = {
@@ -116,10 +134,18 @@ const LEGACY_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: true,
   preciseReference: true,
   opusUsageLimit: false,
+  maxPromptTokens: 512,
 };
 
 export function modelCapabilities(model: string): ModelCapabilities {
-  return isV5Model(model) ? V5_CAPABILITIES : LEGACY_CAPABILITIES;
+  if (!isV5Model(model)) return LEGACY_CAPABILITIES;
+  const backendId = MODEL_MAP[model] ?? model;
+  return backendId.includes('curated') ? V5_CURATED_CAPABILITIES : V5_CAPABILITIES;
+}
+
+/** 提示词 token 上限(软阈值)。UI 各处的 `/512` 都应问这里。 */
+export function maxPromptTokensForModel(model: string): number {
+  return modelCapabilities(model).maxPromptTokens;
 }
 
 /** 同框角色上限。UI 各处的「已满」判断都应问这里,不要再写死 6。 */

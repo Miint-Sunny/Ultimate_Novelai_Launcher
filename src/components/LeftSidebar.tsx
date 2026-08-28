@@ -59,6 +59,7 @@ import {
   clampToMaxPixels,
   defaultModelOption,
   maxCharactersForModel,
+  maxPromptTokensForModel,
   type ModelOption,
 } from './generation/modelResolutionOptions';
 
@@ -964,6 +965,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         <div className="p-3 space-y-3 shrink-0">
 
           <PromptComposerSection
+            maxTokens={maxPromptTokensForModel(selectedModel.id)}
             promptAreaRef={promptAreaRef}
             promptBoxHeight={promptBoxHeight}
             isDraggingPromptBox={isDraggingPromptBox}

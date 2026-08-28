@@ -3,6 +3,8 @@ import type React from 'react';
 
 interface EditorToolbarProps {
   totalTokens: number;
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   undoDepth: number;
   rawMode: boolean;
   inputText: string;
@@ -17,6 +19,7 @@ interface EditorToolbarProps {
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   totalTokens,
+  maxTokens,
   undoDepth,
   rawMode,
   inputText,
@@ -35,12 +38,12 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
     <div className="flex-1 flex items-center justify-center gap-2.5">
       <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
         <div
-          className={`h-full transition-all duration-300 ${totalTokens > 512 ? 'bg-red-500' : 'bg-nai-accent'}`}
-          style={{ width: `${Math.min((totalTokens / 512) * 100, 100)}%` }}
+          className={`h-full transition-all duration-300 ${totalTokens > maxTokens ? 'bg-red-500' : 'bg-nai-accent'}`}
+          style={{ width: `${Math.min((totalTokens / maxTokens) * 100, 100)}%` }}
         />
       </div>
-      <span className={`text-xs font-mono ${totalTokens > 512 ? 'text-red-400' : 'text-nai-accent/80'}`}>
-        {totalTokens}/512
+      <span className={`text-xs font-mono ${totalTokens > maxTokens ? 'text-red-400' : 'text-nai-accent/80'}`}>
+        {totalTokens}/{maxTokens}
       </span>
     </div>
     <button

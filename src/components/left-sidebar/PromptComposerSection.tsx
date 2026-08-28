@@ -14,6 +14,8 @@ import {
 } from './PromptComposerParts';
 
 interface PromptComposerSectionProps {
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   promptAreaRef: RefObject<HTMLDivElement | null>;
   promptBoxHeight: number;
   isDraggingPromptBox: MutableRefObject<boolean>;
@@ -41,6 +43,7 @@ interface PromptComposerSectionProps {
 }
 
 export function PromptComposerSection({
+  maxTokens,
   promptAreaRef,
   promptBoxHeight,
   isDraggingPromptBox,
@@ -135,7 +138,7 @@ export function PromptComposerSection({
 
       <div className="px-2 pt-2 pb-1.5 flex items-center justify-between gap-2 border-t border-transparent">
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />
-        <TokenMeter totalTokenCount={totalTokenCount} />
+        <TokenMeter maxTokens={maxTokens} totalTokenCount={totalTokenCount} />
         {!agentAvailable && (
           <span
             className="shrink-0 text-[10px] text-gray-600"

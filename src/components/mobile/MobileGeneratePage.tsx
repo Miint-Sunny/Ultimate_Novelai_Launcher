@@ -31,7 +31,7 @@ import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker'
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import { useMobilePagerAIBridge } from './generate/useMobilePagerAIBridge';
 import { useScrollEdge } from './pager/useScrollEdge';
-import { maxCharactersForModel } from '../generation/modelResolutionOptions';
+import { maxCharactersForModel, maxPromptTokensForModel } from '../generation/modelResolutionOptions';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
   onEditorStateChange?: (isOpen: boolean) => void;
@@ -405,6 +405,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           <div className="wide-touch-column">
             <MobileGenerateCards
           maxCharacters={maxCharactersForModel(model)}
+          maxTokens={maxPromptTokensForModel(model)}
               positivePrompt={positivePrompt}
               setPositivePrompt={setPositivePrompt}
               negativePrompt={negativePrompt}
@@ -514,6 +515,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
       />
 
       <MobileGenerateEditors
+        maxTokens={maxPromptTokensForModel(model)}
         editorOpen={editorOpen}
         setEditorOpen={setEditorOpen}
         positivePrompt={positivePrompt}

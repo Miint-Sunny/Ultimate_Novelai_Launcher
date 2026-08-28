@@ -18,6 +18,8 @@ import type { useMobileVibeLibrary } from './generate/useMobileVibeLibrary';
 interface MobileGenerateCardsProps {
   /** 当前模型的同框角色上限。 */
   maxCharacters: number;
+  /** 当前模型的 token 软阈值。 */
+  maxTokens: number;
   positivePrompt: string;
   setPositivePrompt: Dispatch<SetStateAction<string>>;
   negativePrompt: string;
@@ -52,6 +54,7 @@ interface MobileGenerateCardsProps {
 // (无置灰占位);卡头长按起拖调序,手势经 dragHandleProps 只挂卡头/标题区。
 export function MobileGenerateCards({
   maxCharacters,
+  maxTokens,
   positivePrompt,
   setPositivePrompt,
   negativePrompt,
@@ -103,6 +106,7 @@ export function MobileGenerateCards({
   return (
     <div className="p-3 space-y-3">
       <MobilePromptSummaryCard
+        maxTokens={maxTokens}
         positivePrompt={positivePrompt}
         setPositivePrompt={setPositivePrompt}
         negativePrompt={negativePrompt}

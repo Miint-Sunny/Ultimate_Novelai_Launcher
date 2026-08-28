@@ -23,6 +23,7 @@ const {
   isV5Model,
   modelCapabilities,
   maxCharactersForModel,
+  maxPromptTokensForModel,
 } = await import(
   '../src/components/generation/modelResolutionOptions.ts'
 );
@@ -85,6 +86,22 @@ check('注册表: 角色上限按模型分档(V4 系 6,V5 为 32)', () => {
   const legacy = modelCapabilities('v4.5-full');
   assert.equal(legacy.noiseSchedule, true);
   assert.equal(legacy.opusUsageLimit, false);
+});
+
+check('注册表: token 软阈值按型号分档(Full 与 Curated 不同)', () => {
+  // 这一项是 V5 家族内部唯一有分歧的能力位:V5 Full 1471、V5 Curated 703,
+  // 所以 modelCapabilities 不能只按家族返回同一个对象。
+  assert.equal(maxPromptTokensForModel('v4.5-full'), 512);
+  assert.equal(maxPromptTokensForModel('v5-full'), 1471);
+  assert.equal(maxPromptTokensForModel('v5-curated'), 703);
+  assert.equal(maxPromptTokensForModel('nai-diffusion-5-curated-inpainting'), 703);
+  // 除 token 上限外,Curated 与 Full 的其余能力位应当一致
+  const full = modelCapabilities('v5-full');
+  const curated = modelCapabilities('v5-curated');
+  for (const key of Object.keys(full)) {
+    if (key === 'maxPromptTokens') continue;
+    assert.equal(curated[key], full[key], key);
+  }
 });
 
 check('isV5Model: UI id / 后端名 / inpainting 变体 / custom 别名', () => {
