@@ -14,6 +14,7 @@ for migration and then deleted.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -188,12 +189,23 @@ def _macos_get_password(account: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _macos_set_password(account: str, value: str) -> bool:
-    executable = shutil.which("security")
-    if executable is None:
-        return False
+def _macos_answer_password_prompt(executable: str, account: str, value: str) -> bool:
+    """Run ``security add-generic-password`` and answer its terminal prompt.
+
+    ``-w`` with no value on argv does *not* read the secret from stdin: it
+    prompts on the controlling terminal, twice (enter, then confirm). Attaching
+    a pty answers it the way it asks, and unlike putting the secret on argv it
+    keeps the secret out of ``ps``.
+    """
+    import pty
+
     try:
-        result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
+        master, slave = pty.openpty()
+    except Exception:
+        return False
+
+    try:
+        process = subprocess.Popen(  # noqa: S603 - executable is resolved by shutil.which
             [
                 executable,
                 "add-generic-password",
@@ -204,17 +216,45 @@ def _macos_set_password(account: str, value: str) -> bool:
                 account,
                 "-w",
             ],
-            # With no argv value after ``-w``, ``security`` reads the password
-            # from stdin. This keeps the secret out of process listings.
-            input=value + "\n",
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=5,
+            stdin=slave,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
         )
     except Exception:
+        os.close(master)
+        os.close(slave)
         return False
-    return result.returncode == 0
+
+    os.close(slave)
+    try:
+        os.write(master, ((value + "\n") * 2).encode())
+        process.wait(timeout=10)
+    except Exception:
+        process.kill()
+        process.wait()
+        return False
+    finally:
+        os.close(master)
+
+    return process.returncode == 0
+
+
+def _macos_set_password(account: str, value: str) -> bool:
+    """Store ``value`` in the login keychain, or return False.
+
+    The write is only believed once the secret reads back. The implementation
+    this replaces piped the secret to a prompt that reads from the terminal
+    instead, so it stored an **empty** password and still exited 0: the store
+    reported success while holding nothing, and the loss surfaced much later as
+    a token that would not save. A zero exit is not evidence of a write.
+    """
+    executable = shutil.which("security")
+    if executable is None:
+        return False
+    if not _macos_answer_password_prompt(executable, account, value):
+        return False
+    return _macos_get_password(account) == value
 
 
 def _macos_delete_password(account: str) -> None:
