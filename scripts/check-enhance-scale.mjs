@@ -19,8 +19,6 @@ const {
   enhanceTargetSize,
   enhanceMaxAvailable,
   enhanceScaleOptions,
-  enhanceResultSize,
-  legacy15xTargetSize,
 } = await import('../src/services/naiEnhanceScale.ts');
 const { resolveEnhanceModel, buildRequestPayload } = await import('../src/services/novelai.ts');
 
@@ -185,19 +183,18 @@ check('档位: 5f 与 5c 都有 Max ✨ —— 门槛看所选模型,不看顶�
   assert.ok(!enhanceMaxAvailable(832, 1216, resolveEnhanceModel('v4.5-full')));
 });
 
-// 这一条把「我们和官方不一致」这件事本身钉住:V5 已经跟官方了,非 V5 故意没跟。
-// 哪天决定让 4.5 也跟官方,这条会挂 —— 那正是提醒去改它的时候。
-check('尺寸: V5 的 1.5× 跟官方特判,非 V5 仍是历史的一律 64 取整', () => {
-  assert.deepEqual(enhanceResultSize(832, 1216, 'x1.5', 'v5-full'), { width: 1248, height: 1824 });
-  assert.deepEqual(enhanceResultSize(832, 1216, 'x1.5', 'v5-curated'), { width: 1248, height: 1824 });
-  assert.deepEqual(enhanceResultSize(832, 1216, 'x1.5', 'v4.5-curated'), { width: 1280, height: 1856 });
-  assert.deepEqual(legacy15xTargetSize(832, 1216), { width: 1280, height: 1856 });
-});
-
-check('尺寸: Max 档下 enhanceResultSize 给的是服务端会产出的尺寸', () => {
-  assert.deepEqual(enhanceResultSize(832, 1216, 'max', 'v5-full'), { width: 1440, height: 2144 });
-  // 非 V5 没有 Max 档,即使误传也退回历史 1.5×,不会算出一个假的 Max 尺寸。
-  assert.deepEqual(enhanceResultSize(832, 1216, 'max', 'v4.5-curated'), { width: 1280, height: 1856 });
+// 尺寸口径**全族一致**:曾经非 V5 走一份「一律就近对齐 64」的历史算法,
+// 832×1216 会出 1280×1856。现在统一跟官方,出 1248×1824。
+// 这条钉住「不再按模型分叉」——尺寸函数不该再多一个 model 参数。
+check('尺寸: 1.5× 全族都跟官方特判,不再按模型分叉', () => {
+  const expected = { width: 1248, height: 1824 };
+  assert.deepEqual(enhanceTargetSize(832, 1216, 'x1.5'), expected);
+  assert.deepEqual(enhanceTargetSize(1216, 832, 'x1.5'), { width: 1824, height: 1248 });
+  // 历史算法在这个尺寸上给的是 1280×1856,不能再出现。
+  assert.notDeepEqual(enhanceTargetSize(832, 1216, 'x1.5'), { width: 1280, height: 1856 });
+  // 其余尺寸两套本就相同,这次统一只动了那两个特判尺寸。
+  assert.deepEqual(enhanceTargetSize(640, 640, 'x1.5'), { width: 960, height: 960 });
+  assert.deepEqual(enhanceTargetSize(700, 700, 'x1.5'), { width: 1024, height: 1024 });
 });
 
 console.log(`\n${checks} 项放大重绘尺寸校验全部通过。`);

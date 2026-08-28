@@ -5,8 +5,7 @@ import { extractImageMetadata } from '../utils/imageMetadata';
 import {
   enhanceMaxAvailable,
   enhanceMaxTargetSize,
-  enhanceResultSize,
-  legacy15xTargetSize,
+  enhanceTargetSize,
   type EnhanceScaleId,
 } from './naiEnhanceScale';
 
@@ -22,7 +21,8 @@ export interface UpscaleProgress {
 export type UpscaleMethod = 'local' | 'api';
 
 // 单一出处在 naiEnhanceScale;这里只保留原名给既有调用点。
-export const getUpscale15xTargetSize = legacy15xTargetSize;
+export const getUpscale15xTargetSize = (width: number, height: number) =>
+  enhanceTargetSize(width, height, 'x1.5');
 
 export function isUpscale15xOverLimit(width: number, height: number): boolean {
   const target = getUpscale15xTargetSize(width, height);
@@ -184,10 +184,10 @@ export async function upscaleViaImg2Img(
   }
 
   // Max ✨ 发的是**原图尺寸**,由服务端放大;数值档才由客户端把宽高改好再发。
-  // 数值档的尺寸口径:V5 跟官方(832×1216 这类常用尺寸有特判),非 V5 沿用历史算法。
+  // 数值档全族都跟官方(832×1216 / 1216×832 有特判,出 1248×1824)。
   const { width: targetWidth, height: targetHeight } = isMax
     ? { width: originalWidth, height: originalHeight }
-    : enhanceResultSize(originalWidth, originalHeight, scaleId, enhanceModel);
+    : enhanceTargetSize(originalWidth, originalHeight, scaleId);
 
   if (!isMax && targetWidth * targetHeight > UPSCALE_15X_MAX_PIXELS) {
     throw new Error(

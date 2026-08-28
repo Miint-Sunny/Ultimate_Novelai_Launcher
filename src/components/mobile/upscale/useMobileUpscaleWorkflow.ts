@@ -12,7 +12,7 @@ import {
 } from '../../../services/upscaleService';
 import { resolveEnhanceModel } from '../../../services/novelai';
 import { getAISettings } from '../../../services/localLibrary';
-import { enhanceMaxAvailable, enhanceMaxTargetSize, enhanceResultSize } from '../../../services/naiEnhanceScale';
+import { enhanceMaxAvailable, enhanceTargetSize } from '../../../services/naiEnhanceScale';
 import { loadImageToCanvas } from './loadImageToCanvas';
 
 export const MAGNITUDE_PRESETS: Record<number, { strength: number; noise: number }> = {
@@ -155,14 +155,10 @@ export function useMobileUpscaleWorkflow({
   const maxAvailable = imageSize
     ? enhanceMaxAvailable(imageSize.width, imageSize.height, enhanceModel)
     : false;
-  // Max ✨ 的输出尺寸由服务端定;这里算的是官方那套 RO() 的结果,只用于展示与估价。
-  const maxTarget = imageSize ? enhanceMaxTargetSize(imageSize.width, imageSize.height) : null;
 
-  // 重绘两档的尺寸口径与服务层同源:V5 跟官方,非 V5 沿用历史算法。
+  // 重绘两档的尺寸口径与服务层同源,全族都跟官方。
   const redrawSize = imageSize
-    ? (scale === 0
-      ? (maxTarget ?? { width: 0, height: 0 })
-      : enhanceResultSize(imageSize.width, imageSize.height, 'x1.5', enhanceModel))
+    ? enhanceTargetSize(imageSize.width, imageSize.height, scale === 0 ? 'max' : 'x1.5')
     : null;
   const resultWidth = imageSize
     ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * scale))
