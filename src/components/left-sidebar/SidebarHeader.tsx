@@ -154,13 +154,13 @@ export function SidebarHeader({
         </div>
 
         <div
-          className="flex items-center gap-3 bg-nai-input hover:bg-gray-700 px-3 rounded border border-gray-700 h-[38px] shrink-0 transition-all group cursor-pointer min-w-[100px] justify-between"
+          className="flex items-center gap-2 bg-nai-input hover:bg-gray-700 px-2.5 rounded border border-gray-700 h-[38px] shrink-0 transition-all group cursor-pointer justify-between"
           onClick={onRefreshAnlas}
           title="点击刷新"
         >
           <div className="flex flex-col items-start justify-center h-full">
             <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-none mb-0.5 group-hover:text-yellow-500/70 transition-colors">Anlas</span>
-            <span className={`font-mono font-bold text-sm group-hover:text-yellow-400 transition-colors leading-none ${isLoadingAnlas ? 'text-gray-500' : 'text-gray-300'}`}>
+            <span className={`font-mono font-bold text-sm tabular-nums group-hover:text-yellow-400 transition-colors leading-none ${isLoadingAnlas ? 'text-gray-500' : 'text-gray-300'}`}>
               {anlasInfo ? (anlasInfo.fixedTrainingStepsLeft + anlasInfo.purchasedTrainingSteps).toLocaleString() : '—'}
             </span>
           </div>
@@ -170,7 +170,10 @@ export function SidebarHeader({
         </div>
       </div>
 
-      <div className="relative">
+      {/* shrink-0:侧栏可拖窄,而 Anlas 盒子是 shrink-0 且随余额位数变宽。
+          不锁住这里的话,被挤掉的就是菜单按钮(余额从「—」变成真实数字后就会发生)。
+          该让位的是模型按钮,它有 flex-1 + min-w-0。 */}
+      <div className="relative shrink-0">
         <button
           className={`h-full aspect-square bg-nai-input hover:bg-gray-700 rounded flex items-center justify-center transition-colors border border-gray-700 ${isMenuOpen ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
           onClick={() => setIsMenuOpen(!isMenuOpen)}

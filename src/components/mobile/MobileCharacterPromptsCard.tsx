@@ -20,11 +20,13 @@ type MobileCharacterPrompts = ReturnType<typeof useMobileCharacterPrompts>;
 
 interface MobileCharacterPromptsCardProps {
   manager: MobileCharacterPrompts;
+  /** 当前模型的同框角色上限。 */
+  maxCharacters: number;
   /** 卡头长按拖拽排序手势(P4 注册表);只挂本卡头,不挂输入区 */
   dragHandleProps?: MobileCardDragHandleProps;
 }
 
-export function MobileCharacterPromptsCard({ manager, dragHandleProps }: MobileCharacterPromptsCardProps) {
+export function MobileCharacterPromptsCard({ manager, maxCharacters, dragHandleProps }: MobileCharacterPromptsCardProps) {
   const {
     characterPrompts,
     isCharacterExpanded,
@@ -79,13 +81,13 @@ export function MobileCharacterPromptsCard({ manager, dragHandleProps }: MobileC
           <button
             onClick={(event) => {
               event.stopPropagation();
-              if (characterPrompts.length < 6) {
+              if (characterPrompts.length < maxCharacters) {
                 addCharacterPrompt();
                 setIsCharacterExpanded(true);
               }
             }}
-            disabled={characterPrompts.length >= 6}
-            className={`px-3 py-2 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5 ${characterPrompts.length >= 6
+            disabled={characterPrompts.length >= maxCharacters}
+            className={`px-3 py-2 text-sm font-medium rounded-lg active:scale-95 transition-all flex items-center gap-1.5 ${characterPrompts.length >= maxCharacters
               ? 'bg-gray-700/50 text-gray-500'
               : 'bg-green-500/20 text-green-400'
               }`}

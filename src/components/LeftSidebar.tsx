@@ -992,6 +992,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
           <CharacterPromptsSection
             characterPrompts={characterPrompts}
+            maxCharacters={maxCharactersForModel(selectedModel.id)}
             isCharacterSectionOpen={isCharacterSectionOpen}
             setIsCharacterSectionOpen={setIsCharacterSectionOpen}
             isClearConfirming={isClearConfirming}
@@ -1098,6 +1099,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       </div>
 
       <GenerationFooterControls
+        opusUsage={anlasInfo?.opusUsage}
         steps={steps}
         setSteps={setSteps}
         scale={scale}

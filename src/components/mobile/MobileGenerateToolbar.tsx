@@ -2,7 +2,8 @@ import { ImagePlus, Loader2, Send, SlidersHorizontal, Square } from 'lucide-reac
 import type { ReactNode } from 'react';
 import { calculateCostFromUI } from '../../services/costCalculator';
 import type { ActivePreciseRef, ActiveVibe } from './types';
-import { getCachedOpusUsage, isOpusUsageExhausted } from '../../services/novelai';
+import { isOpusUsageExhausted } from '../../services/novelai';
+import type { OpusUsage } from '../../api/localSidecarApi';
 import { OpusUsageBar, shouldShowOpusUsage } from '../generation/OpusUsageBar';
 import { modelCapabilities } from '../generation/modelResolutionOptions';
 
@@ -24,6 +25,9 @@ interface MobileGenerateToolbarProps {
   model: string;
   sampler: string;
   isOpus: boolean;
+  /** 体力条读数;来自 anlasInfo(React state),不能读模块缓存——
+   * 那样 anlas 拉回来后这里不会重渲染,条永远不出现。 */
+  opusUsage?: OpusUsage;
   img2imgImage: string | null;
   img2imgStrength: number;
   activePreciseRefs: ActivePreciseRef[];
@@ -84,6 +88,7 @@ export function MobileGenerateToolbar({
   model,
   sampler,
   isOpus,
+  opusUsage,
   img2imgImage,
   img2imgStrength,
   activePreciseRefs,
@@ -107,7 +112,6 @@ export function MobileGenerateToolbar({
     vibeRefCount: activeVibes.filter((vibe) => vibe.enabled).length,
   });
 
-  const opusUsage = getCachedOpusUsage();
   const showUsageBar = shouldShowOpusUsage(
     opusUsage,
     isOpus,

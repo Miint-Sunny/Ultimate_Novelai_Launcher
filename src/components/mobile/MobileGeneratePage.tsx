@@ -190,6 +190,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   } = useMobileArtistLibrary();
 
   const ocManager = useMobileOCManager({
+    maxCharacters: maxCharactersForModel(model),
     currentUserId,
     isAuthenticated,
     requireAuth,
@@ -403,6 +404,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           {/* P7-2 宽触屏档:卡片列限宽居中(700px 以下无效果);滚动容器不变,scroll edge 不受影响 */}
           <div className="wide-touch-column">
             <MobileGenerateCards
+          maxCharacters={maxCharactersForModel(model)}
               positivePrompt={positivePrompt}
               setPositivePrompt={setPositivePrompt}
               negativePrompt={negativePrompt}
@@ -464,6 +466,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           model,
           sampler,
           isOpus: anlasInfo?.isOpus ?? false,
+          opusUsage: anlasInfo?.opusUsage,
           img2imgImage,
           img2imgStrength,
           activePreciseRefs,

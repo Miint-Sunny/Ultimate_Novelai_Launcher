@@ -1,7 +1,8 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ImagePlus, Loader2, RefreshCw, X } from 'lucide-react';
 import { calculateCostFromUI } from '../../services/costCalculator';
-import { getCachedOpusUsage, isOpusUsageExhausted } from '../../services/novelai';
+import { isOpusUsageExhausted } from '../../services/novelai';
+import type { OpusUsage } from '../../api/localSidecarApi';
 import { OpusUsageBar, shouldShowOpusUsage } from '../generation/OpusUsageBar';
 import { modelCapabilities } from '../generation/modelResolutionOptions';
 
@@ -24,6 +25,9 @@ interface GenerationActionGroupProps {
   selectedModelId: string;
   sampler: string;
   isOpus: boolean;
+  /** 体力条读数;来自 anlasInfo(React state),不能读模块缓存——
+   * 那样 anlas 拉回来后这里不会重渲染,条永远不出现。 */
+  opusUsage?: OpusUsage;
   img2imgStrengthForCost?: number;
   preciseRefCount: number;
   vibeRefCount: number;
@@ -49,6 +53,7 @@ export function GenerationActionGroup({
   selectedModelId,
   sampler,
   isOpus,
+  opusUsage,
   img2imgStrengthForCost,
   preciseRefCount,
   vibeRefCount,
@@ -69,7 +74,6 @@ export function GenerationActionGroup({
     vibeRefCount,
   });
   const displayedCost = aprilFoolsEffect === 1 ? cost.total + aprilFoolsCost : cost.total;
-  const opusUsage = getCachedOpusUsage();
   const showUsageBar = shouldShowOpusUsage(
     opusUsage,
     isOpus,

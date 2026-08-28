@@ -55,6 +55,7 @@ interface GenerationFooterControlsProps {
   selectedModelId: string;
   sampler: string;
   isOpus: boolean;
+  opusUsage?: import('../../api/localSidecarApi').OpusUsage;
   img2imgStrengthForCost?: number;
   preciseRefCount: number;
   vibeRefCount: number;
@@ -105,6 +106,7 @@ export function GenerationFooterControls({
   selectedModelId,
   sampler,
   isOpus,
+  opusUsage,
   img2imgStrengthForCost,
   preciseRefCount,
   vibeRefCount,
@@ -185,6 +187,7 @@ export function GenerationFooterControls({
       </div>
 
       <GenerationActionGroup
+        opusUsage={opusUsage}
         isGenerating={isGenerating}
         isPreparing={isPreparing}
         isLoopGenerating={isLoopGenerating}

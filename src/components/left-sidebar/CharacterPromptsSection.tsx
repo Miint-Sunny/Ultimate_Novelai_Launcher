@@ -9,6 +9,8 @@ type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 
 
 interface CharacterPromptsSectionProps {
   characterPrompts: CharacterPrompt[];
+  /** 当前模型的同框角色上限(V4 系 6,V5 为 32)。 */
+  maxCharacters: number;
   isCharacterSectionOpen: boolean;
   setIsCharacterSectionOpen: (open: boolean) => void;
   isClearConfirming: boolean;
@@ -31,6 +33,7 @@ interface CharacterPromptsSectionProps {
 
 export function CharacterPromptsSection({
   characterPrompts,
+  maxCharacters,
   isCharacterSectionOpen,
   setIsCharacterSectionOpen,
   isClearConfirming,
@@ -76,19 +79,19 @@ export function CharacterPromptsSection({
             </button>
           )}
           <button
-            className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs font-bold border transition-colors ${characterPrompts.length >= 6
+            className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs font-bold border transition-colors ${characterPrompts.length >= maxCharacters
               ? 'bg-gray-800 text-gray-500 border-gray-800 cursor-not-allowed'
               : 'bg-nai-input hover:bg-gray-700 text-white border-gray-700'
             }`}
             onClick={(event) => {
               event.stopPropagation();
-              if (characterPrompts.length < 6) {
+              if (characterPrompts.length < maxCharacters) {
                 addCharacterPrompt();
                 if (!isCharacterSectionOpen) setIsCharacterSectionOpen(true);
               }
             }}
-            disabled={characterPrompts.length >= 6}
-            title={characterPrompts.length >= 6 ? '已达到最大角色数量 (6)' : '添加角色'}
+            disabled={characterPrompts.length >= maxCharacters}
+            title={characterPrompts.length >= maxCharacters ? `已达到最大角色数量 (${maxCharacters})` : '添加角色'}
           >
             <Plus className="w-3 h-3" />
             添加角色

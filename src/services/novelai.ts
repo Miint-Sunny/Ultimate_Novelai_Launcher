@@ -51,11 +51,6 @@ export function isOpusUsageExhausted(): boolean {
   return _cachedOpusUsage.isNegative || _cachedOpusUsage.percent <= 0;
 }
 
-/** 缓存的体力条读数;未查到或非 Opus 时为 undefined。 */
-export function getCachedOpusUsage(): OpusUsage | undefined {
-  return _cachedOpusUsage;
-}
-
 /**
  * 获取缓存的 Opus 状态（供无 anlasInfo 状态的组件使用）
  * Bot 模式固定返回 true
