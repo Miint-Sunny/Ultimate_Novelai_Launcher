@@ -18,11 +18,13 @@ interface OCManagerModalProps {
   manager: UseOCManagerReturn;
   onConfirmSelection: (mode: 'character' | 'main') => void;
   characterPromptsCount: number;
+  /** 当前模型的同框角色上限(V4 系 6，V5 为 32)。 */
+  maxCharacters: number;
   onOpenInspiration?: () => void;
 }
 
 export const OCManagerModal: React.FC<OCManagerModalProps> = ({
-  isOpen, onClose, manager: m, onConfirmSelection, characterPromptsCount, onOpenInspiration,
+  isOpen, onClose, manager: m, onConfirmSelection, characterPromptsCount, maxCharacters, onOpenInspiration,
 }) => {
   const currentUserId = botService.getAuthState().botUserId;
   const [favoriteOCIds, setFavoriteOCIds] = useState<string[]>([]);
@@ -54,7 +56,7 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
 
   const handleRandomMyOC = () => {
     const availableFiles = myOCs.filter(f => !m.selectedOCs.includes(f.id));
-    if (availableFiles.length === 0 || m.selectedOCs.length >= 6) return;
+    if (availableFiles.length === 0 || m.selectedOCs.length >= maxCharacters) return;
     const randomFile = availableFiles[Math.floor(Math.random() * availableFiles.length)];
     m.setSelectedOCs(prev => [...prev, randomFile.id]);
     setTimeout(() => {
@@ -184,7 +186,7 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
             {m.isLoadingPublicOCs && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleRandomMyOC} disabled={m.selectedOCs.length >= 6 || myOCs.length === 0}
+            <button onClick={handleRandomMyOC} disabled={m.selectedOCs.length >= maxCharacters || myOCs.length === 0}
               className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold rounded flex items-center gap-1.5 disabled:opacity-50">
               <Dices className="w-4 h-4" /> 随机
             </button>
@@ -266,7 +268,7 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
                 取消
               </button>
               <button onClick={() => onConfirmSelection('character')}
-                disabled={m.selectedOCs.length === 0 || characterPromptsCount >= 6}
+                disabled={m.selectedOCs.length === 0 || characterPromptsCount >= maxCharacters}
                 className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-[#ebd576] disabled:opacity-50 flex items-center gap-1.5">
                 <User className="w-4 h-4" /> 添加到角色提示词
               </button>

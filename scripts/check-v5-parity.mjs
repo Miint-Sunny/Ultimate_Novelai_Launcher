@@ -15,7 +15,15 @@
 import assert from 'node:assert/strict';
 
 const { calculateAnlasCost, calculateCostFromUI } = await import('../src/services/costCalculator.ts');
-const { MODEL_MAP, NAI_MODELS, DEFAULT_MODEL_ID, defaultModelOption, isV5Model } = await import(
+const {
+  MODEL_MAP,
+  NAI_MODELS,
+  DEFAULT_MODEL_ID,
+  defaultModelOption,
+  isV5Model,
+  modelCapabilities,
+  maxCharactersForModel,
+} = await import(
   '../src/components/generation/modelResolutionOptions.ts'
 );
 const { V5_QUALITY_SUFFIX, V5_UC_PREFIX, toV5UcPresetId, toV5QualityPresetId, shouldPrefixNsfw } =
@@ -55,6 +63,26 @@ check('注册表: 默认模型仍是 V4.5 Full,不随列表顺序漂移', () => 
   assert.equal(DEFAULT_MODEL_ID, 'v4.5-full');
   assert.equal(defaultModelOption().id, 'v4.5-full');
   assert.notEqual(defaultModelOption().id, NAI_MODELS[0].id);
+});
+
+check('注册表: 角色上限按模型分档(V4 系 6,V5 为 32)', () => {
+  assert.equal(maxCharactersForModel('v4.5-full'), 6);
+  assert.equal(maxCharactersForModel('v5-full'), 32);
+  assert.equal(maxCharactersForModel('nai-diffusion-5-curated'), 32);
+  // 能力表的其余几位一并钉住:V5 没有噪声调度选择与 Variety+,有透明与体力条
+  const v5 = modelCapabilities('v5-full');
+  assert.equal(v5.noiseSchedule, false);
+  assert.equal(v5.varietyPlus, false);
+  assert.equal(v5.transparency, true);
+  assert.equal(v5.opusUsageLimit, true);
+  assert.equal(v5.freeformCharacterPosition, true);
+  // 这两项是「暂缺」不是「不支持」——官方上线后改成 true,这两行断言应随之更新
+  assert.equal(v5.vibeTransfer, false);
+  assert.equal(v5.preciseReference, false);
+
+  const legacy = modelCapabilities('v4.5-full');
+  assert.equal(legacy.noiseSchedule, true);
+  assert.equal(legacy.opusUsageLimit, false);
 });
 
 check('isV5Model: UI id / 后端名 / inpainting 变体 / custom 别名', () => {

@@ -31,6 +31,7 @@ import { useMobileResolutionPicker } from './generate/useMobileResolutionPicker'
 import { useMobileGenerationParams } from './generate/useMobileGenerationParams';
 import { useMobilePagerAIBridge } from './generate/useMobilePagerAIBridge';
 import { useScrollEdge } from './pager/useScrollEdge';
+import { maxCharactersForModel } from '../generation/modelResolutionOptions';
 // ==================== 主组件 ====================
 interface MobileGeneratePageProps {
   onEditorStateChange?: (isOpen: boolean) => void;
@@ -539,6 +540,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
         showOCModal={showOCModal}
         closeOCModal={() => setShowOCModal(false)}
         characterPromptCount={characterPrompts.length}
+        maxCharacters={maxCharactersForModel(model)}
         ocManager={ocManager}
         isInspirationModalOpen={isInspirationModalOpen}
         closeInspirationModal={() => setIsInspirationModalOpen(false)}

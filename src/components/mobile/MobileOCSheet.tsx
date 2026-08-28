@@ -8,10 +8,12 @@ interface MobileOCSheetProps {
   isOpen: boolean;
   onClose: () => void;
   characterPromptCount: number;
+  /** 当前模型的同框角色上限(V4 系 6，V5 为 32)。 */
+  maxCharacters: number;
   manager: MobileOCManager;
 }
 
-export function MobileOCSheet({ isOpen, onClose, characterPromptCount, manager }: MobileOCSheetProps) {
+export function MobileOCSheet({ isOpen, onClose, characterPromptCount, maxCharacters, manager }: MobileOCSheetProps) {
   if (!isOpen) return null;
 
   const switchTabBySwipe = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -173,7 +175,7 @@ export function MobileOCSheet({ isOpen, onClose, characterPromptCount, manager }
             </button>
             <button
               onClick={manager.handleConfirmOC}
-              disabled={manager.selectedOCIds.size === 0 || characterPromptCount >= 6}
+              disabled={manager.selectedOCIds.size === 0 || characterPromptCount >= maxCharacters}
               className="col-span-2 py-3 bg-cyan-500 text-white font-bold rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
             >
               添加{manager.selectedOCIds.size > 0 && ` (${manager.selectedOCIds.size})`}

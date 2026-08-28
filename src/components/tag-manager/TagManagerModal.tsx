@@ -27,6 +27,8 @@ interface Props {
   ocManager: UseOCManagerReturn;
   artistManager: UseArtistManagerReturn;
   characterPromptsCount: number;
+  /** 当前模型的同框角色上限(V4 系 6，V5 为 32)。 */
+  maxCharacters: number;
   showToast: (message: string, type: 'success' | 'error') => void;
   onConfirm: (selections: SelectionConfirm[]) => void;
   onOpenInspiration?: () => void;
@@ -53,7 +55,7 @@ interface Props {
 
 export const TagManagerModal: React.FC<Props> = ({
   isOpen, onClose, ocManager, artistManager,
-  characterPromptsCount, showToast,
+  characterPromptsCount, maxCharacters, showToast,
   onConfirm, onOpenInspiration,
   currentMainPrompt, currentMainNegative, currentCharacterPrompts, imageHistory,
 }) => {
@@ -420,8 +422,8 @@ export const TagManagerModal: React.FC<Props> = ({
                   </button>
                   <button
                     onClick={() => handleConfirm('character')}
-                    disabled={(mgr.selectionMap['character']?.size || 0) === 0 || characterPromptsCount >= 6}
-                    title={characterPromptsCount >= 6 ? '角色提示词已满 (6/6)' : '加入角色提示词'}
+                    disabled={(mgr.selectionMap['character']?.size || 0) === 0 || characterPromptsCount >= maxCharacters}
+                    title={characterPromptsCount >= maxCharacters ? `角色提示词已满 (${maxCharacters}/${maxCharacters})` : '加入角色提示词'}
                     className="px-4 py-2 text-[13px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                   >
                     <User className="w-4 h-4" />

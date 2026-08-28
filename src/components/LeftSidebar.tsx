@@ -57,6 +57,8 @@ import {
   MODELS,
   RESOLUTIONS,
   clampToMaxPixels,
+  defaultModelOption,
+  maxCharactersForModel,
   type ModelOption,
 } from './generation/modelResolutionOptions';
 
@@ -284,7 +286,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
   // Artist State (extracted to useArtistManager hook)
   const artistManager = useArtistManager();
-  const ocManager = useOCManager();
   const crManager = useCRManager();
 
   const {
@@ -459,7 +460,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       artistManager.handleTagsChange(tags);
     }
   }, [chipMode, positivePrompt, artistManager.handleTagsChange]);
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+  // 用显式默认而不是 MODELS[0]:列表已按 NEW → LEGACY 排,首位是 V5,
+  // 但默认仍应是 V4.5(V5 贵 1.5 倍且消耗 Opus 体力条,见 DEFAULT_MODEL_ID)
+  const [selectedModel, setSelectedModel] = useState(defaultModelOption);
+  const ocManager = useOCManager(maxCharactersForModel(selectedModel.id));
   const handleExportVibe = useVibeExport({
     exportingVibeId,
     setExportingVibeId,
@@ -1158,6 +1162,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         manager={ocManager}
         onConfirmSelection={handleConfirmOCSelection}
         characterPromptsCount={characterPrompts.length}
+        maxCharacters={maxCharactersForModel(selectedModel.id)}
         onOpenInspiration={() => setIsInspirationModalOpen(true)}
       />
 
@@ -1190,6 +1195,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         ocManager={ocManager}
         artistManager={artistManager}
         characterPromptsCount={characterPrompts.length}
+        maxCharacters={maxCharactersForModel(selectedModel.id)}
         showToast={showToast}
         onConfirm={handleTagManagerConfirm}
         onOpenInspiration={() => setIsInspirationModalOpen(true)}

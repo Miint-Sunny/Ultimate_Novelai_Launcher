@@ -24,6 +24,8 @@ interface MobileGenerateReferenceSheetsProps {
   showOCModal: boolean;
   closeOCModal: () => void;
   characterPromptCount: number;
+  /** 当前模型的同框角色上限。 */
+  maxCharacters: number;
   ocManager: ReturnType<typeof useMobileOCManager>;
   isInspirationModalOpen: boolean;
   closeInspirationModal: () => void;
@@ -44,6 +46,7 @@ export function MobileGenerateReferenceSheets({
   showOCModal,
   closeOCModal,
   characterPromptCount,
+  maxCharacters,
   ocManager,
   isInspirationModalOpen,
   closeInspirationModal,
@@ -74,6 +77,7 @@ export function MobileGenerateReferenceSheets({
         isOpen={showOCModal}
         onClose={closeOCModal}
         characterPromptCount={characterPromptCount}
+        maxCharacters={maxCharacters}
         manager={ocManager}
       />
       <MobileOCEditorSheet
