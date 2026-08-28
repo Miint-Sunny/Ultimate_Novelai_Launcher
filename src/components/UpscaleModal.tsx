@@ -3,7 +3,9 @@ import { X, Maximize2, Loader2, Check, AlertCircle, Cpu, Cloud, Sparkles } from 
 import { upscaleImage, upscaleViaImg2Img, type UpscaleProgress, type UpscaleMethod, isModelLoaded, UPSCALE_15X_MAX_PIXELS } from '../services/upscaleService';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateCostFromUI } from '../services/costCalculator';
-import { getCachedIsOpus, isOpusUsageExhausted } from '../services/novelai';
+import { getCachedIsOpus, isOpusUsageExhausted, resolveEnhanceModel } from '../services/novelai';
+import { getAISettings } from '../services/localLibrary';
+import { enhanceMaxAvailable, enhanceMaxTargetSize } from '../services/naiEnhanceScale';
 
 interface UpscaleModalProps {
   isOpen: boolean;
@@ -28,6 +30,8 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
   onComplete,
 }) => {
   const { isAuthenticated, requireAuth } = useAuth();
+  // scale 的取值:0 = Max ✨(哨兵),1.5 = 图生图重绘,2/4 = 原生超分。
+  // 0 而不是别的数,是因为 Max 的倍率由服务端定,客户端事先并没有一个"倍数"可填。
   const [scale, setScale] = useState<number>(4);
   const [method, setMethod] = useState<UpscaleMethod>('local');
   const [magnitude, setMagnitude] = useState<number>(3); // 1.5x 模式的 Magnitude 档位
@@ -47,14 +51,28 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
     }
   }, [isOpen, imageUrl]);
 
+  // 重绘实际会用的模型(V5 Curated 顶替成 4.5 Curated),Max 档能不能选也看它。
+  const enhanceModel = resolveEnhanceModel(getAISettings().model);
+  const maxAvailable = imageSize
+    ? enhanceMaxAvailable(imageSize.width, imageSize.height, enhanceModel)
+    : false;
+  // 图生图重绘的两档共用 Magnitude 与费用估算。
+  const isRedraw = scale === 0 || scale === 1.5;
+
   if (!isOpen) return null;
 
-  // 计算预计完成后的尺寸（1.5x 模式对齐到 64 的倍数）
+  // 计算预计完成后的尺寸（1.5x 对齐到 64 的倍数；Max ✨ 由服务端定，这里算的是
+  // 官方那套 RO() 的结果，只用于展示与估价，不进载荷）
+  const maxTarget = imageSize ? enhanceMaxTargetSize(imageSize.width, imageSize.height) : null;
   const resultWidth = imageSize
-    ? (scale === 1.5 ? Math.round((imageSize.width * 1.5) / 64) * 64 : Math.round(imageSize.width * scale))
+    ? (scale === 0 ? (maxTarget?.width ?? 0)
+      : scale === 1.5 ? Math.round((imageSize.width * 1.5) / 64) * 64
+        : Math.round(imageSize.width * scale))
     : 0;
   const resultHeight = imageSize
-    ? (scale === 1.5 ? Math.round((imageSize.height * 1.5) / 64) * 64 : Math.round(imageSize.height * scale))
+    ? (scale === 0 ? (maxTarget?.height ?? 0)
+      : scale === 1.5 ? Math.round((imageSize.height * 1.5) / 64) * 64
+        : Math.round(imageSize.height * scale))
     : 0;
 
   // 1.5x 模式像素上限保护
@@ -67,8 +85,8 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
       return;
     }
 
-    // 检查登录状态（仅 API 模式和 1.5x 模式需要登录）
-    if ((method === 'api' || scale === 1.5) && !isAuthenticated) {
+    // 检查登录状态（API 模式与两档图生图重绘都要登录）
+    if ((method === 'api' || isRedraw) && !isAuthenticated) {
       requireAuth(() => handleUpscale());
       return;
     }
@@ -84,18 +102,29 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
 
       let resultBlob: Blob;
 
-      if (scale === 1.5) {
-        // 1.5x 模式：使用图生图
+      if (scale === 0 || scale === 1.5) {
+        // 图生图重绘：Max ✨ 由服务端定输出尺寸，1.5x 由客户端算好再发
         const preset = MAGNITUDE_PRESETS[magnitude];
-        resultBlob = await upscaleViaImg2Img(imageBlob, preset.strength, preset.noise, setProgress);
+        resultBlob = await upscaleViaImg2Img(
+          imageBlob,
+          preset.strength,
+          preset.noise,
+          setProgress,
+          scale === 0 ? 'max' : 'x1.5'
+        );
       } else {
         // 2x/4x 模式：使用原有超分
         resultBlob = await upscaleImage(imageBlob, scale, method, setProgress);
       }
 
       // 延迟一下让用户看到完成状态
+      // Max ✨ 的 scale 是哨兵 0，往下游(文件名与历史角标)报实际达成的倍率。
+      const achievedScale = scale === 0 && imageSize
+        ? Math.max(1, Math.round(enhanceMaxTargetSize(imageSize.width, imageSize.height).width / imageSize.width))
+        : scale;
+
       setTimeout(() => {
-        onComplete(resultBlob, scale);
+        onComplete(resultBlob, achievedScale);
         onClose();
       }, 800);
     } catch (err) {
@@ -132,7 +161,7 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
           <div>
             <label className="block text-sm text-gray-400 mb-3">放大倍数</label>
             <div className="flex gap-2">
-              {[1.5, 2, 4].map((s) => (
+              {(maxAvailable ? [0, 1.5, 2, 4] : [1.5, 2, 4]).map((s) => (
                 <button
                   key={s}
                   onClick={() => setScale(s)}
@@ -142,36 +171,45 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                       : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                     } disabled:opacity-50`}
                 >
-                  {s}x
+                  {s === 0 ? 'Max ✨' : `${s}x`}
                 </button>
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {scale === 1.5
+              {isRedraw
                 ? (() => {
                   if (!imageSize) return '基于图生图放大，消耗 Anlas';
-                  const targetW = Math.round((imageSize.width * 1.5) / 64) * 64;
-                  const targetH = Math.round((imageSize.height * 1.5) / 64) * 64;
+                  // Max ✨ 的输出尺寸是服务端定的，params 里留的是原图尺寸 ——
+                  // 按原尺寸估价会系统性少记四倍，所以这里必须用算出来的实际尺寸。
+                  const target = scale === 0
+                    ? enhanceMaxTargetSize(imageSize.width, imageSize.height)
+                    : {
+                      width: Math.round((imageSize.width * 1.5) / 64) * 64,
+                      height: Math.round((imageSize.height * 1.5) / 64) * 64,
+                    };
                   const preset = MAGNITUDE_PRESETS[magnitude];
                   const result = calculateCostFromUI({
     // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
     opusUsageExhausted: isOpusUsageExhausted(),
-                    width: targetW,
-                    height: targetH,
+                    width: target.width,
+                    height: target.height,
                     steps: 28,
-                    modelId: 'v4.5-curated',
+                    modelId: enhanceModel,
                     sampler: 'Euler Ancestral',
                     isOpus: getCachedIsOpus(),
                     img2imgStrength: preset.strength,
                   });
-                  return `基于图生图放大，消耗 ${result.total} Anlas`;
+                  const size = `${target.width}×${target.height}`;
+                  return scale === 0
+                    ? `Max ✨ 由服务端放大至约 ${size}，消耗 ${result.total} Anlas`
+                    : `基于图生图放大至 ${size}，消耗 ${result.total} Anlas`;
                 })()
                 : '模型原生 4x 放大，2x 会额外缩放'}
             </p>
           </div>
 
-          {/* 1.5x 模式：Magnitude 滑块 */}
-          {scale === 1.5 && (
+          {/* 图生图重绘：Magnitude 滑块(Max ✨ 与 1.5x 共用) */}
+          {isRedraw && (
             <div>
               <label className="block text-sm text-gray-400 mb-3">
                 Magnitude <span className="text-nai-accent font-mono">{magnitude}</span>
@@ -198,8 +236,8 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
             </div>
           )}
 
-          {/* 处理方式选择 - 仅在 2x/4x 模式显示 */}
-          {scale !== 1.5 && (
+          {/* 处理方式选择 - 仅在原生超分(2x/4x)显示 */}
+          {!isRedraw && (
             <div>
               <label className="block text-sm text-gray-400 mb-3">处理方式</label>
               <div className="space-y-2">
@@ -256,15 +294,19 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
             </div>
           )}
 
-          {/* 1.5x 模式说明 */}
-          {scale === 1.5 && (
+          {/* 图生图重绘说明 */}
+          {isRedraw && (
             <div className="bg-gray-800/50 rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <Sparkles className="w-5 h-5 text-nai-accent flex-shrink-0" />
                 <div>
-                  <div className="text-sm text-white font-medium">图生图放大</div>
+                  <div className="text-sm text-white font-medium">
+                    {scale === 0 ? 'Max ✨ 放大重绘' : '图生图放大'}
+                  </div>
                   <div className="text-xs text-gray-400 mt-1">
-                    将图片以 1.5 倍分辨率重新生成，保持画面内容的同时提升细节
+                    {scale === 0
+                      ? `由 ${enhanceModel} 重新生成，输出尺寸由服务端决定（约 ${resultWidth}×${resultHeight}）`
+                      : '将图片以 1.5 倍分辨率重新生成，保持画面内容的同时提升细节'}
                   </div>
                 </div>
               </div>

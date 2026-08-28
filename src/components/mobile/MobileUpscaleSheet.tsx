@@ -31,6 +31,9 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
     isOver15xLimit,
     estimated15xCost,
     handleUpscale,
+    maxAvailable,
+    isRedraw,
+    enhanceModel,
   } = useMobileUpscaleWorkflow({
     isOpen,
     imageUrl,
@@ -66,7 +69,7 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
           <div>
             <label className="text-xs text-gray-400 block mb-2">放大倍数</label>
             <div className="flex gap-2">
-              {[1.5, 2, 4].map((s) => (
+              {(maxAvailable ? [0, 1.5, 2, 4] : [1.5, 2, 4]).map((s) => (
                 <button
                   key={s}
                   onClick={() => setScale(s)}
@@ -76,14 +79,14 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
                       : 'bg-gray-800 text-gray-300 active:bg-gray-700'
                     } disabled:opacity-50`}
                 >
-                  {s}x
+                  {s === 0 ? 'Max ✨' : `${s}x`}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 1.5x 模式：Magnitude 滑块 */}
-          {scale === 1.5 && (
+          {/* 图生图重绘：Magnitude 滑块(Max ✨ 与 1.5x 共用) */}
+          {isRedraw && (
             <div>
               <label className="text-xs text-gray-400 block mb-2">
                 Magnitude <span className="text-nai-accent font-mono">{magnitude}</span>
@@ -111,7 +114,7 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
           )}
 
           {/* 处理方式 - 仅在 2x/4x 模式显示 */}
-          {scale !== 1.5 && (
+          {!isRedraw && (
             <div>
               <label className="text-xs text-gray-400 block mb-2">处理方式</label>
               <div className="space-y-2">
@@ -160,17 +163,22 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
             </div>
           )}
 
-          {/* 1.5x 模式说明 */}
-          {scale === 1.5 && (
+          {/* 图生图重绘说明 */}
+          {isRedraw && (
             <div className="bg-gray-800/50 rounded-xl p-3">
               <div className="flex items-center gap-3">
                 <Sparkles className="w-5 h-5 text-nai-accent flex-shrink-0" />
                 <div>
-                  <div className="text-sm text-white font-medium">图生图放大</div>
+                  <div className="text-sm text-white font-medium">
+                    {scale === 0 ? 'Max ✨ 放大重绘' : '图生图放大'}
+                  </div>
                   <div className="text-xs text-gray-400 mt-0.5">
-                    {estimated15xCost === null
-                      ? '以 1.5 倍分辨率重新生成，消耗 Anlas'
-                      : `以 1.5 倍分辨率重新生成，消耗 ${estimated15xCost} Anlas`}
+                    {scale === 0
+                      ? `由 ${enhanceModel} 重绘，尺寸由服务端决定` +
+                        (estimated15xCost === null ? '，消耗 Anlas' : `，消耗 ${estimated15xCost} Anlas`)
+                      : estimated15xCost === null
+                        ? '以 1.5 倍分辨率重新生成，消耗 Anlas'
+                        : `以 1.5 倍分辨率重新生成，消耗 ${estimated15xCost} Anlas`}
                   </div>
                 </div>
               </div>

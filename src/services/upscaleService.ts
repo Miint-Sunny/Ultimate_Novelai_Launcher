@@ -1,7 +1,8 @@
 import { sidecarApi } from '../api/sidecar';
-import { getAppSettings } from './localLibrary';
-import { generateImageStream, processImg2ImgImage } from './novelai';
+import { getAISettings, getAppSettings } from './localLibrary';
+import { generateImageStream, processImg2ImgImage, resolveEnhanceModel } from './novelai';
 import { extractImageMetadata } from '../utils/imageMetadata';
+import { enhanceMaxAvailable, enhanceMaxTargetSize, type EnhanceScaleId } from './naiEnhanceScale';
 
 // 1.5x 图生图放大的总像素上限（与普通生成保持一致：1024 × 3072 = 3,145,728）
 export const UPSCALE_15X_MAX_PIXELS = 1024 * 3072;
@@ -157,7 +158,8 @@ export async function upscaleViaImg2Img(
   imageBlob: Blob,
   strength: number,
   noise: number,
-  onProgress?: (progress: UpscaleProgress) => void
+  onProgress?: (progress: UpscaleProgress) => void,
+  scaleId: EnhanceScaleId = 'x1.5'
 ): Promise<Blob> {
   const settings = getAppSettings();
   const tokenStatus = await sidecarApi.tokenStatus();
@@ -165,11 +167,26 @@ export async function upscaleViaImg2Img(
     throw new Error('未配置 NovelAI Token，请先在 sidecar 设置中保存 Token');
   }
 
+  // 重绘用哪个模型:V5 Curated 顶替成 4.5 Curated,V5 Full 用它自己。
+  const enhanceModel = resolveEnhanceModel(getAISettings().model);
+  const isMax = scaleId === 'max';
+
   onProgress?.({ stage: 'loading', progress: 10, message: '正在读取图片信息...' });
   const { width: originalWidth, height: originalHeight } = await getImageSize(imageBlob);
-  const { width: targetWidth, height: targetHeight } = getUpscale15xTargetSize(originalWidth, originalHeight);
 
-  if (targetWidth * targetHeight > UPSCALE_15X_MAX_PIXELS) {
+  if (isMax && !enhanceMaxAvailable(originalWidth, originalHeight, enhanceModel)) {
+    throw new Error(
+      `Max ✨ 档对 ${originalWidth}×${originalHeight} / ${enhanceModel} 不可用：` +
+      '只有 V5 且源图像素低于上限的 0.8 时才提供这一档。'
+    );
+  }
+
+  // Max ✨ 发的是**原图尺寸**,由服务端放大;数值档才由客户端把宽高改好再发。
+  const { width: targetWidth, height: targetHeight } = isMax
+    ? { width: originalWidth, height: originalHeight }
+    : getUpscale15xTargetSize(originalWidth, originalHeight);
+
+  if (!isMax && targetWidth * targetHeight > UPSCALE_15X_MAX_PIXELS) {
     throw new Error(
       `1.5x 放大目标尺寸 ${targetWidth}×${targetHeight}（${(targetWidth * targetHeight / 1_000_000).toFixed(2)}M 像素）` +
       `超过上限 ${UPSCALE_15X_MAX_PIXELS.toLocaleString()} 像素（约 1024×3072）。` +
@@ -230,7 +247,8 @@ export async function upscaleViaImg2Img(
     negativePrompt = 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry';
   }
 
-  onProgress?.({ stage: 'processing', progress: 30, message: `放大至 ${targetWidth}×${targetHeight}...` });
+  const billedSize = isMax ? enhanceMaxTargetSize(originalWidth, originalHeight) : { width: targetWidth, height: targetHeight };
+  onProgress?.({ stage: 'processing', progress: 30, message: `放大至 ${billedSize.width}×${billedSize.height}...` });
 
   const processedBase64 = await processImg2ImgImage(
     `data:image/png;base64,${imageBase64}`,
@@ -243,7 +261,7 @@ export async function upscaleViaImg2Img(
   const result = await generateImageStream({
     positivePrompt,
     negativePrompt,
-    model: 'nai-diffusion-4-5-curated',
+    model: enhanceModel,
     width: targetWidth,
     height: targetHeight,
     steps: 28,
@@ -260,6 +278,8 @@ export async function upscaleViaImg2Img(
       imageBase64: processedBase64,
       strength,
       noise,
+      // 非 Max 档整个键省掉——发 false 会被官方当成普通重绘。
+      ...(isMax ? { upscaledEnhance: true } : {}),
     },
   }, (streamProgress) => {
     const progress = 40 + Math.round((streamProgress.step / streamProgress.totalSteps) * 50);
@@ -274,6 +294,6 @@ export async function upscaleViaImg2Img(
     throw new Error(result.error || '图生图生成失败，未返回图片');
   }
 
-  onProgress?.({ stage: 'done', progress: 100, message: '1.5x 放大完成！' });
+  onProgress?.({ stage: 'done', progress: 100, message: isMax ? 'Max ✨ 放大完成！' : '1.5x 放大完成！' });
   return result.imageData;
 }

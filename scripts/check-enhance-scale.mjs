@@ -20,6 +20,7 @@ const {
   enhanceMaxAvailable,
   enhanceScaleOptions,
 } = await import('../src/services/naiEnhanceScale.ts');
+const { resolveEnhanceModel, buildRequestPayload } = await import('../src/services/novelai.ts');
 
 let checks = 0;
 const check = (name, fn) => {
@@ -146,6 +147,31 @@ check('档位: 放出来的每一档都不越上限', () => {
       assert.ok(t.width * t.height <= NAI_MAX_PIXELS, `${w}×${h} 的 ${s.id} 档越界`);
     }
   }
+});
+
+// 重绘用哪个模型是产品口径,不是我能推的:V5 Curated 没有自己的重绘模型,
+// 顶替成 4.5 Curated;V5 Full 用它自己。
+check('模型: V5 Curated 顶替成 4.5 Curated,V5 Full 用它自己', () => {
+  assert.equal(resolveEnhanceModel('v5-curated'), 'v4.5-curated');
+  assert.equal(resolveEnhanceModel('v5-full'), 'v5-full');
+  assert.equal(resolveEnhanceModel('v4.5-full'), 'v4.5-full');
+});
+
+// 这一条钉的是一个真实踩过的坑:这里曾经填 API id('nai-diffusion-4-5-curated'),
+// 而 MODEL_MAP 是按 **UI id** 建的,查不到就静默落到默认的 4.5 Full ——
+// 于是「4.5 Curated 重绘」实际一直在用 4.5 Full 出图,界面和估价都还写着 curated。
+check('模型: 返回的是 UI id,喂给 buildRequestPayload 能解析成对应的 API 模型', () => {
+  const apiModelOf = (uiId) => buildRequestPayload({
+    positivePrompt: '1girl', negativePrompt: 'lowres', model: uiId,
+    width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral',
+    cfgRescale: 0, noiseSchedule: 'native', ucPreset: 'heavy', qualityToggle: true,
+    varietyPlus: false, characterPrompts: [], seed: 1,
+  }).model;
+  assert.equal(apiModelOf(resolveEnhanceModel('v5-curated')), 'nai-diffusion-4-5-curated');
+  assert.equal(apiModelOf(resolveEnhanceModel('v5-full')), 'nai-diffusion-5-full');
+  // 认不出的输入退回历史默认档,而不是悄悄落到 4.5 Full。
+  assert.equal(resolveEnhanceModel('nai-diffusion-4-5-curated'), 'v4.5-curated');
+  assert.equal(apiModelOf(resolveEnhanceModel('')), 'nai-diffusion-4-5-curated');
 });
 
 console.log(`\n${checks} 项放大重绘尺寸校验全部通过。`);

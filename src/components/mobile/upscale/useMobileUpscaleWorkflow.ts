@@ -10,6 +10,9 @@ import {
   type UpscaleMethod,
   type UpscaleProgress,
 } from '../../../services/upscaleService';
+import { resolveEnhanceModel } from '../../../services/novelai';
+import { getAISettings } from '../../../services/localLibrary';
+import { enhanceMaxAvailable, enhanceMaxTargetSize } from '../../../services/naiEnhanceScale';
 import { loadImageToCanvas } from './loadImageToCanvas';
 
 export const MAGNITUDE_PRESETS: Record<number, { strength: number; noise: number }> = {
@@ -146,17 +149,30 @@ export function useMobileUpscaleWorkflow({
     }
   }, [isOpen]);
 
+  // scale 的取值与桌面端一致:0 = Max ✨(哨兵),1.5 = 图生图重绘,2/4 = 原生超分。
+  const enhanceModel = resolveEnhanceModel(getAISettings().model);
+  const isRedraw = scale === 0 || scale === 1.5;
+  const maxAvailable = imageSize
+    ? enhanceMaxAvailable(imageSize.width, imageSize.height, enhanceModel)
+    : false;
+  // Max ✨ 的输出尺寸由服务端定;这里算的是官方那套 RO() 的结果,只用于展示与估价。
+  const maxTarget = imageSize ? enhanceMaxTargetSize(imageSize.width, imageSize.height) : null;
+
   const resultWidth = imageSize
-    ? (scale === 1.5 ? Math.round((imageSize.width * 1.5) / 64) * 64 : Math.round(imageSize.width * scale))
+    ? (scale === 0 ? (maxTarget?.width ?? 0)
+      : scale === 1.5 ? Math.round((imageSize.width * 1.5) / 64) * 64
+        : Math.round(imageSize.width * scale))
     : 0;
   const resultHeight = imageSize
-    ? (scale === 1.5 ? Math.round((imageSize.height * 1.5) / 64) * 64 : Math.round(imageSize.height * scale))
+    ? (scale === 0 ? (maxTarget?.height ?? 0)
+      : scale === 1.5 ? Math.round((imageSize.height * 1.5) / 64) * 64
+        : Math.round(imageSize.height * scale))
     : 0;
   const modelLoaded = isModelLoaded();
   const isOver15xLimit = scale === 1.5 && imageSize !== null && resultWidth * resultHeight > UPSCALE_15X_MAX_PIXELS;
 
   const estimated15xCost = useMemo(() => {
-    if (scale !== 1.5 || !imageSize) return null;
+    if (!isRedraw || !imageSize) return null;
     const preset = MAGNITUDE_PRESETS[magnitude];
     const result = calculateCostFromUI({
     // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
@@ -164,13 +180,13 @@ export function useMobileUpscaleWorkflow({
       width: resultWidth,
       height: resultHeight,
       steps: 28,
-      modelId: 'v4.5-curated',
+      modelId: enhanceModel,
       sampler: 'Euler Ancestral',
       isOpus: getCachedIsOpus(),
       img2imgStrength: preset.strength,
     });
     return result.total;
-  }, [imageSize, magnitude, resultHeight, resultWidth, scale]);
+  }, [enhanceModel, imageSize, isRedraw, magnitude, resultHeight, resultWidth]);
 
   const handleUpscale = useCallback(async () => {
     if (isOver15xLimit) {
@@ -185,11 +201,17 @@ export function useMobileUpscaleWorkflow({
     try {
       let resultBlob: Blob;
 
-      if (scale === 1.5) {
+      if (isRedraw) {
         setProgress({ stage: 'loading', progress: 5, message: '准备图片...' });
         const imageBlob = await imageUrlToBlob(imageUrl);
         const preset = MAGNITUDE_PRESETS[magnitude];
-        resultBlob = await upscaleViaImg2Img(imageBlob, preset.strength, preset.noise, setProgress);
+        resultBlob = await upscaleViaImg2Img(
+          imageBlob,
+          preset.strength,
+          preset.noise,
+          setProgress,
+          scale === 0 ? 'max' : 'x1.5'
+        );
       } else if (method === 'local') {
         const canvas = await imageUrlToLocalCanvas(imageUrl, setProgress);
         setProgress({ stage: 'loading', progress: 10, message: '[7] 开始超分处理...' });
@@ -203,9 +225,14 @@ export function useMobileUpscaleWorkflow({
 
       setProgress({ stage: 'done', progress: 100, message: '超分完成！' });
 
+      // Max ✨ 的 scale 是哨兵 0,往下游(文件名与历史角标)报实际达成的倍率。
+      const achievedScale = scale === 0 && imageSize
+        ? Math.max(1, Math.round(resultWidth / imageSize.width))
+        : scale;
+
       setTimeout(() => {
         setIsProcessing(false);
-        onComplete(resultBlob, scale);
+        onComplete(resultBlob, achievedScale);
         onClose();
       }, 500);
     } catch (err) {
@@ -214,7 +241,7 @@ export function useMobileUpscaleWorkflow({
       setProgress(null);
       setIsProcessing(false);
     }
-  }, [imageUrl, isOver15xLimit, magnitude, method, onClose, onComplete, resultHeight, resultWidth, scale]);
+  }, [imageSize, imageUrl, isOver15xLimit, isRedraw, magnitude, method, onClose, onComplete, resultHeight, resultWidth, scale]);
 
   return {
     scale,
@@ -233,5 +260,9 @@ export function useMobileUpscaleWorkflow({
     isOver15xLimit,
     estimated15xCost,
     handleUpscale,
+    // Max ✨ 档:能不能选、以及两档重绘共用的判定,交给界面渲染。
+    maxAvailable,
+    isRedraw,
+    enhanceModel,
   };
 }
