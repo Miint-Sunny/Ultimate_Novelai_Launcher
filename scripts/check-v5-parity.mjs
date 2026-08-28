@@ -27,6 +27,7 @@ await import('./lib/load-frontend-module.mjs');
 
 const { buildRequestPayload } = await import('../src/services/novelai.ts');
 const { calculateAnlasCost, calculateCostFromUI } = await import('../src/services/costCalculator.ts');
+const { MODEL_MATCH_MAP } = await import('../src/components/left-sidebar/metadataImportActions.ts');
 const {
   MODEL_MAP,
   NAI_MODELS,
@@ -386,6 +387,35 @@ check('载荷: V5 Curated 重绘是 4.5 顶替(NAI 上线真模型后要摘掉�
   // Full 没有顶替,走正常的后缀推导 —— 顶替只此一处,别扩散。
   const full = buildRequestPayload(baseParams({ model: 'v5-full', inpaint }));
   assert.equal(full.model, 'nai-diffusion-5-full-inpainting');
+});
+
+// 导入 V5 图片能不能选中 V5 模型。这条钉的是**两张表的接缝**:
+// metadataImportActions 的关键词表匹配的是 imageMetadata 归一化之后的显示名,
+// 不是 PNG 里的原始 Source 串。曾经 V5 在显示名表里没有条目,被正则压成
+// `NovelAI V5`,而关键词表里写的是哈希 `v5 0adf9ab7` —— 一条都不中,
+// 导入 V5 图片不切模型、也不报错。
+check('导入: V5 的 Source 串归一化后仍能选中 V5 模型', () => {
+  // 复刻 imageMetadata 里那条正则兜底(显示名表未命中时走的路径)。
+  const normalize = (raw) => {
+    const m = raw.match(/V(\d+(?:\.\d+)?)/i);
+    if (!m) return raw;
+    return `NovelAI V${m[1]}${/curated/i.test(raw) ? ' Curated' : ''}`;
+  };
+  const pick = (displayName) => {
+    const lower = displayName.toLowerCase();
+    return MODEL_MATCH_MAP.find((e) => e.keywords.some((k) => lower.includes(k)))?.modelName ?? null;
+  };
+
+  // 显示名表命中时(已知哈希)
+  assert.equal(pick('NovelAI V5 Full'), 'NovelAI V5 Full');
+  assert.equal(pick('NovelAI V5 Curated'), 'NovelAI V5 Curated');
+  // 未知哈希被压扁后,仍要落到 V5 而不是一条都不中
+  assert.equal(normalize('NovelAI Diffusion V5 DEADBEEF'), 'NovelAI V5');
+  assert.equal(pick('NovelAI V5'), 'NovelAI V5 Full');
+  // 别把 V4 系顺手吞掉
+  assert.equal(pick('NovelAI V4.5 Full'), 'NovelAI V4.5 Full');
+  assert.equal(pick('NovelAI V4.5 Curated'), 'NovelAI V4.5 Curated');
+  assert.equal(pick('NovelAI V4 Full'), 'NovelAI V4 Full');
 });
 
 // 官方每个 V5 请求都带这两个数字档位提示(导入图片时靠它决定先拿哪个档去剥预设

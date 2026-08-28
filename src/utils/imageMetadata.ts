@@ -625,6 +625,12 @@ function parseNAIMetadata(data: any): ImageMetadata | null {
 
     // 模型名称映射 - 基于 NovelAI 官方前端源码的完整映射
     const modelNameMap: Record<string, string> = {
+      // V5 —— Source 串里不写 Full/Curated,只有版本号加权重哈希,只能靠哈希区分。
+      // 0ADF9AB7 是实测采到的 V5 Full;Curated 的哈希还没采到。
+      // 这里必须有条目:没有的话下面的正则兜底会把它压成 "NovelAI V5",
+      // 而 metadataImportActions 那张关键词表是按**这里产出的名字**匹配的,
+      // 压扁之后哪条都不中 —— 表现就是导入 V5 图片不切模型,且完全不报错。
+      'NovelAI Diffusion V5 0ADF9AB7': 'NovelAI V5 Full',
       // V4.5 Full 系列
       'NovelAI Diffusion V4.5 4BDE2A90': 'NovelAI V4.5 Full',
       'NovelAI Diffusion V4.5 1229B44F': 'NovelAI V4.5 Full Inpaint',
