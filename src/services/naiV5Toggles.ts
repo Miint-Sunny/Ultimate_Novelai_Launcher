@@ -37,6 +37,22 @@ export interface V5ToggleOption {
   literal: string;
   /** 中文显示名。 */
   label: string;
+  /**
+   * 只参与检测,不给点击。
+   *
+   * 目前只有 `transparent background`:它属于「背景形态」这个互斥组,所以撞车检测
+   * 必须看得见它;但插词这件事已经有专门的 UI 开关在做(那个开关还会连带发
+   * `tag_hint_transparent_background`),再给一个可点入口就是两边打架。
+   */
+  detectOnly?: boolean;
+  /**
+   * 允许与之并存的同组字面量。
+   *
+   * 目前只有 `comic`:文档明说它可以和**格数词**(`4koma` 等)叠——注意是格数词,
+   * 不是同组任意值,所以 `comic + sticker` 仍然算撞车。写成明确配对而不是
+   * 「自由叠加」布尔,就是为了不把这个区别抹掉。
+   */
+  stacksWith?: readonly string[];
 }
 
 export interface V5ToggleGroup {
@@ -46,6 +62,8 @@ export interface V5ToggleGroup {
   kind: V5ToggleGroupKind;
   /** 一句话说明,用于 HelpTip / title 属性。 */
   hint: string;
+  /** 只在 V5 家族出现(§3.10 的专有开关);其余组对所有模型都适用。 */
+  v5Only?: boolean;
   options: V5ToggleOption[];
 }
 
@@ -54,6 +72,7 @@ export const V5_TOGGLE_GROUPS: readonly V5ToggleGroup[] = [
     id: 'complexity',
     title: '内容复杂度',
     kind: 'exclusive',
+    v5Only: true,
     hint: '控制画面信息密度。正常美图用「高」,海报或大场景用「极高」。',
     options: [
       { literal: 'low complexity', label: '低' },
@@ -66,6 +85,7 @@ export const V5_TOGGLE_GROUPS: readonly V5ToggleGroup[] = [
     id: 'visual-novel',
     title: 'Galgame 风格',
     kind: 'exclusive',
+    v5Only: true,
     hint: '视觉小说素材的五种形态。背景图可配「高复杂度 + 阴影纵深」;立绘与 Q 版建议配透明背景。',
     options: [
       { literal: 'visual novel art', label: '整体风格' },
@@ -79,12 +99,107 @@ export const V5_TOGGLE_GROUPS: readonly V5ToggleGroup[] = [
     id: 'v5-extras',
     title: 'V5 词条',
     kind: 'independent',
+    v5Only: true,
     hint: 'V5 新增的几个独立词条,可以叠加。`has alpha` 官方建议写在光效/粒子词条之后。',
     options: [
       { literal: 'depthness', label: '阴影纵深' },
       { literal: 'has alpha', label: 'alpha 通道' },
       { literal: 'alpha transparency', label: '物体半透明' },
       { literal: 'attractive male', label: '帅气男性' },
+    ],
+  },
+  // ↓ 以下六组来自 §3.9「互斥组:这几类各只能挑一个」。它们不是 V5 专有,
+  //   对所有模型都适用,所以没有 v5Only。
+  //
+  //   文档给了实测数据说明为什么值得做:254 条有视线词的提示词里 **20% 写了不止
+  //   一个方向**,415 条有取景词的里 **22% 写了不止一个距离**。同组写两个时模型会
+  //   在矛盾指令之间摇摆,通常两个都做不准——而服务端一样不报错。
+  {
+    id: 'gaze',
+    title: '视线方向',
+    kind: 'exclusive',
+    hint: '只能挑一个。`looking back`(回头)与 `closed eyes`(闭眼)不是方向,可以另外叠。多角色互看只写 `looking at another` 一个,高低差交给句子。',
+    options: [
+      { literal: 'looking at viewer', label: '看镜头' },
+      { literal: 'looking to the side', label: '看侧面' },
+      { literal: 'looking up', label: '向上看' },
+      { literal: 'looking down', label: '向下看' },
+      { literal: 'looking away', label: '看别处' },
+      { literal: 'looking at another', label: '看向他人' },
+    ],
+  },
+  {
+    id: 'framing',
+    title: '取景距离',
+    kind: 'exclusive',
+    hint: '只能挑一个。`wide shot` 说的是镜头退多远,不在这一组,可以和 `full body` 叠。',
+    options: [
+      { literal: 'close-up', label: '特写' },
+      { literal: 'portrait', label: '肖像' },
+      { literal: 'upper body', label: '半身' },
+      { literal: 'cowboy shot', label: '七分身' },
+      { literal: 'full body', label: '全身' },
+    ],
+  },
+  {
+    id: 'background-form',
+    title: '背景形态',
+    kind: 'exclusive',
+    hint: '只能挑一个。透明背景另有专门开关(它还会连带发 tag_hint),这里只参与撞车检测。',
+    options: [
+      { literal: 'simple background', label: '简单' },
+      { literal: 'blurry background', label: '虚化' },
+      { literal: 'white background', label: '纯白' },
+      { literal: 'detailed background', label: '细节' },
+      { literal: 'dark background', label: '暗背景' },
+      { literal: 'transparent background', label: '透明', detectOnly: true },
+    ],
+  },
+  {
+    id: 'posture',
+    title: '体位',
+    kind: 'exclusive',
+    hint: '只能挑一个。多角色是例外——一人站一人蹲时两个都要写,靠句子说清谁是谁。',
+    options: [
+      { literal: 'standing', label: '站' },
+      { literal: 'sitting', label: '坐' },
+      { literal: 'lying', label: '躺' },
+      { literal: 'kneeling', label: '跪' },
+      { literal: 'squatting', label: '蹲' },
+    ],
+  },
+  {
+    id: 'camera-horizontal',
+    title: '水平机位',
+    kind: 'exclusive',
+    hint: '只能挑一个,但可以和垂直机位叠一个:`from below, from side` 合法,`from behind, from side` 不合法。',
+    options: [
+      { literal: 'straight on', label: '正面' },
+      { literal: 'from side', label: '侧面' },
+      { literal: 'from behind', label: '背面' },
+    ],
+  },
+  {
+    id: 'camera-vertical',
+    title: '垂直机位',
+    kind: 'exclusive',
+    hint: '两者互斥,但可以和水平机位各叠一个。',
+    options: [
+      { literal: 'from below', label: '仰拍' },
+      { literal: 'from above', label: '俯拍' },
+    ],
+  },
+  {
+    id: 'layout',
+    title: '版式',
+    kind: 'exclusive',
+    hint: '只能挑一个。`comic` 可以和格数词(`4koma` 等)叠;格数排布说不了的用句子写,不要自造 `vertical` 这类 tag。',
+    options: [
+      { literal: 'comic', label: '漫画', stacksWith: ['4koma'] },
+      { literal: '4koma', label: '四格' },
+      { literal: 'multiple views', label: '多视图' },
+      { literal: 'reference sheet', label: '设定图' },
+      { literal: 'sticker', label: '贴纸' },
     ],
   },
 ] as const;
@@ -241,6 +356,53 @@ function appendLiteral(prompt: string, literal: string): string {
   return base ? `${base}, ${literal}` : literal;
 }
 
+/** 同一互斥组里同时生效了两个以上的值——文档说这时模型会在矛盾指令之间摇摆。 */
+export interface V5GroupConflict {
+  groupId: string;
+  title: string;
+  /** 撞在一起的字面量,按表内顺序。 */
+  literals: string[];
+  /** 给用户看的一句话。 */
+  message: string;
+}
+
+/**
+ * 找出互斥组里的撞车。
+ *
+ * 这是这张表真正值钱的地方:文档实测 254 条有视线词的提示词里 20% 写了不止一个
+ * 方向,415 条有取景词的里 22% 写了不止一个距离——而服务端对此不报错,出图只是
+ * 「不太对」。同组写两个不是风格选择,是失误。
+ *
+ * 体位组有一条**故意不处理**的例外:多角色时一人站一人蹲,两个都要写是对的。
+ * 我们分不出提示词里有几个角色,所以照报不误,但话술上说成「确认是不是多角色」
+ * 而不是断言写错。
+ */
+export function detectV5GroupConflicts(prompt: string): V5GroupConflict[] {
+  const active = activeV5Toggles(prompt);
+  const conflicts: V5GroupConflict[] = [];
+  for (const group of V5_TOGGLE_GROUPS) {
+    if (group.kind !== 'exclusive') continue;
+    const hit = group.options.filter((o) => active.has(o.literal.toLowerCase()));
+    if (hit.length < 2) continue;
+    // 一对值合法当且仅当其中一方在自己的 stacksWith 里点了另一方。
+    const allowed = (a: V5ToggleOption, b: V5ToggleOption): boolean =>
+      (a.stacksWith ?? []).includes(b.literal) || (b.stacksWith ?? []).includes(a.literal);
+    const clashing = hit.filter((a) => hit.some((b) => b !== a && !allowed(a, b)));
+    if (clashing.length < 2) continue;
+    const literals = clashing.map((o) => o.literal);
+    conflicts.push({
+      groupId: group.id,
+      title: group.title,
+      literals,
+      message:
+        group.id === 'posture'
+          ? `体位写了 ${literals.join(' / ')} ——多角色时这是对的,单角色时模型会摇摆`
+          : `${group.title}只能挑一个,现在写了 ${literals.join(' / ')}`,
+    });
+  }
+  return conflicts;
+}
+
 /**
  * 切换一个开关词条,返回新的提示词。
  *
@@ -250,7 +412,10 @@ function appendLiteral(prompt: string, literal: string): string {
 export function toggleV5Word(prompt: string, groupId: string, literal: string): string {
   const group = V5_TOGGLE_GROUPS.find((g) => g.id === groupId);
   if (!group) return prompt;
-  if (!group.options.some((o) => o.literal === literal)) return prompt;
+  const option = group.options.find((o) => o.literal === literal);
+  if (!option) return prompt;
+  // detectOnly 的值只参与撞车检测,不接受点击——它的插词入口在别处。
+  if (option.detectOnly) return prompt;
 
   const active = activeV5Toggles(prompt);
   if (active.has(literal.toLowerCase())) return removeLiteral(prompt, literal);

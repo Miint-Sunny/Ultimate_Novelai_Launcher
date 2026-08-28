@@ -12,7 +12,7 @@
 
 import assert from 'node:assert/strict';
 
-const { V5_TOGGLE_GROUPS, activeV5Toggles, toggleV5Word } = await import(
+const { V5_TOGGLE_GROUPS, activeV5Toggles, toggleV5Word, detectV5GroupConflicts } = await import(
   '../src/services/naiV5Toggles.ts'
 );
 
@@ -66,12 +66,14 @@ check('表: complexity 四档、visual novel 五档,逐字对齐 NAI5_All_Prompt
   );
 });
 
-check('表: 三条刻意的缺席 —— res_mult / transparent background / location', () => {
+check('表: 两条刻意的缺席,外加一条只检测不可点', () => {
   assert.ok(!literals.some((l) => /res_mult/i.test(l)), 'res_mult 没有出处,不该进表');
-  assert.ok(
-    !literals.some((l) => l.toLowerCase() === 'transparent background'),
-    'transparent background 已有专门开关,进表会有两个入口打架',
+  // transparent background 后来以 detectOnly 进了表:它属于 §3.9 的背景形态互斥组,
+  // 撞车检测必须看得见它;但插词入口仍然只有那个专门开关一个,不给点击。
+  const transparent = V5_TOGGLE_GROUPS.flatMap((g) => g.options).find(
+    (o) => o.literal.toLowerCase() === 'transparent background',
   );
+  assert.ok(transparent?.detectOnly, 'transparent background 必须是 detectOnly,否则两个入口打架');
   // location 在旧版文档里有、当前正本里 0 命中(连同 indoors/outdoors 一起被移除)。
   // 我照旧版抄进来过一次,这条断言防止再抄回来。
   assert.ok(
@@ -192,6 +194,77 @@ check('切换: 未知组 / 不属于该组的字面量,原样返回', () => {
 check('切换: 不改动用户的排版习惯(换行分组保留)', () => {
   const p = toggleV5Word('1girl,\nsmiling', 'v5-extras', 'depthness');
   assert.ok(p.includes('\n'), '换行被吃掉了');
+});
+
+// ---- 互斥组(§3.9)与撞车检测 ----
+//
+// 这一段针对的是文档里给了实测数据的那个失误:254 条有视线词的提示词里 20% 写了
+// 不止一个方向,415 条有取景词的里 22% 写了不止一个距离。服务端对此不报错。
+
+check('互斥组: 六组齐全,取值逐字对齐 §3.9', () => {
+  const byId = Object.fromEntries(V5_TOGGLE_GROUPS.map((g) => [g.id, g]));
+  assert.deepEqual(byId.gaze.options.map((o) => o.literal), [
+    'looking at viewer', 'looking to the side', 'looking up',
+    'looking down', 'looking away', 'looking at another',
+  ]);
+  assert.deepEqual(byId.framing.options.map((o) => o.literal), [
+    'close-up', 'portrait', 'upper body', 'cowboy shot', 'full body',
+  ]);
+  assert.deepEqual(byId.posture.options.map((o) => o.literal), [
+    'standing', 'sitting', 'lying', 'kneeling', 'squatting',
+  ]);
+  assert.deepEqual(byId['camera-horizontal'].options.map((o) => o.literal), [
+    'straight on', 'from side', 'from behind',
+  ]);
+  assert.deepEqual(byId['camera-vertical'].options.map((o) => o.literal), ['from below', 'from above']);
+  assert.deepEqual(byId.layout.options.map((o) => o.literal), [
+    'comic', '4koma', 'multiple views', 'reference sheet', 'sticker',
+  ]);
+});
+
+check('互斥组: §3.9 六组对所有模型都适用,只有 §3.10 三组是 V5 专有', () => {
+  const v5Only = V5_TOGGLE_GROUPS.filter((g) => g.v5Only).map((g) => g.id);
+  assert.deepEqual(v5Only, ['complexity', 'visual-novel', 'v5-extras']);
+});
+
+check('撞车: 同组两个值要报出来', () => {
+  const gaze = detectV5GroupConflicts('1girl, looking up, looking down, upper body');
+  assert.equal(gaze.length, 1);
+  assert.equal(gaze[0].groupId, 'gaze');
+  assert.deepEqual(gaze[0].literals, ['looking up', 'looking down']);
+  assert.equal(detectV5GroupConflicts('1girl, close-up, full body')[0].groupId, 'framing');
+});
+
+check('撞车: 文档给的例外要放行,但只放行文档说的那一种', () => {
+  // comic 可以和格数词叠
+  assert.deepEqual(detectV5GroupConflicts('1girl, comic, 4koma'), []);
+  // 但不是和同组任意值都能叠
+  assert.equal(detectV5GroupConflicts('1girl, comic, sticker').length, 1);
+  // 水平机位与垂直机位本就是两组,叠一个合法
+  assert.deepEqual(detectV5GroupConflicts('1girl, from below, from side'), []);
+});
+
+check('撞车: 体位组话术留了多角色的余地', () => {
+  const posture = detectV5GroupConflicts('2girls, standing, squatting')[0];
+  assert.equal(posture.groupId, 'posture');
+  assert.ok(posture.message.includes('多角色'), '单角色/多角色的区别要说出来,不能断言写错');
+});
+
+check('撞车: 干净的提示词不报', () => {
+  assert.deepEqual(detectV5GroupConflicts('1girl, looking at viewer, upper body, standing'), []);
+});
+
+check('detectOnly: transparent background 参与检测但不接受点击', () => {
+  const bg = V5_TOGGLE_GROUPS.find((g) => g.id === 'background-form');
+  const transparent = bg.options.find((o) => o.literal === 'transparent background');
+  assert.equal(transparent.detectOnly, true, '它的插词入口在专门开关那边');
+  // 检测得到
+  assert.equal(
+    detectV5GroupConflicts('1girl, simple background, transparent background').length,
+    1,
+  );
+  // 但点不动
+  assert.equal(toggleV5Word('1girl', 'background-form', 'transparent background'), '1girl');
 });
 
 console.log(`\n${checks} 项 V5 开关词条校验全部通过。`);

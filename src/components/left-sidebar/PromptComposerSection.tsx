@@ -151,8 +151,8 @@ export function PromptComposerSection({
         </div>
       </div>
 
-      {modelCapabilities(model).toggleWords && activeTab === 'prompt' && (
-        <V5TogglePanel prompt={positivePrompt} onPromptChange={onPositivePromptChange} />
+      {activeTab === 'prompt' && (
+        <V5TogglePanel model={model} prompt={positivePrompt} onPromptChange={onPositivePromptChange} />
       )}
 
       <TextRenderHintBar hints={textRenderHints} />

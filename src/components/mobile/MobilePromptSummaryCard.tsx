@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { appBackendApi } from '../../api/appBackendApi';
 import { renderPromptSummary, PromptToolButton } from './prompt-summary/PromptSummaryParts';
-import { modelCapabilities } from '../generation/modelResolutionOptions';
 import { V5TogglePanel } from '../left-sidebar/V5TogglePanel';
 
 interface MobilePromptSummaryCardProps {
@@ -96,11 +95,9 @@ export function MobilePromptSummaryCard({
           >
             {positivePrompt ? renderPromptSummary(positivePrompt) : '点击输入提示词...'}
           </div>
-          {modelCapabilities(model).toggleWords && (
-            <div className="-mx-3 -mb-3 mt-2 border-t border-gray-700/30 pt-1">
-              <V5TogglePanel prompt={positivePrompt} onPromptChange={setPositivePrompt} touch />
-            </div>
-          )}
+          <div className="-mx-3 -mb-3 mt-2 border-t border-gray-700/30 pt-1">
+            <V5TogglePanel model={model} prompt={positivePrompt} onPromptChange={setPositivePrompt} touch />
+          </div>
         </div>
 
         <div className="w-full text-left p-3 border-b border-gray-700/30">
