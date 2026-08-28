@@ -165,7 +165,7 @@ export function SidebarHeader({
             </span>
           </div>
           <div className="flex items-center justify-center">
-            <span className={`text-2xl filter drop-shadow-[0_0_8px_rgba(234,179,8,0.3)] -mt-1.5 inline-block ${isLoadingAnlas ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} style={isLoadingAnlas ? { animationDuration: '0.8s' } : undefined}>💎</span>
+            <span className={`text-2xl leading-none filter drop-shadow-[0_0_8px_rgba(234,179,8,0.3)] inline-block ${isLoadingAnlas ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} style={isLoadingAnlas ? { animationDuration: '0.8s' } : undefined}>💎</span>
           </div>
         </div>
       </div>

@@ -460,10 +460,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       artistManager.handleTagsChange(tags);
     }
   }, [chipMode, positivePrompt, artistManager.handleTagsChange]);
-  // 用 defaultModelOption() 而不是 MODELS[0]:默认模型是 DEFAULT_MODEL_ID 说了算,
-  // 不能由列表顺序决定——两者当下同值,正因如此更要写对,否则将来重排列表会
-  // 静默改掉默认模型(这个 bug 已经犯过一次)。
-  const [selectedModel, setSelectedModel] = useState(defaultModelOption);
+  // 首次启动用 DEFAULT_MODEL_ID(经 defaultModelOption 查表,不取 MODELS[0]——
+  // 让列表顺序决定默认是本次已经犯过一次的 bug);之后恢复上次选择,由
+  // getAISettings 负责校验存量值仍然存在。
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(
+    () => MODELS.find((option) => option.id === getAISettings().model) ?? defaultModelOption(),
+  );
   const ocManager = useOCManager(maxCharactersForModel(selectedModel.id));
   const handleExportVibe = useVibeExport({
     exportingVibeId,
@@ -566,8 +568,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
   // 保存 AI 设置到 localStorage
   useEffect(() => {
-    saveAISettings({ steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength });
-  }, [steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength]);
+    saveAISettings({ steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength, model: selectedModel.id });
+  }, [steps, scale, sampler, scaleRescale, noiseSchedule, varietyPlus, normalizeVibeStrength, selectedModel]);
 
   // 重置 AI 设置
   const resetAISettings = () => {

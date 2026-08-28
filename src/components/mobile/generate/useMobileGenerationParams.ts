@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CharacterPrompt } from '../types';
-import { DEFAULT_MODEL_ID } from '../../generation/modelResolutionOptions';
+import { DEFAULT_MODEL_ID, NAI_MODELS } from '../../generation/modelResolutionOptions';
 
 const STORAGE_KEY = 'mobile_generate_state';
 
@@ -66,7 +66,13 @@ export function useMobileGenerationParams({
 
   const [localWidth, setLocalWidth] = useState(savedState?.localWidth ?? targetWidth);
   const [localHeight, setLocalHeight] = useState(savedState?.localHeight ?? targetHeight);
-  const [model, setModel] = useState(savedState?.model ?? DEFAULT_MODEL_ID);
+  // 记住上次选择;存量值可能已不在列表里(改过 id、下架过型号),那样会恢复出一个
+  // 选不中的空选择,所以校验后再用。
+  const [model, setModel] = useState(() =>
+    NAI_MODELS.some((option) => option.id === savedState?.model)
+      ? (savedState!.model as string)
+      : DEFAULT_MODEL_ID,
+  );
   const [positivePrompt, setPositivePrompt] = useState(savedState?.positivePrompt ?? '');
   const [negativePrompt, setNegativePrompt] = useState(savedState?.negativePrompt ?? '');
   const [steps, setSteps] = useState(savedState?.steps ?? 28);
