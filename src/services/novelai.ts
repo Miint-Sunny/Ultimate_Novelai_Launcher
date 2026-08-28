@@ -94,7 +94,11 @@ const MODEL_MAP: Record<string, string> = {
 // V5 Curated 的局部重绘模型「还在训练中」(官方原话),官方客户端在用户对 V5
 // Curated 发起重绘时,实际换成 V4.5 Curated 的重绘模型去跑。所以重绘点得下去、
 // 也确实出图,但那是 4.5 的模型在往 V5 的画面里补色,风格对不齐——用户看到的
-// 「能用但有点怪」就是这么来的。NAI 上线真模型后删掉这张表即可。
+// 「能用但有点怪」就是这么来的。
+//
+// TODO(nai-v5-curated-inpainting): NAI 上线 nai-diffusion-5-curated-inpainting 后
+// 删掉这张顶替表。摘除前它是静默用错模型,grep 这个标记能找到全部两处
+// (另一处在 server/app.py 的 convert_web_params_to_stream)。
 const INPAINT_MODEL_OVERRIDES: Record<string, string> = {
   'nai-diffusion-5-curated': 'nai-diffusion-4-5-curated-inpainting',
 };

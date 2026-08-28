@@ -4931,7 +4931,9 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
         if base_model == "nai-diffusion-5-curated":
             # V5 Curated 的重绘模型「还在训练中」（官方原话），官方客户端在这种
             # 情况下换用 V4.5 Curated 的重绘模型。所以重绘能点、也出图，只是那是
-            # 4.5 的模型在补 V5 的画面，风格对不齐。NAI 上线后删掉这一支即可。
+            # 4.5 的模型在补 V5 的画面，风格对不齐。
+            # TODO(nai-v5-curated-inpainting): NAI 上线真模型后删掉这一支；摘除前
+            # 它是静默用错模型。另一处顶替在 src/services/novelai.ts。
             stream_params["model"] = "nai-diffusion-4-5-curated-inpainting"
         elif base_model == "nai-diffusion-3":
             stream_params["model"] = "nai-diffusion-3-inpainting"
