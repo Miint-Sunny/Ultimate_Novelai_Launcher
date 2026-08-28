@@ -148,13 +148,32 @@ export function enhanceScaleOptions(width: number, height: number, model: string
 }
 
 /**
- * 这次重绘**实际会产出**的尺寸 —— 估价与额度预警一律用它,不要用 params 的宽高。
- * Max 档下两者不同:params 里留的是原图尺寸。
+ * 非 V5 的历史 1.5× 算法:一律就近对齐到 64。
+ *
+ * 它与官方那套**不一致** —— 832×1216 官方给 1248×1824(特判),这里给 1280×1856。
+ * 留着是因为改它会动到老用户的花费与构图;V5 一侧已经跟官方走了。
  */
-export function enhanceBilledSize(
+export function legacy15xTargetSize(width: number, height: number): { width: number; height: number } {
+  return {
+    width: Math.round((width * 1.5) / 64) * 64,
+    height: Math.round((height * 1.5) / 64) * 64,
+  };
+}
+
+/**
+ * 这次重绘**实际会产出**的尺寸 —— 估价、额度预警与界面展示一律用它。
+ *
+ * ⚠ 它不等于载荷里的宽高:Max 档发的是**原图尺寸**,由服务端放大。
+ * 按载荷的宽高估价会系统性少记四倍。
+ *
+ * V5 跟官方档位(含 832×1216 那个 1.5× 特判);非 V5 沿用历史 1.5×。
+ */
+export function enhanceResultSize(
   width: number,
   height: number,
   id: EnhanceScaleId,
+  model: string,
 ): { width: number; height: number } {
-  return enhanceTargetSize(width, height, id);
+  if (modelCapabilities(model).maxEnhance) return enhanceTargetSize(width, height, id);
+  return legacy15xTargetSize(width, height);
 }

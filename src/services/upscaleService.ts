@@ -2,7 +2,13 @@ import { sidecarApi } from '../api/sidecar';
 import { getAISettings, getAppSettings } from './localLibrary';
 import { generateImageStream, processImg2ImgImage, resolveEnhanceModel } from './novelai';
 import { extractImageMetadata } from '../utils/imageMetadata';
-import { enhanceMaxAvailable, enhanceMaxTargetSize, type EnhanceScaleId } from './naiEnhanceScale';
+import {
+  enhanceMaxAvailable,
+  enhanceMaxTargetSize,
+  enhanceResultSize,
+  legacy15xTargetSize,
+  type EnhanceScaleId,
+} from './naiEnhanceScale';
 
 // 1.5x 图生图放大的总像素上限（与普通生成保持一致：1024 × 3072 = 3,145,728）
 export const UPSCALE_15X_MAX_PIXELS = 1024 * 3072;
@@ -15,12 +21,8 @@ export interface UpscaleProgress {
 
 export type UpscaleMethod = 'local' | 'api';
 
-export function getUpscale15xTargetSize(width: number, height: number): { width: number; height: number } {
-  return {
-    width: Math.round((width * 1.5) / 64) * 64,
-    height: Math.round((height * 1.5) / 64) * 64,
-  };
-}
+// 单一出处在 naiEnhanceScale;这里只保留原名给既有调用点。
+export const getUpscale15xTargetSize = legacy15xTargetSize;
 
 export function isUpscale15xOverLimit(width: number, height: number): boolean {
   const target = getUpscale15xTargetSize(width, height);
@@ -182,9 +184,10 @@ export async function upscaleViaImg2Img(
   }
 
   // Max ✨ 发的是**原图尺寸**,由服务端放大;数值档才由客户端把宽高改好再发。
+  // 数值档的尺寸口径:V5 跟官方(832×1216 这类常用尺寸有特判),非 V5 沿用历史算法。
   const { width: targetWidth, height: targetHeight } = isMax
     ? { width: originalWidth, height: originalHeight }
-    : getUpscale15xTargetSize(originalWidth, originalHeight);
+    : enhanceResultSize(originalWidth, originalHeight, scaleId, enhanceModel);
 
   if (!isMax && targetWidth * targetHeight > UPSCALE_15X_MAX_PIXELS) {
     throw new Error(

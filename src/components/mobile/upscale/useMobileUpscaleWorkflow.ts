@@ -12,7 +12,7 @@ import {
 } from '../../../services/upscaleService';
 import { resolveEnhanceModel } from '../../../services/novelai';
 import { getAISettings } from '../../../services/localLibrary';
-import { enhanceMaxAvailable, enhanceMaxTargetSize } from '../../../services/naiEnhanceScale';
+import { enhanceMaxAvailable, enhanceMaxTargetSize, enhanceResultSize } from '../../../services/naiEnhanceScale';
 import { loadImageToCanvas } from './loadImageToCanvas';
 
 export const MAGNITUDE_PRESETS: Record<number, { strength: number; noise: number }> = {
@@ -158,15 +158,17 @@ export function useMobileUpscaleWorkflow({
   // Max ✨ 的输出尺寸由服务端定;这里算的是官方那套 RO() 的结果,只用于展示与估价。
   const maxTarget = imageSize ? enhanceMaxTargetSize(imageSize.width, imageSize.height) : null;
 
+  // 重绘两档的尺寸口径与服务层同源:V5 跟官方,非 V5 沿用历史算法。
+  const redrawSize = imageSize
+    ? (scale === 0
+      ? (maxTarget ?? { width: 0, height: 0 })
+      : enhanceResultSize(imageSize.width, imageSize.height, 'x1.5', enhanceModel))
+    : null;
   const resultWidth = imageSize
-    ? (scale === 0 ? (maxTarget?.width ?? 0)
-      : scale === 1.5 ? Math.round((imageSize.width * 1.5) / 64) * 64
-        : Math.round(imageSize.width * scale))
+    ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * scale))
     : 0;
   const resultHeight = imageSize
-    ? (scale === 0 ? (maxTarget?.height ?? 0)
-      : scale === 1.5 ? Math.round((imageSize.height * 1.5) / 64) * 64
-        : Math.round(imageSize.height * scale))
+    ? (isRedraw ? (redrawSize?.height ?? 0) : Math.round(imageSize.height * scale))
     : 0;
   const modelLoaded = isModelLoaded();
   const isOver15xLimit = scale === 1.5 && imageSize !== null && resultWidth * resultHeight > UPSCALE_15X_MAX_PIXELS;

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { calculateCostFromUI } from '../services/costCalculator';
 import { getCachedIsOpus, isOpusUsageExhausted, resolveEnhanceModel } from '../services/novelai';
 import { getAISettings } from '../services/localLibrary';
-import { enhanceMaxAvailable, enhanceMaxTargetSize } from '../services/naiEnhanceScale';
+import { enhanceMaxAvailable, enhanceMaxTargetSize, enhanceResultSize } from '../services/naiEnhanceScale';
 
 interface UpscaleModalProps {
   isOpen: boolean;
@@ -64,15 +64,17 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
   // 计算预计完成后的尺寸（1.5x 对齐到 64 的倍数；Max ✨ 由服务端定，这里算的是
   // 官方那套 RO() 的结果，只用于展示与估价，不进载荷）
   const maxTarget = imageSize ? enhanceMaxTargetSize(imageSize.width, imageSize.height) : null;
+  // 重绘两档的尺寸口径与服务层同源:V5 跟官方,非 V5 沿用历史算法。
+  const redrawSize = imageSize
+    ? (scale === 0
+      ? (maxTarget ?? { width: 0, height: 0 })
+      : enhanceResultSize(imageSize.width, imageSize.height, 'x1.5', enhanceModel))
+    : null;
   const resultWidth = imageSize
-    ? (scale === 0 ? (maxTarget?.width ?? 0)
-      : scale === 1.5 ? Math.round((imageSize.width * 1.5) / 64) * 64
-        : Math.round(imageSize.width * scale))
+    ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * scale))
     : 0;
   const resultHeight = imageSize
-    ? (scale === 0 ? (maxTarget?.height ?? 0)
-      : scale === 1.5 ? Math.round((imageSize.height * 1.5) / 64) * 64
-        : Math.round(imageSize.height * scale))
+    ? (isRedraw ? (redrawSize?.height ?? 0) : Math.round(imageSize.height * scale))
     : 0;
 
   // 1.5x 模式像素上限保护
@@ -181,12 +183,7 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                   if (!imageSize) return '基于图生图放大，消耗 Anlas';
                   // Max ✨ 的输出尺寸是服务端定的，params 里留的是原图尺寸 ——
                   // 按原尺寸估价会系统性少记四倍，所以这里必须用算出来的实际尺寸。
-                  const target = scale === 0
-                    ? enhanceMaxTargetSize(imageSize.width, imageSize.height)
-                    : {
-                      width: Math.round((imageSize.width * 1.5) / 64) * 64,
-                      height: Math.round((imageSize.height * 1.5) / 64) * 64,
-                    };
+                  const target = redrawSize ?? { width: 0, height: 0 };
                   const preset = MAGNITUDE_PRESETS[magnitude];
                   const result = calculateCostFromUI({
     // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」

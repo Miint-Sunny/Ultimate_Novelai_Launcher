@@ -19,6 +19,8 @@ const {
   enhanceTargetSize,
   enhanceMaxAvailable,
   enhanceScaleOptions,
+  enhanceResultSize,
+  legacy15xTargetSize,
 } = await import('../src/services/naiEnhanceScale.ts');
 const { resolveEnhanceModel, buildRequestPayload } = await import('../src/services/novelai.ts');
 
@@ -149,12 +151,15 @@ check('档位: 放出来的每一档都不越上限', () => {
   }
 });
 
-// 重绘用哪个模型是产品口径,不是我能推的:V5 Curated 没有自己的重绘模型,
-// 顶替成 4.5 Curated;V5 Full 用它自己。
-check('模型: V5 Curated 顶替成 4.5 Curated,V5 Full 用它自己', () => {
-  assert.equal(resolveEnhanceModel('v5-curated'), 'v4.5-curated');
+// 放大重绘走 img2img,**不顶替**:V5 Curated 缺的是 `-inpainting` 模型,而 img2img
+// 不需要那种模型。官方的分法是 `inpaint != null ? inpaintModelId(model) : model`
+// (Plana-App nai_request.dart:185)。所以 5f / 5c 都用它们自己。
+check('模型: 5f 与 5c 都用自己,img2img 不套用 infill 的顶替', () => {
   assert.equal(resolveEnhanceModel('v5-full'), 'v5-full');
-  assert.equal(resolveEnhanceModel('v4.5-full'), 'v4.5-full');
+  assert.equal(resolveEnhanceModel('v5-curated'), 'v5-curated');
+  // 非 V5 暂时仍退回历史默认档(单独一条待定项)。
+  assert.equal(resolveEnhanceModel('v4.5-full'), 'v4.5-curated');
+  assert.equal(resolveEnhanceModel('v3'), 'v4.5-curated');
 });
 
 // 这一条钉的是一个真实踩过的坑:这里曾经填 API id('nai-diffusion-4-5-curated'),
@@ -167,11 +172,32 @@ check('模型: 返回的是 UI id,喂给 buildRequestPayload 能解析成对应�
     cfgRescale: 0, noiseSchedule: 'native', ucPreset: 'heavy', qualityToggle: true,
     varietyPlus: false, characterPrompts: [], seed: 1,
   }).model;
-  assert.equal(apiModelOf(resolveEnhanceModel('v5-curated')), 'nai-diffusion-4-5-curated');
+  assert.equal(apiModelOf(resolveEnhanceModel('v5-curated')), 'nai-diffusion-5-curated');
   assert.equal(apiModelOf(resolveEnhanceModel('v5-full')), 'nai-diffusion-5-full');
   // 认不出的输入退回历史默认档,而不是悄悄落到 4.5 Full。
   assert.equal(resolveEnhanceModel('nai-diffusion-4-5-curated'), 'v4.5-curated');
   assert.equal(apiModelOf(resolveEnhanceModel('')), 'nai-diffusion-4-5-curated');
+});
+
+check('档位: 5f 与 5c 都有 Max ✨ —— 门槛看所选模型,不看顶替后的', () => {
+  assert.ok(enhanceMaxAvailable(832, 1216, resolveEnhanceModel('v5-full')));
+  assert.ok(enhanceMaxAvailable(832, 1216, resolveEnhanceModel('v5-curated')));
+  assert.ok(!enhanceMaxAvailable(832, 1216, resolveEnhanceModel('v4.5-full')));
+});
+
+// 这一条把「我们和官方不一致」这件事本身钉住:V5 已经跟官方了,非 V5 故意没跟。
+// 哪天决定让 4.5 也跟官方,这条会挂 —— 那正是提醒去改它的时候。
+check('尺寸: V5 的 1.5× 跟官方特判,非 V5 仍是历史的一律 64 取整', () => {
+  assert.deepEqual(enhanceResultSize(832, 1216, 'x1.5', 'v5-full'), { width: 1248, height: 1824 });
+  assert.deepEqual(enhanceResultSize(832, 1216, 'x1.5', 'v5-curated'), { width: 1248, height: 1824 });
+  assert.deepEqual(enhanceResultSize(832, 1216, 'x1.5', 'v4.5-curated'), { width: 1280, height: 1856 });
+  assert.deepEqual(legacy15xTargetSize(832, 1216), { width: 1280, height: 1856 });
+});
+
+check('尺寸: Max 档下 enhanceResultSize 给的是服务端会产出的尺寸', () => {
+  assert.deepEqual(enhanceResultSize(832, 1216, 'max', 'v5-full'), { width: 1440, height: 2144 });
+  // 非 V5 没有 Max 档,即使误传也退回历史 1.5×,不会算出一个假的 Max 尺寸。
+  assert.deepEqual(enhanceResultSize(832, 1216, 'max', 'v4.5-curated'), { width: 1280, height: 1856 });
 });
 
 console.log(`\n${checks} 项放大重绘尺寸校验全部通过。`);

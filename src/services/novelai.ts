@@ -103,23 +103,28 @@ const INPAINT_MODEL_OVERRIDES: Record<string, string> = {
   'nai-diffusion-5-curated': 'nai-diffusion-4-5-curated-inpainting',
 };
 
-// 同一个原因在**放大重绘**(img2img,不是 infill)这一侧的表现:V5 Curated 没有
-// 自己的重绘模型,所以那一档换 4.5 Curated 去跑;V5 Full 跟官方,用它自己。
-// 键值都是 **UI 模型 id**(MODEL_MAP 的键),不是 API id ——
-// 这里曾经写过 API id,结果 MODEL_MAP 查不到、静默落到默认的 4.5 Full,
-// 于是「4.5 Curated 重绘」其实一直在用 4.5 Full 出图。
-//
-// TODO(nai-v5-curated-inpainting): 这张表与上面那张一起摘。
-const ENHANCE_MODEL_OVERRIDES: Record<string, string> = {
-  'v5-curated': 'v4.5-curated',
-};
+/** 放大重绘走 img2img 时的历史默认档。只在非 V5 与认不出的输入上用。 */
+const ENHANCE_FALLBACK_MODEL = 'v4.5-curated';
 
-/** 放大重绘该用哪个模型。传入与返回都是 UI 模型 id。 */
+/**
+ * 放大重绘(img2img)该用哪个模型。传入与返回都是 **UI 模型 id**(MODEL_MAP 的键)。
+ *
+ * 上面那张顶替表**只管 infill**:V5 Curated 缺的是「重绘模型」(`-inpainting`),
+ * 而 img2img 压根不需要那种模型,直接用基座跑。官方就是这么分的,参考实现里
+ * 写得很直白:`sendModel = inpaint != null ? inpaintModelId(model) : model`
+ * (Plana-App lib/features/generate/nai_request.dart:185)。
+ * 所以 V5 Full 与 V5 Curated 的放大重绘**都用它们自己,不顶替**。
+ *
+ * 非 V5 暂时仍退回历史默认档,免得动到老用户的花费与画风;
+ * 「让 4.5 / v3 也跟随所选模型」是单独一条待定项。
+ *
+ * 这里曾经填 API id('nai-diffusion-4-5-curated'),而 MODEL_MAP 是按 UI id 建的,
+ * 查不到就静默落到默认的 4.5 Full —— 于是「4.5 Curated 重绘」一直在用 4.5 Full
+ * 出图。返回值必须留在 UI id 这个空间里。
+ */
 export function resolveEnhanceModel(uiModelId: string): string {
-  const override = ENHANCE_MODEL_OVERRIDES[uiModelId];
-  if (override) return override;
-  // 认识的模型原样用;不认识的(或没选)退回历史默认档。
-  return uiModelId in MODEL_MAP ? uiModelId : 'v4.5-curated';
+  const apiModel = MODEL_MAP[uiModelId];
+  return apiModel && isV5Model(apiModel) ? uiModelId : ENHANCE_FALLBACK_MODEL;
 }
 
 export interface CharacterPrompt {
