@@ -25,9 +25,12 @@ export function PromptToolbar({
   onOpenInspiration,
   onOpenTagManager,
   onOpenPresetModal,
+  furry,
 }: {
   activeTab: ActiveTab;
   onActiveTabChange: (tab: ActiveTab) => void;
+  /** Anime⇄Furry 开关。null = 当前模型没这一位,整个控件不出现。 */
+  furry: { on: boolean; onToggle: () => void } | null;
   aiModel: string;
   localPrimaryModel: string | null;
   onAiModelChange: (model: string) => void;
@@ -39,7 +42,8 @@ export function PromptToolbar({
     <div className="flex items-center justify-between px-2 pt-1 pb-2 border-b border-gray-700/50 gap-3 relative overflow-hidden">
       <div className="flex-1 relative h-10 overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-between gap-3 transition-all duration-300 ease-out translate-x-0 opacity-100">
-          <div className="relative flex items-center bg-black/40 rounded-full p-1 border border-gray-700/50 w-[220px] h-full select-none shrink-0">
+          <div className="flex items-center gap-2 h-full min-w-0">
+          <div className="relative flex items-center bg-black/40 rounded-full p-1 border border-gray-700/50 w-[200px] h-full select-none shrink-0">
             <div className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out shadow-sm ${activeTab === 'prompt' ? 'left-1 w-[calc(50%-6px)] bg-nai-accent shadow-[0_0_8px_rgba(235,213,118,0.4)]' : 'left-[calc(50%+2px)] w-[calc(50%-6px)] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`} />
             <div
               className={`relative z-10 w-1/2 flex items-center justify-center gap-1.5 text-sm font-bold transition-colors duration-200 cursor-pointer ${activeTab === 'prompt' ? 'text-black' : 'text-gray-500 hover:text-gray-400'}`}
@@ -57,7 +61,33 @@ export function PromptToolbar({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Anime⇄Furry。V5 取消了独立的 furry 模型,改成往提示词最前面加
+              `fur dataset` —— 所以它挨着提示词/排除放,而不是塞进模型选择器。
+              显示的是**当前**数据集,点一下切换;做成单按钮而不是双段,是因为
+              侧栏最窄 400px,双段会和右边那组图标撞上。 */}
+          {furry && (
+            <button
+              type="button"
+              aria-pressed={furry.on}
+              aria-label={`数据集:${furry.on ? 'Furry' : 'Anime'}`}
+              onClick={furry.onToggle}
+              title={
+                furry.on
+                  ? 'Furry 数据集(提示词最前面有 fur dataset)。点击切回 Anime'
+                  : 'Anime 数据集。点击切到 Furry —— 会把 fur dataset 加到提示词最前面'
+              }
+              className={`px-2.5 h-8 rounded-full text-[11px] font-bold border transition-colors shrink-0 ${
+                furry.on
+                  ? 'bg-nai-accent text-black border-nai-accent'
+                  : 'bg-black/40 text-gray-400 border-gray-700/50 hover:text-white hover:border-gray-600'
+              }`}
+            >
+              {furry.on ? 'Furry' : 'Anime'}
+            </button>
+          )}
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0">
             <button className="relative group p-1.5" title="魔法" onClick={onOpenInspiration}>
               <div className="bg-gradient-to-r from-nai-accent to-amber-300 rounded-lg p-1 text-black shadow-sm ring-1 ring-white/20 group-hover:ring-white/50 group-hover:scale-110 transition-transform">
                 <Sparkles className="w-4 h-4" />

@@ -14,6 +14,7 @@ import {
   type TranslationCache,
   type TranslationType,
 } from './PromptComposerParts';
+import { isFurryDatasetOn, toggleFurryDataset } from '../../services/naiV5Toggles';
 import { detectTextRenderHints } from '../../utils/textRenderHints';
 import { TextRenderHintBar } from '../prompt-editor/TextRenderHintBar';
 
@@ -88,8 +89,23 @@ export function PromptComposerSection({
   } = useAgentDock();
   const agentModel = useAgentModelPresentation();
 
+  const caps = modelCapabilities(model);
+
+  // Anime⇄Furry:V5 取消了独立的 furry 模型,改成往提示词最前面加 `fur dataset`。
+  // 能力位关着就整个不出现(V4 系有独立的 furry 模型,不走这条路)。
+  const furry = useMemo(
+    () =>
+      caps.furryMode
+        ? {
+          on: isFurryDatasetOn(positivePrompt),
+          onToggle: () => onPositivePromptChange(toggleFurryDataset(positivePrompt)),
+        }
+        : null,
+    [caps.furryMode, positivePrompt, onPositivePromptChange],
+  );
+
   // V5 文字渲染体检:只在能力位打开的家族下跑,只提示不改写输入。
-  const textRenderEnabled = modelCapabilities(model).textRendering;
+  const textRenderEnabled = caps.textRendering;
   const textRenderHints = useMemo(
     () => (textRenderEnabled && activeTab === 'prompt' ? detectTextRenderHints(positivePrompt) : []),
     [textRenderEnabled, activeTab, positivePrompt],
@@ -100,6 +116,7 @@ export function PromptComposerSection({
       <PromptToolbar
         activeTab={activeTab}
         onActiveTabChange={onActiveTabChange}
+        furry={furry}
         aiModel={aiModel}
         localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
         onAiModelChange={setAiModel}

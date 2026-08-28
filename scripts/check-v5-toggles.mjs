@@ -12,9 +12,14 @@
 
 import assert from 'node:assert/strict';
 
-const { V5_TOGGLE_GROUPS, activeV5Toggles, toggleV5Word, detectV5GroupConflicts } = await import(
-  '../src/services/naiV5Toggles.ts'
-);
+// naiV5Toggles 现在从 naiV5Presets 取 Furry 的数据集前缀,那是 vite 风格的无扩展名 import。
+await import('./lib/load-frontend-module.mjs');
+
+const {
+  V5_TOGGLE_GROUPS, activeV5Toggles, toggleV5Word, detectV5GroupConflicts,
+  isFurryDatasetOn, toggleFurryDataset,
+} = await import('../src/services/naiV5Toggles.ts');
+const { V5_FURRY_DATASET_PREFIX } = await import('../src/services/naiV5Presets.ts');
 
 let checks = 0;
 const check = (name, fn) => {
@@ -265,6 +270,46 @@ check('detectOnly: transparent background 参与检测但不接受点击', () =>
   );
   // 但点不动
   assert.equal(toggleV5Word('1girl', 'background-form', 'transparent background'), '1girl');
+});
+
+// ---- Furry 模式 ----
+//
+// 它不是表里的词条,而是**数据集选择**:V5 用一个 Anime⇄Furry 开关取代了 V3 时代
+// 独立的 furry 模型,底层就是往提示词最前面加 `fur dataset`。
+// 位置是语义的一部分,所以「前置」这件事本身要钉住。
+
+check('Furry: 开是前置到最前面,不是追加到末尾', () => {
+  assert.equal(toggleFurryDataset('1girl, smile'), 'fur dataset, 1girl, smile');
+  assert.equal(toggleFurryDataset(''), V5_FURRY_DATASET_PREFIX);
+  assert.equal(toggleFurryDataset('   '), V5_FURRY_DATASET_PREFIX);
+});
+
+check('Furry: 关是摘掉,来回切一次回到原样', () => {
+  const original = '1girl, smile';
+  assert.equal(toggleFurryDataset(toggleFurryDataset(original)), original);
+  assert.equal(isFurryDatasetOn(toggleFurryDataset(original)), true);
+  assert.equal(isFurryDatasetOn(original), false);
+});
+
+check('Furry: 检测口径与词条一致 —— 认权重写法,负权重不算开', () => {
+  assert.equal(isFurryDatasetOn('1.2::fur dataset::, 1girl'), true);
+  assert.equal(isFurryDatasetOn('0.6::fur dataset::, 1girl'), true);
+  assert.equal(isFurryDatasetOn('-1::fur dataset::, 1girl'), false);
+  assert.equal(isFurryDatasetOn('FUR DATASET, 1girl'), true);
+  // 分隔符用中文逗号/顿号也要认。
+  assert.equal(isFurryDatasetOn('fur dataset，1girl'), true);
+  assert.equal(isFurryDatasetOn('fur dataset、1girl'), true);
+});
+
+check('Furry: 不是子串匹配 —— 别的词里含这几个字不算开', () => {
+  assert.equal(isFurryDatasetOn('furry dataset, 1girl'), false);
+  assert.equal(isFurryDatasetOn('no fur dataset here, 1girl'), false);
+});
+
+check('Furry: 它不在词条表里,不会被词条面板顺手点掉', () => {
+  const literals = V5_TOGGLE_GROUPS.flatMap((g) => g.options.map((o) => o.literal.toLowerCase()));
+  assert.ok(!literals.includes(V5_FURRY_DATASET_PREFIX), 'fur dataset 不该进 V5_TOGGLE_GROUPS');
+  assert.ok(!activeV5Toggles('fur dataset, 1girl').has(V5_FURRY_DATASET_PREFIX));
 });
 
 console.log(`\n${checks} 项 V5 开关词条校验全部通过。`);

@@ -30,6 +30,8 @@
  * 这两组并不在其中。做成单选是因为它们读起来就是一个档位旋钮,同时开两档没有意义;
  * 但用户手写出两档并存是合法的,所以检测层必须如实报告两个都在(见 activeV5Toggles)。
  */
+import { V5_FURRY_DATASET_PREFIX } from './naiV5Presets';
+
 export type V5ToggleGroupKind = 'exclusive' | 'independent';
 
 export interface V5ToggleOption {
@@ -427,4 +429,27 @@ export function toggleV5Word(prompt: string, groupId: string, literal: string): 
     }
   }
   return appendLiteral(next, literal);
+}
+
+/**
+ * Furry 模式当前开着没有。
+ *
+ * 它不在 V5_TOGGLE_GROUPS 里,所以不能用 activeV5Toggles ——那个只认表里的字面量。
+ * 但检测口径必须一致:同样要能认出 `1.2::fur dataset::` 这种带权重的写法,
+ * 也同样把负权重算作没开。所以这里复用同一套扫描与判据。
+ */
+export function isFurryDatasetOn(prompt: string): boolean {
+  return scanTags(prompt).some((tag) => tagCounts(tag, V5_FURRY_DATASET_PREFIX));
+}
+
+/**
+ * 切换 Furry 模式。开 → **前置**到提示词最前面,不是追加。
+ *
+ * 前置是有意的:它是数据集选择,不是一个普通词条 —— V5 用这一个开关取代了
+ * V3 时代独立的 furry 模型,官方就写在最前面。追加到末尾在语义上是另一回事。
+ */
+export function toggleFurryDataset(prompt: string): string {
+  if (isFurryDatasetOn(prompt)) return removeLiteral(prompt, V5_FURRY_DATASET_PREFIX);
+  const trimmed = prompt.trim();
+  return trimmed ? `${V5_FURRY_DATASET_PREFIX}, ${trimmed}` : V5_FURRY_DATASET_PREFIX;
 }
