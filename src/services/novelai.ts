@@ -5,6 +5,7 @@ import { decode } from '@msgpack/msgpack';
 import { queueService } from './queueService';
 import { botService } from './botService';
 import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenerationParams } from '../api/sidecar';
+import type { OpusUsage } from '../api/localSidecarApi';
 import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
 import { toV5QualityPresetId, toV5UcPresetId } from './naiV5Presets';
@@ -15,6 +16,8 @@ export interface AnlasInfo {
   purchasedTrainingSteps: number;
   /** 是否为 Opus 订阅（tier === 3 且 active） */
   isOpus: boolean;
+  /** Opus「体力条」；仅 Opus 返回，见 localSidecarApi 的 OpusUsage。 */
+  opusUsage?: OpusUsage;
 }
 
 /**
@@ -26,12 +29,31 @@ export async function getAnlas(): Promise<AnlasInfo | null> {
 
 // 模块级缓存：上次查询到的 Opus 状态
 let _cachedIsOpus = false;
+let _cachedOpusUsage: OpusUsage | undefined;
 
 /**
  * 更新 Opus 缓存（在 getAnlas 或 Bot 模式设置时调用）
  */
-export function updateCachedIsOpus(isOpus: boolean): void {
+export function updateCachedIsOpus(isOpus: boolean, opusUsage?: OpusUsage): void {
   _cachedIsOpus = isOpus;
+  _cachedOpusUsage = opusUsage;
+}
+
+/**
+ * 体力条是否已耗尽。供无 anlasInfo 的组件（重绘、放大等浮层）判断 V5 是否
+ * 还在免费额度内。
+ *
+ * 未知时返回 false（按未耗尽算）：这里返回 true 会让界面对着一个其实还有额度
+ * 的账号反复弹确认，比偶尔漏提示更烦人；真正的兜底是生成后余额会变。
+ */
+export function isOpusUsageExhausted(): boolean {
+  if (!_cachedOpusUsage) return false;
+  return _cachedOpusUsage.isNegative || _cachedOpusUsage.percent <= 0;
+}
+
+/** 缓存的体力条读数;未查到或非 Opus 时为 undefined。 */
+export function getCachedOpusUsage(): OpusUsage | undefined {
+  return _cachedOpusUsage;
 }
 
 /**

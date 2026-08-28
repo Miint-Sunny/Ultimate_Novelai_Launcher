@@ -3,7 +3,7 @@ import { X, Maximize2, Loader2, Check, AlertCircle, Cpu, Cloud, Sparkles } from 
 import { upscaleImage, upscaleViaImg2Img, type UpscaleProgress, type UpscaleMethod, isModelLoaded, UPSCALE_15X_MAX_PIXELS } from '../services/upscaleService';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateCostFromUI } from '../services/costCalculator';
-import { getCachedIsOpus } from '../services/novelai';
+import { getCachedIsOpus, isOpusUsageExhausted } from '../services/novelai';
 
 interface UpscaleModalProps {
   isOpen: boolean;
@@ -154,6 +154,8 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                   const targetH = Math.round((imageSize.height * 1.5) / 64) * 64;
                   const preset = MAGNITUDE_PRESETS[magnitude];
                   const result = calculateCostFromUI({
+    // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
+    opusUsageExhausted: isOpusUsageExhausted(),
                     width: targetW,
                     height: targetH,
                     steps: 28,

@@ -115,10 +115,26 @@ export interface AppSettings {
   token: TokenStatus;
 }
 
+/**
+ * Opus「体力条」。V5 起 Opus 的免费生成不再无限,改成一条持续恢复的额度。
+ * 仅 Opus(tier 3)会返回此字段,低档位没有——所以是可选而不是默认零值:
+ * 造一个 0 出来会被读成「额度已耗尽」。
+ */
+export interface OpusUsage {
+  /** 剩余百分比。可以大于 100(官方发过一次性超额补偿,实测见过 170)。 */
+  percent: number;
+  /** true 表示额度不可用。 */
+  isNegative: boolean;
+  /** 距下 1% 恢复的秒数;条满暂停恢复时为 0。 */
+  timeUntilNextPercent: number;
+}
+
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
   purchasedTrainingSteps: number;
   isOpus: boolean;
+  /** 仅 Opus 返回;见 OpusUsage。 */
+  opusUsage?: OpusUsage;
 }
 
 export interface LegacyGenerateImageResult {

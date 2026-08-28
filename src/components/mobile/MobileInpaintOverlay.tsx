@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { calculateCostFromUI } from '../../services/costCalculator';
-import { getCachedIsOpus } from '../../services/novelai';
+import { getCachedIsOpus, isOpusUsageExhausted } from '../../services/novelai';
 import { getAISettings } from '../../services/localLibrary';
 import type { CropRect } from '../../utils/maskCrop';
 import { MobileInpaintBottomToolbar } from './inpaint/MobileInpaintBottomToolbar';
@@ -196,6 +196,8 @@ export const MobileInpaintOverlay: React.FC<MobileInpaintOverlayProps> = ({
   const costInfo = useMemo(() => {
     const ai = getAISettings();
     return calculateCostFromUI({
+    // V5 体力条耗尽后 NAI 静默改扣 Anlas；不带上这个标志，界面会一直显示「免费」
+    opusUsageExhausted: isOpusUsageExhausted(),
       width: genDimensions.width,
       height: genDimensions.height,
       steps: ai.steps,

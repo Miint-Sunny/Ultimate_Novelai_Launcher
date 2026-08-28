@@ -37,7 +37,7 @@ export function useSharedAnlasStatus({ minLoadingDurationMs = 0 }: UseSharedAnla
       } else {
         const info = await getAnlas();
         setAnlasInfo(info);
-        if (info) updateCachedIsOpus(info.isOpus);
+        if (info) updateCachedIsOpus(info.isOpus, info.opusUsage);
       }
     } finally {
       const elapsed = Date.now() - startTime;
