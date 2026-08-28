@@ -8,7 +8,7 @@ import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenera
 import type { OpusUsage } from '../api/localSidecarApi';
 import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
-import { toV5QualityPresetId, toV5UcPresetId } from './naiV5Presets';
+import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId } from './naiV5Presets';
 import { isV5Model, modelCapabilities } from '../components/generation/modelResolutionOptions';
 
 export interface AnlasInfo {
@@ -478,14 +478,25 @@ export function buildRequestPayload(params: GenerateImageParams) {
       // 只发官方形状的那一套。服务端今天两种都收（已上线的第三方客户端在 V5 上
       // 发数字口径也能跑），但那是宽容不是契约，不赌它一直收。
       ...(isV5
-        ? {
-            ucPresetId: toV5UcPresetId(params.ucPreset),
-            qualityPresetId: toV5QualityPresetId(params.qualityToggle),
+        ? (() => {
+          const ucPresetId = toV5UcPresetId(params.ucPreset);
+          const qualityPresetId = toV5QualityPresetId(params.qualityToggle);
+          // 官方每个 V5 请求都带这两个数字档位提示,导入图片时靠它决定先拿哪个档
+          // 去剥预设文本。映射不到的自定义档要**省掉键**而不是发 0 ——
+          // 官方客户端删 undefined,发 0 等于谎报成 none。
+          const qtHint = officialPresetHint(qualityPresetId);
+          const ucHint = officialPresetHint(ucPresetId);
+          return {
+            ucPresetId,
+            qualityPresetId,
+            ...(qtHint === null ? {} : { tag_hint_qt: qtHint }),
+            ...(ucHint === null ? {} : { tag_hint_uc_preset: ucHint }),
             // 32 通道 VAE 真正吐出 alpha 通道靠的是这个字段；官方对所有支持
             // 透明的模型常发，与用户有没有要透明背景无关。
             straight_alpha: true,
             ...(params.transparentBackground ? { tag_hint_transparent_background: true } : {}),
-          }
+          };
+        })()
         : {
             ucPreset,
             qualityToggle: params.qualityToggle,

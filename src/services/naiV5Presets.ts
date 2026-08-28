@@ -62,6 +62,37 @@ export const V5_TRANSPARENT_BACKGROUND_TAG = 'transparent background';
  */
 export const V5_FURRY_DATASET_PREFIX = 'fur dataset';
 
+/**
+ * 官方 `tag_hint_qt` / `tag_hint_uc_preset` 共用的档位枚举顺序。
+ *
+ * ⚠ 它和线上那个数字 `ucPreset` **不是**一张表:后者是可见档位数组的下标,
+ * 这张是官方内部的枚举顺序。两张表都有 heavy/light,别看串了。
+ *
+ * 出处是两个已上线客户端各自独立记下的同一张表
+ * (Aaalice nai_image_request_builder.dart:140 的注释,
+ *  Plana prompt_presets.dart:421 的 _officialPresetHintOrder)。
+ */
+const OFFICIAL_PRESET_HINT_ORDER: readonly string[] = [
+  'none',
+  'standard',
+  'heavy',
+  'light',
+  'humanFocus',
+  'furryFocus',
+  'lowQualityPlusBadAnatomy',
+  'lowQuality',
+  'badAnatomy',
+];
+
+/**
+ * 某个预设 id 的官方档位编号。映射不到就返回 null —— 官方客户端会把 undefined
+ * 的键整个删掉,所以调用方要**省掉这个键**而不是发 0。
+ */
+export function officialPresetHint(presetId: string): number | null {
+  const index = OFFICIAL_PRESET_HINT_ORDER.indexOf(presetId);
+  return index < 0 ? null : index;
+}
+
 /** 我们的 UC 预设名(全族通用)映射到 V5 的合法 id;V5 未提供的档位退到 heavy。 */
 export function toV5UcPresetId(preset: string): NaiV5UcPresetId {
   return preset in V5_UC_PREFIX ? (preset as NaiV5UcPresetId) : 'heavy';

@@ -388,6 +388,32 @@ check('载荷: V5 Curated 重绘是 4.5 顶替(NAI 上线真模型后要摘掉�
   assert.equal(full.model, 'nai-diffusion-5-full-inpainting');
 });
 
+// 官方每个 V5 请求都带这两个数字档位提示(导入图片时靠它决定先拿哪个档去剥预设
+// 文本)。我们的 PARAMETER_MAPPING.md 一直写着「所以我们照着发」,但代码里从来
+// 没发过 —— 文档和实现对不上,而服务端照收,所以本地毫无反馈。
+// 这张提示表和线上那个数字 ucPreset **不是**一张表,两张都有 heavy/light。
+check('载荷: V5 带官方的数字档位提示,且不与数字 ucPreset 混淆', () => {
+  const v5 = paramsOf({ model: 'v5-full', ucPreset: 'heavy', qualityToggle: true });
+  assert.equal(v5.ucPresetId, 'heavy');
+  assert.equal(v5.qualityPresetId, 'standard');
+  assert.equal(v5.tag_hint_uc_preset, 2, 'heavy 在官方枚举里是 2');
+  assert.equal(v5.tag_hint_qt, 1, 'standard 在官方枚举里是 1');
+  // 别看串:线上数字 ucPreset 是可见档位数组的下标,heavy 在那张表里是 3。
+  assert.notEqual(v5.tag_hint_uc_preset, 3);
+
+  const off = paramsOf({ model: 'v5-full', ucPreset: 'none', qualityToggle: false });
+  assert.equal(off.tag_hint_uc_preset, 0);
+  assert.equal(off.tag_hint_qt, 0);
+
+  const light = paramsOf({ model: 'v5-full', ucPreset: 'light', qualityToggle: false });
+  assert.equal(light.tag_hint_uc_preset, 3);
+
+  // V4 系不带 —— 这两个是 V5 的新增字段。
+  const v4 = paramsOf({ model: 'v4.5-full', ucPreset: 'heavy', qualityToggle: true });
+  assert.ok(!('tag_hint_qt' in v4), 'V4 系不该带 tag_hint_qt');
+  assert.ok(!('tag_hint_uc_preset' in v4), 'V4 系不该带 tag_hint_uc_preset');
+});
+
 // Max✨ Enhance。这一条盯的是「省掉」而不是「发 false」:官方把 false 当成
 // 普通 img2img,于是用户点了 Max 却拿到普通重绘的图,本地完全看不出来——
 // 已上线的两个客户端(Aaalice_NAI_Launcher / Plana-App)各自都有一条测试钉着它。

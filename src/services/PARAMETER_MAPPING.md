@@ -18,12 +18,20 @@
 | `parameters.skip_cfg_above_sigma` | Variety+ 开启时 `58`，否则 `null` | 恒 `null` | V5 没有 Variety+ |
 | `parameters.straight_alpha` | 不发 | 恒 `true` | 32 通道 VAE 真正吐出 alpha 通道靠它，与用户是否要透明背景无关 |
 | `parameters.tag_hint_transparent_background` | 不发 | 勾选透明背景时 `true` | 见 `transparentBackground` |
+| `parameters.tag_hint_qt` | 不发 | 质量档的官方编号 | `none`0 `standard`1 `light`3；映射不到就省掉键 |
+| `parameters.tag_hint_uc_preset` | 不发 | 负面档的官方编号 | `none`0 `heavy`2 `light`3 `humanFocus`4 `furryFocus`5 |
 | `parameters.sm` | 不发 | 不发 | V5 发 `sm: true` 会 **HTTP 500** |
 
 ### 关于预设口径：我们发官方形状，但服务端不止收这一种
 
 抓包显示官方客户端在 V5 下发字符串 `ucPresetId` / `qualityPresetId`（外加数字
 `tag_hint_qt` / `tag_hint_uc_preset`），所以我们照着发。
+
+> 那两个 tag_hint 曾经**只写在这份文档里、代码从没发过**——服务端照收，本地毫无
+> 反馈，是靠把三份实现的字段表对了一遍才发现的。现在补上了，并由
+> `check-v5-parity.mjs` 第 31 项钉住。顺带记一条:这张档位提示表和线上那个数字
+> `ucPreset` **不是**一张表（前者是官方枚举顺序，后者是可见档位数组的下标），
+> 两张都有 heavy/light，很容易看串。
 
 但**「混发会出错」是我们从没验证过的推测，且现有证据是反的**：两个已上线的第三方
 客户端（同一作者的 web 端与 Plana-App v1.0.7 移动端，`lib/features/generate/nai_request.dart:198`）
