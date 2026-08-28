@@ -46,31 +46,49 @@ check('表: 每组有 id / 标题 / 说明,互斥组至少两档', () => {
   }
 });
 
-check('表: complexity 四档、visual novel 三档,逐字对齐 nai5-prompting', () => {
+check('表: complexity 四档、visual novel 五档,逐字对齐 NAI5_All_Prompting.md', () => {
   const complexity = V5_TOGGLE_GROUPS.find((g) => g.id === 'complexity');
   assert.deepEqual(
     complexity.options.map((o) => o.literal),
     ['low complexity', 'medium complexity', 'high complexity', 'ultra complexity'],
   );
+  // 五档,不是三档。art 与 chibi 是我照旧版文档抄漏的,别再漏回去。
   const vn = V5_TOGGLE_GROUPS.find((g) => g.id === 'visual-novel');
   assert.deepEqual(
     vn.options.map((o) => o.literal),
-    ['visual novel bg', 'visual novel cg', 'visual novel sprite'],
+    [
+      'visual novel art',
+      'visual novel bg',
+      'visual novel cg',
+      'visual novel sprite',
+      'visual novel chibi',
+    ],
   );
 });
 
-check('表: 两条刻意的缺席 —— res_mult 无出处,transparent background 另有开关', () => {
+check('表: 三条刻意的缺席 —— res_mult / transparent background / location', () => {
   assert.ok(!literals.some((l) => /res_mult/i.test(l)), 'res_mult 没有出处,不该进表');
   assert.ok(
     !literals.some((l) => l.toLowerCase() === 'transparent background'),
     'transparent background 已有专门开关,进表会有两个入口打架',
   );
+  // location 在旧版文档里有、当前正本里 0 命中(连同 indoors/outdoors 一起被移除)。
+  // 我照旧版抄进来过一次,这条断言防止再抄回来。
+  assert.ok(
+    !literals.some((l) => l.toLowerCase() === 'location'),
+    'location 在当前 nai5-prompting 里已无出处,不该进表',
+  );
 });
 
-check('检测: 裸词命中,且不认领加权形态', () => {
+check('检测: 权重要分正负 —— 正权重算开,负权重不算', () => {
   assert.ok(activeV5Toggles('1girl, high complexity').has('high complexity'));
-  // 加权形态属于用户手写,面板既不认领也不替他删
-  assert.equal(activeV5Toggles('2::high complexity::').size, 0);
+  assert.ok(activeV5Toggles('1girl, 1.3::high complexity::').has('high complexity'));
+  // 0~1 是减弱不是反转,仍然算开
+  assert.ok(activeV5Toggles('1boy, 0.6::attractive male::.').has('attractive male'));
+  // 负权重是文档记载的反向用法(complexity 有画面固化倾向,负权重反而更好)。
+  // 点亮按钮会诱导用户再点一次去"关",结果把那条负权重删掉——所以不算开。
+  assert.equal(activeV5Toggles('1girl, -1::ultra complexity::').size, 0);
+  assert.equal(activeV5Toggles('1boy, -5::attractive male::.').size, 0);
 });
 
 check('检测: 大小写不敏感', () => {
@@ -82,12 +100,54 @@ check('检测: 全角逗号与换行同样算分隔符', () => {
   assert.ok(activeV5Toggles('1girl,\nhas alpha').has('has alpha'));
 });
 
+check('检测: 权重跨标签生效,未闭合会吃到结尾', () => {
+  // 一段里两个标签共享同一个权重
+  const shared = activeV5Toggles('1girl, 1.3::depthness, attractive male::, x');
+  assert.ok(shared.has('depthness') && shared.has('attractive male'));
+  // 漏写收尾 :: 时权重一直吃到结尾——文档专门警告过的坑,按真实语义建模
+  const bleed = activeV5Toggles('1girl, 1.4::high complexity, visual novel bg, from below.');
+  assert.ok(bleed.has('high complexity') && bleed.has('visual novel bg'));
+});
+
+check('检测: 句末标点不挡匹配', () => {
+  // 这套方法论里 tag 常跟在自然语句后面,`ultra complexity.` 是真实写法
+  assert.ok(activeV5Toggles('1girl, solo, ultra complexity.').has('ultra complexity'));
+  assert.ok(activeV5Toggles('1boy, 0.6::attractive male::.').has('attractive male'));
+});
+
+check('检测: 顿号也算分隔符', () => {
+  assert.ok(
+    activeV5Toggles('1girl,\tsolo,full body、high complexity，from below.').has('high complexity'),
+  );
+});
+
 check('检测: 长词不被短词吃掉,子串不误报', () => {
   const active = activeV5Toggles('1girl, alpha transparency');
   assert.ok(active.has('alpha transparency'));
   assert.ok(!active.has('has alpha'));
   // 整条标签才算命中:`low complexity background` 不是 `low complexity`
   assert.equal(activeV5Toggles('low complexity background').size, 0);
+  // 真实存在的近邻标签不该误报
+  assert.equal(activeV5Toggles('1girl, depth of field, bokeh').size, 0, 'depth of field ≠ depthness');
+  assert.equal(activeV5Toggles('1girl, 1boy, male focus, solo focus').size, 0, 'male focus ≠ attractive male');
+  // 散文里的普通英文词不是标签
+  assert.equal(
+    activeV5Toggles('1girl.\nThe story centers on a remote coastal location.').size,
+    0,
+  );
+});
+
+check('摘除: 拆开权重段时要把开括号与收尾符交接好', () => {
+  // 只删标签会让 `1.5::` 跟着没了,剩下的收尾符会错误闭合**之前别的**权重段
+  assert.equal(
+    toggleV5Word('1girl, 1.5::high complexity, detailed background::, x', 'complexity', 'high complexity'),
+    '1girl, 1.5::detailed background::, x',
+  );
+  // 同段里还有另一个受管词时,不能把它孤儿化
+  assert.equal(
+    toggleV5Word('1girl, 1.3::depthness, attractive male::, x', 'v5-extras', 'depthness'),
+    '1girl, 1.3::attractive male::, x',
+  );
 });
 
 check('切换: 互斥组换档是一步,不会两档并存', () => {
