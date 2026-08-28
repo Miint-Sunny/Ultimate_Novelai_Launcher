@@ -111,6 +111,15 @@ export interface ModelCapabilities {
    */
   textRendering: boolean;
   /**
+   * Max✨ Enhance:重绘放大时把 `upscaled_enhance: true` 发给官方,让它按增强
+   * 档重画而不是当普通 img2img。V5 新增,V4 系发了也无意义。
+   *
+   * 这一位只管**能不能发**;发不发由用户选的档位决定,见 Img2ImgParams.upscaledEnhance。
+   * 非 Max 档必须整个键省掉——发 `false` 会被官方当成普通 img2img,
+   * 两个已上线客户端(Aaalice_NAI_Launcher / Plana-App)的测试都盯着这一点。
+   */
+  maxEnhance: boolean;
+  /**
    * 提示词 token 上限。V4 系 512;V5 Full 1471、V5 Curated 703——同一家族两个值,
    * 所以这一项按型号分,不按家族。
    *
@@ -136,6 +145,7 @@ const V5_CAPABILITIES: ModelCapabilities = {
   toggleWords: true,
   promptTokenizer: 'qwen35',
   textRendering: true,
+  maxEnhance: true,
   maxPromptTokens: 1471,
 };
 
@@ -158,6 +168,7 @@ const LEGACY_CAPABILITIES: ModelCapabilities = {
   toggleWords: false,
   promptTokenizer: 't5',
   textRendering: false,
+  maxEnhance: false,
   maxPromptTokens: 512,
 };
 

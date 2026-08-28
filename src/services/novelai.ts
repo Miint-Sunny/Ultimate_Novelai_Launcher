@@ -9,7 +9,7 @@ import type { OpusUsage } from '../api/localSidecarApi';
 import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
 import { toV5QualityPresetId, toV5UcPresetId } from './naiV5Presets';
-import { isV5Model } from '../components/generation/modelResolutionOptions';
+import { isV5Model, modelCapabilities } from '../components/generation/modelResolutionOptions';
 
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
@@ -139,6 +139,12 @@ export interface Img2ImgParams {
   imageBase64: string;  // 图生图基础图片的base64编码（不含data:前缀）
   strength: number;     // 强度值 0-1
   noise: number;        // 噪声值 0-1
+  /**
+   * Max✨ Enhance 档。只有它为 true 时才发 `upscaled_enhance`,
+   * 其余档位整个键省掉——发 `false` 会被官方当成普通 img2img。
+   * 能不能发看 modelCapabilities(model).maxEnhance。
+   */
+  upscaledEnhance?: boolean;
 }
 
 export interface InpaintParams {
@@ -498,6 +504,10 @@ export function buildRequestPayload(params: GenerateImageParams) {
         strength: params.img2img.strength,
         noise: params.img2img.noise,
         extra_noise_seed: seed,
+        // 只在 Max 档且模型支持时出现。省掉 ≠ 发 false:官方把 false 当普通重绘。
+        ...(params.img2img.upscaledEnhance && modelCapabilities(baseModel).maxEnhance
+          ? { upscaled_enhance: true }
+          : {}),
       }),
       // 局部重绘参数 - 如果提供了inpaint则添加
       ...(params.inpaint && {

@@ -388,6 +388,30 @@ check('载荷: V5 Curated 重绘是 4.5 顶替(NAI 上线真模型后要摘掉�
   assert.equal(full.model, 'nai-diffusion-5-full-inpainting');
 });
 
+// Max✨ Enhance。这一条盯的是「省掉」而不是「发 false」:官方把 false 当成
+// 普通 img2img,于是用户点了 Max 却拿到普通重绘的图,本地完全看不出来——
+// 已上线的两个客户端(Aaalice_NAI_Launcher / Plana-App)各自都有一条测试钉着它。
+check('载荷: upscaled_enhance 只在 V5 的 Max 档出现,其余整键省掉', () => {
+  const img2img = { imageBase64: 'AAAA', strength: 0.5, noise: 0 };
+
+  const max = paramsOf({ model: 'v5-full', img2img: { ...img2img, upscaledEnhance: true } });
+  assert.equal(max.upscaled_enhance, true);
+
+  // 非 Max:不是发 false,是整个键不存在。
+  const plain = paramsOf({ model: 'v5-full', img2img: { ...img2img, upscaledEnhance: false } });
+  assert.ok(!('upscaled_enhance' in plain), '非 Max 档不能带 upscaled_enhance');
+  const unset = paramsOf({ model: 'v5-full', img2img });
+  assert.ok(!('upscaled_enhance' in unset), '没选档位时不能带 upscaled_enhance');
+
+  // 能力位关着的模型,即使上游把档位传进来了也不发。
+  const v45 = paramsOf({ model: 'v4.5-full', img2img: { ...img2img, upscaledEnhance: true } });
+  assert.ok(!('upscaled_enhance' in v45), 'V4 系不支持 Max 档,不能发 upscaled_enhance');
+
+  // 不是 img2img 就无从谈起。
+  const txt2img = paramsOf({ model: 'v5-full' });
+  assert.ok(!('upscaled_enhance' in txt2img), '文生图不能带 upscaled_enhance');
+});
+
 // ---- 6. 提示词分词计数(V5=Qwen 3.5 byte-level BPE,V4 系=T5) ----
 //
 // V5 的 1471/703 软阈是按 Qwen 口径实测的,喂 T5 读数就是错的口径。这里断言:
