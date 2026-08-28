@@ -5033,13 +5033,24 @@ async def bot_generate(
         # 防免费通道被拿来无限刷额度外的产出。
         quota_units = 1
     else:
+        # 第四道闸接线:V5 条空(或查不到 usage)时,「免费」必须翻转,否则
+        # 账面永远显示免费而宿主 Anlas 在悄悄走(方案 P5-5,默认拒绝)。
+        model_name = str(stream_params.get("model", ""))
+        opus_exhausted = await _opus_usage_exhausted_for(model_name)
+        if opus_exhausted and _opus_exhausted_policy() is OpusExhaustedPolicy.REJECT:
+            # 预留/入队之前拒绝:此刻还没有任何任务记录或账本条目,不留脏账。
+            raise HTTPException(
+                status_code=503,
+                detail="宿主 Opus 额度已耗尽,V5 生成暂停以保护宿主钱包;请联系管理员或改用非 V5 模型",
+            )
         quota_units = calculate_anlas_cost(
             int(stream_params.get("width", 832)),
             int(stream_params.get("height", 1216)),
             int(stream_params.get("steps", 28)),
-            str(stream_params.get("model", "")),
+            model_name,
             stream_params.get("strength") if stream_params.get("image") else None,
             len(stream_params.get("director_reference_images", []) or []),
+            opus_usage_exhausted=opus_exhausted,
         )
     task_metadata: dict[str, Any] = {
         "request_hash": request_hash,
@@ -5690,8 +5701,75 @@ async def fetch_novelai_anlas() -> int:
                     break  # 非网络错误不重试
             if last_err is not None:
                 logger.error(f"[Anlas] Token {hashlib.sha256(token.encode()).hexdigest()[:8]} 获取点数失败: {last_err}")
-    
+
     return total_anlas
+
+
+# ==================== 宿主 Opus 体力条(P5 钱包保护) ====================
+# V5 条空后 NAI 不报错照扣宿主 Anlas,计价函数的第四道闸(calculate_anlas_cost 的
+# opus_usage_exhausted)在此接线:usage 来自 /user/subscription 的 usage 对象
+# (percent==0 或 isNegative 即耗尽;percent 可 >100,实测见过 170)。
+
+from cloud_backend.opus_usage import (
+    OpusExhaustedPolicy,
+    OpusUsageCache,
+    is_usage_exhausted,
+    parse_policy,
+)
+
+
+async def _fetch_host_opus_usage() -> dict[str, bool]:
+    """逐 token 打 /user/subscription,返回「token 指纹 -> 条是否耗尽」。
+
+    请求形状与 fetch_novelai_anlas 一致(同端点)。单个 token 查询失败按该账号
+    耗尽处理(保守),而不是丢弃其它 token 的有效数据;整体异常交给缓存层
+    fail-closed。key 是 sha256 前 8 位指纹——缓存与日志里绝不落裸 token。
+    """
+    result: dict[str, bool] = {}
+    tokens = get_novelai_tokens()
+    if not tokens:
+        return result
+    timeout = aiohttp.ClientTimeout(total=15, sock_connect=10, sock_read=10)
+    connector = aiohttp.TCPConnector(enable_cleanup_closed=True, force_close=True)
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+        for token in tokens:
+            fingerprint = hashlib.sha256(token.encode()).hexdigest()[:8]
+            try:
+                async with session.get(
+                    # /user/* lives on the image host since NAI's V5 release.
+                    "https://image.novelai.net/user/subscription",
+                    headers={"Authorization": f"Bearer {token}"},
+                ) as resp:
+                    if resp.status != 200:
+                        logger.error("[Opus] Token %s usage 查询失败: HTTP %s", fingerprint, resp.status)
+                        result[fingerprint] = True
+                        continue
+                    data = await resp.json()
+                result[fingerprint] = is_usage_exhausted(data.get("usage"))
+            except Exception as exc:
+                logger.error("[Opus] Token %s usage 获取失败: %s", fingerprint, exc)
+                result[fingerprint] = True
+    return result
+
+
+_opus_usage_cache = OpusUsageCache(_fetch_host_opus_usage, ttl_seconds=60.0)
+
+
+def _opus_exhausted_policy() -> OpusExhaustedPolicy:
+    # 每次调用读环境变量(而非 import 时固化),测试与运维都能即时切换;
+    # 非法值由 parse_policy 回落到安全默认 reject。
+    return parse_policy(os.environ.get("HOST_OPUS_EXHAUSTED_POLICY"))
+
+
+async def _opus_usage_exhausted_for(model: str) -> bool:
+    """该模型是否要按「宿主体力条已耗尽」计价。
+
+    只有 V5 族查询缓存(其余模型与体力条无关,不打上游);V5 判定交给缓存,
+    拿不到数据时缓存已保证按耗尽返回(fail-closed,绝不当作满条)。
+    """
+    if not _is_v5_model(model):
+        return False
+    return await _opus_usage_cache.is_exhausted()
 
 
 class GetAnlasResponse(BaseModel):
@@ -5753,7 +5831,11 @@ async def _record_web_stats(bot_user_id: str, params: dict):
             model = params.get("model", "nai-diffusion-4-5-full")
             img2img_strength = params.get("strength") if params.get("image") else None
             pr_count = len(params.get("director_reference_images", []) or [])
-            anlas_cost = calculate_anlas_cost(width, height, steps, model, img2img_strength, pr_count)
+            # 与预留口径同源:条空(或查不到)时按真实扣费记账,统计不再是「免费」假账。
+            anlas_cost = calculate_anlas_cost(
+                width, height, steps, model, img2img_strength, pr_count,
+                opus_usage_exhausted=await _opus_usage_exhausted_for(model),
+            )
 
             if anlas_cost > 0:
                 reasons = []
