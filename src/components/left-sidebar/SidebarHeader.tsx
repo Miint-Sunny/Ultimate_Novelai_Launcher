@@ -172,10 +172,18 @@ export function SidebarHeader({
 
       {/* shrink-0:侧栏可拖窄,而 Anlas 盒子是 shrink-0 且随余额位数变宽。
           不锁住这里的话,被挤掉的就是菜单按钮(余额从「—」变成真实数字后就会发生)。
-          该让位的是模型按钮,它有 flex-1 + min-w-0。 */}
-      <div className="relative shrink-0">
+          该让位的是模型按钮,它有 flex-1 + min-w-0。
+
+          尺寸写死 38×38 而不是 `h-full aspect-square`:后者是个循环依赖——外层
+          宽度取决于按钮宽度,按钮宽度由 aspect-ratio 从高度推出,而高度又要等这一
+          行的交叉轴定下来。测量那一刻 h-full 还没有可解析的高度,按钮按图标高度
+          (约 22px)算宽,外层就照这个偏窄的值排版;等交叉轴拉伸到 38px,按钮才
+          画成 38px,于是右侧溢出外层约 16px,吃掉 p-3 的 12px 内边距后还多出几个
+          像素,被滚动容器的 overflow-x-hidden 削掉——表现就是右边框缺一条。
+          两个尺寸都显式给,依赖链就断了。 */}
+      <div className="relative shrink-0 w-[38px] h-[38px]">
         <button
-          className={`h-full aspect-square bg-nai-input hover:bg-gray-700 rounded flex items-center justify-center transition-colors border border-gray-700 ${isMenuOpen ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+          className={`w-full h-full bg-nai-input hover:bg-gray-700 rounded flex items-center justify-center transition-colors border border-gray-700 ${isMenuOpen ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
           <Menu className="w-5 h-5" />

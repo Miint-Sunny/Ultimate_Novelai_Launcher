@@ -37,25 +37,35 @@ export function OpusUsageBar({ usage }: { usage: OpusUsage }) {
   const exhausted = usage.isNegative || usage.percent <= 0;
   const low = !exhausted && usage.percent <= 10;
   const accent = exhausted ? 'bg-red-500' : low ? 'bg-amber-500' : 'bg-nai-accent';
+  const textAccent = exhausted ? 'text-red-400' : low ? 'text-amber-400' : 'text-nai-accent';
 
   return (
     <>
       <div className="px-3 pt-1.5 select-none">
         <div className="flex items-baseline justify-between gap-2 mb-1">
-          <span className={`text-[10px] leading-none truncate ${exhausted ? 'text-red-400' : 'text-gray-500'}`}>
-            {exhausted
-              ? '免费额度已用尽,继续生成将消耗 Anlas'
-              : `剩余 ${usage.percent}% 的 Opus 免费生成额度`}
+          {/* 百分比单独提出来加粗放大:这一行真正要被一眼读到的是这个数,
+              后面那串说明只是它的注脚。整行同号同色时,数字会被文字淹没。 */}
+          <span className="flex items-baseline gap-1.5 min-w-0">
+            {exhausted ? (
+              <span className="text-[13px] font-bold leading-none text-red-400">已用尽</span>
+            ) : (
+              <span className={`text-[15px] font-bold leading-none tabular-nums ${textAccent}`}>
+                {usage.percent}%
+              </span>
+            )}
+            <span className={`text-[11px] leading-none truncate ${exhausted ? 'text-red-400/80' : 'text-gray-400'}`}>
+              {exhausted ? '继续生成将消耗 Anlas' : 'Opus 免费生成额度'}
+            </span>
           </span>
           <button
             onClick={() => setIsDetailOpen(true)}
             title="查看 Opus 免费额度说明"
-            className="text-[10px] leading-none shrink-0 text-gray-500 hover:text-white underline underline-offset-2 transition-colors"
+            className="text-[11px] leading-none shrink-0 text-gray-400 hover:text-white underline underline-offset-2 transition-colors"
           >
             更多信息
           </button>
         </div>
-        <div className="h-[3px] rounded-full bg-gray-700/50 overflow-hidden">
+        <div className="h-1 rounded-full bg-gray-700/50 overflow-hidden">
           <div className={`h-full rounded-full transition-all ${accent}`} style={{ width: `${filled}%` }} />
         </div>
       </div>
@@ -85,9 +95,13 @@ export function OpusUsageBar({ usage }: { usage: OpusUsage }) {
               这份额度有上限,并会随时间自动恢复;用尽后仍可继续生成,但会消耗 Anlas。
             </p>
 
-            <div className="text-sm font-bold text-white mb-2">
-              剩余 {usage.percent}%
-              <span className="text-gray-400 font-normal">(约 {estimateImages(usage.percent)} 张)</span>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className={`text-2xl font-bold leading-none tabular-nums ${textAccent}`}>
+                {usage.percent}%
+              </span>
+              <span className="text-sm text-gray-400">
+                剩余,约 {estimateImages(usage.percent).toLocaleString()} 张
+              </span>
             </div>
             <div className="h-2 rounded-full bg-gray-800 overflow-hidden mb-3">
               <div className={`h-full rounded-full transition-all ${accent}`} style={{ width: `${filled}%` }} />
