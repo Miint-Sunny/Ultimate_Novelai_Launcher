@@ -94,6 +94,8 @@ export interface BaseGenerationParamsInput {
   noiseSchedule: string;
   activePresetId: string;
   varietyPlus: boolean;
+  /** 透明背景(仅 V5 支持;能力表 transparency)。 */
+  transparentBackground?: boolean;
   normalizeVibeStrength: boolean;
   resolutionSource: string;
   characterPrompts: CharacterPromptContent[];
@@ -144,6 +146,9 @@ export async function buildBaseGenerationParams(input: BaseGenerationParamsInput
     ucPreset: input.activePresetId,
     qualityToggle: input.activePresetId === 'heavy',
     varietyPlus: input.varietyPlus,
+    // 仅在确实开启时才带上这个键:未开启时载荷要与 V5 之前逐字节一致
+    // (generation parity 的基线就是照这个比的),多一个 undefined 键也算不一致。
+    ...(input.transparentBackground ? { transparentBackground: true } : {}),
     normalizeVibeStrength: input.normalizeVibeStrength,
     resolutionSource: input.resolutionSource,
     characterPrompts: prepareCharacterPrompts(input.characterPrompts),

@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Settings, SlidersHorizontal, X } from 'lucide-react';
 import type { PromptPresetData } from '../../services/localLibrary';
-import { STEPS_RANGE } from '../generation/modelResolutionOptions';
+import { STEPS_RANGE, modelCapabilities } from '../generation/modelResolutionOptions';
 import { SliderControl, OptionGrid } from './settings/AdvancedSettingControls';
 
 interface MobileAdvancedSettingsSheetProps {
@@ -25,6 +25,10 @@ interface MobileAdvancedSettingsSheetProps {
   setNoiseSchedule: (noiseSchedule: string) => void;
   varietyPlus: boolean;
   setVarietyPlus: (enabled: boolean) => void;
+  /** 当前模型:按能力位决定哪些控件该出现。 */
+  model: string;
+  transparentBackground: boolean;
+  setTransparentBackground: (enabled: boolean) => void;
 }
 
 const SAMPLERS = [
@@ -64,7 +68,13 @@ export function MobileAdvancedSettingsSheet({
   setNoiseSchedule,
   varietyPlus,
   setVarietyPlus,
+  model,
+  transparentBackground,
+  setTransparentBackground,
 }: MobileAdvancedSettingsSheetProps) {
+  // V5 上噪声调度被官方强制 karras、Variety+ 根本不存在;留着只会让用户
+  // 调一个不生效的旋钮。透明背景则相反,是 V5 才有的能力。
+  const caps = modelCapabilities(model);
   if (!isOpen) return null;
 
   return (
@@ -144,7 +154,7 @@ export function MobileAdvancedSettingsSheet({
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-300">Prompt Guidance</span>
               <div className="flex items-center gap-2">
-                <button
+                {caps.varietyPlus && <button
                   onClick={() => setVarietyPlus(!varietyPlus)}
                   className={`px-2 py-1 text-xs rounded border flex items-center gap-1 transition-colors ${varietyPlus
                     ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
@@ -153,7 +163,7 @@ export function MobileAdvancedSettingsSheet({
                 >
                   {varietyPlus ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
                   Variety+
-                </button>
+                </button>}
                 <span className="text-sm font-mono text-nai-accent">{scale}</span>
               </div>
             </div>
@@ -200,12 +210,34 @@ export function MobileAdvancedSettingsSheet({
             onChange={setCfgRescale}
           />
 
-          <OptionGrid
-            label="Noise Schedule 噪声调度"
-            options={NOISE_SCHEDULES}
-            value={noiseSchedule}
-            onChange={setNoiseSchedule}
-          />
+          {caps.noiseSchedule && (
+            <OptionGrid
+              label="Noise Schedule 噪声调度"
+              options={NOISE_SCHEDULES}
+              value={noiseSchedule}
+              onChange={setNoiseSchedule}
+            />
+          )}
+
+          {caps.transparency && (
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-gray-300">透明背景</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  直接输出带 alpha 通道的图，省去后期抠图
+                </div>
+              </div>
+              <button
+                onClick={() => setTransparentBackground(!transparentBackground)}
+                className={`px-3 py-1.5 text-xs rounded border transition-colors ${transparentBackground
+                  ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
+                  : 'bg-gray-800 text-gray-400 border-gray-700'
+                  }`}
+              >
+                {transparentBackground ? '已开启' : '关闭'}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-shrink-0 p-4 border-t border-gray-700 flex gap-3">

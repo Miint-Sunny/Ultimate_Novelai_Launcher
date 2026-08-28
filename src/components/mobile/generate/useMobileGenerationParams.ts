@@ -24,6 +24,7 @@ interface SavedMobileGenerateState {
   noiseSchedule?: string;
   cfgRescale?: number;
   varietyPlus?: boolean;
+  transparentBackground?: boolean;
   activePresetId?: string;
   characterPrompts?: StoredCharacterPrompt[];
 }
@@ -73,6 +74,10 @@ export function useMobileGenerationParams({
   const [noiseSchedule, setNoiseSchedule] = useState(savedState?.noiseSchedule ?? 'karras');
   const [cfgRescale, setCfgRescale] = useState(savedState?.cfgRescale ?? 0);
   const [varietyPlus, setVarietyPlus] = useState(savedState?.varietyPlus ?? false);
+  // 透明背景(仅 V5;载荷里发 tag_hint_transparent_background)
+  const [transparentBackground, setTransparentBackground] = useState(
+    savedState?.transparentBackground ?? false,
+  );
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isPresetExpanded, setIsPresetExpanded] = useState(false);
   const [characterPrompts, setCharacterPrompts] = useState<CharacterPrompt[]>(
@@ -93,6 +98,7 @@ export function useMobileGenerationParams({
       noiseSchedule,
       cfgRescale,
       varietyPlus,
+      transparentBackground,
       activePresetId,
       characterPrompts: characterPrompts.map((prompt) => ({
         id: prompt.id,
@@ -116,6 +122,7 @@ export function useMobileGenerationParams({
     noiseSchedule,
     cfgRescale,
     varietyPlus,
+    transparentBackground,
     activePresetId,
     characterPrompts,
   ]);
@@ -143,6 +150,8 @@ export function useMobileGenerationParams({
     setCfgRescale,
     varietyPlus,
     setVarietyPlus,
+    transparentBackground,
+    setTransparentBackground,
     showAdvancedSettings,
     setShowAdvancedSettings,
     isPresetExpanded,

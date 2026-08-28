@@ -557,6 +557,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const [scaleRescale, setScaleRescale] = useState(() => getAISettings().scaleRescale);
   const [noiseSchedule, setNoiseSchedule] = useState(() => getAISettings().noiseSchedule);
   const [varietyPlus, setVarietyPlus] = useState(() => getAISettings().varietyPlus);
+  // 透明背景(仅 V5)。不进 saveAISettings:那份设置是跨模型共享的生成参数,
+  // 而这是个模型专属能力,记住它会让切回 4.5 时留下一个不存在的开关状态。
+  const [transparentBackground, setTransparentBackground] = useState(false);
   const [normalizeVibeStrength, setNormalizeVibeStrength] = useState(() => getAISettings().normalizeVibeStrength);
   const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
 
@@ -761,6 +764,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     scaleRescale,
     noiseSchedule,
     varietyPlus,
+    transparentBackground,
     normalizeVibeStrength,
     characterPrompts,
     activePreciseRefs: crManager.activePreciseRefs,
@@ -1083,6 +1087,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onNoiseScheduleChange={setNoiseSchedule}
             varietyPlus={varietyPlus}
             onVarietyPlusChange={setVarietyPlus}
+            transparentBackground={transparentBackground}
+            onTransparentBackgroundChange={setTransparentBackground}
             model={selectedModel.id}
           />
         </div>

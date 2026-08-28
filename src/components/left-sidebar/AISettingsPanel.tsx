@@ -26,6 +26,8 @@ interface AISettingsPanelProps {
   onVarietyPlusChange: (value: boolean) => void;
   /** 当前模型(UI id 或后端名)。用于按能力位隐藏该模型不支持的控件。 */
   model: string;
+  transparentBackground: boolean;
+  onTransparentBackgroundChange: (value: boolean) => void;
 }
 
 export function AISettingsPanel({
@@ -49,6 +51,8 @@ export function AISettingsPanel({
   varietyPlus,
   onVarietyPlusChange,
   model,
+  transparentBackground,
+  onTransparentBackgroundChange,
 }: AISettingsPanelProps) {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   // 这两个控件在 V5 上是死的:噪声调度被官方强制写死 karras,Variety+ 整个不存在。
@@ -161,6 +165,25 @@ export function AISettingsPanel({
                   </div>
                   <RangeInput min={0} max={1} step={0.01} value={scaleRescale} onChange={onScaleRescaleChange} />
                 </div>
+
+                {caps.transparency && (
+                  <div>
+                    <div className="text-xs text-gray-300 mb-1 flex items-center">
+                      透明背景
+                      <HelpTip title="透明背景 (V5)" body={"直接输出带 alpha 通道的图，省去后期抠图。\n开启后会在提示词里加入 transparent background，并让模型以透明方式生成。\n💡 不稳定时可在提示词里写 2.1::transparent background::\n💡 比导演工具的去背不消耗点数，效果也更好"} />
+                    </div>
+                    <button
+                      onClick={() => onTransparentBackgroundChange(!transparentBackground)}
+                      className={`w-full px-2 py-1 text-xs rounded border flex items-center justify-center gap-1 transition-colors ${transparentBackground
+                        ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
+                        : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                      }`}
+                    >
+                      {transparentBackground ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                      {transparentBackground ? '已开启' : '关闭'}
+                    </button>
+                  </div>
+                )}
 
                 {caps.noiseSchedule && (
                   <div>

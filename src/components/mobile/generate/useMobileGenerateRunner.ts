@@ -40,6 +40,7 @@ interface UseMobileGenerateRunnerOptions {
   cfgRescale: number;
   noiseSchedule: string;
   varietyPlus: boolean;
+  transparentBackground?: boolean;
   vibeEncodingCache: Map<string, string>;
   generate: (params: GenerateImageParams) => Promise<GenerateResult>;
 }
@@ -76,6 +77,7 @@ export function useMobileGenerateRunner({
   cfgRescale,
   noiseSchedule,
   varietyPlus,
+  transparentBackground,
   vibeEncodingCache,
   generate,
 }: UseMobileGenerateRunnerOptions) {
@@ -124,6 +126,7 @@ export function useMobileGenerateRunner({
         noiseSchedule,
         activePresetId,
         varietyPlus,
+        transparentBackground,
         // 移动端无该开关的 UI:读取共享设置存储(novelai_ai_settings,桌面侧维护),
         // 默认 true 与此前省略该字段的后端默认行为一致
         normalizeVibeStrength: getAISettings().normalizeVibeStrength,
@@ -194,6 +197,7 @@ export function useMobileGenerateRunner({
     setLocalWidth,
     steps,
     varietyPlus,
+    transparentBackground,
     vibeEncodingCache,
   ]);
 
