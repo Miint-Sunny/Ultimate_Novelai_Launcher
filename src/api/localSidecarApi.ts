@@ -551,6 +551,9 @@ export const localSidecarApi = {
         fixedTrainingStepsLeft: Number(data.fixedTrainingStepsLeft || 0),
         purchasedTrainingSteps: Number(data.purchasedTrainingSteps || 0),
         isOpus: Boolean(data.isOpus),
+        // 这里是显式重塑而非透传,所以每加一个字段都必须在这里也加一次——
+        // 漏了不会报错,只会让下游拿到 undefined(体力条就这么静默丢过一次)。
+        opusUsage: data.opusUsage,
       };
     } catch {
       return null;

@@ -171,6 +171,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   } = img2imgState;
 
   const characterPromptManager = useMobileCharacterPrompts({
+    maxCharacters: maxCharactersForModel(model),
     characterPrompts,
     setCharacterPrompts,
   });

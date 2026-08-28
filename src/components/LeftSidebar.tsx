@@ -289,6 +289,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const artistManager = useArtistManager();
   const crManager = useCRManager();
 
+  // 首次启动用 DEFAULT_MODEL_ID(经 defaultModelOption 查表,不取 MODELS[0]——
+  // 让列表顺序决定默认是本次已经犯过一次的 bug);之后恢复上次选择,由
+  // getAISettings 负责校验存量值仍然存在。
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(
+    () => MODELS.find((option) => option.id === getAISettings().model) ?? defaultModelOption(),
+  );
+
   const {
     characterPrompts,
     setCharacterPrompts,
@@ -302,7 +309,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     removeCharacterPrompt,
     updateCharacterPrompt,
     moveCharacterPrompt,
-  } = useCharacterPrompts();
+  } = useCharacterPrompts(maxCharactersForModel(selectedModel.id));
 
   const {
     promptPresets,
@@ -461,12 +468,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       artistManager.handleTagsChange(tags);
     }
   }, [chipMode, positivePrompt, artistManager.handleTagsChange]);
-  // 首次启动用 DEFAULT_MODEL_ID(经 defaultModelOption 查表,不取 MODELS[0]——
-  // 让列表顺序决定默认是本次已经犯过一次的 bug);之后恢复上次选择,由
-  // getAISettings 负责校验存量值仍然存在。
-  const [selectedModel, setSelectedModel] = useState<ModelOption>(
-    () => MODELS.find((option) => option.id === getAISettings().model) ?? defaultModelOption(),
-  );
   const ocManager = useOCManager(maxCharactersForModel(selectedModel.id));
   const handleExportVibe = useVibeExport({
     exportingVibeId,
@@ -710,6 +711,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     setPositivePrompt,
     setCharacterPrompts,
     setIsCharacterSectionOpen,
+    maxCharacters: maxCharactersForModel(selectedModel.id),
   });
   const {
     handleConfirmArtistSelection,

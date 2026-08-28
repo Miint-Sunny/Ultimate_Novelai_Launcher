@@ -1,4 +1,5 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { useRef } from 'react';
+import type { Dispatch, MutableRefObject, PointerEvent, SetStateAction } from 'react';
 import type { ResolutionPreset, ClampedSize } from '../generation/modelResolutionOptions';
 import {
   LARGE_RESOLUTIONS,
@@ -116,8 +117,8 @@ export function GenerationFooterControls({
 
   return (
     <div className="border-t border-gray-800 bg-nai-panel shrink-0 z-10">
-      <div className="p-3 pb-1.5">
-        <div className="grid grid-cols-4 gap-2 text-sm bg-nai-dark/30 p-2 rounded border border-gray-800">
+      <div className="px-3 pt-2 pb-1">
+        <div className="grid grid-cols-4 gap-1 text-sm bg-nai-dark/30 px-1.5 py-1 rounded border border-gray-800">
           <QuickNumberCell
             label="步数"
             value={steps}
@@ -134,26 +135,26 @@ export function GenerationFooterControls({
             }}
           />
           <div
-            className="flex flex-col justify-between p-1 cursor-pointer hover:bg-white/5 rounded transition-colors overflow-hidden"
+            className="flex flex-col justify-center px-1 py-0.5 cursor-pointer hover:bg-white/5 rounded transition-colors overflow-hidden"
             onClick={() => {
               if (!seed) scrollToAISettings('seed');
               else setSeed('');
             }}
           >
-            <div className="text-gray-400 text-xs mb-1">种子</div>
-            <div className="font-bold text-white text-xs truncate" title={seed || 'N/A'}>{seed || 'N/A'}</div>
+            <div className="text-gray-500 text-[10px] leading-none">种子</div>
+            <div className="font-bold text-white text-sm leading-tight truncate tabular-nums" title={seed || 'N/A'}>{seed || 'N/A'}</div>
           </div>
           <div className="relative h-full">
             <div
-              className="cursor-pointer hover:bg-white/5 rounded p-1 transition-colors h-full flex flex-col justify-between select-none"
+              className="cursor-pointer hover:bg-white/5 rounded px-1 py-0.5 transition-colors h-full flex flex-col justify-center select-none"
               onClick={() => setIsResSelectorOpen(!isResSelectorOpen)}
               onWheel={(event) => {
                 const nextResolution = getWheelResolution(event.deltaY, resolution, isCustomRes);
                 handleResolutionChange(nextResolution);
               }}
             >
-              <div className="text-gray-400 text-xs mb-1">比例</div>
-              <div className="font-bold text-white text-xs truncate" title={`${customWidth} x ${customHeight}`}>
+              <div className="text-gray-500 text-[10px] leading-none">比例</div>
+              <div className="font-bold text-white text-sm leading-tight truncate" title={`${customWidth} x ${customHeight}`}>
                 {currentResolutionLabel}
               </div>
             </div>
@@ -215,6 +216,10 @@ export function GenerationFooterControls({
   );
 }
 
+// 拖动灵敏度:每移动这么多像素记一档。太小会让轻微手抖也改数值,
+// 太大又拖不动;6px 是在触控板与鼠标上都跟手的值。
+const DRAG_STEP_PX = 6;
+
 function QuickNumberCell({
   label,
   value,
@@ -224,16 +229,59 @@ function QuickNumberCell({
   label: string;
   value: number;
   onClick: () => void;
+  /** 传入方向:正=增,负=减(滚轮与拖动共用同一步进逻辑)。 */
   onWheel: (deltaY: number) => void;
 }) {
+  const dragState = useRef<{ x: number; y: number; accum: number; moved: boolean } | null>(null);
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    // 只接管主键拖动,右键/中键留给系统
+    if (event.button !== 0) return;
+    dragState.current = { x: event.clientX, y: event.clientY, accum: 0, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const state = dragState.current;
+    if (!state) return;
+    // 上=增、右=增:两个方向都支持,取位移较大的那个轴,
+    // 这样斜着拖也不会两个轴互相抵消。
+    const dx = event.clientX - state.x;
+    const dy = event.clientY - state.y;
+    state.x = event.clientX;
+    state.y = event.clientY;
+    state.accum += Math.abs(dx) > Math.abs(dy) ? dx : -dy;
+    while (Math.abs(state.accum) >= DRAG_STEP_PX) {
+      const direction = state.accum > 0 ? 1 : -1;
+      state.accum -= direction * DRAG_STEP_PX;
+      state.moved = true;
+      // onWheel 的约定与滚轮一致:deltaY 为负表示「增」
+      onWheel(-direction);
+    }
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const state = dragState.current;
+    dragState.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    // 拖过就不再当作点击,否则松手会顺带跳去 AI 设置面板
+    if (state && !state.moved) onClick();
+  };
+
   return (
     <div
-      className="cursor-ns-resize hover:bg-white/5 rounded p-1 transition-colors select-none flex flex-col justify-between"
-      onClick={onClick}
+      className="cursor-ns-resize hover:bg-white/5 rounded px-1 py-0.5 transition-colors select-none touch-none flex flex-col justify-center"
+      title={`${label}:滚轮或上下/左右拖动调整,点击跳到设置`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onWheel={(event) => onWheel(event.deltaY)}
     >
-      <div className="text-gray-400 text-xs mb-1">{label}</div>
-      <div className="font-bold text-white">{value}</div>
+      <div className="text-gray-500 text-[10px] leading-none">{label}</div>
+      <div className="font-bold text-white text-sm leading-tight tabular-nums">{value}</div>
     </div>
   );
 }
