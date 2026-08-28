@@ -4,6 +4,7 @@ import {
   analyzeTagGroups,
   cleanTagName,
   detectAbnormalWeight,
+  formatAbnormalWeightTip,
   getEffectiveWeight,
   getWeightStyle,
   isSDWeightFormat,
@@ -154,6 +155,7 @@ export const FullscreenChipEditorArea: React.FC<FullscreenChipEditorAreaProps> =
     const effectiveWeight = getEffectiveWeight(rawTag, group, parsedTags, tagGroups);
     const isSDFormat = isSDWeightFormat(rawTag);
     const abnormalWeight = detectAbnormalWeight(rawTag);
+    const abnormalTip = abnormalWeight ? formatAbnormalWeightTip(abnormalWeight) : undefined;
     const isHidden = rawTag.trim().startsWith('~');
 
     const roundedClass = group.position === 'first' ? 'rounded-l-lg rounded-r-none'
@@ -201,15 +203,16 @@ export const FullscreenChipEditorArea: React.FC<FullscreenChipEditorAreaProps> =
         >
           <span className="flex flex-col items-start">
             <span className="flex items-center gap-1">
-              {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalWeight}>⚠️</span>}
+              {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalTip}>⚠️</span>}
               {isSDFormat && !abnormalWeight && <span className="text-[9px] text-amber-300">SD</span>}
               <span className={`font-tag text-[13px] leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-nai-accent' : isSDFormat ? 'text-amber-200' : 'text-white/85'}`}>
                 {rawTag.trim()}
               </span>
             </span>
-            {abnormalWeight ? (
-              <span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight}</span>
-            ) : translation ? (
+            {abnormalWeight ? (<>
+              <span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight.message}</span>
+              {abnormalWeight.suggestion && <span className="text-[10px] leading-tight text-red-300/60">{abnormalWeight.suggestion}</span>}
+            </>) : translation ? (
               <span className={`text-[10px] leading-tight ${isSelected ? 'text-nai-accent/50' : 'text-white/35'}`}>{translation}</span>
             ) : isTranslating ? (
               <span className="text-[10px] leading-tight text-white/20 animate-pulse">翻译中…</span>

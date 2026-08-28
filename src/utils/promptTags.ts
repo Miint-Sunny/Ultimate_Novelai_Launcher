@@ -129,21 +129,54 @@ export const getTagWeightInfo = (raw: string): { type: 'none' | 'brace' | 'brack
   return { type: 'none', level: 0 };
 };
 
-// 检测异常权重：tag 中 :: 前紧挨着 ≥10 的数字（跳过开头的合法权重前缀）
-export const detectAbnormalWeight = (rawTag: string): string | null => {
+// 词字符：字母 / 数字 / 下划线，含中日韩表意文字与假名（\p{L}\p{N} 覆盖全部 Unicode 文字）
+// 「数字紧贴词字符」= 名字尾巴（如 na_tarapisu153 的 153），
+// 而合法权重 1.2::tag:: 的 1.2 前面是字符串开头或分隔符（{、[、空格等），不紧贴词字符
+const WORD_CHAR_RE = /[\p{L}\p{N}_]/u;
+
+export type AbnormalWeightReason = 'attached-to-word' | 'large-number';
+
+export interface AbnormalWeightWarning {
+  /** 被误读风险点的数字串，如 "153" */
+  token: string;
+  /** attached-to-word: 数字紧贴词字符(名字尾); large-number: :: 前 ≥10 的可疑大数字(旧信号) */
+  reason: AbnormalWeightReason;
+  /** 给用户看的一句话说明 */
+  message: string;
+  /** 可执行的修正建议(仅提示，不自动改写)；两类信号目前都有确定建议，不为 null */
+  suggestion: string | null;
+}
+
+// 悬浮提示用的完整文案（说明 + 建议一行拼齐，双端 chip 共用，避免组件各拼一份）
+export const formatAbnormalWeightTip = (w: AbnormalWeightWarning): string =>
+  w.suggestion ? `${w.message} ${w.suggestion}` : w.message;
+
+// 检测异常权重：数字紧跟 "::" 会被 NAI 服务端吃成权重，画师名以数字结尾时
+// （na_tarapisu153:: → 权重 153）出图直接烧掉。两类信号合并为带 reason 的单一结果：
+//   1. attached-to-word（主信号）：数字紧贴词字符（含中日文），是名字尾巴被吃 —— 个位数同样命中
+//   2. large-number（旧信号保留）：非词字符紧贴但数值 ≥10 的可疑大数字（如 "b 12::"）
+// 标签开头的合法权重前缀（含负号与小数，同 getTagWeightInfo）跳过不计。
+export const detectAbnormalWeight = (rawTag: string): AbnormalWeightWarning | null => {
   const trimmed = rawTag.trim();
+  // 开头的合法权重前缀 span（"-12::" 里的 "12::" 起点在 span 内，一并跳过）
+  const leading = trimmed.match(/^-?(\d+(?:\.\d+)?)::/);
+  const leadingEnd = leading ? leading[0].length : 0;
   const regex = /(\d+(?:\.\d+)?)::/g;
   let match;
-  let isFirst = true;
   while ((match = regex.exec(trimmed)) !== null) {
-    if (isFirst && match.index === 0) {
-      isFirst = false;
-      continue;
+    if (match.index < leadingEnd) continue; // 合法权重前缀本身
+    const prevChar = match.index > 0 ? trimmed[match.index - 1] : '';
+    const token = match[1];
+    if (WORD_CHAR_RE.test(prevChar)) {
+      // 数字后面是否只剩冒号（决定能否给出具体改写）
+      const restIsColons = /^:*$/.test(trimmed.slice(match.index + match[0].length));
+      const suggestion = restIsColons
+        ? `去掉尾部的 "::"（写成 ${trimmed.replace(/:+$/, '')}）；若该 "::" 是权重组收尾，请挪到不以数字结尾的标签上`
+        : `去掉或挪开紧贴 "${token}" 的 "::"，不要让数字与 "::" 相邻`;
+      return { token, reason: 'attached-to-word', message: `"${token}" 是名字尾部的数字，紧跟 "::" 会被服务端误读为权重`, suggestion };
     }
-    isFirst = false;
-    const num = parseFloat(match[1]);
-    if (num >= 10) {
-      return `"${match[1]}" 可能被误识别为权重`;
+    if (parseFloat(token) >= 10) {
+      return { token, reason: 'large-number', message: `"${token}" 可能被误识别为权重`, suggestion: `确认 "${token}" 是否确为权重；若是名字/编号的一部分，请去掉紧贴它的 "::"` };
     }
   }
   return null;

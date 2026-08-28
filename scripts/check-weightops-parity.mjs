@@ -23,11 +23,13 @@
 //   9. 不可变性:所有纯函数不改入参数组
 //  10. 结构断言(文本扫描):三 hook import 共享模块、无私有副本残留、
 //      promptWeightOps 无 react/外部内部依赖、prompt-editor 不 import promptWeightOps
+//  11. 权重语法防雷(P7):detectAbnormalWeight 名字尾数字判据(词字符+数字紧贴 ::,
+//      含中日文词字符、个位数命中、合法权重前缀豁免)与 ≥10 旧信号合并、建议写法存在
 
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-const { analyzeTagGroups } = await import('../src/utils/promptTags.ts');
+const { analyzeTagGroups, detectAbnormalWeight, formatAbnormalWeightTip } = await import('../src/utils/promptTags.ts');
 const {
   resolveTargetIndices,
   groupContinuousIndices,
@@ -256,6 +258,54 @@ check('结构: prompt-editor/ 下 TipTap 主编辑器不 import promptWeightOps(
     const src = readFileSync(new URL(f, dir), 'utf8');
     assert.equal(src.includes('promptWeightOps'), false, f);
   }
+});
+
+// ---- 11. 权重语法防雷(P7) ----
+check('detectAbnormalWeight: 名字尾数字紧贴 :: 命中(个位数同样命中)', () => {
+  const w = detectAbnormalWeight('na_tarapisu153::');
+  assert.ok(w && w.reason === 'attached-to-word');
+  assert.equal(w.token, '153');
+  assert.ok(w.message.includes('153'));
+  assert.ok(typeof w.suggestion === 'string' && w.suggestion.length > 0); // 必须给出可执行建议
+  assert.ok(w.suggestion.includes('na_tarapisu153')); // 尾部 :: 场景给出具体改写
+  const w5 = detectAbnormalWeight('na_tarapisu5::');
+  assert.ok(w5 && w5.reason === 'attached-to-word');
+  assert.equal(w5.token, '5'); // 旧判据(≥10)漏掉的个位数尾巴
+});
+
+check('detectAbnormalWeight: 合法权重与普通标签不命中', () => {
+  assert.equal(detectAbnormalWeight('1.2::tag::'), null); // 合法数值权重
+  assert.equal(detectAbnormalWeight('tag::'), null); // 无数字
+  assert.equal(detectAbnormalWeight('白发红瞳少女::'), null); // 纯中文标签
+  assert.equal(detectAbnormalWeight('1.2::白发红瞳::'), null); // 合法权重 + 中文内容
+  assert.equal(detectAbnormalWeight('{tag}'), null);
+  assert.equal(detectAbnormalWeight('-12::tag::'), null); // 负号开头的合法权重前缀豁免
+});
+
+check('detectAbnormalWeight: 中日文字符算词字符;合法权重包裹的名字尾同样命中', () => {
+  const zh = detectAbnormalWeight('画师153::');
+  assert.ok(zh && zh.reason === 'attached-to-word');
+  assert.equal(zh.token, '153'); // "师"是词字符,153 紧贴它 → 名字尾
+  const jp = detectAbnormalWeight('イラスト7::');
+  assert.ok(jp && jp.reason === 'attached-to-word');
+  assert.equal(jp.token, '7'); // 假名也是词字符
+  const wrapped = detectAbnormalWeight('1.2::na_tarapisu153::');
+  assert.ok(wrapped && wrapped.reason === 'attached-to-word');
+  assert.equal(wrapped.token, '153'); // 真实高危场景:数值权重组里画师名收尾
+});
+
+check('detectAbnormalWeight: ≥10 大数字旧信号保留(带 reason)', () => {
+  const w = detectAbnormalWeight('b 12::');
+  assert.ok(w && w.reason === 'large-number'); // 数字不紧贴词字符,但数值可疑
+  assert.equal(w.token, '12');
+  assert.ok(w.message.includes('12'));
+});
+
+check('detectAbnormalWeight: formatAbnormalWeightTip 拼齐说明与建议', () => {
+  const w = detectAbnormalWeight('na_tarapisu153::');
+  const tip = formatAbnormalWeightTip(w);
+  assert.ok(tip.includes(w.message));
+  assert.ok(tip.includes(w.suggestion));
 });
 
 console.log(`\n${checks} 项加权操作对等校验全部通过。`);
