@@ -1,7 +1,7 @@
 # NovelAI API 参数映射文档
 
 > 载荷分两族：**V4 系**（V4 / V4.5）与 **V5**。两族共用大部分字段，但有一组参数
-> 必须二选一，混发会出错。先读下面的「按模型族分叉的参数」，再看通用表。
+> 我们按官方形状二选一。先读下面的「按模型族分叉的参数」，再看通用表。
 > 事实来源：`src/services/novelai.ts` 的载荷构造与 `sidecar/nai/client.py`，
 > 对等校验见 `scripts/check-v5-parity.mjs`。
 
@@ -10,7 +10,7 @@
 | API 参数 | V4 系 | V5 | 备注 |
 |---------|-------|-----|------|
 | `parameters.params_version` | `3` | `4` | V5 传 3 **照样出图**，但角色的自由定位坐标会被静默丢弃 |
-| `parameters.ucPreset` | 数字 `0/1/4` | 不发 | 与下面的 `ucPresetId` **互斥，绝不能同时出现** |
+| `parameters.ucPreset` | 数字 `0/1/4` | 不发 | 我们只发官方形状，见下方「关于预设口径」 |
 | `parameters.qualityToggle` | 布尔 | 不发 | 同上 |
 | `parameters.ucPresetId` | 不发 | 字符串 | `heavy` / `light` / `furryFocus` / `humanFocus` / `none` |
 | `parameters.qualityPresetId` | 不发 | 字符串 | `standard` / `light` / `none`（现有 UI 只有布尔，映到 standard/none） |
@@ -19,6 +19,19 @@
 | `parameters.straight_alpha` | 不发 | 恒 `true` | 32 通道 VAE 真正吐出 alpha 通道靠它，与用户是否要透明背景无关 |
 | `parameters.tag_hint_transparent_background` | 不发 | 勾选透明背景时 `true` | 见 `transparentBackground` |
 | `parameters.sm` | 不发 | 不发 | V5 发 `sm: true` 会 **HTTP 500** |
+
+### 关于预设口径：我们发官方形状，但服务端不止收这一种
+
+抓包显示官方客户端在 V5 下发字符串 `ucPresetId` / `qualityPresetId`（外加数字
+`tag_hint_qt` / `tag_hint_uc_preset`），所以我们照着发。
+
+但**「混发会出错」是我们从没验证过的推测，且现有证据是反的**：两个已上线的第三方
+客户端（同一作者的 web 端与 Plana-App v1.0.7 移动端，`lib/features/generate/nai_request.dart:198`）
+在 V5 上发的都是**数字 `ucPreset` + 布尔 `qualityToggle` + tag_hint**，生产环境跑得好好的。
+也就是说服务端今天**两套口径都收**。
+
+我们仍然只发官方形状，理由不是「另一种会报错」，而是**不赌服务端的宽容**——它今天收，
+不保证明天还收。`check-v5-parity.mjs` 的第 22 项锁的是「我们发的形状」，不是「服务端的约束」。
 
 `v4_prompt` / `v4_negative_prompt` 的**字段名在 V5 下不变，且仍然必填**——名字里的
 "v4" 有误导性，缺了会 HTTP 500。

@@ -445,7 +445,8 @@ export function buildRequestPayload(params: GenerateImageParams) {
       steps: params.steps,
       n_samples: 1,
       // 数字 ucPreset + 布尔 qualityToggle 是 V4 系的口径；V5 换成字符串 id。
-      // 两套绝不能同时出现在一个载荷里。
+      // 只发官方形状的那一套。服务端今天两种都收（已上线的第三方客户端在 V5 上
+      // 发数字口径也能跑），但那是宽容不是契约，不赌它一直收。
       ...(isV5
         ? {
             ucPresetId: toV5UcPresetId(params.ucPreset),

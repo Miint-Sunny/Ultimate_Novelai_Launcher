@@ -8,7 +8,8 @@
 //   1. 计费漏乘 1.5,界面显示的价永远比真实扣费少三分之一;
 //   2. 模型落错家族(V5 会掉进 LEGACY)会切到另一条指数计价公式;
 //   3. 载荷层:params_version 传 3 照样出图,只把角色坐标静默丢掉;两套预设口径
-//      混发出错;发 sm:true 或缺 v4_prompt 直接 HTTP 500。
+//      两套并存(服务端今天两种都收,我们只发官方形状,不赌宽容);
+//      发 sm:true 或缺 v4_prompt 直接 HTTP 500。
 // 这些都不会在本地抛异常,只会安静地算错或者到线上才 500,所以用实测锚点钉住。
 //
 // 第 5 段(载荷契约)跑的是 src/services/novelai.ts 里那个真正的 buildRequestPayload,
@@ -270,7 +271,8 @@ check('预设: nsfw 前缀只加给 -full,且用户已写过就不重复加', ()
 //
 // 这一段针对的是 PARAMETER_MAPPING.md 里那张「按模型族分叉」的表。它值得单独校验,
 // 是因为这一层的错法特别阴:params_version 传错**不报错**,只把角色坐标静默丢掉;
-// 两套预设口径混发出错;发 sm:true 或缺 v4_prompt 直接 HTTP 500。
+// 预设口径走岔(服务端今天两种都收,所以错了不会报,只会悄悄换掉一档预设);
+// 发 sm:true 或缺 v4_prompt 直接 HTTP 500。
 // 也就是说,这些错在本地一律看不出来,只有线上出图不对或者 500 才知道。
 
 const baseParams = (overrides = {}) => ({
@@ -301,7 +303,10 @@ check('载荷: params_version 按族分叉(V5 传 3 会静默丢掉角色坐标)
   assert.equal(paramsOf({ model: 'v4.5-full' }).params_version, 3);
 });
 
-check('载荷: 两套预设口径互斥,绝不同时出现', () => {
+// 锁的是「我们发的形状」而不是「服务端的约束」——服务端今天数字口径也收
+// (同作者的 web 端与 Plana-App v1.0.7 在 V5 上发的就是数字 ucPreset,生产在跑)。
+// 我们不赌它一直收。
+check('载荷: 只发官方形状的预设口径,两套不并存', () => {
   const v5 = paramsOf({ model: 'v5-full' });
   assert.equal(v5.ucPresetId, 'heavy');
   assert.equal(v5.qualityPresetId, 'standard');
