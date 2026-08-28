@@ -29,6 +29,7 @@
     "check:weightops-parity": "node --experimental-strip-types scripts/check-weightops-parity.mjs",
     "check:v5-parity": "node --experimental-strip-types scripts/check-v5-parity.mjs",
     "check:v5-toggles": "node --experimental-strip-types scripts/check-v5-toggles.mjs",
+    "check:enhance-scale": "node --experimental-strip-types scripts/check-enhance-scale.mjs",
     "check:text-render": "node --experimental-strip-types scripts/check-text-render.mjs"
   },
   "devDependencies": {
