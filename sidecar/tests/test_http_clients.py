@@ -5,7 +5,11 @@ import unittest
 
 import httpx
 
-from sidecar.infrastructure import HttpClientPool, request_with_policy
+from sidecar.infrastructure import (
+    HttpClientPool,
+    request_with_policy,
+    streaming_request_with_policy,
+)
 from sidecar.security import OutboundPolicy, OutboundPolicyError
 
 
@@ -236,6 +240,106 @@ class PolicyAwareHttpClientTests(unittest.IsolatedAsyncioTestCase):
             await pool.close()
             server.close()
             await server.wait_closed()
+
+
+class StreamingRequestPolicyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_yields_unread_final_response_and_closes_on_exit(self) -> None:
+        policy = OutboundPolicy("public", resolver=_Resolver({"one.example": ["93.184.216.34"]}))
+
+        async def content():
+            yield b"0123456789"
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            # Iterator-backed content keeps the response genuinely unread until
+            # the caller consumes it; plain bytes are pre-buffered by httpx.
+            return httpx.Response(200, content=content())
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            async with streaming_request_with_policy(
+                client,
+                policy,
+                "GET",
+                "https://one.example/live",
+            ) as response:
+                self.assertEqual(response.status_code, 200)
+                # The whole point of the streaming helper: the body has not
+                # been buffered yet.
+                self.assertFalse(response.is_stream_consumed)
+                first = await response.aread()
+                self.assertEqual(first, b"0123456789")
+            self.assertTrue(response.is_closed)
+        finally:
+            await client.aclose()
+
+    async def test_abandoned_stream_is_closed_without_reading(self) -> None:
+        policy = OutboundPolicy("public", resolver=_Resolver({"one.example": ["93.184.216.34"]}))
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"unused-body")
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            async with streaming_request_with_policy(
+                client,
+                policy,
+                "GET",
+                "https://one.example/live",
+            ) as response:
+                pass  # consumer loses interest without reading
+            # Leaving the context must not leak the unread stream.
+            self.assertTrue(response.is_closed)
+        finally:
+            await client.aclose()
+
+    async def test_streaming_redirects_revalidate_and_strip_cross_origin_credentials(self) -> None:
+        resolver = _Resolver(
+            {
+                "first.example": ["93.184.216.34"],
+                "second.example": ["93.184.216.35"],
+            }
+        )
+        policy = OutboundPolicy("public", resolver=resolver)
+        requests: list[httpx.Request] = []
+
+        async def final_content():
+            yield b"stream-bytes"
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            if request.url.host == "first.example":
+                return httpx.Response(
+                    307,
+                    headers={"Location": "https://second.example/final"},
+                )
+            return httpx.Response(200, content=final_content())
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            async with streaming_request_with_policy(
+                client,
+                policy,
+                "POST",
+                "https://first.example/start",
+                headers={
+                    "Authorization": "Bearer top-secret",
+                    "Content-Type": "application/json",
+                },
+                json={"prompt": "cat"},
+            ) as response:
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.is_stream_consumed)
+                self.assertEqual(await response.aread(), b"stream-bytes")
+        finally:
+            await client.aclose()
+
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(requests[0].headers["authorization"], "Bearer top-secret")
+        self.assertNotIn("authorization", requests[1].headers)
+        self.assertEqual(requests[1].method, "POST")
+        # The streaming redirect keeps the same content-forwarding contract as
+        # the buffered helper (307 preserves method and body).
+        self.assertEqual(requests[1].content, requests[0].content)
 
 
 if __name__ == "__main__":
