@@ -385,5 +385,91 @@ check('载荷: V5 Curated 重绘是 4.5 顶替(NAI 上线真模型后要摘掉�
   assert.equal(full.model, 'nai-diffusion-5-full-inpainting');
 });
 
+// ---- 6. 提示词分词计数(V5=Qwen 3.5 byte-level BPE,V4 系=T5) ----
+//
+// V5 的 1471/703 软阈是按 Qwen 口径实测的,喂 T5 读数就是错的口径。这里断言:
+//   a) 分词器种类由能力表决定(V5→qwen35,V4 系→t5),调用点不许散写家族判断;
+//   b) Qwen 引擎在真实资产上的读数与官网实测锚点一致(Aaalice_NAI_Launcher 抓的
+//      官网数据:blending=2、4::blending::=5、hello world=2);
+//   c) 权重语法字符在 Qwen 口径下真实计数(不剥),空串/纯空白为 0;
+//   d) 同一段文本在两套分词器下读数确实不同(否则「按模型族选用」无意义)。
+// 引擎是纯模块(services/qwenBpe.ts),node 可直接加载;tokenizer.ts 因静态 JSON
+// import 进不了 node,其分发逻辑(空文本跳过/近似回落)由消费方测试与门禁覆盖。
+
+const { promptTokenizerForModel } = await import(
+  '../src/components/generation/modelResolutionOptions.ts'
+);
+const { parseQwenBpeAsset, countQwenTokens } = await import('../src/services/qwenBpe.ts');
+const { gunzipSync } = await import('node:zlib');
+const { readFileSync } = await import('node:fs');
+
+const qwenAssetText = gunzipSync(
+  readFileSync(new URL('../src/assets/tokenizer/qwen35_bpe.txt.gz', import.meta.url)),
+).toString('utf8');
+const qwenAsset = parseQwenBpeAsset(qwenAssetText);
+
+// T5 对照侧:真实包 + 仓库词表,构造方式与 src/services/tokenizer.ts 同源。
+// tokenizer.ts 本体因静态 JSON import 进不了 node,这里只借它的依赖做对照。
+const { Tokenizer } = await import('@huggingface/tokenizers');
+const t5Tokenizer = new Tokenizer(
+  JSON.parse(readFileSync(new URL('../src/assets/tokenizer/t5_tokenizer.json', import.meta.url), 'utf8')),
+  {},
+);
+
+check('分词: 分词器口径由能力表决定,V5 走 Qwen、V4 系走 T5', () => {
+  assert.equal(promptTokenizerForModel('v5-full'), 'qwen35');
+  assert.equal(promptTokenizerForModel('v5-curated'), 'qwen35');
+  // 后端名与 -inpainting 变体同口径(能力表按家族判定)
+  assert.equal(promptTokenizerForModel('nai-diffusion-5-full-inpainting'), 'qwen35');
+  assert.equal(promptTokenizerForModel('v4.5-full'), 't5');
+  assert.equal(promptTokenizerForModel('v4-full'), 't5');
+  assert.equal(promptTokenizerForModel('nai-diffusion-4-5-curated'), 't5');
+});
+
+check('分词: Qwen 计数与官网实测锚点一致(真实资产端到端)', () => {
+  // 锚点来自 Aaalice_NAI_Launcher 在官网的实测注释:Qwen 口径下无 EOS 偏移。
+  assert.equal(countQwenTokens(qwenAsset, 'hello world'), 2);
+  assert.equal(countQwenTokens(qwenAsset, 'blending'), 2);
+  assert.equal(countQwenTokens(qwenAsset, '4::blending::'), 5);
+});
+
+check('分词: 权重语法在 Qwen 口径下真实计数,不做 T5 式剥离', () => {
+  // "4::blending::" 计 5 而 "blending" 计 2:差值 3 就是语法字符本身的 token ——
+  // 若谁把 normalizePromptForNaiT5 的剥除误用到 Qwen 分支,这条立刻红。
+  assert.ok(countQwenTokens(qwenAsset, '4::blending::') > countQwenTokens(qwenAsset, 'blending'));
+  // 花括号同理:剥掉会偏小
+  assert.ok(
+    countQwenTokens(qwenAsset, '{blue eyes}') > countQwenTokens(qwenAsset, 'blue eyes'),
+  );
+});
+
+check('分词: 纯英文 tag 串 / 含中文 / 空串与纯空白', () => {
+  const english = countQwenTokens(qwenAsset, '1girl, smile, blue eyes');
+  assert.equal(english, 7); // 由已提交资产推出的确定值,钉住防退化
+  // 中文按 NFC 归一化后走同一条 BPE 管线(CJK 是词字符,splitRegex 原样切出)
+  assert.equal(countQwenTokens(qwenAsset, '白发红瞳少女'), 4);
+  assert.equal(countQwenTokens(qwenAsset, ''), 0);
+  // 引擎层面对纯空白计 1(首空白会编码成 token);「纯空白文本跳过」是分发层
+  // (tokenizer.ts)的口径,与参考仓 service 层一致,这里只锚定引擎不误报 0。
+  assert.equal(countQwenTokens(qwenAsset, '   '), 1);
+});
+
+check('分词: 同一段文本在 V5 与 V4 口径下读数不同', () => {
+  // T5 侧用真实的 @huggingface/tokenizers + 仓库 T5 词表(与 tokenizer.ts 同源)。
+  // 这里对照的是**原始编码**(不复述 tokenizer.ts 的剥除归一化,避免双份逻辑漂移):
+  // 只要读数不同,就证明两套分词器真实不同、「按模型族选用」不是摆设。
+  const t5Count = t5Tokenizer.encode('4::blending::').ids.length;
+  const qwenCount = countQwenTokens(qwenAsset, '4::blending::');
+  assert.notEqual(
+    t5Count,
+    qwenCount,
+    `T5(${t5Count}) 与 Qwen(${qwenCount}) 读数相同,按模型族选用失去意义`,
+  );
+  // 生产口径下 T5 还会先剥权重记号再编码(读数更小),Qwen 原样计数 ——
+  // 两层差异叠加,V5 读数显著高于旧 T5 显示,偏差数据见任务回执。
+  const t5Stripped = t5Tokenizer.encode('blending').ids.length;
+  assert.ok(qwenCount > t5Stripped);
+});
+
 
 console.log(`\n${checks} 项 V5 支持对等校验全部通过。`);

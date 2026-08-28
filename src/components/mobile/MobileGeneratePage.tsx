@@ -338,6 +338,8 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     characterPrompts,
     // 与载荷剥离同口径:角色模块对当前型号不可见时不计入 token 读数
     characterPromptsVisible: isGenModuleVisible('character', moduleContext),
+    // 分词口径随型号(V5=Qwen / V4系=T5),由能力表决定
+    model,
   });
 
   const { isPreparing, handleGenerate } = useMobileGenerationWorkflow({

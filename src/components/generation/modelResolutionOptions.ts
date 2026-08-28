@@ -93,17 +93,22 @@ export interface ModelCapabilities {
   /** 是否消耗 Opus「体力条」:目前只有 V5。 */
   opusUsageLimit: boolean;
   /**
+   * 提示词分词器口径:V5 是 Qwen 3.5 byte-level BPE,V4 系是 T5。
+   * 计数消费方经 promptTokenizerForModel 取这一位,不要散写家族判断。
+   */
+  promptTokenizer: PromptTokenizerKind;
+  /**
    * 提示词 token 上限。V4 系 512;V5 Full 1471、V5 Curated 703——同一家族两个值,
    * 所以这一项按型号分,不按家族。
    *
    * 注意这是**软阈值**不是硬上限:超了照样出图,只是更费额度。所以 UI 用它做
    * 进度与提示,不拦截生成。
-   *
-   * 另注:V5 换成了 Qwen 分词器,而本地计数器仍是 T5/CLIP 口径,所以 V5 下的
-   * 计数是近似值(见 docs_and_plan/v5-upgrade-plan.md 的 P7 backlog)。
    */
   maxPromptTokens: number;
 }
+
+/** 提示词分词器口径。V5(Qwen 3.5 byte-level BPE)与 V4 系(T5)的计数读数不同。 */
+export type PromptTokenizerKind = 't5' | 'qwen35';
 
 const V5_CAPABILITIES: ModelCapabilities = {
   noiseSchedule: false,
@@ -115,6 +120,7 @@ const V5_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: false,
   preciseReference: false,
   opusUsageLimit: true,
+  promptTokenizer: 'qwen35',
   maxPromptTokens: 1471,
 };
 
@@ -134,6 +140,7 @@ const LEGACY_CAPABILITIES: ModelCapabilities = {
   vibeTransfer: true,
   preciseReference: true,
   opusUsageLimit: false,
+  promptTokenizer: 't5',
   maxPromptTokens: 512,
 };
 
@@ -151,6 +158,15 @@ export function maxPromptTokensForModel(model: string): number {
 /** 同框角色上限。UI 各处的「已满」判断都应问这里,不要再写死 6。 */
 export function maxCharactersForModel(model: string): number {
   return modelCapabilities(model).maxCharacters;
+}
+
+/**
+ * 该模型的提示词分词器口径:V5 换成了 Qwen 3.5(byte-level BPE),V4 系仍是 T5。
+ * token 计数消费方把模型交给这里拿口径,**不要在调用点写 `if (isV5)`**——
+ * 分词器与软阈一样是模型能力位,口径错了读数只是近似(P7 backlog 原文)。
+ */
+export function promptTokenizerForModel(model: string): PromptTokenizerKind {
+  return modelCapabilities(model).promptTokenizer;
 }
 
 export const MODEL_TO_ENCODING_KEY: Record<string, string> = {
