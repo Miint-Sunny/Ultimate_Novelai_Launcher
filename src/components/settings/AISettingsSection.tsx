@@ -145,6 +145,29 @@ export const AISettingsSection: React.FC<AISettingsSectionProps> = ({
         )}
       </div>
 
+      {/* 浏览器直连 sidecar —— 为将来上云 / 局域网,也方便在浏览器里调试 */}
+      <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">
+        <label className="block text-xs text-gray-400 mb-3 uppercase tracking-wider">
+          浏览器直连 sidecar
+        </label>
+        <input
+          type="text"
+          value={settings.sidecarUrl}
+          onChange={(e) => updateSettingsLocal({ sidecarUrl: e.target.value })}
+          onBlur={saveSettings}
+          placeholder="留空 = 用默认端口；例如 http://127.0.0.1:62017"
+          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:border-nai-accent/50 focus:outline-none transition-colors"
+        />
+        <p className="text-xs text-gray-500 mt-2">
+          只对<strong className="text-gray-400">浏览器</strong>生效：桌面 app 从 Tauri 握手拿端点，不看这一项。
+          sidecar 每次启动都换端口，填上它浏览器才找得到。
+        </p>
+        <p className="text-xs text-gray-500 mt-1">
+          填了仍然要输 sidecar 终端显示的 6 位配对码 —— 这一项只解决「找得到」，
+          不会绕开鉴权。sidecar 也只监听本机回环，填局域网地址连不上。
+        </p>
+      </div>
+
       {/* KKT 收集服务端 */}
       <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">
         <label className="block text-xs text-gray-400 mb-3 uppercase tracking-wider">

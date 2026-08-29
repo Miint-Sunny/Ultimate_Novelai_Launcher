@@ -49,6 +49,14 @@ export interface AppSettings {
   kktServerMode: 'public' | 'custom';
   kktServerUrl: string;
   enterBehavior: 'default' | 'generate';
+  /**
+   * 浏览器模式下 sidecar 的地址。空 = 用构建期的 VITE_SIDECAR_URL 或默认端口。
+   *
+   * 桌面壳不看这一项 —— 它从 Tauri 握手拿到真实端点。这一项只服务浏览器:
+   * sidecar 跑在**临时端口**上,而浏览器没有握手通道,不填就只能撞默认端口。
+   * 填了也仍然要走配对码,鉴权闸没有被绕开。
+   */
+  sidecarUrl: string;
   weightPresets: number[];
 }
 
@@ -75,6 +83,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   kktServerMode: 'public',
   kktServerUrl: 'https://nai.sora214.top',
   enterBehavior: 'default',
+  sidecarUrl: '',
   weightPresets: [-1, 0.5, 0.8, 1.5, 2.0],
 };
 

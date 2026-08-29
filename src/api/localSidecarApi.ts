@@ -165,9 +165,28 @@ export interface SidecarConnection {
   port: number;
 }
 
+/**
+ * 浏览器模式下用户在设置里填的 sidecar 地址。桌面壳不走这条路。
+ *
+ * 单独读 localStorage 而不是 import getAppSettings:这个模块在启动最早期就要用,
+ * 而设置模块会广播事件、挂 window 监听,把它拉进来会让启动顺序变脆。
+ * 读不到就当没填。
+ */
+function configuredSidecarUrl(): string {
+  try {
+    const raw = window.localStorage.getItem('novelai_app_settings');
+    if (!raw) return '';
+    const value = (JSON.parse(raw) as { sidecarUrl?: unknown }).sidecarUrl;
+    return typeof value === 'string' ? value.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 export function getSidecarUrl(): string {
   return (
     resolvedSidecarUrl ||
+    configuredSidecarUrl() ||
     import.meta.env.VITE_SIDECAR_URL ||
     DEFAULT_SIDECAR_URL
   ).replace(/\/$/, '');
@@ -220,7 +239,11 @@ async function getSidecarConnection(): Promise<SidecarConnection> {
       return connection;
     }
 
-    const endpoint = (import.meta.env.VITE_SIDECAR_URL || DEFAULT_SIDECAR_URL).replace(/\/$/, '');
+    // 设置里填的优先于构建期的环境变量 —— sidecar 跑在临时端口上,
+    // 只有运行期可配才能让浏览器找得到它。
+    const endpoint = (
+      configuredSidecarUrl() || import.meta.env.VITE_SIDECAR_URL || DEFAULT_SIDECAR_URL
+    ).replace(/\/$/, '');
     const url = new URL(endpoint);
     if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
       throw new Error('浏览器模式只允许连接 loopback sidecar');
