@@ -7,7 +7,7 @@
 //
 // 校验内容 = 桌面端在 P1 重构前的既有行为(基线,切换调用方前后必须一致),
 // 同时也是移动端切换后必须对齐的目标:
-//   1. ucPreset = activePresetId,qualityToggle = activePresetId === 'heavy'
+//   1. 预设档位翻译:当前档 → 官方的质量档 + 负面档(见 promptPresetCatalog)
 //   2. seed 为空字符串 → undefined(后端摇种子);非空 → parseInt(_, 10)
 //   3. 生成前 clampToMaxPixels 兜底 + resolutionSource 追加「；生成前兜底 W×H」
 //   4. savedInpaint 存在时覆盖 width/height 并写 inpaint、img2img 置 undefined
@@ -115,12 +115,32 @@ const assembleInput = (overrides = {}) => {
   };
 };
 
-// ---- 1. 预设采样推导(ucPreset/qualityToggle) ----
-for (const [presetId, expectedQuality] of [['heavy', true], ['light', false], ['none', false], ['1718000000000', false]]) {
-  const params = await buildBaseGenerationParams(baseInput({ activePresetId: presetId, resolutionSource: '默认竖图' }));
-  check(`ucPreset/qualityToggle 推导: activePresetId=${presetId}`, () => {
-    assert.equal(params.ucPreset, presetId);
-    assert.equal(params.qualityToggle, expectedQuality);
+// ---- 1. 预设档位翻译(ucPreset / qualityToggle / qualityPresetId) ----
+// 三个字段各报各的事,别合并:
+//   ucPreset        负面文本取自哪个官方档(自定义档没有官方来源 → none)
+//   qualityToggle   到底有没有拼质量词
+//   qualityPresetId 正面文本取自哪个官方质量档,对不上就 none
+// heavy 就是「拼了词但对不上任何单一档」的那个 —— 它的正面是 V3 与 V4.5 两段
+// 官方文本拼出来的。曾经这里写死 `qualityToggle = (id === 'heavy')`,于是 light
+// 明明拼了质量词却上报没拼,而自定义档会拿自己的时间戳 id 去查数字表(查不到落回
+// heavy=0),等于替用户谎报了一个官方档。
+const PRESET_TIER_CASES = [
+  { id: 'heavy', positive: 'best quality', uc: 'heavy', quality: 'none', toggle: true },
+  { id: 'light', positive: 'very aesthetic', uc: 'light', quality: 'standard', toggle: true },
+  { id: 'none', positive: '', uc: 'none', quality: 'none', toggle: false },
+  { id: '1718000000000', positive: 'my own tags', uc: 'none', quality: 'none', toggle: true },
+  { id: '1718000000001', positive: '', uc: 'none', quality: 'none', toggle: false },
+];
+for (const item of PRESET_TIER_CASES) {
+  const params = await buildBaseGenerationParams(baseInput({
+    activePresetId: item.id,
+    activePreset: { positive: item.positive, negative: 'x' },
+    resolutionSource: '默认竖图',
+  }));
+  check(`预设档位翻译: activePresetId=${item.id}`, () => {
+    assert.equal(params.ucPreset, item.uc);
+    assert.equal(params.qualityToggle, item.toggle);
+    assert.equal(params.qualityPresetId, item.quality);
   });
 }
 
@@ -219,7 +239,12 @@ check('clampToMaxPixels:64 取整、超像素等比缩小、最小 64', () => {
       cfgRescale: 0,
       noiseSchedule: 'karras',
       ucPreset: 'heavy',
-      qualityToggle: true,
+      // 这条基线的输入没有 activePreset 对象(只有 id),也就是这一发**没拼**任何
+      // 预设文本 —— 看 positivePrompt 就知道。qualityToggle 报的正是「拼没拼」,
+      // 所以这里是 false;而 ucPreset/qualityPresetId 报的是「选的哪个官方档」,
+      // 由 id 决定。旧基线在这里写 true,和它自己的 positivePrompt 是矛盾的。
+      qualityToggle: false,
+      qualityPresetId: 'none',
       varietyPlus: false,
       normalizeVibeStrength: true,
       resolutionSource: '默认竖图',

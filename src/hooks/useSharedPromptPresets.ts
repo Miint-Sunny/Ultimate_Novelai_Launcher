@@ -7,6 +7,8 @@ import {
   savePromptPresets,
   type PromptPresetData,
 } from '../services/localLibrary';
+import { isV5Model } from '../components/generation/modelResolutionOptions';
+import { promptPresetsForModel, remapPromptPresetId } from '../services/promptPresetCatalog';
 
 interface UseSharedPromptPresetsOptions {
   /** 受控:activePresetId 由外部托管(移动端 mobile_generate_state);
@@ -21,6 +23,11 @@ interface UseSharedPromptPresetsOptions {
   syncExternalUpdates: boolean;
   /** 重新加载时从共享存储重置 activePresetId(移动端既有行为:true) */
   resetActivePresetIdOnSync: boolean;
+  /**
+   * 当前模型 id。给了就按模型系列过滤内置档,并把激活档映射到该系列的可见档。
+   * 不给则原样返回全部档(旧行为)。
+   */
+  modelId?: string;
 }
 
 // 提示词预设的双端共享核心。桌面壳保留弹窗状态与 CRUD;移动壳保留
@@ -33,6 +40,7 @@ export function useSharedPromptPresets({
   persistActivePresetId,
   syncExternalUpdates,
   resetActivePresetIdOnSync,
+  modelId,
 }: UseSharedPromptPresetsOptions) {
   const isControlled = controlledActivePresetId !== undefined && controlledSetActivePresetId !== undefined;
   const [promptPresets, setPromptPresets] = useState<PromptPresetData[]>(() =>
@@ -86,15 +94,28 @@ export function useSharedPromptPresets({
     };
   }, [reloadPresets, syncExternalUpdates]);
 
+  // 按模型系列过滤/映射是**推导**,不写回存储:存的始终是用户真正点过的那一档,
+  // 所以 V5 →4.5→ V5 来回切能拿回原来那一档,而不是被沿途改写掉。
+  // 注意持久化用的仍是上面那个未过滤的 promptPresets 与未映射的 activePresetId。
+  const visiblePresets = useMemo(
+    () => (modelId === undefined ? promptPresets : promptPresetsForModel(promptPresets, isV5Model(modelId))),
+    [modelId, promptPresets],
+  );
+  const effectiveActivePresetId = useMemo(
+    () => (modelId === undefined
+      ? activePresetId
+      : remapPromptPresetId(activePresetId, promptPresets, isV5Model(modelId))),
+    [activePresetId, modelId, promptPresets],
+  );
   const activePreset = useMemo(
-    () => promptPresets.find((preset) => preset.id === activePresetId),
-    [activePresetId, promptPresets],
+    () => promptPresets.find((preset) => preset.id === effectiveActivePresetId),
+    [effectiveActivePresetId, promptPresets],
   );
 
   return {
-    promptPresets,
+    promptPresets: visiblePresets,
     setPromptPresets,
-    activePresetId,
+    activePresetId: effectiveActivePresetId,
     setActivePresetId,
     activePreset,
     reloadPresets,

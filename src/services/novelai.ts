@@ -8,7 +8,7 @@ import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenera
 import type { OpusUsage } from '../api/localSidecarApi';
 import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
-import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId } from './naiV5Presets';
+import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId, type NaiV5QualityPresetId } from './naiV5Presets';
 import { isV5Model, modelCapabilities } from '../components/generation/modelResolutionOptions';
 
 export interface AnlasInfo {
@@ -192,6 +192,11 @@ export interface GenerateImageParams {
   noiseSchedule: string;
   ucPreset: string;
   qualityToggle: boolean;
+  /**
+   * V5 的质量档 id。缺省时由布尔 qualityToggle 退化推导(standard / none),
+   * 保留给还没走预设目录层的老调用方(放大重绘、OC 管理器等)。
+   */
+  qualityPresetId?: NaiV5QualityPresetId;
   varietyPlus: boolean;
   /** 透明背景（V5 专有；勾选后发 tag_hint_transparent_background） */
   transparentBackground?: boolean;
@@ -480,7 +485,7 @@ export function buildRequestPayload(params: GenerateImageParams) {
       ...(isV5
         ? (() => {
           const ucPresetId = toV5UcPresetId(params.ucPreset);
-          const qualityPresetId = toV5QualityPresetId(params.qualityToggle);
+          const qualityPresetId = params.qualityPresetId ?? toV5QualityPresetId(params.qualityToggle);
           // 官方每个 V5 请求都带这两个数字档位提示,导入图片时靠它决定先拿哪个档
           // 去剥预设文本。映射不到的自定义档要**省掉键**而不是发 0 ——
           // 官方客户端删 undefined,发 0 等于谎报成 none。

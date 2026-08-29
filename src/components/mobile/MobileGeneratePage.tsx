@@ -320,10 +320,13 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
   const {
     promptPresets,
     activePreset,
+    // 按当前模型系列映射过的档:下游一律用它,别用上面那个原始 activePresetId
+    activePresetId: effectiveActivePresetId,
     handleApplyPreset,
   } = useMobilePromptPresets({
     activePresetId,
     setActivePresetId,
+    modelId: model,
   });
 
   const {
@@ -350,7 +353,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
     positivePrompt,
     negativePrompt,
     promptPresets,
-    activePresetId,
+    activePresetId: effectiveActivePresetId,
     activeVibes,
     setActiveVibes,
     activePreciseRefs,
@@ -494,7 +497,7 @@ export const MobileGeneratePage: React.FC<MobileGeneratePageProps> = ({ onEditor
           isOpen: showAdvancedSettings,
           onClose: () => setShowAdvancedSettings(false),
           promptPresets,
-          activePresetId,
+          activePresetId: effectiveActivePresetId,
           onApplyPreset: handleApplyPreset,
           isPresetExpanded,
           setIsPresetExpanded,

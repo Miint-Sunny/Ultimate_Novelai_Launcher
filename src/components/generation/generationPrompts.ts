@@ -8,6 +8,8 @@
 export interface PromptPresetContent {
   positive?: string;
   negative?: string;
+  /** 正面预设拼在末尾(官方位置)而不是开头;缺省 = 开头,与历史行为一致。 */
+  suffixPositive?: boolean;
 }
 
 // 结构类型:桌面与移动端的 CharacterPrompt 均结构兼容。
@@ -39,7 +41,11 @@ export function buildPromptPair({
   let negative = filterHiddenTags(negativePrompt);
 
   if (activePreset?.positive) {
-    positive = `${activePreset.positive}, ${positive}`;
+    // 前缀分支保持原样(含 positive 为空时那个尾随的 `, `)——桌面生成链路的
+    // 逐字节基线就是照它比的。后缀分支是新加的,可以顺手把空串处理干净。
+    positive = activePreset.suffixPositive
+      ? (positive ? `${positive}, ${activePreset.positive}` : activePreset.positive)
+      : `${activePreset.positive}, ${positive}`;
   }
   if (activePreset?.negative) {
     negative = `${activePreset.negative}, ${negative}`;

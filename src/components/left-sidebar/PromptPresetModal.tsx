@@ -41,7 +41,9 @@ export const PromptPresetModal: React.FC<PromptPresetModalProps> = ({
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
         <div className="text-xs text-gray-400 mb-2">
-          预设内容不会显示在输入框中，但会作为前缀添加到提示词中。选择一个预设以激活。
+          预设内容不会显示在输入框中，但会随生成一起拼进提示词。选择一个预设以激活。
+          <br />
+          负向一律拼在开头；正向的位置随预设而定（V5 官方档拼在末尾）。
         </div>
 
         {promptPresets.map(preset => (
@@ -117,7 +119,7 @@ export const PromptPresetModal: React.FC<PromptPresetModalProps> = ({
               >
                 <div>
                   <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> 正向提示词前缀
+                    <Sparkles className="w-3 h-3" /> 正向提示词{preset.suffixPositive ? '后缀' : '前缀'}
                   </div>
                   <ResizableTextarea
                     value={preset.positive}

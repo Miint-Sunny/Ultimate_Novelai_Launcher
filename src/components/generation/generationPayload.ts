@@ -2,7 +2,7 @@
 // 逻辑自 left-sidebar/useGenerationRunner 原样抽取,桌面端行为必须逐字节不变;
 // 桌面与移动两端各自以薄壳注入平台差异(提示词组装、回写回调、vibe 缓存策略),
 // 共享以下同一份装配逻辑:
-//   - 预设采样推导:ucPreset = activePresetId,qualityToggle = activePresetId === 'heavy'
+//   - 预设档位推导:由 promptPresetCatalog 把当前档翻译成官方的质量档 + 负面档
 //   - seed 策略:空字符串 = undefined(由后端摇种子)
 //   - 生成前 clampToMaxPixels 分辨率兜底与 resolutionSource 追踪
 //   - img2img / CR / 角色提示词 / vibe 引用的载荷组装
@@ -19,6 +19,7 @@ import type { GenerateImageParams, Img2ImgParams, PreciseReferenceItem, VibeRefe
 import type { VibeData } from '../../services/localLibrary';
 import type { ActivePreciseRef } from '../cr';
 import type { ActiveVibe } from '../vibe';
+import { presetOfficialSource } from '../../services/promptPresetCatalog.ts';
 import { clampToMaxPixels, type ClampedSize } from './modelResolutionOptions.ts';
 import {
   buildCharacterPromptParams,
@@ -112,7 +113,7 @@ export interface BaseGenerationParamsInput {
 }
 
 // 对应桌面 useGenerationRunner 的 buildBaseGenerationParams:字段与取值逐一保持一致
-// (ucPreset/qualityToggle 由 activePresetId 推导,seed 空串 → undefined)。
+// (ucPreset/qualityToggle/qualityPresetId 由当前预设档翻译而来,seed 空串 → undefined)。
 export async function buildBaseGenerationParams(input: BaseGenerationParamsInput): Promise<GenerateImageParams> {
   const preparePromptPair = input.preparePromptPair ?? buildPromptPair;
   const prepareCharacterPrompts = input.prepareCharacterPrompts ?? buildCharacterPromptParams;
@@ -121,6 +122,7 @@ export async function buildBaseGenerationParams(input: BaseGenerationParamsInput
     negativePrompt: input.negativePrompt,
     activePreset: input.activePreset,
   });
+  const officialSource = presetOfficialSource(input.activePresetId);
   const preciseReferences = await input.preparePreciseReferences(input.activePreciseRefs);
   const vibeReferences = await input.prepareVibeReferences({
     activeVibes: input.activeVibes,
@@ -143,8 +145,16 @@ export async function buildBaseGenerationParams(input: BaseGenerationParamsInput
     sampler: input.sampler,
     cfgRescale: input.cfgRescale,
     noiseSchedule: input.noiseSchedule,
-    ucPreset: input.activePresetId,
-    qualityToggle: input.activePresetId === 'heavy',
+    // 官方那边是两个互相独立的下拉:正面的质量档与负面的负面档;我们这套 UI 一行
+    // 一档,所以在这里翻译回官方的两个档位。三个字段各报各的事,别合并:
+    //   ucPreset       —— 负面文本取自哪个官方档(自定义档没有官方来源 → none);
+    //   qualityToggle  —— 到底有没有拼质量词,和它取自哪个档是两回事;
+    //   qualityPresetId—— 正面文本取自哪个官方质量档,对不上就 none。
+    // heavy 正是「拼了词但对不上任何单一档」的那个:它的正面是 V3 与 V4.5 两段
+    // 官方文本拼出来的,所以 qualityToggle 为真而 qualityPresetId 为 none。
+    ucPreset: officialSource.uc ?? 'none',
+    qualityToggle: Boolean(input.activePreset?.positive),
+    qualityPresetId: officialSource.quality ?? 'none',
     varietyPlus: input.varietyPlus,
     // 仅在确实开启时才带上这个键:未开启时载荷要与 V5 之前逐字节一致
     // (generation parity 的基线就是照这个比的),多一个 undefined 键也算不一致。

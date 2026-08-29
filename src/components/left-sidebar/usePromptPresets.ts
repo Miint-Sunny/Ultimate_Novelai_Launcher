@@ -4,7 +4,7 @@ import type { PromptPreset } from './types';
 
 // 薄壳:状态与存储同步在 src/hooks/useSharedPromptPresets.ts;
 // 这里保留桌面专属的弹窗状态与预设 CRUD,行为与原实现一致。
-export function usePromptPresets() {
+export function usePromptPresets(modelId: string) {
   const {
     promptPresets,
     setPromptPresets,
@@ -16,6 +16,8 @@ export function usePromptPresets() {
     persistActivePresetId: true,
     syncExternalUpdates: false,
     resetActivePresetIdOnSync: false,
+    // 内置档按模型系列分组(V5 与 4.5 的官方文本是两套),自定义档两边都留
+    modelId,
   });
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);

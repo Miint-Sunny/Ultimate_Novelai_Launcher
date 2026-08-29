@@ -326,7 +326,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     handleUpdatePreset,
     handleAddPreset,
     handleDeletePreset,
-  } = usePromptPresets();
+  } = usePromptPresets(selectedModel.id);
 
   const {
     activeVibes,
