@@ -5,7 +5,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { calculateCostFromUI } from '../services/costCalculator';
 import { getCachedIsOpus, isOpusUsageExhausted, resolveEnhanceModel } from '../services/novelai';
 import { getAISettings } from '../services/localLibrary';
-import { enhanceMaxAvailable, enhanceMaxTargetSize, enhanceTargetSize } from '../services/naiEnhanceScale';
+import {
+  MAGNITUDE_PRESETS,
+  enhanceScaleOptions,
+  enhanceTargetSize,
+  resolveEnhanceScaleChoice,
+  type EnhanceMode,
+  type EnhanceScaleId,
+} from '../services/naiEnhanceScale';
 
 interface UpscaleModalProps {
   isOpen: boolean;
@@ -14,15 +21,6 @@ interface UpscaleModalProps {
   onComplete: (resultBlob: Blob, scale: number) => void;
 }
 
-// Magnitude 档位对应的 Strength 和 Noise 值
-const MAGNITUDE_PRESETS: Record<number, { strength: number; noise: number }> = {
-  1: { strength: 0.2, noise: 0 },
-  2: { strength: 0.4, noise: 0 },
-  3: { strength: 0.5, noise: 0 },
-  4: { strength: 0.6, noise: 0 },
-  5: { strength: 0.7, noise: 0.1 },
-};
-
 export const UpscaleModal: React.FC<UpscaleModalProps> = ({
   isOpen,
   onClose,
@@ -30,11 +28,13 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
   onComplete,
 }) => {
   const { isAuthenticated, requireAuth } = useAuth();
-  // scale 的取值:0 = Max ✨(哨兵),1.5 = 图生图重绘,2/4 = 原生超分。
-  // 0 而不是别的数,是因为 Max 的倍率由服务端定,客户端事先并没有一个"倍数"可填。
-  const [scale, setScale] = useState<number>(4);
+  // 「方式」与「倍率」是两件事,分开存。此前挤在一个 scale: number 里,
+  // Max 档还得用哨兵 0 表示 —— 因为它的倍率由服务端定,客户端根本没有数可填。
+  const [mode, setMode] = useState<EnhanceMode>('upscale');
+  const [redrawScale, setRedrawScale] = useState<EnhanceScaleId>('x1.5');
+  const [upscaleScale, setUpscaleScale] = useState<2 | 4>(4);
   const [method, setMethod] = useState<UpscaleMethod>('local');
-  const [magnitude, setMagnitude] = useState<number>(3); // 1.5x 模式的 Magnitude 档位
+  const [magnitude, setMagnitude] = useState<number>(3); // 重绘的 Magnitude 档位
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<UpscaleProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,36 +51,38 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
     }
   }, [isOpen, imageUrl]);
 
-  // 重绘实际会用的模型(V5 Curated 顶替成 4.5 Curated),Max 档能不能选也看它。
+  // 重绘实际会用的模型(V5 Curated 顶替成 4.5 Curated),档位表也按它算。
   const enhanceModel = resolveEnhanceModel(getAISettings().model);
-  const maxAvailable = imageSize
-    ? enhanceMaxAvailable(imageSize.width, imageSize.height, enhanceModel)
-    : false;
-  // 图生图重绘的两档共用 Magnitude 与费用估算。
-  const isRedraw = scale === 0 || scale === 1.5;
+  // 档位完全由官方那套筛选规则给出,界面不硬编码列表。
+  // ⚠ 它**可能是空的**(源图大到连 1× 都越上限),所以「重绘」这个方式要能禁掉。
+  const redrawOptions = imageSize
+    ? enhanceScaleOptions(imageSize.width, imageSize.height, enhanceModel)
+    : [];
+  const redrawUnavailable = imageSize !== null && redrawOptions.length === 0;
+  const activeRedrawScale = resolveEnhanceScaleChoice(redrawOptions, redrawScale);
+  const isRedraw = mode === 'redraw';
 
   if (!isOpen) return null;
 
-  // 计算预计完成后的尺寸（1.5x 对齐到 64 的倍数；Max ✨ 由服务端定，这里算的是
-  // 官方那套 RO() 的结果，只用于展示与估价，不进载荷）
-  // 重绘两档的尺寸口径与服务层同源,全族都跟官方。
+  // 重绘的目标尺寸与服务层同源(Max 档算的是服务端会产出的尺寸,只用于展示与估价,
+  // 不进载荷 —— 载荷发的是原图尺寸)。
   const redrawSize = imageSize
-    ? enhanceTargetSize(imageSize.width, imageSize.height, scale === 0 ? 'max' : 'x1.5')
+    ? enhanceTargetSize(imageSize.width, imageSize.height, activeRedrawScale)
     : null;
   const resultWidth = imageSize
-    ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * scale))
+    ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * upscaleScale))
     : 0;
   const resultHeight = imageSize
-    ? (isRedraw ? (redrawSize?.height ?? 0) : Math.round(imageSize.height * scale))
+    ? (isRedraw ? (redrawSize?.height ?? 0) : Math.round(imageSize.height * upscaleScale))
     : 0;
 
-  // 1.5x 模式像素上限保护
-  const isOver15xLimit = scale === 1.5 && imageSize !== null && resultWidth * resultHeight > UPSCALE_15X_MAX_PIXELS;
+  // 像素上限保护。此前只挡 1.5×,现在所有重绘档都要挡。
+  const isOverLimit = isRedraw && imageSize !== null && resultWidth * resultHeight > UPSCALE_15X_MAX_PIXELS;
 
   const handleUpscale = async () => {
-    // 1.5x 模式像素超限直接阻断
-    if (isOver15xLimit) {
-      setError(`1.5x 目标尺寸 ${resultWidth}×${resultHeight} 超过上限（约 1024×3072），请先缩小原图。`);
+    // 重绘目标尺寸超限直接阻断
+    if (isOverLimit) {
+      setError(`重绘目标尺寸 ${resultWidth}×${resultHeight} 超过上限（约 1024×3072），请先缩小原图。`);
       return;
     }
 
@@ -101,26 +103,25 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
 
       let resultBlob: Blob;
 
-      if (scale === 0 || scale === 1.5) {
-        // 图生图重绘：Max ✨ 由服务端定输出尺寸，1.5x 由客户端算好再发
+      if (isRedraw) {
+        // Max ✨ 由服务端定输出尺寸,数值档由客户端算好再发
         const preset = MAGNITUDE_PRESETS[magnitude];
         resultBlob = await upscaleViaImg2Img(
           imageBlob,
           preset.strength,
           preset.noise,
           setProgress,
-          scale === 0 ? 'max' : 'x1.5'
+          activeRedrawScale
         );
       } else {
-        // 2x/4x 模式：使用原有超分
-        resultBlob = await upscaleImage(imageBlob, scale, method, setProgress);
+        resultBlob = await upscaleImage(imageBlob, upscaleScale, method, setProgress);
       }
 
-      // 延迟一下让用户看到完成状态
-      // Max ✨ 的 scale 是哨兵 0，往下游(文件名与历史角标)报实际达成的倍率。
-      const achievedScale = scale === 0 && imageSize
-        ? Math.max(1, Math.round(enhanceMaxTargetSize(imageSize.width, imageSize.height).width / imageSize.width))
-        : scale;
+      // 下游(文件名与历史角标)要的是**实际达成的倍率**。重绘没有现成的倍数可报
+      // (Max 档尤其没有),按结果宽 ÷ 原图宽算,兜底 1 —— 不能报 0。
+      const achievedScale = isRedraw
+        ? (imageSize && redrawSize ? Math.max(1, Math.round(redrawSize.width / imageSize.width)) : 1)
+        : upscaleScale;
 
       setTimeout(() => {
         onComplete(resultBlob, achievedScale);
@@ -156,28 +157,77 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
 
         {/* 内容 */}
         <div className="p-6 space-y-6">
-          {/* 放大倍数选择 */}
+          {/* 方式:这两件事此前混在同一排按钮里 —— 重绘走 generate-image 会重画、
+              耗 Anlas;原生超分走 upscale,不重画。分成两级之后「重绘 2×」和
+              「原生 2x」也不会再在同一排里撞名。 */}
           <div>
-            <label className="block text-sm text-gray-400 mb-3">放大倍数</label>
+            <label className="block text-sm text-gray-400 mb-3">方式</label>
             <div className="flex gap-2">
-              {(maxAvailable ? [0, 1.5, 2, 4] : [1.5, 2, 4]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScale(s)}
-                  disabled={isProcessing}
-                  className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${scale === s
-                      ? 'bg-nai-accent text-black'
-                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    } disabled:opacity-50`}
-                >
-                  {s === 0 ? 'Max ✨' : `${s}x`}
-                </button>
-              ))}
+              {([
+                { key: 'redraw' as const, label: '图生图重绘' },
+                { key: 'upscale' as const, label: '原生超分' },
+              ]).map((m) => {
+                const blocked = m.key === 'redraw' && redrawUnavailable;
+                return (
+                  <button
+                    key={m.key}
+                    onClick={() => setMode(m.key)}
+                    disabled={isProcessing || blocked}
+                    title={blocked ? '源图太大,任何重绘倍率都会超过总像素上限' : undefined}
+                    className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${mode === m.key
+                        ? 'bg-nai-accent text-black'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+            {redrawUnavailable && (
+              <p className="text-xs text-gray-500 mt-2">
+                源图 {imageSize?.width}×{imageSize?.height} 太大，任何重绘倍率都会超过总像素上限（约 1024×3072）。
+                请改用原生超分，或先把原图缩小。
+              </p>
+            )}
+          </div>
+
+          {/* 倍率 */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-3">倍率</label>
+            <div className="flex gap-2">
+              {isRedraw
+                ? redrawOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setRedrawScale(option.id)}
+                    disabled={isProcessing}
+                    className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${activeRedrawScale === option.id
+                        ? 'bg-nai-accent text-black'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      } disabled:opacity-50`}
+                  >
+                    {option.label}
+                  </button>
+                ))
+                : ([2, 4] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setUpscaleScale(s)}
+                    disabled={isProcessing}
+                    className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${upscaleScale === s
+                        ? 'bg-nai-accent text-black'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      } disabled:opacity-50`}
+                  >
+                    {s}x
+                  </button>
+                ))}
             </div>
             <p className="text-xs text-gray-500 mt-2">
               {isRedraw
                 ? (() => {
-                  if (!imageSize) return '基于图生图放大，消耗 Anlas';
+                  if (!imageSize) return '基于图生图重绘，消耗 Anlas';
                   // Max ✨ 的输出尺寸是服务端定的，params 里留的是原图尺寸 ——
                   // 按原尺寸估价会系统性少记四倍，所以这里必须用算出来的实际尺寸。
                   const target = redrawSize ?? { width: 0, height: 0 };
@@ -194,15 +244,15 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                     img2imgStrength: preset.strength,
                   });
                   const size = `${target.width}×${target.height}`;
-                  return scale === 0
-                    ? `Max ✨ 由服务端放大至约 ${size}，消耗 ${result.total} Anlas`
-                    : `基于图生图放大至 ${size}，消耗 ${result.total} Anlas`;
+                  if (activeRedrawScale === 'max') return `Max ✨ 由服务端放大至约 ${size}，消耗 ${result.total} Anlas`;
+                  if (activeRedrawScale === 'x1') return `同尺寸精修（${size}），消耗 ${result.total} Anlas`;
+                  return `基于图生图重绘至 ${size}，消耗 ${result.total} Anlas`;
                 })()
                 : '模型原生 4x 放大，2x 会额外缩放'}
             </p>
           </div>
 
-          {/* 图生图重绘：Magnitude 滑块(Max ✨ 与 1.5x 共用) */}
+          {/* Magnitude 滑块只属于重绘,各档共用 */}
           {isRedraw && (
             <div>
               <label className="block text-sm text-gray-400 mb-3">
@@ -295,27 +345,31 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                 <Sparkles className="w-5 h-5 text-nai-accent flex-shrink-0" />
                 <div>
                   <div className="text-sm text-white font-medium">
-                    {scale === 0 ? 'Max ✨ 放大重绘' : '图生图放大'}
+                    {activeRedrawScale === 'max' ? 'Max ✨ 放大重绘'
+                      : activeRedrawScale === 'x1' ? '同尺寸精修'
+                        : '图生图重绘'}
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
-                    {scale === 0
+                    {activeRedrawScale === 'max'
                       ? `由 ${enhanceModel} 重新生成，输出尺寸由服务端决定（约 ${resultWidth}×${resultHeight}）`
-                      : '将图片以 1.5 倍分辨率重新生成，保持画面内容的同时提升细节'}
+                      : activeRedrawScale === 'x1'
+                        ? `同尺寸精修（${resultWidth}×${resultHeight}），只重绘不放大`
+                        : `将图片以 ${redrawOptions.find((o) => o.id === activeRedrawScale)?.label ?? ''} 分辨率重新生成至 ${resultWidth}×${resultHeight}，保持画面内容的同时提升细节`}
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 1.5x 像素超限警告 */}
-          {isOver15xLimit && (
+          {/* 重绘像素超限警告 */}
+          {isOverLimit && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-red-300 leading-relaxed">
                   <div className="text-sm font-medium text-red-400 mb-1">尺寸超出上限</div>
                   目标尺寸 {resultWidth}×{resultHeight}（{(resultWidth * resultHeight / 1_000_000).toFixed(2)}M 像素）
-                  超过 NAI 上限（约 1024×3072 = 3.15M 像素）。请先缩小原图，或改用 2x / 4x 放大。
+                  超过 NAI 上限（约 1024×3072 = 3.15M 像素）。请先缩小原图，或改用原生超分。
                 </div>
               </div>
             </div>
@@ -369,7 +423,7 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
           </button>
           <button
             onClick={handleUpscale}
-            disabled={isProcessing || isOver15xLimit}
+            disabled={isProcessing || isOverLimit}
             className="flex-1 py-3 rounded-xl font-medium bg-nai-accent text-black hover:bg-nai-accent/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isProcessing ? (
