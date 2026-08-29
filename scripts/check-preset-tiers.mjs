@@ -153,6 +153,35 @@ check('拼接: 负面一律前缀(两个系列同规则)', () => {
   assert.equal(v5.negative, `${V5_UC_PREFIX.light}, mine`);
 });
 
+// `text:` 之后的内容会被模型画到图上,质量尾拼进去就成了图里的字。
+check('拼接: 质量尾绕开用户手写的 text: 块,不会被画进图里', () => {
+  const r = buildPromptPair({
+    positivePrompt: '1girl, text: hello world',
+    negativePrompt: '',
+    activePreset: byId('v5-standard'),
+  });
+  assert.equal(r.positive, `1girl, ${V5_QUALITY_SUFFIX.standard}, text: hello world`);
+  assert.ok(!/text: hello world.*very aesthetic/.test(r.positive), '质量尾落进了 text: 块');
+});
+
+check('拼接: text: 标记不分大小写,且提示词整条就是 text: 块时也正确', () => {
+  assert.equal(
+    buildPromptPair({ positivePrompt: '1girl, Text: Hi', negativePrompt: '', activePreset: byId('v5-standard') }).positive,
+    `1girl, ${V5_QUALITY_SUFFIX.standard}, Text: Hi`,
+  );
+  assert.equal(
+    buildPromptPair({ positivePrompt: 'text: only', negativePrompt: '', activePreset: byId('v5-standard') }).positive,
+    `${V5_QUALITY_SUFFIX.standard}, text: only`,
+  );
+});
+
+check('拼接: text:: 是权重语法不是文字块,不能被切开', () => {
+  assert.equal(
+    buildPromptPair({ positivePrompt: '1girl, text::1.2, sign', negativePrompt: '', activePreset: byId('v5-standard') }).positive,
+    `1girl, text::1.2, sign, ${V5_QUALITY_SUFFIX.standard}`,
+  );
+});
+
 check('拼接: 提示词为空时后缀档不留尾随逗号', () => {
   const empty = buildPromptPair({ positivePrompt: '', negativePrompt: '', activePreset: byId('v5-standard') });
   assert.equal(empty.positive, V5_QUALITY_SUFFIX.standard);
