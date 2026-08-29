@@ -1,5 +1,6 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useDragDrop } from '../../../contexts/DragDropContext';
+import { importedPositivePrompt } from '../../left-sidebar/metadataImportActions';
 import { registerBackHandler } from '../MobileLayout';
 
 type EditorOpenState = 'prompt' | 'undesired' | null;
@@ -23,6 +24,8 @@ interface UseMobileMetadataImportHandlerOptions {
 interface MetadataImportPayload {
   prompt?: string;
   negativePrompt?: string;
+  // 本身不在这里消费,但剥离自动 teXt: 块要拿它重算一遍才知道该不该剥。
+  characterPrompts?: Array<{ prompt: string; center?: { x: number; y: number } }>;
 }
 
 interface MetadataImportOptions {
@@ -95,10 +98,11 @@ export function useMobileMetadataImportHandler({
   useEffect(() => {
     const handler = (metadata: MetadataImportPayload, options: MetadataImportOptions) => {
       if (options.prompt && metadata.prompt) {
+        const imported = importedPositivePrompt(metadata);
         if (options.cleanImports) {
-          setPositivePrompt(metadata.prompt);
+          setPositivePrompt(imported);
         } else {
-          setPositivePrompt((prev) => prev ? `${prev}, ${metadata.prompt}` : metadata.prompt || '');
+          setPositivePrompt((prev) => prev ? `${prev}, ${imported}` : imported);
         }
       }
       if (options.negativePrompt && metadata.negativePrompt) {

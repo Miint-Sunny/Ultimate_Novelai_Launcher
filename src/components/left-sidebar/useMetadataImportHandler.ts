@@ -6,6 +6,7 @@ import {
   applyImportedModel,
   applyImportedResolution,
   applyImportedSettings,
+  importedPositivePrompt,
   type MetadataImportOptions,
   type MetadataImportPayload,
 } from './metadataImportActions';
@@ -84,7 +85,8 @@ export function useMetadataImportHandler({
     }
 
     if (options.prompt && metadata.prompt) {
-      setPositivePrompt(prev => options.cleanImports ? metadata.prompt : appendPrompt(prev, metadata.prompt));
+      const imported = importedPositivePrompt(metadata);
+      setPositivePrompt(prev => options.cleanImports ? imported : appendPrompt(prev, imported));
     }
 
     if (options.negativePrompt && metadata.negativePrompt) {

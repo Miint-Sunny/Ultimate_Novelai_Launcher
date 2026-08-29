@@ -10,6 +10,7 @@ import {
   type ModelOption,
   type ResolutionPreset,
 } from '../generation/modelResolutionOptions';
+import { stripAutoText } from '../../utils/autoText';
 import type { MetadataVibeInput } from './metadataVibeImport';
 
 export interface MetadataImportPayload {
@@ -65,6 +66,31 @@ export const MODEL_MATCH_MAP: Array<{ keywords: string[]; modelName: string }> =
   // 不会在真的 V5 出现后被误读成「已经支持 V5 导入」。
   { keywords: ['v3', 'f4d5'], modelName: 'NovelAI V3' },
 ];
+
+/**
+ * 导入时要往输入框里放的正向提示词。
+ *
+ * 图片元数据记的是**发出去那一份**,里面可能带着 autoText 自动加的 `teXt:` 块。
+ * 直接塞进输入框,用户看到的就不是自己写的东西了;再生成一次还会在旧块上再叠一个。
+ * 所以这里剥掉自动块 —— 但只剥**算得出来**的那一个:stripAutoText 会拿同一批角色
+ * 重算一遍,对不上就原样保留,所以别人家客户端写的块、或用户手改过的块都不会被吃掉。
+ *
+ * 元数据详情那边**不做**这一步:那个视图要如实显示发出去的原文。
+ */
+export function importedPositivePrompt(metadata: {
+  // 结构最小集:移动端那条链路带的是一份更窄的本地类型(prompt 可选),
+  // 两端都能喂进来才不用为此再造一个转换层。
+  prompt?: string;
+  characterPrompts?: Array<{ prompt: string; center?: { x: number; y: number } }>;
+}): string {
+  const characters = metadata.characterPrompts ?? [];
+  return stripAutoText(metadata.prompt ?? '', {
+    characters: characters.map((character) => ({ prompt: character.prompt, center: character.center })),
+    // 与发包端同口径:只要有角色就按坐标排(发包时每个角色都会拿到中心坐标,
+    // 没设位置的也会被分配一个)。
+    useCoords: characters.length > 0,
+  });
+}
 
 export function applyImportedModel(
   metadata: MetadataImportPayload,

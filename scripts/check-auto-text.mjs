@@ -19,6 +19,7 @@ const { applyAutoText, stripAutoText, extractQuoted, splitPromptChunks } =
   await import('../src/utils/autoText.ts');
 const { buildRequestPayload } = await import('../src/services/novelai.ts');
 const { buildPromptPair } = await import('../src/components/generation/generationPrompts.ts');
+const { importedPositivePrompt } = await import('../src/components/left-sidebar/metadataImportActions.ts');
 const { DEFAULT_PROMPT_PRESETS } = await import('../src/services/localLibrary/promptPresets.ts');
 
 let checks = 0;
@@ -249,6 +250,39 @@ check('载荷: 块落在质量尾之后 —— 官方的位置', () => {
   const input = buildRequestPayload(baseParams({ positivePrompt: positive })).input;
   assert.ok(input.indexOf(preset.positive) < input.indexOf('teXt:'), '质量尾应该在块之前');
   assert.ok(input.endsWith('teXt: hello'));
+});
+
+// ---- 9. 导入侧 ----
+
+check('导入: 输入框拿到的是用户原文,不是发出去那一份', () => {
+  const source = '1girl, "hello"';
+  const sent = applyAutoText(source);
+  assert.notEqual(sent, source);
+  assert.equal(importedPositivePrompt({ prompt: sent }), source);
+});
+
+check('导入: 带角色时也能剥干净(重算要用同一批角色)', () => {
+  const characters = [{ prompt: 'c, "from char"', center: { x: 0.3, y: 0.5 } }];
+  const source = '1girl, "base"';
+  const sent = applyAutoText(source, { characters, useCoords: true });
+  assert.equal(importedPositivePrompt({ prompt: sent, characterPrompts: characters }), source);
+});
+
+check('导入: 算不出来的块原样保留 —— 别人家的块、用户手改的块都不吃', () => {
+  const handEdited = '1girl, teXt: 我自己改的';
+  assert.equal(importedPositivePrompt({ prompt: handEdited }), handEdited);
+  // 角色对不上时同样保守:宁可留着,也不要吃掉可能是用户写的内容
+  const characters = [{ prompt: 'c, "from char"', center: { x: 0.3, y: 0.5 } }];
+  const sent = applyAutoText('1girl, "base"', { characters, useCoords: true });
+  assert.equal(importedPositivePrompt({ prompt: sent }), sent);
+});
+
+check('导入: 反复导入不会叠块', () => {
+  let prompt = '1girl, "hello"';
+  for (let round = 0; round < 3; round += 1) {
+    prompt = importedPositivePrompt({ prompt: applyAutoText(prompt) });
+  }
+  assert.equal(prompt, '1girl, "hello"');
 });
 
 console.log(`\n${checks} 项 autoText 校验全部通过。`);
