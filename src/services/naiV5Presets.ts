@@ -107,21 +107,14 @@ export function toV5QualityPresetId(qualityToggle: boolean): NaiV5QualityPresetI
 }
 
 /**
- * `-full` 会自动前置 `nsfw, `,curated 不会——官方 UC 组装器的行为,
- * 条件是:模型不属于 curated 系、预设不是 none、且用户 UC 里还没写过 nsfw。
+ * ⚠ 生图**不做** nsfw 前缀 —— 这里曾经有个 `shouldPrefixNsfw`,已删。
  *
- * ⚠ **目前没有任何产品代码调用它**,只有 check-v5-parity 在断言。也就是说
- * 我们实际发出去的负面词里没有这个前缀,别看到这个函数就以为已经在做了。
+ * 它宣称的是「`-full` 的 UC 预设自动前置 `nsfw, `」。这条在**历史版本**里确实存在,
+ * 但今天的官方口径不带它:三份实现的现役预设表(我们的 V5_UC_PREFIX、Aaalice 的
+ * `v5Presets` / `v45FullPresets`、Plana 的内置档)里一个 nsfw 都没有。Aaalice 把带
+ * nsfw 的那几段单独放在 `legacyPresetVariants`,并注明「只用于读取/剥离旧 PNG 元数据,
+ * 不能用于新的生成请求」——也就是说 nsfw 是**读元数据**那一侧的事,与发包无关。
  *
- * 没接上是因为三份实现给出三种行为,而这条会改动每一次 V5 Full 的负面词:
- *   - 本函数:按「UC 里有没有 nsfw」决定加不加前缀;
- *   - Aaalice(V4.5 期):把 nsfw 写进 -full 的预设文本,再按「**正面**里有没有
- *     nsfw」决定要不要把它删掉(api_constants.dart 的 applyPresetWithNsfwCheck);
- *   - Plana(对齐我们 web,支持 V5):整套逻辑都没有,预设文本里也没有 nsfw。
- * 三者不是同一条规则,定不下来之前不接——接错就是静默改图。
+ * 要认旧图的预设文本(比如导入时把预设从 UC 里剥掉),要补的是一张历史变体表,
+ * 而不是在发包路径上重新加前缀。
  */
-export function shouldPrefixNsfw(backendModel: string, preset: NaiV5UcPresetId, uc: string): boolean {
-  if (preset === 'none') return false;
-  if (backendModel.includes('curated')) return false;
-  return !/\bnsfw\b/i.test(uc);
-}

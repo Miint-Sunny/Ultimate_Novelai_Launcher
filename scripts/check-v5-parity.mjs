@@ -40,7 +40,7 @@ const {
 } = await import(
   '../src/components/generation/modelResolutionOptions.ts'
 );
-const { V5_QUALITY_SUFFIX, V5_UC_PREFIX, toV5UcPresetId, toV5QualityPresetId, shouldPrefixNsfw } =
+const { V5_QUALITY_SUFFIX, V5_UC_PREFIX, toV5UcPresetId, toV5QualityPresetId } =
   await import('../src/services/naiV5Presets.ts');
 
 let checks = 0;
@@ -264,11 +264,15 @@ check('预设: id 归一化 —— 未知档退到 heavy,布尔质量尾映到 s
   assert.equal(toV5QualityPresetId(false), 'none');
 });
 
-check('预设: nsfw 前缀只加给 -full,且用户已写过就不重复加', () => {
-  assert.equal(shouldPrefixNsfw('nai-diffusion-5-full', 'heavy', 'lowres'), true);
-  assert.equal(shouldPrefixNsfw('nai-diffusion-5-curated', 'heavy', 'lowres'), false);
-  assert.equal(shouldPrefixNsfw('nai-diffusion-5-full', 'none', 'lowres'), false);
-  assert.equal(shouldPrefixNsfw('nai-diffusion-5-full', 'heavy', 'nsfw, lowres'), false);
+// 现役预设表里一个 nsfw 都不该有:官方今天的口径不带它,带 nsfw 的那几段是历史变体
+// (Aaalice 把它们单独放在 legacyPresetVariants,注明只用于读旧 PNG 元数据)。
+check('预设: 发包用的预设文本里没有 nsfw', () => {
+  for (const [tier, text] of Object.entries(V5_UC_PREFIX)) {
+    assert.ok(!/\bnsfw\b/i.test(text), `V5 负面档 ${tier} 里不该有 nsfw`);
+  }
+  for (const [tier, text] of Object.entries(V5_QUALITY_SUFFIX)) {
+    assert.ok(!/\bnsfw\b/i.test(text), `V5 质量尾 ${tier} 里不该有 nsfw`);
+  }
 });
 
 // ---- 5. 载荷契约(跑真实的 buildRequestPayload,不是复述文档) ----
