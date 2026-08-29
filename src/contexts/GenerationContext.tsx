@@ -34,7 +34,7 @@ export interface HistoryItem {
   metadata?: HistoryItemMetadata;
   isUpscaled?: boolean; // 是否为超分图片
   originalSeed?: number; // 原始种子（超分图片用）
-  upscaleScale?: number; // 超分倍数（2x 或 4x）
+  upscaleScale?: number; // 实际达成倍率：原生超分 2/4，图生图重绘 1/1.5/2（Max 档按结果尺寸折算）
   isInpainted?: boolean; // 是否为局部重绘图片
   isBananaRepaint?: boolean; // 是否为香蕉重绘图片
 }

@@ -1,5 +1,6 @@
 import { X, Maximize2, Loader2, Check, AlertCircle, Cpu, Cloud, Sparkles } from 'lucide-react';
-import { MAGNITUDE_PRESETS, useMobileUpscaleWorkflow } from './upscale/useMobileUpscaleWorkflow';
+import { useMobileUpscaleWorkflow } from './upscale/useMobileUpscaleWorkflow';
+import { MAGNITUDE_PRESETS } from '../../services/naiEnhanceScale';
 
 interface MobileUpscaleSheetProps {
   isOpen: boolean;
@@ -15,8 +16,14 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
   onComplete,
 }) => {
   const {
-    scale,
-    setScale,
+    mode,
+    setMode,
+    setRedrawScale,
+    upscaleScale,
+    setUpscaleScale,
+    redrawOptions,
+    activeRedrawScale,
+    redrawUnavailable,
     method,
     setMethod,
     magnitude,
@@ -28,10 +35,9 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
     resultWidth,
     resultHeight,
     modelLoaded,
-    isOver15xLimit,
-    estimated15xCost,
+    isOverLimit,
+    estimatedRedrawCost,
     handleUpscale,
-    maxAvailable,
     isRedraw,
     enhanceModel,
   } = useMobileUpscaleWorkflow({
@@ -67,21 +73,65 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
         <div className="p-4 space-y-4">
           {/* 放大倍数 */}
           <div>
-            <label className="text-xs text-gray-400 block mb-2">放大倍数</label>
+            <label className="text-xs text-gray-400 block mb-2">方式</label>
             <div className="flex gap-2">
-              {(maxAvailable ? [0, 1.5, 2, 4] : [1.5, 2, 4]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScale(s)}
-                  disabled={isProcessing}
-                  className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${scale === s
-                      ? 'bg-nai-accent text-black'
-                      : 'bg-gray-800 text-gray-300 active:bg-gray-700'
-                    } disabled:opacity-50`}
-                >
-                  {s === 0 ? 'Max ✨' : `${s}x`}
-                </button>
-              ))}
+              {([
+                { key: 'redraw' as const, label: '图生图重绘' },
+                { key: 'upscale' as const, label: '原生超分' },
+              ]).map((m) => {
+                const blocked = m.key === 'redraw' && redrawUnavailable;
+                return (
+                  <button
+                    key={m.key}
+                    onClick={() => setMode(m.key)}
+                    disabled={isProcessing || blocked}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${mode === m.key
+                        ? 'bg-nai-accent text-black'
+                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+                      } disabled:opacity-50`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+            {redrawUnavailable && (
+              <p className="text-[11px] leading-4 text-gray-500 mt-2">
+                源图 {imageSize?.width}×{imageSize?.height} 太大，任何重绘倍率都会超上限，请改用原生超分。
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 block mb-2">倍率</label>
+            <div className="flex gap-2">
+              {isRedraw
+                ? redrawOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setRedrawScale(option.id)}
+                    disabled={isProcessing}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${activeRedrawScale === option.id
+                        ? 'bg-nai-accent text-black'
+                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+                      } disabled:opacity-50`}
+                  >
+                    {option.label}
+                  </button>
+                ))
+                : ([2, 4] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setUpscaleScale(s)}
+                    disabled={isProcessing}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${upscaleScale === s
+                        ? 'bg-nai-accent text-black'
+                        : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+                      } disabled:opacity-50`}
+                  >
+                    {s}x
+                  </button>
+                ))}
             </div>
           </div>
 
@@ -170,23 +220,27 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
                 <Sparkles className="w-5 h-5 text-nai-accent flex-shrink-0" />
                 <div>
                   <div className="text-sm text-white font-medium">
-                    {scale === 0 ? 'Max ✨ 放大重绘' : '图生图放大'}
+                    {activeRedrawScale === 'max' ? 'Max ✨ 放大重绘'
+                      : activeRedrawScale === 'x1' ? '同尺寸精修'
+                        : '图生图重绘'}
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5">
-                    {scale === 0
-                      ? `由 ${enhanceModel} 重绘，尺寸由服务端决定` +
-                        (estimated15xCost === null ? '，消耗 Anlas' : `，消耗 ${estimated15xCost} Anlas`)
-                      : estimated15xCost === null
-                        ? '以 1.5 倍分辨率重新生成，消耗 Anlas'
-                        : `以 1.5 倍分辨率重新生成，消耗 ${estimated15xCost} Anlas`}
+                    {(() => {
+                      const cost = estimatedRedrawCost === null ? '，消耗 Anlas' : `，消耗 ${estimatedRedrawCost} Anlas`;
+                      const size = `${resultWidth}×${resultHeight}`;
+                      if (activeRedrawScale === 'max') return `由 ${enhanceModel} 重绘，尺寸由服务端决定（约 ${size}）${cost}`;
+                      if (activeRedrawScale === 'x1') return `同尺寸精修（${size}）${cost}`;
+                      const label = redrawOptions.find((o) => o.id === activeRedrawScale)?.label ?? '';
+                      return `以 ${label} 分辨率重新生成至 ${size}${cost}`;
+                    })()}
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 1.5x 像素超限警告 */}
-          {isOver15xLimit && (
+          {/* 重绘像素超限警告 */}
+          {isOverLimit && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
@@ -240,7 +294,7 @@ export const MobileUpscaleSheet: React.FC<MobileUpscaleSheetProps> = ({
         <div className="px-4 pb-6 pt-2">
           <button
             onClick={handleUpscale}
-            disabled={isProcessing || isOver15xLimit}
+            disabled={isProcessing || isOverLimit}
             className="w-full flex items-center justify-center gap-2 py-3 bg-nai-accent hover:bg-nai-accent/80 text-black font-bold rounded-xl transition-colors disabled:opacity-50"
           >
             {isProcessing ? (

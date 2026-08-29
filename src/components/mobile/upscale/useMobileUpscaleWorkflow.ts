@@ -12,16 +12,15 @@ import {
 } from '../../../services/upscaleService';
 import { resolveEnhanceModel } from '../../../services/novelai';
 import { getAISettings } from '../../../services/localLibrary';
-import { enhanceMaxAvailable, enhanceTargetSize } from '../../../services/naiEnhanceScale';
+import {
+  MAGNITUDE_PRESETS,
+  enhanceScaleOptions,
+  enhanceTargetSize,
+  resolveEnhanceScaleChoice,
+  type EnhanceMode,
+  type EnhanceScaleId,
+} from '../../../services/naiEnhanceScale';
 import { loadImageToCanvas } from './loadImageToCanvas';
-
-export const MAGNITUDE_PRESETS: Record<number, { strength: number; noise: number }> = {
-  1: { strength: 0.2, noise: 0 },
-  2: { strength: 0.4, noise: 0 },
-  3: { strength: 0.5, noise: 0 },
-  4: { strength: 0.6, noise: 0 },
-  5: { strength: 0.7, noise: 0.1 },
-};
 
 interface UseMobileUpscaleWorkflowOptions {
   isOpen: boolean;
@@ -126,7 +125,10 @@ export function useMobileUpscaleWorkflow({
   onComplete,
   onClose,
 }: UseMobileUpscaleWorkflowOptions) {
-  const [scale, setScale] = useState<number>(4);
+  // 与桌面端同一套形状:方式与倍率分开存,不再用哨兵 0 表示 Max。
+  const [mode, setMode] = useState<EnhanceMode>('upscale');
+  const [redrawScale, setRedrawScale] = useState<EnhanceScaleId>('x1.5');
+  const [upscaleScale, setUpscaleScale] = useState<2 | 4>(4);
   const [method, setMethod] = useState<UpscaleMethod>('local');
   const [magnitude, setMagnitude] = useState<number>(3);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -149,27 +151,28 @@ export function useMobileUpscaleWorkflow({
     }
   }, [isOpen]);
 
-  // scale 的取值与桌面端一致:0 = Max ✨(哨兵),1.5 = 图生图重绘,2/4 = 原生超分。
   const enhanceModel = resolveEnhanceModel(getAISettings().model);
-  const isRedraw = scale === 0 || scale === 1.5;
-  const maxAvailable = imageSize
-    ? enhanceMaxAvailable(imageSize.width, imageSize.height, enhanceModel)
-    : false;
+  const isRedraw = mode === 'redraw';
+  // 档位完全由官方筛选规则给出。⚠ 可能是空的(源图大到连 1× 都越上限)。
+  const redrawOptions = imageSize
+    ? enhanceScaleOptions(imageSize.width, imageSize.height, enhanceModel)
+    : [];
+  const redrawUnavailable = imageSize !== null && redrawOptions.length === 0;
+  const activeRedrawScale = resolveEnhanceScaleChoice(redrawOptions, redrawScale);
 
-  // 重绘两档的尺寸口径与服务层同源,全族都跟官方。
   const redrawSize = imageSize
-    ? enhanceTargetSize(imageSize.width, imageSize.height, scale === 0 ? 'max' : 'x1.5')
+    ? enhanceTargetSize(imageSize.width, imageSize.height, activeRedrawScale)
     : null;
   const resultWidth = imageSize
-    ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * scale))
+    ? (isRedraw ? (redrawSize?.width ?? 0) : Math.round(imageSize.width * upscaleScale))
     : 0;
   const resultHeight = imageSize
-    ? (isRedraw ? (redrawSize?.height ?? 0) : Math.round(imageSize.height * scale))
+    ? (isRedraw ? (redrawSize?.height ?? 0) : Math.round(imageSize.height * upscaleScale))
     : 0;
   const modelLoaded = isModelLoaded();
-  const isOver15xLimit = scale === 1.5 && imageSize !== null && resultWidth * resultHeight > UPSCALE_15X_MAX_PIXELS;
+  const isOverLimit = isRedraw && imageSize !== null && resultWidth * resultHeight > UPSCALE_15X_MAX_PIXELS;
 
-  const estimated15xCost = useMemo(() => {
+  const estimatedRedrawCost = useMemo(() => {
     if (!isRedraw || !imageSize) return null;
     const preset = MAGNITUDE_PRESETS[magnitude];
     const result = calculateCostFromUI({
@@ -187,8 +190,8 @@ export function useMobileUpscaleWorkflow({
   }, [enhanceModel, imageSize, isRedraw, magnitude, resultHeight, resultWidth]);
 
   const handleUpscale = useCallback(async () => {
-    if (isOver15xLimit) {
-      setError(`1.5x 目标尺寸 ${resultWidth}×${resultHeight} 超过上限（约 1024×3072），请先缩小原图。`);
+    if (isOverLimit) {
+      setError(`重绘目标尺寸 ${resultWidth}×${resultHeight} 超过上限（约 1024×3072），请先缩小原图。`);
       return;
     }
 
@@ -208,25 +211,26 @@ export function useMobileUpscaleWorkflow({
           preset.strength,
           preset.noise,
           setProgress,
-          scale === 0 ? 'max' : 'x1.5'
+          activeRedrawScale
         );
       } else if (method === 'local') {
         const canvas = await imageUrlToLocalCanvas(imageUrl, setProgress);
         setProgress({ stage: 'loading', progress: 10, message: '[7] 开始超分处理...' });
-        resultBlob = await upscaleFromCanvas(canvas, scale, setProgress);
+        resultBlob = await upscaleFromCanvas(canvas, upscaleScale, setProgress);
       } else {
         setProgress({ stage: 'loading', progress: 5, message: '准备图片...' });
         const imageBlob = await imageUrlToBlob(imageUrl);
         setProgress({ stage: 'loading', progress: 10, message: '开始超分处理...' });
-        resultBlob = await upscaleImage(imageBlob, scale, method, setProgress);
+        resultBlob = await upscaleImage(imageBlob, upscaleScale, method, setProgress);
       }
 
       setProgress({ stage: 'done', progress: 100, message: '超分完成！' });
 
-      // Max ✨ 的 scale 是哨兵 0,往下游(文件名与历史角标)报实际达成的倍率。
-      const achievedScale = scale === 0 && imageSize
-        ? Math.max(1, Math.round(resultWidth / imageSize.width))
-        : scale;
+      // 下游要的是**实际达成的倍率**。重绘没有现成倍数可报,按结果宽 ÷ 原图宽算,
+      // 兜底 1 —— 不能报 0。
+      const achievedScale = isRedraw
+        ? (imageSize ? Math.max(1, Math.round(resultWidth / imageSize.width)) : 1)
+        : upscaleScale;
 
       setTimeout(() => {
         setIsProcessing(false);
@@ -239,11 +243,18 @@ export function useMobileUpscaleWorkflow({
       setProgress(null);
       setIsProcessing(false);
     }
-  }, [imageSize, imageUrl, isOver15xLimit, isRedraw, magnitude, method, onClose, onComplete, resultHeight, resultWidth, scale]);
+  }, [activeRedrawScale, imageSize, imageUrl, isOverLimit, isRedraw, magnitude, method, onClose, onComplete, resultHeight, resultWidth, upscaleScale]);
 
   return {
-    scale,
-    setScale,
+    mode,
+    setMode,
+    redrawScale,
+    setRedrawScale,
+    upscaleScale,
+    setUpscaleScale,
+    redrawOptions,
+    activeRedrawScale,
+    redrawUnavailable,
     method,
     setMethod,
     magnitude,
@@ -255,11 +266,9 @@ export function useMobileUpscaleWorkflow({
     resultWidth,
     resultHeight,
     modelLoaded,
-    isOver15xLimit,
-    estimated15xCost,
+    isOverLimit,
+    estimatedRedrawCost,
     handleUpscale,
-    // Max ✨ 档:能不能选、以及两档重绘共用的判定,交给界面渲染。
-    maxAvailable,
     isRedraw,
     enhanceModel,
   };
