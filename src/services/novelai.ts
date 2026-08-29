@@ -598,7 +598,7 @@ export function buildRequestPayload(params: GenerateImageParams) {
       // NovelAI API 的 normalize_reference_strength_multiple 仅对缓存模式生效，
       // 直接传编码数据时需要前端自行归一化 strength
       // V5 同样是「暂时」不支持（连 encode-vibe 都不能为它编码），故整段不发。
-      ...(params.vibeReferences && params.vibeReferences.length > 0 && !isV5 && (() => {
+      ...(params.vibeReferences && params.vibeReferences.length > 0 && modelCapabilities(baseModel).vibeTransfer && (() => {
         let strengths = params.vibeReferences!.map(v => v.strength);
         // 前端归一化：开启时将所有 strength 按比例缩放，使总和 ≤ 1
         if ((params.normalizeVibeStrength ?? true) && strengths.length > 1) {

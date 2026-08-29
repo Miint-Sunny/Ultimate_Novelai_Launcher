@@ -60,6 +60,7 @@ import {
   defaultModelOption,
   maxCharactersForModel,
   maxPromptTokensForModel,
+  modelCapabilities,
   promptTokenizerForModel,
   type ModelOption,
 } from './generation/modelResolutionOptions';
@@ -1042,6 +1043,23 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onNoiseChange={setImg2imgNoise}
           />
 
+          {/* Vibe Transfer 在 V5 上「暂时」不支持(官方说仍在训练),连 encode-vibe 都
+              不能为它编码。此前这一段是无条件渲染的,而载荷层会把 vibe 整段丢掉 ——
+              于是用户能上传、能调强度、甚至花 Anlas 去编码,出图却完全没有效果,
+              全程没有任何提示。能力位一开,这里自然跟着亮,不用回头找。 */}
+          {!modelCapabilities(selectedModel.id).vibeTransfer ? (
+            <div className="bg-nai-input/50 rounded p-2.5 border border-gray-800">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-400">Vibe Transfer</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">
+                  {selectedModel.name} 暂不支持
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-gray-500">
+                官方说仍在训练中。上线后这里会自动恢复,已保存的 Vibe 不会丢。
+              </p>
+            </div>
+          ) : (
           <VibeTransferSection
             inputRef={quickVibeInputRef}
             dropZoneHandlers={createDropZoneHandlers(
@@ -1063,6 +1081,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onExportVibe={handleExportVibe}
             isActiveVibeCompatible={isActiveVibeCompatible}
           />
+          )}
 
           <PreciseReferenceSection
             disabled={selectedModel.id === 'v4-full' || selectedModel.id === 'v4-curated-preview'}

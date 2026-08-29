@@ -367,6 +367,9 @@ check('载荷: 0 角色也必须发 v4_prompt / v4_negative_prompt(缺了 HTTP 5
   assert.deepEqual(parameters.v4_negative_prompt.caption.char_captions, []);
 });
 
+// 这一条现在也顺带钉住「走的是能力位而不是散写的 isV5」——载荷层曾经硬编码
+// !isV5,于是 vibeTransfer 这一位是死的:界面无人读它,V5 下 Vibe 入口照开,
+// 用户能上传、能花 Anlas 编码,载荷却整段丢掉,全程无提示。
 check('载荷: V5 不带 vibe / 精确参考字段(能力位关着,发了会出错)', () => {
   const parameters = paramsOf({
     model: 'v5-full',
