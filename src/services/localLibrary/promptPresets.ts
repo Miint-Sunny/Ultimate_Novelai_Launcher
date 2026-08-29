@@ -31,23 +31,33 @@ export interface PromptPresetData {
 
 export const DEFAULT_PROMPT_PRESETS: PromptPresetData[] = [
   // ===== V4.5 及更早 =====
-  // ⚠ 这两档的文本**勿动**(包括 heavy 里重复的 `very aesthetic`、少一个空格的
-  // `absurdres,very aesthetic`、以及负面末尾那个孤零零的 `1`)。它们从初始导入
-  // 就是这样,存量用户的出图风格挂在上面;要"修正"得当成一次会变图的改动单独走。
+  // 2026-08-30 按用户决定与官方对齐,动了两处(都会改动存量用户的出图):
+  //   1. 负面末尾各去掉一个孤零零的 `1`。它从初始导入就在,两份参考实现都没有;
+  //      去掉之后这两段与官方现役的 V4.5 Full 负面档**逐字节相同**(已校验)。
+  //   2. 正面质量词改拼在末尾。官方从 V4 起就把质量词加到提示词末尾
+  //      (Aaalice `modelQualityTags` 的注释原文就是「添加到末尾」),我们一直放开头。
+  //
+  // ⚠ 还有一处**没动**:`heavy` 的正面是 V3 的质量尾 + V4.5 的质量尾拼出来的
+  // (`best quality, amazing quality, very aesthetic, absurdres` 接
+  // `very aesthetic, masterpiece, no text`,还带着重复的 `very aesthetic` 与少一个
+  // 空格的 `absurdres,very`)。官方的质量尾是**按模型**给的、每个模型一段,不是这样
+  // 拼两段——要对齐得把质量尾改成随模型取,那是设计改动不是改字符串,留着待定。
   {
     id: 'heavy',
     name: '重度 (质量标签)',
     scope: 'legacy',
+    suffixPositive: true,
     positive: 'best quality, amazing quality, very aesthetic, absurdres,very aesthetic, masterpiece, no text',
-    negative: 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, 1',
+    negative: 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page',
     isDefault: true,
   },
   {
     id: 'light',
     name: '轻度',
     scope: 'legacy',
+    suffixPositive: true,
     positive: 'very aesthetic, masterpiece, no text',
-    negative: 'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page, 1',
+    negative: 'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page',
     isDefault: true,
   },
   // ===== V5 =====

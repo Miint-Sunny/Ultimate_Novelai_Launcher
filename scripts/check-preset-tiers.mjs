@@ -141,11 +141,38 @@ check('提示: V5 各档的官方枚举编号(与线上数字 ucPreset 不是一
 
 // ---- 5. 拼接位置 ----
 
-check('拼接: V5 档的质量词在末尾,legacy 档保持在开头', () => {
+// 官方从 V4 起就把质量词加到提示词**末尾**;legacy 两档 2026-08-30 起也照此。
+check('拼接: 两个系列的质量词都在末尾(官方位置)', () => {
   const v5 = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('v5-standard') });
   assert.equal(v5.positive, `1girl, ${V5_QUALITY_SUFFIX.standard}`);
   const legacy = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('heavy') });
-  assert.equal(legacy.positive, `${byId('heavy').positive}, 1girl`);
+  assert.equal(legacy.positive, `1girl, ${byId('heavy').positive}`);
+});
+
+// 这两段与官方现役的 V4.5 Full 负面档逐字节相同。历史上末尾多带过一个孤零零的
+// `1`(初始导入就在,两份参考实现都没有),2026-08-30 去掉 —— 钉死,别再长回来。
+const OFFICIAL_V45_FULL_UC = {
+  heavy:
+    'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, ' +
+    'jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, ' +
+    'screentone, multiple views, logo, too many watermarks, negative space, blank page',
+  light:
+    'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, ' +
+    'multiple views, very displeasing, too many watermarks, negative space, blank page',
+};
+
+check('文本: legacy 两档的负面与官方现役 V4.5 Full 逐字节相同', () => {
+  assert.equal(byId('heavy').negative, OFFICIAL_V45_FULL_UC.heavy);
+  assert.equal(byId('light').negative, OFFICIAL_V45_FULL_UC.light);
+});
+
+check('文本: 内置档里不该出现孤零零的数字 tag', () => {
+  for (const preset of DEFAULT_PROMPT_PRESETS) {
+    for (const field of ['positive', 'negative']) {
+      const strays = preset[field].split(',').map((tag) => tag.trim()).filter((tag) => /^\d+$/.test(tag));
+      assert.deepEqual(strays, [], `${preset.id}.${field} 里有裸数字 tag: ${strays.join('/')}`);
+    }
+  }
 });
 
 check('拼接: 负面一律前缀(两个系列同规则)', () => {
