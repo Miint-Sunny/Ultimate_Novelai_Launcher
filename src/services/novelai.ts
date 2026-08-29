@@ -10,6 +10,7 @@ import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
 import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId, type NaiV5QualityPresetId } from './naiV5Presets';
 import { isV5Model, modelCapabilities } from '../components/generation/modelResolutionOptions';
+import { applyAutoText } from '../utils/autoText';
 
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
@@ -465,8 +466,19 @@ export function buildRequestPayload(params: GenerateImageParams) {
       characterPromptsForApi.push({ prompt: cp.positive, uc: cp.negative || '', center, enabled: true });
     });
 
+  // 引号内容 → `teXt:` 块。放在这里而不是提示词组装层,是因为它要按**阅读顺序**
+  // 收集各角色里的引号,而中心坐标正是在上面这段才算出来的;同时这也让所有发包
+  // 路径(桌面/移动/放大重绘/OC)走同一条变换,与官方在发送时才转是一致的。
+  // 质量尾此时已经拼好,块追加在它之后——正是官方的位置。
+  const inputPrompt = modelCapabilities(baseModel).textRendering
+    ? applyAutoText(positivePrompt, {
+        characters: characterPromptsForApi,
+        useCoords: charCaptions.length > 0,
+      })
+    : positivePrompt;
+
   return {
-    input: positivePrompt,
+    input: inputPrompt,
     model,
     action: params.inpaint ? 'infill' : (params.img2img ? 'img2img' : 'generate'),
     parameters: {
@@ -522,7 +534,7 @@ export function buildRequestPayload(params: GenerateImageParams) {
       normalize_reference_strength_multiple: params.normalizeVibeStrength ?? true,
       inpaintImg2ImgStrength: 1,
       v4_prompt: {
-        caption: { base_caption: positivePrompt, char_captions: charCaptions },
+        caption: { base_caption: inputPrompt, char_captions: charCaptions },
         use_coords: charCaptions.length > 0,
         use_order: true,
       },

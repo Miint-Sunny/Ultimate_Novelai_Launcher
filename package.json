@@ -31,6 +31,7 @@
     "check:v5-toggles": "node --experimental-strip-types scripts/check-v5-toggles.mjs",
     "check:enhance-scale": "node --experimental-strip-types scripts/check-enhance-scale.mjs",
     "check:preset-tiers": "node --experimental-strip-types scripts/check-preset-tiers.mjs",
+    "check:auto-text": "node --experimental-strip-types scripts/check-auto-text.mjs",
     "check:text-render": "node --experimental-strip-types scripts/check-text-render.mjs"
   },
   "devDependencies": {
