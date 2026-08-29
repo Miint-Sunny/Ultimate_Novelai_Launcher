@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { type AppSettings } from '../../services/localLibrary';
+import { issueBrowserPairingCode, type BrowserPairingChallenge } from '../../api/localSidecarApi';
 import { LlmApiSettings } from './LlmApiSettings';
 
 interface AISettingsSectionProps {
@@ -8,6 +9,73 @@ interface AISettingsSectionProps {
   updateSettingsImmediate: (updates: Partial<AppSettings>) => void;
   saveSettings: () => void;
 }
+
+/**
+ * 「授权浏览器」面板。
+ *
+ * 签发路由是要鉴权的,所以只有握过手的**桌面壳**调得动 —— 浏览器自己签不出码来。
+ * 于是让浏览器能用这件事,不需要把 sidecar 暴露到网络上:信任仍然只从桌面壳流出,
+ * 浏览器拿到的还是一个 120 秒、一次性的码。
+ */
+const BrowserAuthorizePanel: React.FC = () => {
+  const [challenge, setChallenge] = useState<BrowserPairingChallenge | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const issue = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setChallenge(await issueBrowserPairingCode());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">
+      <label className="block text-xs text-gray-400 mb-3 uppercase tracking-wider">
+        授权浏览器使用
+      </label>
+      <button
+        type="button"
+        onClick={() => void issue()}
+        disabled={busy}
+        className="w-full py-2.5 px-4 rounded-lg border border-nai-accent bg-nai-accent/20 text-nai-accent text-sm font-medium hover:bg-nai-accent/30 transition-colors disabled:opacity-50"
+      >
+        {busy ? '正在签发…' : challenge ? '重新签发配对码' : '签发配对码'}
+      </button>
+
+      {challenge && (
+        <div className="mt-3 space-y-2">
+          <div>
+            <div className="text-[11px] text-gray-500 mb-1">sidecar 地址（填进浏览器的「浏览器直连 sidecar」）</div>
+            <code className="block bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-white break-all">
+              {challenge.endpoint}
+            </code>
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-500 mb-1">
+              配对码（{challenge.expiresIn} 秒内有效，只能用一次）
+            </div>
+            <code className="block bg-gray-900 border border-gray-700 rounded px-3 py-2 text-center font-mono text-2xl tracking-[0.4em] text-nai-accent">
+              {challenge.code}
+            </code>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+
+      <p className="text-xs text-gray-500 mt-2">
+        点一下就能让浏览器用上本机 sidecar，不必把它暴露到局域网。
+        签发路由只有桌面端调得动，浏览器自己签不出来。
+      </p>
+    </div>
+  );
+};
 
 export const AISettingsSection: React.FC<AISettingsSectionProps> = ({
   settings,
@@ -167,6 +235,8 @@ export const AISettingsSection: React.FC<AISettingsSectionProps> = ({
           不会绕开鉴权。sidecar 也只监听本机回环，填局域网地址连不上。
         </p>
       </div>
+
+      <BrowserAuthorizePanel />
 
       {/* KKT 收集服务端 */}
       <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-4">

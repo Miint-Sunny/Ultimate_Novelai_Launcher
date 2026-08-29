@@ -412,6 +412,31 @@ export async function initializeLocalSidecar(): Promise<void> {
   }
 }
 
+/**
+ * 让**桌面壳**替浏览器签发一个配对码。
+ *
+ * 这条路由是要鉴权的,所以只有已经握过手的桌面端调得动 —— 浏览器自己签不出来。
+ * 于是「在 app 里点一下,浏览器就能用」这件事不需要把 sidecar 暴露到网络上:
+ * 信任仍然只从桌面壳流出,浏览器拿到的还是一个 120 秒、一次性的码。
+ */
+export interface BrowserPairingChallenge {
+  code: string;
+  expiresIn: number;
+  endpoint: string;
+}
+
+export async function issueBrowserPairingCode(): Promise<BrowserPairingChallenge> {
+  const body = await requestJson<{ code: string; expires_in: number }>(
+    '/api/v1/auth/pair',
+    { method: 'POST' },
+  );
+  return {
+    code: body.code,
+    expiresIn: body.expires_in,
+    endpoint: getSidecarUrl(),
+  };
+}
+
 export async function pairLocalSidecar(code: string): Promise<void> {
   const connection = await getSidecarConnection();
   const response = await fetch(`${connection.endpoint}/api/v1/auth/pair/exchange`, {
