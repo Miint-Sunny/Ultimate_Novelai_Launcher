@@ -152,3 +152,37 @@ export function enhanceScaleOptions(width: number, height: number, model: string
 // 现在**全族都跟官方**,所以那份没了 —— enhanceTargetSize 就是唯一出处。
 // 其余尺寸两套算出来本就相同(w 是整数,floor 再 round 与直接 round 等价),
 // 所以这次统一只动了这两个特判尺寸。
+
+/** 放大方式。重绘走 generate-image(耗 Anlas 重画),超分走 upscale(不重画)。 */
+export type EnhanceMode = 'redraw' | 'upscale';
+
+/**
+ * 官方 Magnitude 五档:点一下同时设好强度与噪声。
+ *
+ * 收进这里是因为它此前在桌面与移动两端**各抄了一份**,值一样但是两份 ——
+ * 这种表迟早会有一边被改动而另一边没跟上。
+ * 档 3 就是改成可调之前写死的那组值,所以老用户的手感不变。
+ */
+export const MAGNITUDE_PRESETS: Readonly<Record<number, { strength: number; noise: number }>> = {
+  1: { strength: 0.2, noise: 0 },
+  2: { strength: 0.4, noise: 0 },
+  3: { strength: ENHANCE_DEFAULT_STRENGTH, noise: ENHANCE_DEFAULT_NOISE },
+  4: { strength: 0.6, noise: 0 },
+  5: { strength: 0.7, noise: 0.1 },
+};
+
+/**
+ * 记住的档位在当前图片上还能不能用;不能用就换一个。
+ *
+ * ⚠ `options` **可能是空数组** —— 源图大到连 1× 都越过总像素上限时,筛选与它的
+ * 兜底会一起落空(实测 2000×2000 / 3000×3000 都是空)。这里照样返回 `preferred`,
+ * 是因为这是个纯函数、不该替界面决定「没得选时显示什么」;
+ * **界面必须自己挡住空列表**,别让用户点进一个没有档位的重绘。
+ */
+export function resolveEnhanceScaleChoice(
+  options: readonly EnhanceScale[],
+  preferred: EnhanceScaleId,
+): EnhanceScaleId {
+  if (options.length === 0) return preferred;
+  return options.some((option) => option.id === preferred) ? preferred : options[0].id;
+}

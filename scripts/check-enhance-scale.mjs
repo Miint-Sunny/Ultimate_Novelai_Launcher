@@ -19,6 +19,10 @@ const {
   enhanceTargetSize,
   enhanceMaxAvailable,
   enhanceScaleOptions,
+  resolveEnhanceScaleChoice,
+  MAGNITUDE_PRESETS,
+  ENHANCE_DEFAULT_STRENGTH,
+  ENHANCE_DEFAULT_NOISE,
 } = await import('../src/services/naiEnhanceScale.ts');
 const { resolveEnhanceModel, buildRequestPayload } = await import('../src/services/novelai.ts');
 
@@ -195,6 +199,43 @@ check('尺寸: 1.5× 全族都跟官方特判,不再按模型分叉', () => {
   // 其余尺寸两套本就相同,这次统一只动了那两个特判尺寸。
   assert.deepEqual(enhanceTargetSize(640, 640, 'x1.5'), { width: 960, height: 960 });
   assert.deepEqual(enhanceTargetSize(700, 700, 'x1.5'), { width: 1024, height: 1024 });
+});
+
+check('档位: V5 的 640×640 给满四档 —— 界面最挤的情况', () => {
+  assert.deepEqual(ids(640, 640, 'nai-diffusion-5-full'), ['max', 'x2', 'x1.5', 'x1']);
+});
+
+// 这条钉的是一个反直觉的事实:筛选**和它的兜底会一起落空**。源图大到连 1× 都
+// 越过总像素上限时,fits() 全不过,而 enhanceMaxAvailable 也因为源图 ≥ 上限的
+// 0.8 一起关掉。界面若假定「永远至少有一档」,就会渲染出一个空的倍率行,
+// 而用户点下去会一路走到服务层抛出一条与档位无关的报错。
+check('档位: 源图过大时会一档都不剩 —— 界面必须挡住空列表', () => {
+  assert.deepEqual(ids(2000, 2000, 'nai-diffusion-5-full'), []);
+  assert.deepEqual(ids(3000, 3000, 'nai-diffusion-5-full'), []);
+  // 只剩一档也是真实情况,同样要能显示。
+  assert.deepEqual(ids(1600, 1600, 'nai-diffusion-5-full'), ['x1']);
+});
+
+check('档位: 记住的档被尺寸筛掉时回退到首项,还在就保留', () => {
+  const portrait = enhanceScaleOptions(832, 1216, 'nai-diffusion-5-full');
+  // 832×1216 没有 2× 档(特判成 1.5×/1×),记住的 x2 要回退到首项 max。
+  assert.equal(resolveEnhanceScaleChoice(portrait, 'x2'), 'max');
+  assert.equal(resolveEnhanceScaleChoice(portrait, 'x1.5'), 'x1.5');
+  // 空列表时原样返回记住的档:纯函数不替界面决定「没得选时显示什么」。
+  assert.equal(resolveEnhanceScaleChoice([], 'x1.5'), 'x1.5');
+});
+
+check('档位: Magnitude 五档,档 3 与默认强度/噪声同源', () => {
+  assert.equal(Object.keys(MAGNITUDE_PRESETS).length, 5);
+  assert.deepEqual(MAGNITUDE_PRESETS[3], {
+    strength: ENHANCE_DEFAULT_STRENGTH,
+    noise: ENHANCE_DEFAULT_NOISE,
+  });
+  for (const tier of [1, 2, 3, 4, 5]) {
+    const preset = MAGNITUDE_PRESETS[tier];
+    assert.ok(preset.strength > 0 && preset.strength <= 1, `档 ${tier} 强度越界`);
+    assert.ok(preset.noise >= 0 && preset.noise <= 1, `档 ${tier} 噪声越界`);
+  }
 });
 
 console.log(`\n${checks} 项放大重绘尺寸校验全部通过。`);
