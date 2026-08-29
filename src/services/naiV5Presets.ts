@@ -109,6 +109,16 @@ export function toV5QualityPresetId(qualityToggle: boolean): NaiV5QualityPresetI
 /**
  * `-full` 会自动前置 `nsfw, `,curated 不会——官方 UC 组装器的行为,
  * 条件是:模型不属于 curated 系、预设不是 none、且用户 UC 里还没写过 nsfw。
+ *
+ * ⚠ **目前没有任何产品代码调用它**,只有 check-v5-parity 在断言。也就是说
+ * 我们实际发出去的负面词里没有这个前缀,别看到这个函数就以为已经在做了。
+ *
+ * 没接上是因为三份实现给出三种行为,而这条会改动每一次 V5 Full 的负面词:
+ *   - 本函数:按「UC 里有没有 nsfw」决定加不加前缀;
+ *   - Aaalice(V4.5 期):把 nsfw 写进 -full 的预设文本,再按「**正面**里有没有
+ *     nsfw」决定要不要把它删掉(api_constants.dart 的 applyPresetWithNsfwCheck);
+ *   - Plana(对齐我们 web,支持 V5):整套逻辑都没有,预设文本里也没有 nsfw。
+ * 三者不是同一条规则,定不下来之前不接——接错就是静默改图。
  */
 export function shouldPrefixNsfw(backendModel: string, preset: NaiV5UcPresetId, uc: string): boolean {
   if (preset === 'none') return false;
