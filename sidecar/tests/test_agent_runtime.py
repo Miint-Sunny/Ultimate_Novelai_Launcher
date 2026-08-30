@@ -21,7 +21,11 @@ from server.agent_router.llm.models import AnthropicModel, GoogleModel, Model, O
 from server.agent_router.llm.output import OUTPUT_TOOL_NAME
 from server.agent_router.llm.providers import OpenAIProvider
 from server.agent_router.llm.result import Usage
-from server.agent_router.prompts import PromptResourceError, prompt_bundle_from_text
+from server.agent_router.prompts import (
+    _REQUIRED_PLANNER_SECTIONS,
+    PromptResourceError,
+    prompt_bundle_from_text,
+)
 from sidecar import agent_runtime
 from sidecar.agent_runtime import (
     AgentRequestValidationError,
@@ -81,19 +85,9 @@ def _settings(
 
 
 def _prompt_bundle():
-    planner_names = (
-        "mission",
-        "input_format",
-        "art_fundamentals",
-        "art_principles",
-        "character_rules",
-        "art_advanced",
-        "fixed_combos",
-        "technique_combos",
-        "art_craft",
-        "reference_examples",
-        "draw_output",
-    )
+    # 段名取契约,不在这里抄一份 —— 抄的那份漂过一次:planner 加了 skill_mandate
+    # 之后这里没跟上,8 个用例一起红,而报错说的是"提示词校验失败",看不出是夹具旧了。
+    planner_names = _REQUIRED_PLANNER_SECTIONS
     return prompt_bundle_from_text(
         yaml.safe_dump(
             {

@@ -263,7 +263,9 @@ def create_compat_router(components: RuntimeComponents) -> APIRouter:
                 payload = image_path(settings, "__mock__")
                 if payload.exists():
                     return Response(payload.read_bytes(), media_type="image/png")
-                mock = write_mock_image(settings, "__mock__")
+                mock = write_mock_image(
+                    settings, "__mock__", width=req.width, height=req.height
+                )
                 return Response(mock.read_bytes(), media_type="image/png")
             image_payload = await upscale_image(
                 settings=settings,

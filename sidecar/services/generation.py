@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
@@ -24,10 +23,7 @@ from sidecar.nai.client import (
 from sidecar.nai.models import GenerateRequest, ResolvedPrompt
 from sidecar.services.assets import AssetService
 from sidecar.services.jobs import JobNotCancellableError, JobService
-
-_ONE_PIXEL_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
-)
+from sidecar.storage import mock_png
 
 JobExecutor = Callable[[GenerationJob], Awaitable[Mapping[str, JsonValue]]]
 
@@ -366,7 +362,9 @@ class NovelAIGenerationExecutor:
             # window so cancellation can be exercised against instant mock output.
             if settings.mock_generation_delay_ms > 0:
                 await asyncio.sleep(settings.mock_generation_delay_ms / 1000)
-            payload = _ONE_PIXEL_PNG
+            # 按请求尺寸出图,不是一张 1×1 —— 放大档位/裁切/局部重绘都要靠真实
+            # 宽高才算得出东西,1×1 会让它们退到各自的最小值兜底,等于测不到。
+            payload = mock_png(effective_params.width, effective_params.height)
         elif resolved.params.provider == "comfy":
             if self.http is None:
                 raise InvalidArgumentError(
