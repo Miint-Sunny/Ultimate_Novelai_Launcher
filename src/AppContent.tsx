@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MainContent } from './components/MainContent';
 import { HistoryDock } from './components/HistoryDock';
-import { AgentDock } from './components/desktop/AIAssistant/AgentDock';
+import { RightDock } from './components/desktop/dock/RightDock';
 import { LoginModal } from './components/LoginModal';
 import { AgentDockProvider } from './contexts/AgentDockContext';
 import { useAuth } from './contexts/AuthContext';
@@ -132,8 +132,8 @@ const AppContent: React.FC = () => {
             <MainContent />
             <HistoryDock />
           </div>
-          {/* 右侧：Plana 助手停靠面板 */}
-          <AgentDock />
+          {/* 右侧：可拼凑的停靠区(助手 / 会话历史,顶部图标或 ⋮ 菜单勾选) */}
+          <RightDock />
         </AgentDockProvider>
       </div>
 

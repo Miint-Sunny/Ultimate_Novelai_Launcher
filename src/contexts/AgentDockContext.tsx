@@ -4,18 +4,14 @@ import {
   DEFAULT_AI_MODEL,
   type AgentState,
   type GenerationSnapshot,
+  type LogEntry,
 } from '../services/agentService';
 import { appBackendApi } from '../api/appBackendApi';
 import { SIDECAR_SETTINGS_CHANGED_EVENT } from '../api/localSidecarApi';
 import { APP_SETTINGS_CHANGED_EVENT } from '../services/localLibrary/appSettings';
-import { loadCurrentLogs, saveCurrentLogs } from '../components/desktop/AIAssistant/useSessions';
-
-const STORAGE_KEY_DOCK_OPEN = 'nai_agent_dock_open';
-const STORAGE_KEY_DOCK_WIDTH = 'nai_agent_dock_width';
-
-export const AGENT_DOCK_MIN_WIDTH = 320;
-export const AGENT_DOCK_MAX_WIDTH = 640;
-export const AGENT_DOCK_DEFAULT_WIDTH = 400;
+import { loadCurrentLogs, saveCurrentLogs, useSessions } from '../components/desktop/AIAssistant/useSessions';
+import type { ArchivedSession } from '../components/desktop/AIAssistant/types';
+import { useDockLayout, type DockLayoutController } from '../components/desktop/dock/useDockLayout';
 
 /**
  * 提示词落地回调由 LeftSidebar 注册：提示词状态的所有权仍在左栏，
@@ -47,11 +43,20 @@ interface AgentDockContextValue {
   setIsGeneratingPrompt: React.Dispatch<React.SetStateAction<boolean>>;
   agentAvailable: boolean;
   agentUnavailableReason?: string;
+  /** 右侧停靠区的布局(哪些面板开着、顺序、各自高度权重、整体宽度)。 */
+  dock: DockLayoutController;
+  /** 兼容口径:右栏是不是至少开着一块。左栏那个开关按钮只关心这个。 */
   isDockOpen: boolean;
-  setDockOpen: (open: boolean) => void;
+  /** 兼容口径:开着就全收起,收着就把助手打开。 */
   toggleDock: () => void;
-  dockWidth: number;
-  setDockWidth: (width: number) => void;
+  /**
+   * 会话历史提到这里,是因为「助手」和「会话历史」现在是两块可以同时打开的面板。
+   * useSessions 各自持有 state 并整份写回同一个存储键,两处挂载会互相覆盖 ——
+   * 归档完切到另一块就可能把刚归档的那条冲掉。
+   */
+  sessions: ArchivedSession[];
+  archiveSession: (logs: LogEntry[]) => boolean;
+  removeSession: (id: number) => void;
   /**
    * 写回入口存在 ref 里：LeftSidebar 每次渲染都会产生新的回调标识，
    * 走 state 会形成 注册→渲染→再注册 的死循环；ref + 幂等 ready 标志避免这一点。
@@ -63,21 +68,11 @@ interface AgentDockContextValue {
 
 const AgentDockContext = createContext<AgentDockContextValue | null>(null);
 
-const readInitialOpen = (): boolean => localStorage.getItem(STORAGE_KEY_DOCK_OPEN) !== '0';
-
-const readInitialWidth = (): number => {
-  const saved = Number(localStorage.getItem(STORAGE_KEY_DOCK_WIDTH));
-  if (Number.isFinite(saved) && saved >= AGENT_DOCK_MIN_WIDTH && saved <= AGENT_DOCK_MAX_WIDTH) {
-    return saved;
-  }
-  return AGENT_DOCK_DEFAULT_WIDTH;
-};
-
 export const AgentDockProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [aiModel, setAiModel] = useState<string>(DEFAULT_AI_MODEL);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [isDockOpen, setDockOpenState] = useState<boolean>(readInitialOpen);
-  const [dockWidth, setDockWidthState] = useState<number>(readInitialWidth);
+  const dock = useDockLayout();
+  const { sessions, archive: archiveSession, remove: removeSession } = useSessions();
   const [agentState, setAgentState] = useState<AgentState>(() => ({
     status: 'idle',
     logs: loadCurrentLogs(),
@@ -127,23 +122,16 @@ export const AgentDockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     agentService.cancel();
   }, [availability.available]);
 
-  const setDockOpen = useCallback((open: boolean) => {
-    setDockOpenState(open);
-    localStorage.setItem(STORAGE_KEY_DOCK_OPEN, open ? '1' : '0');
-  }, []);
-
+  const isDockOpen = dock.layout.open.length > 0;
+  const setLayout = dock.setLayout;
+  const dockLayout = dock.layout;
   const toggleDock = useCallback(() => {
-    setDockOpenState((prev) => {
-      localStorage.setItem(STORAGE_KEY_DOCK_OPEN, prev ? '0' : '1');
-      return !prev;
-    });
-  }, []);
-
-  const setDockWidth = useCallback((width: number) => {
-    const clamped = Math.min(AGENT_DOCK_MAX_WIDTH, Math.max(AGENT_DOCK_MIN_WIDTH, Math.round(width)));
-    setDockWidthState(clamped);
-    localStorage.setItem(STORAGE_KEY_DOCK_WIDTH, String(clamped));
-  }, []);
+    setLayout(
+      dockLayout.open.length > 0
+        ? { ...dockLayout, open: [], collapsed: [] }
+        : { ...dockLayout, open: ['assistant'] },
+    );
+  }, [dockLayout, setLayout]);
 
   const registerHandlers = useCallback((next: AgentDockHandlers) => {
     handlersRef.current = next;
@@ -160,11 +148,12 @@ export const AgentDockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsGeneratingPrompt,
         agentAvailable: availability.available,
         agentUnavailableReason: availability.reason,
+        dock,
         isDockOpen,
-        setDockOpen,
         toggleDock,
-        dockWidth,
-        setDockWidth,
+        sessions,
+        archiveSession,
+        removeSession,
         handlersRef,
         handlersReady,
         registerHandlers,

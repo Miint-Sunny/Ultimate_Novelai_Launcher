@@ -14,7 +14,13 @@ interface Props {
   onGoHistory: () => void;
   onBack: () => void;
   onNewChat: () => void;
-  onClose: () => void;
+  /** 不传就不渲染关闭按钮 —— 停靠形态下关闭由面板外框提供,不要两个。 */
+  onClose?: () => void;
+  /**
+   * 紧凑态:不画左边的头像与标题。停靠形态下面板外框已经有图标和标题了,
+   * 再画一遍就是两条几乎一样的栏叠在一起。
+   */
+  compact?: boolean;
   closeTitle?: string;
   // 悬浮形态才需要拖拽手柄；停靠形态不传即无拖拽、光标常规。
   onPointerDown?: (e: React.PointerEvent) => void;
@@ -43,6 +49,7 @@ export const Header: React.FC<Props> = ({
   onNewChat,
   onClose,
   closeTitle = '收起浮窗',
+  compact = false,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -58,16 +65,16 @@ export const Header: React.FC<Props> = ({
         zIndex: 1,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '10px 10px 10px 12px',
+        justifyContent: compact ? 'flex-end' : 'space-between',
+        padding: compact ? '5px 8px' : '10px 10px 10px 12px',
         background: C.bgDeep,
         borderBottom: `1px solid ${C.line}`,
         cursor: onPointerDown ? 'move' : 'default',
         flexShrink: 0,
       }}
     >
-      {/* 左：头像 / 返回 + 标题 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+      {/* 左：头像 / 返回 + 标题（紧凑态由面板外框代劳） */}
+      <div style={{ display: compact ? 'none' : 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
         {view === 'history' ? (
           <button
             className="no-drag aa-btn"
@@ -137,24 +144,26 @@ export const Header: React.FC<Props> = ({
           </>
         )}
 
-        <button
-          className="aa-btn-cell"
-          onClick={onClose}
-          title={closeTitle}
-          style={closeBtnStyle()}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
+        {onClose && (
+          <button
+            className="aa-btn-cell"
+            onClick={onClose}
+            title={closeTitle}
+            style={closeBtnStyle()}
           >
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

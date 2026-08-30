@@ -1,31 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot } from 'lucide-react';
 import { agentService } from '../../../services/agentService';
 import { useAgentModelPresentation } from '../../../hooks/useAgentModelPresentation';
-import {
-  useAgentDock,
-  AGENT_DOCK_MIN_WIDTH,
-  AGENT_DOCK_MAX_WIDTH,
-} from '../../../contexts/AgentDockContext';
+import { useAgentDock } from '../../../contexts/AgentDockContext';
 import { ChatBody } from './ChatBody';
 import { Header } from './Header';
-import { HistoryView } from './HistoryView';
 import { InputBar } from './InputBar';
 import { C } from './tokens';
-import type { ArchivedSession, VMsg } from './types';
+import type { VMsg } from './types';
 import { useAdaptedMessages } from './useAdaptedMessages';
 import { useBlink } from './useBlink';
-import { useSessions, buildSessionFromLogs } from './useSessions';
 import { useAssistantCommands, matchCommand } from './useAssistantCommands';
 
 /**
- * Plana 助手停靠面板（悬浮窗 V2 的停靠形态）。
+ * Plana 助手面板的**内容**。外框(标题栏、折叠、换位、关闭、宽度)由
+ * components/desktop/dock 的 RightDock / DockPanelFrame 负责,这里只管对话本身。
  *
  * 数据流不变：agentState.logs → useAdaptedMessages → VMsg[] → <ChatBody>。
- * 与旧悬浮窗的区别只有容器：右侧全高、可收起为窄条、左缘拖宽；
  * 提示词写回经 AgentDockContext 由 LeftSidebar 注册的 handlers 完成。
+ * 会话历史已拆成同级的另一块面板(SessionsPanel),两者可以同时开着;
+ * 顶栏那个「历史」按钮现在是**打开那块面板**,不再顶掉当前对话。
  */
-export const AgentDock: React.FC = () => {
+export const AgentPanel: React.FC = () => {
   const {
     aiModel,
     setAiModel,
@@ -33,10 +28,8 @@ export const AgentDock: React.FC = () => {
     isGeneratingPrompt,
     agentAvailable,
     agentUnavailableReason,
-    isDockOpen,
-    setDockOpen,
-    dockWidth,
-    setDockWidth,
+    dock,
+    archiveSession,
     handlersRef,
   } = useAgentDock();
   const agentModel = useAgentModelPresentation();
@@ -44,7 +37,6 @@ export const AgentDock: React.FC = () => {
   // ─────────────────────────────
   // 内部状态（与悬浮窗一致）
   // ─────────────────────────────
-  const [view, setView] = useState<'chat' | 'history'>('chat');
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -52,7 +44,6 @@ export const AgentDock: React.FC = () => {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const blink = useBlink();
 
-  const { sessions, archive, remove } = useSessions();
   const msgs = useAdaptedMessages(agentState);
   const { tryRunCommand, importMetadataFromCard, specs } = useAssistantCommands();
   const showPalette = input.startsWith('/');
@@ -70,11 +61,9 @@ export const AgentDock: React.FC = () => {
 
   // 焦点 + 自动滚动
   useEffect(() => {
-    if (isDockOpen) {
-      const t = window.setTimeout(() => inputRef.current?.focus(), 100);
-      return () => window.clearTimeout(t);
-    }
-  }, [isDockOpen]);
+    const t = window.setTimeout(() => inputRef.current?.focus(), 100);
+    return () => window.clearTimeout(t);
+  }, []);
   const scrollBodyToBottom = useCallback(() => {
     const scroll = () => {
       const el = bodyRef.current;
@@ -87,33 +76,8 @@ export const AgentDock: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (isDockOpen) scrollBodyToBottom();
-  }, [isDockOpen, msgs.length, isGeneratingPrompt, view, scrollBodyToBottom]);
-
-  // ─────────────────────────────
-  // 左缘拖宽
-  // ─────────────────────────────
-  const resize = useRef({ active: false, startX: 0, startWidth: 0 });
-  const onResizeDown = (e: React.PointerEvent) => {
-    resize.current = { active: true, startX: e.clientX, startWidth: dockWidth };
-    try {
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-  };
-  const onResizeMove = (e: React.PointerEvent) => {
-    if (!resize.current.active) return;
-    setDockWidth(resize.current.startWidth + (resize.current.startX - e.clientX));
-  };
-  const onResizeUp = (e: React.PointerEvent) => {
-    resize.current.active = false;
-    try {
-      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-    } catch {
-      /* noop */
-    }
-  };
+    scrollBodyToBottom();
+  }, [msgs.length, isGeneratingPrompt, scrollBodyToBottom]);
 
   // ─────────────────────────────
   // 行为（与悬浮窗一致，写回走注册 handlers）
@@ -239,107 +203,25 @@ export const AgentDock: React.FC = () => {
   /** 点 + 新对话：归档当前对话 + 清空 logs */
   const handleNewChat = useCallback(() => {
     if (agentState.logs.length === 0) return;
-    archive(agentState.logs);
+    archiveSession(agentState.logs);
     agentService.clearLogs();
-  }, [agentState.logs, archive]);
-
-  /** 历史里点"打开"：当前会话 → 直接回到 chat；归档会话 → 先归档当前再灌回 */
-  const handleResumeSession = useCallback(
-    (s: ArchivedSession) => {
-      if (s.current) {
-        setView('chat');
-        return;
-      }
-      if (agentState.logs.length > 0) archive(agentState.logs);
-      remove(s.id);
-      agentService.loadLogs(s.logs);
-      setView('chat');
-    },
-    [agentState.logs, archive, remove],
-  );
-
-  /** 历史里点删除：当前会话 → 清空 logs；归档会话 → 走 remove */
-  const handleDeleteSession = useCallback(
-    (id: number) => {
-      if (id === 0) {
-        agentService.clearLogs();
-        return;
-      }
-      remove(id);
-    },
-    [remove],
-  );
-
-  /** 列表 = 当前进行中的会话（如有）+ 已归档会话；当前固定在最前 */
-  const displaySessions = useMemo(() => {
-    const current = buildSessionFromLogs(agentState.logs, 0);
-    if (!current) return sessions;
-    return [{ ...current, current: true }, ...sessions];
-  }, [agentState.logs, sessions]);
-
-  // ─────────────────────────────
-  // 收起态：右缘窄条
-  // ─────────────────────────────
-  if (!isDockOpen) {
-    return (
-      <div
-        className="shrink-0 flex flex-col items-center bg-nai-panel border-l border-gray-800 z-10"
-        style={{ width: 30 }}
-      >
-        <button
-          className={`mt-3 p-1 rounded-lg transition-colors ${isGeneratingPrompt
-            ? 'text-nai-accent bg-nai-accent/10'
-            : 'text-gray-400 hover:text-white hover:bg-white/10'
-            }`}
-          onClick={() => setDockOpen(true)}
-          title={isGeneratingPrompt ? 'Plana 正在思考，点击展开' : '展开助手栏'}
-        >
-          <Bot className="w-5 h-5" />
-        </button>
-        {isGeneratingPrompt && (
-          <div className="mt-2 relative w-2 h-2">
-            <div className="absolute inset-0 bg-nai-accent/40 rounded-full animate-ping" />
-            <div className="absolute inset-0.5 bg-nai-accent rounded-full" />
-          </div>
-        )}
-      </div>
-    );
-  }
+  }, [agentState.logs, archiveSession]);
 
   return (
-    <div
-      className="relative shrink-0 flex flex-col z-10 overflow-hidden"
-      style={{
-        width: dockWidth,
-        minWidth: AGENT_DOCK_MIN_WIDTH,
-        maxWidth: AGENT_DOCK_MAX_WIDTH,
-        background: C.panel,
-        borderLeft: `1px solid ${C.border}`,
-        color: C.text,
-      }}
-    >
-      {/* 左缘拖宽把手 */}
-      <div
-        className="absolute top-0 left-0 bottom-0 w-1.5 cursor-ew-resize z-20 hover:bg-white/10 transition-colors"
-        onPointerDown={onResizeDown}
-        onPointerMove={onResizeMove}
-        onPointerUp={onResizeUp}
-        onPointerCancel={onResizeUp}
-        title="拖动调整面板宽度"
-      />
+    <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden" style={{ color: C.text }}>
       <Header
-        view={view}
+        view="chat"
         model={aiModel}
         localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
         blink={blink}
         sending={isGeneratingPrompt}
         hasMessages={msgs.length > 0}
         onModelChange={setAiModel}
-        onGoHistory={() => setView('history')}
-        onBack={() => setView('chat')}
+        // 历史现在是同级的另一块面板:点这里是把它打开,而不是顶掉当前对话
+        onGoHistory={() => dock.toggle('sessions')}
+        onBack={() => {}}
         onNewChat={handleNewChat}
-        onClose={() => setDockOpen(false)}
-        closeTitle="收起助手栏"
+        compact
       />
       {!agentAvailable && (
         <div
@@ -350,9 +232,7 @@ export const AgentDock: React.FC = () => {
           Plana LLM 未配置，仅固定指令可用（kkt / 生成图片 / 生成视频）
         </div>
       )}
-      {view === 'chat' ? (
-        <>
-          <ChatBody
+      <ChatBody
             ref={bodyRef}
             msgs={msgs}
             sending={isGeneratingPrompt}
@@ -415,27 +295,19 @@ export const AgentDock: React.FC = () => {
             onChange={handleImagePicked}
             style={{ display: 'none' }}
           />
-          <InputBar
-            value={input}
-            onChange={setInput}
-            onSend={() => handleSend()}
-            sending={isGeneratingPrompt}
-            inputRef={inputRef}
-            selectedImage={selectedImage}
-            onPickImage={handlePickImage}
-            onClearImage={() => setSelectedImage(null)}
-            hasMessages={msgs.length > 0}
-            onClearChat={handleClearChat}
-            onHeightChange={setInputBarOffset}
-          />
-        </>
-      ) : (
-        <HistoryView
-          sessions={displaySessions}
-          onResume={handleResumeSession}
-          onDelete={handleDeleteSession}
-        />
-      )}
+      <InputBar
+        value={input}
+        onChange={setInput}
+        onSend={() => handleSend()}
+        sending={isGeneratingPrompt}
+        inputRef={inputRef}
+        selectedImage={selectedImage}
+        onPickImage={handlePickImage}
+        onClearImage={() => setSelectedImage(null)}
+        hasMessages={msgs.length > 0}
+        onClearChat={handleClearChat}
+        onHeightChange={setInputBarOffset}
+      />
     </div>
   );
 };
