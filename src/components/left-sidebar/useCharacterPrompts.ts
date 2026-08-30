@@ -16,6 +16,7 @@ function loadCharacterPrompts(): CharacterPrompt[] {
       activeTab: c.activeTab || 'prompt',
       enabled: c.enabled !== false,
       position: c.position,
+      center: c.center ?? null,
       name: c.name,
     }));
   } catch {
@@ -32,6 +33,7 @@ function saveCharacterPrompts(characterPrompts: CharacterPrompt[]) {
       activeTab: c.activeTab,
       enabled: c.enabled,
       position: c.position,
+      center: c.center ?? null,
       name: c.name,
     }))));
   } catch {

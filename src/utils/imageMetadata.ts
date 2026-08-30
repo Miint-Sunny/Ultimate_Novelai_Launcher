@@ -101,6 +101,12 @@ export interface ImageMetadata {
     uc?: string;
     center?: { x: number; y: number };
   }>;
+  /**
+   * 发这张图时是不是走的坐标模式。`teXt:` 块的角色顺序按它决定
+   * (真值按阅读顺序排,假值按声明顺序),所以剥离时必须用原图的取值,
+   * 不能拿「有没有角色」去猜。缺省 = 老元数据没记,由调用方兜底。
+   */
+  useCoords?: boolean;
   // Vibe 数据
   vibes?: VibeMetadata[];
   // Lora 信息（SD/ComfyUI）
@@ -579,6 +585,12 @@ function parseNAIMetadata(data: any): ImageMetadata | null {
         });
       }
     }
+    const useCoords =
+      typeof comment.use_coords === 'boolean'
+        ? comment.use_coords
+        : typeof comment.v4_prompt?.use_coords === 'boolean'
+          ? comment.v4_prompt.use_coords
+          : undefined;
 
     // 提取 Vibe 数据
     // NovelAI API 返回的图片元数据中可能不包含 reference_image_multiple
@@ -706,6 +718,7 @@ function parseNAIMetadata(data: any): ImageMetadata | null {
       noiseSchedule: comment.noise_schedule,
       cfgRescale: comment.cfg_rescale,
       characterPrompts: characterPrompts.length > 0 ? characterPrompts : undefined,
+      useCoords,
       vibes: vibes.length > 0 ? vibes : undefined,
       raw: data,
     };

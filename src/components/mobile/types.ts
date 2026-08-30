@@ -1,4 +1,5 @@
 import type { VibeData } from '../../services/localLibrary';
+import type { CharacterCenter } from '../../services/characterPosition';
 
 export interface VibeFile {
   id: string;
@@ -49,7 +50,14 @@ export interface CharacterPrompt {
   negative: string;
   activeTab: 'prompt' | 'undesired';
   enabled: boolean;
+  /** 旧的 A1–E5 网格。 */
   position?: string;
+  /**
+   * 画布上的连续坐标(0–1);`null`/缺省 = 自动。
+   * 竖屏这边还没有画布控件,这个字段先只保证与桌面/发包层结构兼容
+   * (共享 hook 的字段是两端并集),不改移动端现有行为。
+   */
+  center?: CharacterCenter | null;
   name?: string;
 }
 

@@ -4,6 +4,7 @@
 // 中文翻译、行级过滤)不在本模块,见 mobile/generate/mobilePromptPreparation。
 
 import { MANUAL_TEXT_BLOCK_PATTERN } from '../../utils/textRenderHints.ts';
+import type { CharacterCenter } from '../../services/characterPosition';
 
 // 结构类型:桌面 PromptPreset(left-sidebar/types)与移动端 PromptPresetData(localLibrary)
 // 均结构兼容,避免装配层反向依赖某一端的组件类型。
@@ -19,7 +20,10 @@ export interface CharacterPromptContent {
   positive: string;
   negative: string;
   enabled: boolean;
+  /** 旧的 A1–E5 网格,只为读旧存档保留。 */
   position?: string;
+  /** 画布上的连续坐标(0–1);`null`/缺省 = 自动。见 services/characterPosition。 */
+  center?: CharacterCenter | null;
 }
 
 /**
@@ -82,5 +86,7 @@ export function buildCharacterPromptParams(characterPrompts: CharacterPromptCont
       negative: filterHiddenTags(character.negative),
       enabled: character.enabled,
       position: character.position,
+      // 这里漏掉 center 的话画布摆的位置根本到不了发包层。
+      center: character.center ?? null,
     }));
 }

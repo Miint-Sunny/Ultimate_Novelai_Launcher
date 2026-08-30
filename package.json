@@ -33,6 +33,7 @@
     "check:preset-tiers": "node --experimental-strip-types scripts/check-preset-tiers.mjs",
     "check:auto-text": "node --experimental-strip-types scripts/check-auto-text.mjs",
     "check:dock-layout": "node --experimental-strip-types scripts/check-dock-layout.mjs",
+    "check:character-position": "node --experimental-strip-types scripts/check-character-position.mjs",
     "check:text-render": "node --experimental-strip-types scripts/check-text-render.mjs"
   },
   "devDependencies": {

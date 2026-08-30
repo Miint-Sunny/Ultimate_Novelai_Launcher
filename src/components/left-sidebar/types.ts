@@ -1,4 +1,5 @@
 import type { PromptPresetScope } from '../../services/localLibrary/promptPresets';
+import type { CharacterCenter } from '../../services/characterPosition';
 
 export interface CharacterPrompt {
   id: string;
@@ -6,7 +7,10 @@ export interface CharacterPrompt {
   negative: string;
   activeTab: 'prompt' | 'undesired';
   enabled: boolean;
+  /** 旧的 A1–E5 网格。只为读旧存档保留,新数据写 `center`。 */
   position?: string;
+  /** 画布上的连续坐标(0–1);`null`/缺省 = 自动。见 services/characterPosition。 */
+  center?: CharacterCenter | null;
   name?: string;
 }
 

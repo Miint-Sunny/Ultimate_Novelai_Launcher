@@ -82,13 +82,14 @@ export function importedPositivePrompt(metadata: {
   // 两端都能喂进来才不用为此再造一个转换层。
   prompt?: string;
   characterPrompts?: Array<{ prompt: string; center?: { x: number; y: number } }>;
+  useCoords?: boolean;
 }): string {
   const characters = metadata.characterPrompts ?? [];
   return stripAutoText(metadata.prompt ?? '', {
     characters: characters.map((character) => ({ prompt: character.prompt, center: character.center })),
-    // 与发包端同口径:只要有角色就按坐标排(发包时每个角色都会拿到中心坐标,
-    // 没设位置的也会被分配一个)。
-    useCoords: characters.length > 0,
+    // 用原图记下来的 use_coords。老元数据没这个字段时才退回「有角色就按坐标排」,
+    // 那正是我们 2026-08 之前一直发的取值,所以旧图剥离结果不变。
+    useCoords: metadata.useCoords ?? characters.length > 0,
   });
 }
 

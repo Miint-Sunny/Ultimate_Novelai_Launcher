@@ -21,7 +21,15 @@ export interface HistoryItemMetadata {
   ucPreset: string;
   qualityToggle: boolean;
   varietyPlus: boolean;
-  characterPrompts?: Array<{ positive: string; negative: string; enabled: boolean; position?: string }>;
+  characterPrompts?: Array<{
+    positive: string;
+    negative: string;
+    enabled: boolean;
+    /** 旧的 A1–E5 网格。 */
+    position?: string;
+    /** 画布上的连续坐标(0–1);从历史重出图要靠它才不会掉回自动。 */
+    center?: { x: number; y: number } | null;
+  }>;
 }
 
 export interface HistoryItem {

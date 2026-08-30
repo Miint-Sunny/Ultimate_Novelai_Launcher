@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, ChevronUp, ChevronDown, Trash2, X, Copy, FileDigit, Maximize2, Check, CheckSquare, ChevronLeft, ChevronRight, Settings2, Archive } from 'lucide-react';
 import { useGeneration } from '../contexts/GenerationContext';
+import { legacyCellToCenter } from '../services/characterPosition';
 import { useDragDrop } from '../contexts/DragDropContext';
 import { processImageForSave, getSaveExt, type SaveFormat } from '../utils/imageMetadata';
 import { generateImageFileName } from '../utils/fileSystem';
@@ -379,8 +380,12 @@ export const HistoryDock: React.FC = () => {
           characterPrompts: m.characterPrompts?.map(cp => ({
             prompt: cp.positive,
             uc: cp.negative,
-            center: cp.position ? { x: 0, y: 0 } : undefined,
+            // 这里原来对所有摆过位置的角色一律给 {0,0},阅读顺序算出来是退化的。
+            center: cp.center ?? legacyCellToCenter(cp.position) ?? undefined,
           })),
+          useCoords: (m.characterPrompts ?? []).some(
+            (cp) => cp.center != null || legacyCellToCenter(cp.position) !== null,
+          ),
         };
       }
 

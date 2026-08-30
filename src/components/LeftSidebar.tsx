@@ -1211,10 +1211,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         <CharacterPositionModal
           editingPositionId={editingPositionId}
           characterPrompts={characterPrompts}
+          aspectRatio={customWidth / customHeight}
+          freeform={modelCapabilities(selectedModel.id).freeformCharacterPosition}
           onClose={() => setEditingPositionId(null)}
-          onUpdatePosition={(id, position) => {
-            updateCharacterPrompt(id, 'position', position);
-            setEditingPositionId(null);
+          onUpdateCenter={(id, center) => {
+            // 拖动是连续的,所以这里不再顺手关窗;同时把旧的 A1–E5 清掉,
+            // 免得存档里留着一个跟画布对不上的历史值。
+            updateCharacterPrompt(id, 'center', center);
+            updateCharacterPrompt(id, 'position', '');
           }}
         />
       )}

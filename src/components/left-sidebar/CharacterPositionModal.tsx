@@ -1,105 +1,226 @@
-import { Fragment } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { MapPin, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Grid3x3, MapPin, Sparkles, X } from 'lucide-react';
 import type { CharacterPrompt } from './types';
+import {
+  centerToLegacyCell,
+  clampCenter,
+  crowdedCharacterIndices,
+  legacyCellToCenter,
+  resolveCharacterCenters,
+  snapCenterToGrid,
+  type CharacterCenter,
+} from '../../services/characterPosition';
 
 interface CharacterPositionModalProps {
   editingPositionId: string;
   characterPrompts: CharacterPrompt[];
+  /** 画布按出图比例显示,免得在方框里摆好的构图到了竖图上全变形。 */
+  aspectRatio?: number;
+  /**
+   * 当前模型是否支持自由浮点定位(`modelCapabilities().freeformCharacterPosition`)。
+   * 假值(V4 系)时落点一律吸附到 5×5 网格中心——那是 V4 的定位口径,
+   * 放开了发出去也不是用户看到的那张。
+   */
+  freeform?: boolean;
   onClose: () => void;
-  onUpdatePosition: (id: string, position: string) => void;
+  /** `null` = 回到自动(交给模型决定),见 services/characterPosition。 */
+  onUpdateCenter: (id: string, center: CharacterCenter | null) => void;
 }
 
-const COLUMNS = ['A', 'B', 'C', 'D', 'E'];
-const ROWS = [1, 2, 3, 4, 5];
+/** 键盘微调步长。按住 Shift 走大步。 */
+const NUDGE = 0.01;
+const NUDGE_COARSE = 0.05;
 
 export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
   editingPositionId,
   characterPrompts,
+  aspectRatio = 832 / 1216,
+  freeform = true,
   onClose,
-  onUpdatePosition,
+  onUpdateCenter,
 }) => {
-  const activeCharacter = characterPrompts.find(p => p.id === editingPositionId);
-  const activeCharacterIndex = characterPrompts.findIndex(p => p.id === editingPositionId);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const activeIndex = characterPrompts.findIndex((p) => p.id === editingPositionId);
+  const activeCharacter = characterPrompts[activeIndex];
+
+  // 画布上画的点必须跟真正发出去的 centers 是同一份计算,否则「看到的」和
+  // 「发出的」会分叉——这正是把这套规则收进 characterPosition 的原因。
+  const centers = useMemo(() => resolveCharacterCenters(characterPrompts), [characterPrompts]);
+  const crowded = useMemo(() => new Set(crowdedCharacterIndices(centers)), [centers]);
+
+  const isAuto =
+    !activeCharacter?.center && legacyCellToCenter(activeCharacter?.position) === null;
+  const activeCenter = centers[activeIndex] ?? { x: 0.5, y: 0.5 };
+
+  const placeFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || rect.height === 0) return;
+      const center = clampCenter({
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height,
+      });
+      onUpdateCenter(editingPositionId, freeform ? center : snapCenterToGrid(center));
+    },
+    [editingPositionId, freeform, onUpdateCenter],
+  );
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? NUDGE_COARSE : NUDGE;
+    const delta: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    const move = delta[event.key];
+    if (!move) return;
+    event.preventDefault();
+    const next = clampCenter({ x: activeCenter.x + move[0], y: activeCenter.y + move[1] });
+    onUpdateCenter(editingPositionId, freeform ? next : snapCenterToGrid(next));
+  };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-nai-panel border border-gray-700 rounded-xl shadow-2xl p-4 w-[320px] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-nai-panel border border-gray-700 rounded-xl shadow-2xl p-4 w-[340px] animate-in zoom-in-95 duration-200"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-3">
           <h3 className="font-bold text-white flex items-center gap-2">
             <MapPin className="w-4 h-4 text-nai-accent" />
-            设置角色位置
+            角色位置
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="grid grid-cols-6 gap-1 mb-2">
-          <div className="col-span-1"></div>
-          {COLUMNS.map(col => (
-            <div key={col} className="text-center text-xs font-bold text-gray-500">{col}</div>
-          ))}
+        <div
+          ref={canvasRef}
+          role="application"
+          tabIndex={0}
+          aria-label={`拖动设置 Char ${activeIndex + 1} 的位置,方向键微调`}
+          style={{ aspectRatio: String(aspectRatio) }}
+          className={`relative w-full rounded-lg border bg-black/30 overflow-hidden select-none touch-none cursor-crosshair outline-none transition-colors ${
+            isDragging ? 'border-nai-accent' : 'border-gray-700 focus-visible:border-nai-accent'
+          }`}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setIsDragging(true);
+            placeFromPointer(event.clientX, event.clientY);
+          }}
+          onPointerMove={(event) => {
+            if (!isDragging) return;
+            placeFromPointer(event.clientX, event.clientY);
+          }}
+          onPointerUp={(event) => {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            setIsDragging(false);
+          }}
+          onKeyDown={handleKeyDown}
+        >
+          {/* 旧的 5×5 只留作参考线,不再是可选的格子 */}
+          <div className="absolute inset-0 pointer-events-none">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={`v${i}`}
+                className="absolute top-0 bottom-0 border-l border-white/5"
+                style={{ left: `${i * 20}%` }}
+              />
+            ))}
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={`h${i}`}
+                className="absolute left-0 right-0 border-t border-white/5"
+                style={{ top: `${i * 20}%` }}
+              />
+            ))}
+          </div>
 
-          {ROWS.map(row => (
-            <Fragment key={row}>
-              <div className="flex items-center justify-center text-xs font-bold text-gray-500">{row}</div>
+          {characterPrompts.map((char, index) => {
+            const center = centers[index];
+            const isActive = char.id === editingPositionId;
+            const isCrowded = crowded.has(index);
+            return (
+              <div
+                key={char.id}
+                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ left: `${center.x * 100}%`, top: `${center.y * 100}%` }}
+                title={char.name || `Char ${index + 1}`}
+              >
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg transition-all ${
+                    isActive
+                      ? 'bg-nai-accent text-black ring-2 ring-white scale-110'
+                      : isCrowded
+                        ? 'bg-amber-500/80 text-black ring-1 ring-amber-300'
+                        : 'bg-gray-600/90 text-white ring-1 ring-black/40'
+                  }`}
+                >
+                  {index + 1}
+                </div>
+              </div>
+            );
+          })}
 
-              {COLUMNS.map(col => {
-                const cellId = `${col}${row}`;
-                const isActive = activeCharacter?.position === cellId;
-                const charsInCell = characterPrompts.filter(p => p.position === cellId);
-
-                return (
-                  <button
-                    key={cellId}
-                    onClick={() => onUpdatePosition(editingPositionId, cellId)}
-                    className={`aspect-square rounded border flex items-center justify-center relative group transition-all duration-200 ${isActive
-                      ? 'bg-nai-accent/20 border-nai-accent shadow-[0_0_10px_rgba(235,213,118,0.2)]'
-                      : 'bg-black/20 border-gray-700 hover:border-gray-500 hover:bg-white/5'
-                    }`}
-                  >
-                    {isActive && (
-                      <div className="absolute inset-0 bg-nai-accent/10 animate-pulse rounded" />
-                    )}
-
-                    <div className="flex flex-wrap items-center justify-center gap-0.5 p-0.5">
-                      {charsInCell.map(char => {
-                        const charIndex = characterPrompts.findIndex(p => p.id === char.id);
-                        return (
-                          <div
-                            key={char.id}
-                            className={`w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold shadow-sm ${char.id === editingPositionId
-                              ? 'bg-nai-accent text-black ring-1 ring-white'
-                              : 'bg-gray-600 text-white'
-                            }`}
-                            title={`Char ${charIndex + 1}`}
-                          >
-                            {charIndex + 1}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </button>
-                );
-              })}
-            </Fragment>
-          ))}
+          {isAuto && (
+            <div className="absolute inset-x-0 bottom-0 py-1 text-center text-[10px] text-gray-400 bg-black/50 pointer-events-none">
+              自动 · 点位仅为预览,实际构图交给模型
+            </div>
+          )}
         </div>
 
-        <button
-          onClick={() => onUpdatePosition(editingPositionId, '')}
-          className={`w-full py-2 mb-2 rounded text-xs font-bold border transition-all flex items-center justify-center gap-2 ${!activeCharacter?.position
-            ? 'bg-nai-accent text-black border-nai-accent'
-            : 'bg-black/20 text-gray-400 border-gray-700 hover:text-white hover:border-gray-500'
-          }`}
-        >
-          <Sparkles className="w-3 h-3" />
-          自动 (Auto)
-        </button>
+        {/* 纵轴是景深,不是单纯的上下——不写清楚没人猜得到 */}
+        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
+          <span>上 = 远(缩小)</span>
+          <span className="font-mono text-gray-400">
+            {isAuto
+              ? 'AUTO'
+              : `${Math.round(activeCenter.x * 100)} · ${Math.round(activeCenter.y * 100)} (${centerToLegacyCell(activeCenter)})`}
+          </span>
+          <span>下 = 近(占画幅大)</span>
+        </div>
 
-        <div className="text-xs text-gray-500 text-center mt-2">
-          当前正在设置 Char {activeCharacterIndex + 1} 的位置
+        {crowded.size > 0 && (
+          <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-400/90">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+            <span>角色贴得太近容易坏图,建议拉开。完全重合不算——那是 cosplay 的正规用法。</span>
+          </div>
+        )}
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => onUpdateCenter(editingPositionId, null)}
+            className={`py-2 rounded text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
+              isAuto
+                ? 'bg-nai-accent text-black border-nai-accent'
+                : 'bg-black/20 text-gray-400 border-gray-700 hover:text-white hover:border-gray-500'
+            }`}
+          >
+            <Sparkles className="w-3 h-3" />
+            自动
+          </button>
+          <button
+            onClick={() => onUpdateCenter(editingPositionId, snapCenterToGrid(activeCenter))}
+            disabled={!freeform}
+            className="py-2 rounded text-xs font-bold border bg-black/20 text-gray-400 border-gray-700 enabled:hover:text-white enabled:hover:border-gray-500 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+            title={freeform ? '吸附到 5×5 网格中心(旧版手感)' : '当前模型本来就只认网格'}
+          >
+            <Grid3x3 className="w-3 h-3" />
+            吸附网格
+          </button>
+        </div>
+
+        <div className="text-xs text-gray-500 text-center mt-3">
+          正在设置 Char {activeIndex + 1} · 拖动画布或用方向键
+          {!freeform && ' · 当前模型只认 5×5 网格,落点自动吸附'}
         </div>
       </div>
     </div>

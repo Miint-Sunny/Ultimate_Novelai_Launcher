@@ -1,4 +1,5 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
+import type { CharacterCenter } from '../services/characterPosition';
 
 // 角色提示词条目的结构类型:桌面(left-sidebar/types)与移动端(mobile/types)
 // 的 CharacterPrompt 均结构兼容,字段取并集(name + position)。
@@ -8,11 +9,14 @@ export interface SharedCharacterPrompt {
   negative: string;
   activeTab: 'prompt' | 'undesired';
   enabled: boolean;
+  /** 旧的 A1–E5 网格,只为读旧存档保留。 */
   position?: string;
+  /** 画布上的连续坐标(0–1);`null`/缺省 = 自动。 */
+  center?: CharacterCenter | null;
   name?: string;
 }
 
-export type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 'name' | 'position';
+export type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 'name' | 'position' | 'center';
 
 // 兜底上限:调用方未给 maxCharacters 时用 V4 系的 6。
 // 真正的上限按模型走 modelCapabilities(V5 为 32),由壳层传入。

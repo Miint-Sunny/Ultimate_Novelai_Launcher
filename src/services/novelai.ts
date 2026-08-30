@@ -11,6 +11,11 @@ import { resolveUcPreset } from './naiUcPresets';
 import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId, type NaiV5QualityPresetId } from './naiV5Presets';
 import { isV5Model, modelCapabilities } from '../components/generation/modelResolutionOptions';
 import { applyAutoText } from '../utils/autoText';
+import {
+  resolveCharacterCenters,
+  shouldUseCoords,
+  type CharacterCenter,
+} from './characterPosition';
 
 export interface AnlasInfo {
   fixedTrainingStepsLeft: number;
@@ -132,7 +137,10 @@ export interface CharacterPrompt {
   positive: string;
   negative: string;
   enabled: boolean;
+  /** 旧的 A1–E5 网格。只为读旧存档保留,新数据写 `center`。 */
   position?: string;
+  /** 画布上的连续坐标(0–1)。见 services/characterPosition。 */
+  center?: CharacterCenter | null;
 }
 
 // Precise Reference 模式类型
@@ -220,13 +228,6 @@ export function cleanPromptMarkers(prompt: string): string {
   if (!prompt) return prompt;
   return prompt.replace(/<<[\w-]+:[^:]+:((?:.|\n)*?)>>/g, '$1');
 }
-
-const POSITION_TO_COORDS: Record<string, { center: [number, number] }> = {};
-['A', 'B', 'C', 'D', 'E'].forEach((col, colIdx) => {
-  [1, 2, 3, 4, 5].forEach((row) => {
-    POSITION_TO_COORDS[`${col}${row}`] = { center: [(colIdx + 0.5) / 5, (row - 0.5) / 5] };
-  });
-});
 
 function generateSeed(): number {
   return Math.floor(Math.random() * 4294967295);
@@ -443,28 +444,19 @@ export function buildRequestPayload(params: GenerateImageParams) {
   const negativeCharCaptions: Array<{ char_caption: string; centers: Array<{ x: number; y: number }> }> = [];
   const characterPromptsForApi: Array<{ prompt: string; uc: string; center: { x: number; y: number }; enabled: boolean }> = [];
 
-  params.characterPrompts
-    .filter((cp) => cp.enabled && cp.positive.trim())
-    .forEach((cp, index) => {
-      let center = { x: 0.5, y: 0.5 };
-      if (cp.position && POSITION_TO_COORDS[cp.position]) {
-        const coords = POSITION_TO_COORDS[cp.position].center;
-        center = { x: coords[0], y: coords[1] };
-      } else {
-        const autoPositions = [
-          { x: 0.3, y: 0.5 },
-          { x: 0.7, y: 0.5 },
-          { x: 0.5, y: 0.3 },
-          { x: 0.5, y: 0.7 },
-          { x: 0.3, y: 0.3 },
-          { x: 0.7, y: 0.7 },
-        ];
-        center = autoPositions[index % autoPositions.length];
-      }
-      charCaptions.push({ char_caption: cp.positive, centers: [center] });
-      if (cp.negative) negativeCharCaptions.push({ char_caption: cp.negative, centers: [center] });
-      characterPromptsForApi.push({ prompt: cp.positive, uc: cp.negative || '', center, enabled: true });
-    });
+  const activeCharacters = params.characterPrompts.filter((cp) => cp.enabled && cp.positive.trim());
+  const characterCenters = resolveCharacterCenters(activeCharacters);
+  // 全员都留在「自动」时坐标模式要**关掉**——官方的 use_coords:false 才是把构图
+  // 交回给模型。这里原来恒为 true,于是「自动」实际上被悄悄钉死在一张兜底坐标表
+  // 上:界面说交给 AI,发出去的却是写死的点位。
+  const useCoords = shouldUseCoords(activeCharacters);
+
+  activeCharacters.forEach((cp, index) => {
+    const center = characterCenters[index];
+    charCaptions.push({ char_caption: cp.positive, centers: [center] });
+    if (cp.negative) negativeCharCaptions.push({ char_caption: cp.negative, centers: [center] });
+    characterPromptsForApi.push({ prompt: cp.positive, uc: cp.negative || '', center, enabled: true });
+  });
 
   // 引号内容 → `teXt:` 块。放在这里而不是提示词组装层,是因为它要按**阅读顺序**
   // 收集各角色里的引号,而中心坐标正是在上面这段才算出来的;同时这也让所有发包
@@ -473,7 +465,7 @@ export function buildRequestPayload(params: GenerateImageParams) {
   const inputPrompt = modelCapabilities(baseModel).textRendering
     ? applyAutoText(positivePrompt, {
         characters: characterPromptsForApi,
-        useCoords: charCaptions.length > 0,
+        useCoords,
       })
     : positivePrompt;
 
@@ -530,12 +522,12 @@ export function buildRequestPayload(params: GenerateImageParams) {
       legacy_v3_extend: false,
       // V5 没有 Variety+，skip_cfg_above_sigma 无处可延迟。
       skip_cfg_above_sigma: !isV5 && params.varietyPlus ? 58 : null,
-      use_coords: charCaptions.length > 0,
+      use_coords: useCoords,
       normalize_reference_strength_multiple: params.normalizeVibeStrength ?? true,
       inpaintImg2ImgStrength: 1,
       v4_prompt: {
         caption: { base_caption: inputPrompt, char_captions: charCaptions },
-        use_coords: charCaptions.length > 0,
+        use_coords: useCoords,
         use_order: true,
       },
       v4_negative_prompt: {

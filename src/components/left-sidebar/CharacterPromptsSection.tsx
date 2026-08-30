@@ -4,8 +4,9 @@ import PromptEditor from '../PromptEditor';
 import { DesktopChipEditor } from '../DesktopChipEditor';
 import { countTokens } from '../../services/tokenizer';
 import type { CharacterPrompt } from './types';
+import { legacyCellToCenter } from '../../services/characterPosition';
 
-type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 'position';
+type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 'position' | 'center';
 
 interface CharacterPromptsSectionProps {
   characterPrompts: CharacterPrompt[];
@@ -215,6 +216,16 @@ export function CharacterPromptsSection({
   );
 }
 
+/**
+ * 按钮上只写「摆过没有」和落点的百分比。
+ * 不写最近的格子名——两个不同的点会显示成同一个 `C3`,那比不写更糟。
+ */
+function positionLabel(char: CharacterPrompt): string {
+  const center = char.center ?? legacyCellToCenter(char.position);
+  if (!center) return 'AUTO';
+  return `${Math.round(center.x * 100)}·${Math.round(center.y * 100)}`;
+}
+
 function PositionButton({ char, onEdit }: { char: CharacterPrompt; onEdit: (id: string) => void }) {
   return (
     <button
@@ -226,7 +237,7 @@ function PositionButton({ char, onEdit }: { char: CharacterPrompt; onEdit: (id: 
       title="设置位置"
     >
       <MapPin className="w-3.5 h-3.5" />
-      {char.position || 'AUTO'}
+      {positionLabel(char)}
     </button>
   );
 }

@@ -89,7 +89,7 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.characterPrompts` | `characterPrompts[]` | 角色提示词数组 |
 | `parameters.v4_prompt.caption.char_captions` | `characterPrompts[].positive` | 角色正向提示词 |
 | `parameters.v4_negative_prompt.caption.char_captions` | `characterPrompts[].negative` | 角色负向提示词 |
-| `parameters.characterPrompts[].center` | `characterPrompts[].position` | 角色位置，A1–E5 由 `POSITION_TO_COORDS` 转坐标 |
+| `parameters.characterPrompts[].center` | `characterPrompts[].center` | 角色位置。连续坐标（0–1），由 `services/characterPosition` 的 `resolveCharacterCenters` 解析：显式 `center` → 旧的 `position`（A1–E5）→ 按人数的默认布局 |
 
 ## 部分映射参数 ⚠️
 
@@ -110,10 +110,10 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.legacy` | `false` | 旧版模式 | 固定值 |
 | `parameters.add_original_image` | `true` | 添加原图 | 固定值 |
 | `parameters.legacy_v3_extend` | `false` | V3 扩展 | 固定值 |
-| `parameters.use_coords` | `charCaptions.length > 0` | 使用坐标 | 有角色提示词时为 true，否则 false |
+| `parameters.use_coords` | `shouldUseCoords(activeCharacters)` | 使用坐标 | 有任一角色被**手动摆过**才为 true；全员「自动」时为 false，把构图交回模型 |
 | `parameters.normalize_reference_strength_multiple` | `true` | 归一化参考强度 | 固定值 |
 | `parameters.inpaintImg2ImgStrength` | `1` | 修复强度 | 需要 Inpaint 功能 |
-| `parameters.v4_prompt.use_coords` | `charCaptions.length > 0` | 使用坐标 | 有角色提示词时为 true，否则 false |
+| `parameters.v4_prompt.use_coords` | `shouldUseCoords(activeCharacters)` | 使用坐标 | 同上，与顶层保持一致 |
 | `parameters.v4_prompt.use_order` | `true` | 使用顺序 | 固定值 |
 | `parameters.v4_negative_prompt.legacy_uc` | `false` | 旧版 UC | 固定值 |
 | `parameters.legacy_uc` | `false` | 旧版 UC | 固定值 |

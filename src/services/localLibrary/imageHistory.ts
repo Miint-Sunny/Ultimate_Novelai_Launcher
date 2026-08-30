@@ -21,7 +21,15 @@ export interface PersistedHistoryItem {
     ucPreset: string;
     qualityToggle: boolean;
     varietyPlus: boolean;
-    characterPrompts?: Array<{ positive: string; negative: string; enabled: boolean; position?: string }>;
+    characterPrompts?: Array<{
+      positive: string;
+      negative: string;
+      enabled: boolean;
+      /** 旧的 A1–E5 网格。 */
+      position?: string;
+      /** 画布上的连续坐标(0–1)。 */
+      center?: { x: number; y: number } | null;
+    }>;
   };
   isUpscaled?: boolean;
   originalSeed?: number;
