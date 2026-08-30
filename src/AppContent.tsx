@@ -3,6 +3,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { MainContent } from './components/MainContent';
 import { HistoryDock } from './components/HistoryDock';
 import { RightDock } from './components/desktop/dock/RightDock';
+import { DockTopBar } from './components/desktop/dock/DockToolbar';
 import { LoginModal } from './components/LoginModal';
 import { AgentDockProvider } from './contexts/AgentDockContext';
 import { useAuth } from './contexts/AuthContext';
@@ -124,18 +125,20 @@ const AppContent: React.FC = () => {
       onDragOver={handleDragOver}
       onDrop={handleBackgroundDrop}
     >
-      <div className="flex flex-1 overflow-hidden relative">
-        <AgentDockProvider>
+      <AgentDockProvider>
+        {/* 窗口顶栏：面板开关住在这里（同 Claude Desktop），右侧不留竖窄条 */}
+        <DockTopBar />
+        <div className="flex flex-1 overflow-hidden relative">
           <LeftSidebar onLogout={logout} />
           {/* 中央工作区：画布在上，历史条横放在下方展开 */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <MainContent />
             <HistoryDock />
           </div>
-          {/* 右侧：可拼凑的停靠区(助手 / 会话历史,顶部图标或 ⋮ 菜单勾选) */}
+          {/* 右侧：可拼凑的停靠区（一块都没开时整个不渲染） */}
           <RightDock />
-        </AgentDockProvider>
-      </div>
+        </div>
+      </AgentDockProvider>
 
       {/* Drop target selection modal - shown when dropping outside specific zones */}
       <DropZoneModal
