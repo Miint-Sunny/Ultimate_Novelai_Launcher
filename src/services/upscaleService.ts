@@ -20,15 +20,6 @@ export interface UpscaleProgress {
 
 export type UpscaleMethod = 'local' | 'api';
 
-// 单一出处在 naiEnhanceScale;这里只保留原名给既有调用点。
-export const getUpscale15xTargetSize = (width: number, height: number) =>
-  enhanceTargetSize(width, height, 'x1.5');
-
-export function isUpscale15xOverLimit(width: number, height: number): boolean {
-  const target = getUpscale15xTargetSize(width, height);
-  return target.width * target.height > UPSCALE_15X_MAX_PIXELS;
-}
-
 async function blobToBase64(blob: Blob): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
