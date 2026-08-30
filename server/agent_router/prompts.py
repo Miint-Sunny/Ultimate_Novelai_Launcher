@@ -84,6 +84,7 @@ _PRESET_FILES: dict[str, str] = {
 _REQUIRED_CHAT_SECTIONS = ("persona", "workflow", "tools_hint", "reply_rules")
 _REQUIRED_PLANNER_SECTIONS = (
     "mission",
+    "skill_mandate",
     "input_format",
     "art_fundamentals",
     "art_principles",

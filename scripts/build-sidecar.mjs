@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const promptResource = path.join(root, 'server', 'agent_router', 'resources', 'prompts.yaml');
+// 方法层(nai5-prompting)也必须进包:agent 写 V5 提示词靠它,缺了 skills.py 会硬失败
+// ——那是有意的,不要改成静默降级,降级的结果就是 agent 退回拼 tag。
+const skillResources = path.join(root, 'server', 'agent_router', 'resources', 'skills');
 try {
   execFileSync(process.execPath, [path.join(root, 'scripts', 'preflight-agent-prompts.mjs')], {
     cwd: root,
@@ -40,6 +43,7 @@ execFileSync('uv', [
   '--paths', root,
   '--collect-all', 'curl_cffi',
   '--add-data', `${promptResource}${path.delimiter}server/agent_router/resources`,
+  '--add-data', `${skillResources}${path.delimiter}server/agent_router/resources/skills`,
   path.join(root, 'scripts', 'sidecar-entry.py'),
 ], {
   cwd: root,

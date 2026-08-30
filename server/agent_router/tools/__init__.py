@@ -1,9 +1,11 @@
 """
 @agent.tool 注册集合。
 
-只剩 1 个 tool 注册器:
+2 个 tool 注册器:
     knowledge.py → register_knowledge_tools(agent)  # 知识库搜索 4 个工具
                    （search_character / search_artist / random_artist / search_danbooru）
+    skill.py     → register_skill_tools(agent)      # 按需读 nai5-prompting 方法层
+                   （read_prompting_skill / list_prompting_skill）
 
 已删除:
     delegate.py / register_delegate_tools — chat 与 planner 合并为单 agent 后，
@@ -13,7 +15,9 @@
 """
 
 from .knowledge import register_knowledge_tools
+from .skill import register_skill_tools
 
 __all__ = [
     "register_knowledge_tools",
+    "register_skill_tools",
 ]

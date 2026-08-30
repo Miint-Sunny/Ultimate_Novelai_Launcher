@@ -24,19 +24,11 @@ if str(_SERVER_DIR) not in sys.path:
 
 # 测试用合并预设模板（chat 行为段 + planner 知识段，单文件 prompts.yaml）
 def _merged_yaml(persona_text: str) -> str:
-    planner_names = (
-        "mission",
-        "input_format",
-        "art_fundamentals",
-        "art_principles",
-        "character_rules",
-        "art_advanced",
-        "fixed_combos",
-        "technique_combos",
-        "art_craft",
-        "reference_examples",
-        "draw_output",
-    )
+    # 段名直接取契约,不在这里抄一份 —— 抄的那份漂过一次:
+    # 加 skill_mandate 时产品代码和契约都改了,夹具没跟上,6 个测试一起红。
+    from agent_router.prompts import _REQUIRED_PLANNER_SECTIONS
+
+    planner_names = _REQUIRED_PLANNER_SECTIONS
     planner_lines: list[str] = []
     for name in planner_names:
         content = "你是绘图助手 {random_string}" if name == "mission" else f"{name} 测试段"

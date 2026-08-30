@@ -15,7 +15,8 @@ from ..deps import AgentDeps
 from ..llm import Agent, PromptedOutput, RunContext
 from ..prompts import load_planner_section
 from ..schemas import DrawSpec
-from ..tools import register_knowledge_tools
+from ..skills import load_index, load_mandate
+from ..tools import register_knowledge_tools, register_skill_tools
 
 # Both the legacy router and desktop runner inject the request-scoped model.
 # Importing this module must not read deployment-specific config.py.
@@ -36,6 +37,7 @@ pure_planner_agent: Agent[AgentDeps, DrawSpec] = Agent(
 # 否则 load_planner_section 会返回 ""，等于塞一条空 system 进去。
 _PLANNER_SECTIONS = [
     "mission",
+    "skill_mandate",
     "input_format",
     "art_fundamentals",
     "art_principles",
@@ -70,6 +72,21 @@ _register_planner_sections()
 
 
 @pure_planner_agent.system_prompt
+async def _skill_manifest(ctx: RunContext[AgentDeps]) -> str:
+    """
+    方法层的铁律 + 小节目录。
+
+    直接从内置的 skill 文件生成,**不在 prompts.yaml 里复述** ——
+    上游改了方法,这里跟着变;复述一份就迟早两处说两套话。
+    正文按需读(read_prompting_skill),这里只放够模型自己挑节的信息。
+    """
+    return (
+        f"{load_mandate()}\n\n"
+        f"可读的小节(用 read_prompting_skill 取原文):\n{load_index()}"
+    )
+
+
+@pure_planner_agent.system_prompt
 async def _anti_marker(ctx: RunContext[AgentDeps]) -> str:
     """防上游指纹标记（env CPA_ENABLE_ANTI_MARKER=true 时启用，每次生成新噪声）"""
     from .anti_marker import make_anti_marker_noise
@@ -79,3 +96,5 @@ async def _anti_marker(ctx: RunContext[AgentDeps]) -> str:
 
 # 复用 4 个本地查询工具（search_character / search_artist / random_artist / search_danbooru）
 register_knowledge_tools(pure_planner_agent)
+# 方法层按需读取（read_prompting_skill / list_prompting_skill）
+register_skill_tools(pure_planner_agent)

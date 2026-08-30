@@ -83,7 +83,10 @@ class DrawSpec(BaseModel):
     positive: str = Field(
         ...,
         description=(
-            "全局正向 tag（英文逗号分隔）。\n"
+            "全局正向提示词（英文）。**不是纯 tag 串** —— 按挂载的 nai5-prompting "
+            "方法层写:该写成词组的写词组、该写成句子的写句子(判据见方法层 §2–§4),"
+            "两者用逗号连接。写成一串逗号分隔的标签是这一层最常见的退化,"
+            "V5 的空间关系/职能归属/光影叙事这些内容用 tag 是说不准的。\n"
             "**严格约束（违反会导致画面退化）**：\n"
             "1. 对于 chat_agent 已查到的 source=roleTag 预训练角色（如 plana_(blue_archive) / "
             "flandre_scarlet / hatsune_miku 等带括号的标准 Danbooru 角色 tag），"
