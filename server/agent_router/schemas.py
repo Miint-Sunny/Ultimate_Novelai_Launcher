@@ -70,12 +70,13 @@ class DrawCharacter(BaseModel):
 
 class DrawSpec(BaseModel):
     """
-    绘图规格 —— 合并 chat_agent 直接产出（写进 ChatOutput.draw_specs）。
+    绘图规格 —— pure_planner_agent 的输出(router.py 的 planner 阶段)。
 
     流向：
-      Bot 端：chat_agent → ChatOutput.draw_specs[i] → enqueue_image_generation 提交到 NovelAI 队列
-      Web 端：chat_agent → ChatOutput → 转换为 AgentResult → 前端 Workshop 渲染 prompt
-    （draw_planner_agent / web_prompt_agent 已下线，统一走合并 chat_agent）
+      Bot 端：pure_planner → draw_specs[i] → enqueue_image_generation 提交到 NovelAI 队列
+      Web 端：pure_planner → 转换为 AgentResult → 前端 Workshop 渲染 prompt
+    （合并 chat_agent / draw_planner_agent / web_prompt_agent 都已下线；
+      生产流程是 lite_chat + pure_planner 两阶段，见 router.py:556 与 :754）
 
     简化版：不再含 cr / vibes / seed 等字段。
     """
@@ -88,7 +89,7 @@ class DrawSpec(BaseModel):
             "两者用逗号连接。写成一串逗号分隔的标签是这一层最常见的退化,"
             "V5 的空间关系/职能归属/光影叙事这些内容用 tag 是说不准的。\n"
             "**严格约束（违反会导致画面退化）**：\n"
-            "1. 对于 chat_agent 已查到的 source=roleTag 预训练角色（如 plana_(blue_archive) / "
+            "1. 对于 lite 阶段已查到的 source=roleTag 预训练角色（如 plana_(blue_archive) / "
             "flandre_scarlet / hatsune_miku 等带括号的标准 Danbooru 角色 tag），"
             "**禁止追加发色 / 瞳色 / 发型 / 招牌服装 / 招牌饰品**。"
             "例如：plana_(blue_archive) 已经包含'白发 + 蓝眼 + 光环 + 白裙'，"
