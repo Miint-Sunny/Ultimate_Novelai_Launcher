@@ -29,14 +29,15 @@ const NO_OFFICIAL_SOURCE: PresetOfficialSource = { quality: null, uc: null };
  * 官方导入图片时靠这个提示决定「先拿哪个档去试着把预设文本剥掉」,剥不掉会自己
  * 暴力扫描兜底 —— 所以对不上就留 null,别硬凑一个看着像的。
  *
- * `heavy` 的正面是 V3 与 V4.5 两段官方文本拼出来的(还带着重复的
- * `very aesthetic`),不对应任何单一官方质量档,因此只报负面档。
+ * `heavy` / `light` 的正面自 2026-09-04 起按模型取官方质量尾(naiQualityTails),
+ * 旧模型族只有 standard 一档,所以两条都报 standard;之前那个 V3+V4.5 拼接串只剩
+ * 认不出模型时的兜底用途,不再决定来源。
  *
  * 同一份表在 Plana-App 的 `_presetOfficialSource` 里有一份独立实现,
  * 两边的结论一致。
  */
 const PRESET_OFFICIAL_SOURCE: Readonly<Record<string, PresetOfficialSource>> = {
-  heavy: { quality: null, uc: 'heavy' },
+  heavy: { quality: 'standard', uc: 'heavy' },
   light: { quality: 'standard', uc: 'light' },
   'v5-standard': { quality: 'standard', uc: 'heavy' },
   'v5-light': { quality: 'light', uc: 'light' },

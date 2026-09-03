@@ -20,6 +20,7 @@ await import('./lib/load-frontend-module.mjs');
 const { buildRequestPayload } = await import('../src/services/novelai.ts');
 const { DEFAULT_PROMPT_PRESETS } = await import('../src/services/localLibrary/promptPresets.ts');
 const { V5_QUALITY_SUFFIX, V5_UC_PREFIX, officialPresetHint } = await import('../src/services/naiV5Presets.ts');
+const { qualityTailForModel } = await import('../src/services/naiQualityTails.ts');
 const {
   presetOfficialSource,
   promptPresetsForModel,
@@ -117,12 +118,15 @@ check('映射: 是推导不是改写 —— 来回切模型能拿回原来那一
 
 // ---- 4. 官方来源与档位提示 ----
 
-check('来源: heavy 拼了质量词,但它的正面对不上任何单一官方档', () => {
-  // heavy 的正面是 V3 与 V4.5 两段官方文本拼出来的(还带着重复的 very aesthetic),
-  // 硬报一个 standard 会让导入时按错的档去剥文本。
-  assert.equal(presetOfficialSource('heavy').quality, null);
+check('来源: legacy 两档的质量尾按模型取,来源都是 standard(旧模型族只有这一档)', () => {
+  // 2026-09-04 之前 heavy 报 null:它的字面串是 V3+V4.5 拼出来的,对不上任何一档。
+  // 现在发出去的是当前模型的官方尾,字面串只剩兜底,来源可以如实报了。
+  assert.equal(presetOfficialSource('heavy').quality, 'standard');
   assert.equal(presetOfficialSource('heavy').uc, 'heavy');
-  assert.ok(byId('heavy').positive.length > 0);
+  assert.equal(presetOfficialSource('light').quality, 'standard');
+  assert.equal(byId('heavy').qualityTier, 'standard');
+  assert.equal(byId('light').qualityTier, 'standard');
+  assert.ok(byId('heavy').positive.length > 0, '兜底字面量不能空:移动端还在读它');
 });
 
 check('来源: 自定义档与未知 id 一律没有官方来源', () => {
@@ -143,10 +147,52 @@ check('提示: V5 各档的官方枚举编号(与线上数字 ucPreset 不是一
 
 // 官方从 V4 起就把质量词加到提示词**末尾**;legacy 两档 2026-08-30 起也照此。
 check('拼接: 两个系列的质量词都在末尾(官方位置)', () => {
-  const v5 = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('v5-standard') });
+  const v5 = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('v5-standard'), model: 'nai-diffusion-5-full' });
   assert.equal(v5.positive, `1girl, ${V5_QUALITY_SUFFIX.standard}`);
-  const legacy = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('heavy') });
-  assert.equal(legacy.positive, `1girl, ${byId('heavy').positive}`);
+  const legacy = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('heavy'), model: 'v4.5-full' });
+  assert.equal(legacy.positive, '1girl, location, very aesthetic, masterpiece, no text');
+});
+
+// ---- 5b. 质量尾按模型取 ----
+
+// 表文来自 Aaalice `modelQualityTags`(三份实现里唯一按模型登记的一份);
+// 官方每个模型一段,这里逐字钉死,差一个词就是另一条提示词。
+check('质量尾: 旧模型族每个模型一段,UI id 与官方 id 都认', () => {
+  assert.equal(qualityTailForModel('v4.5-full', 'standard'), 'location, very aesthetic, masterpiece, no text');
+  assert.equal(qualityTailForModel('nai-diffusion-4-5-full', 'standard'), 'location, very aesthetic, masterpiece, no text');
+  assert.equal(qualityTailForModel('v4.5-curated', 'standard'), 'location, masterpiece, no text, -0.8::feet::, rating:general');
+  assert.equal(qualityTailForModel('v4-full', 'standard'), 'no text, best quality, very aesthetic, absurdres');
+  assert.equal(qualityTailForModel('v4-curated-preview', 'standard'), 'rating:general, amazing quality, very aesthetic, absurdres');
+  assert.equal(qualityTailForModel('v3', 'standard'), 'best quality, amazing quality, very aesthetic, absurdres');
+  assert.equal(qualityTailForModel('nai-diffusion-furry-3', 'standard'), '{best quality}, {amazing quality}');
+});
+
+check('质量尾: 旧模型族没有 light 档,档位不改变文本', () => {
+  assert.equal(qualityTailForModel('v4.5-full', 'light'), qualityTailForModel('v4.5-full', 'standard'));
+});
+
+check('质量尾: V5 走 naiV5Presets 的两档表,不另抄一份', () => {
+  assert.equal(qualityTailForModel('nai-diffusion-5-full', 'standard'), V5_QUALITY_SUFFIX.standard);
+  assert.equal(qualityTailForModel('nai-diffusion-5-curated', 'light'), V5_QUALITY_SUFFIX.light);
+});
+
+check('质量尾: 认不出的模型返回 null,拼接时退回预设行的字面文本', () => {
+  assert.equal(qualityTailForModel('some-future-model', 'standard'), null);
+  const out = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('heavy'), model: 'some-future-model' });
+  assert.equal(out.positive, `1girl, ${byId('heavy').positive}`);
+});
+
+check('质量尾: 不传 model(移动端旧调用)时与之前逐字节一致', () => {
+  const out = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('heavy') });
+  assert.equal(out.positive, `1girl, ${byId('heavy').positive}`);
+});
+
+check('质量尾: 旧模型上 V3 的尾巴不再跟 V4.5 的拼在一起发出去', () => {
+  for (const model of ['v4.5-full', 'v4.5-curated', 'v4-full', 'v3']) {
+    const out = buildPromptPair({ positivePrompt: '1girl', negativePrompt: 'x', activePreset: byId('heavy'), model });
+    assert.ok(!out.positive.includes('absurdres,very'), `${model}: 拼接串泄漏`);
+    assert.equal(out.positive.split('very aesthetic').length - 1, out.positive.includes('very aesthetic') ? 1 : 0, `${model}: very aesthetic 重复`);
+  }
 });
 
 // 这两段与官方现役的 V4.5 Full 负面档逐字节相同。历史上末尾多带过一个孤零零的

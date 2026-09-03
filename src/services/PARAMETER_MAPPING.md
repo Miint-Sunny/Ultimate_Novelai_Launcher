@@ -13,7 +13,7 @@
 | `parameters.ucPreset` | 数字 `0/1/4` | 不发 | 我们只发官方形状，见下方「关于预设口径」 |
 | `parameters.qualityToggle` | 布尔 | 不发 | 同上 |
 | `parameters.ucPresetId` | 不发 | 字符串 | `heavy` / `light` / `furryFocus` / `humanFocus` / `none` |
-| `parameters.qualityPresetId` | 不发 | 字符串 | `standard` / `light` / `none`（现有 UI 只有布尔，映到 standard/none） |
+| `parameters.qualityPresetId` | 不发 | 字符串 | `standard` / `light` / `none`；legacy 两档与 V5 各档都由 `presetOfficialSource` 报出来源，质量尾文本本身按模型取（`naiQualityTails`） |
 | `parameters.noise_schedule` | 透传用户选择 | 恒 `karras` | V5 隐藏了选择器并强制写死，官方客户端的 sanitizer 就这么做 |
 | `parameters.skip_cfg_above_sigma` | Variety+ 开启时 `58`，否则 `null` | 恒 `null` | V5 没有 Variety+ |
 | `parameters.straight_alpha` | 不发 | 恒 `true` | 32 通道 VAE 真正吐出 alpha 通道靠它，与用户是否要透明背景无关 |

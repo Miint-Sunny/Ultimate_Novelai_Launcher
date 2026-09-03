@@ -45,6 +45,8 @@ export type PreparePromptPair = (prompts: {
   positivePrompt: string;
   negativePrompt: string;
   activePreset: PromptPresetContent | null | undefined;
+  /** 当前模型;质量尾按它取。实现方可以不读(移动端目前就不读)。 */
+  model?: string;
 }) => PromptPair | Promise<PromptPair>;
 
 export type PrepareCharacterPrompts = (
@@ -121,6 +123,7 @@ export async function buildBaseGenerationParams(input: BaseGenerationParamsInput
     positivePrompt: input.positivePrompt,
     negativePrompt: input.negativePrompt,
     activePreset: input.activePreset,
+    model: input.model,
   });
   const officialSource = presetOfficialSource(input.activePresetId);
   const preciseReferences = await input.preparePreciseReferences(input.activePreciseRefs);

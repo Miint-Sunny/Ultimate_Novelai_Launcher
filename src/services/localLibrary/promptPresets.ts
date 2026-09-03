@@ -1,4 +1,5 @@
 import { V5_QUALITY_SUFFIX, V5_UC_PREFIX } from '../naiV5Presets';
+import type { QualityTier } from '../naiQualityTails';
 
 export const PROMPT_PRESETS_KEY = 'novelai_prompt_presets';
 const ACTIVE_PRESET_KEY = 'novelai_active_preset';
@@ -27,6 +28,11 @@ export interface PromptPresetData {
    * legacy 两档保持前缀不动 —— 存量用户的出图风格挂在上面,挪位置会变图。
    */
   suffixPositive?: boolean;
+  /**
+   * 质量档。设了这一项,发包时正面文本改为**按当前模型**取官方质量尾
+   * (services/naiQualityTails),`positive` 只在认不出模型时兜底。
+   */
+  qualityTier?: QualityTier;
 }
 
 export const DEFAULT_PROMPT_PRESETS: PromptPresetData[] = [
@@ -37,16 +43,16 @@ export const DEFAULT_PROMPT_PRESETS: PromptPresetData[] = [
   //   2. 正面质量词改拼在末尾。官方从 V4 起就把质量词加到提示词末尾
   //      (Aaalice `modelQualityTags` 的注释原文就是「添加到末尾」),我们一直放开头。
   //
-  // ⚠ 还有一处**没动**:`heavy` 的正面是 V3 的质量尾 + V4.5 的质量尾拼出来的
-  // (`best quality, amazing quality, very aesthetic, absurdres` 接
-  // `very aesthetic, masterpiece, no text`,还带着重复的 `very aesthetic` 与少一个
-  // 空格的 `absurdres,very`)。官方的质量尾是**按模型**给的、每个模型一段,不是这样
-  // 拼两段——要对齐得把质量尾改成随模型取,那是设计改动不是改字符串,留着待定。
+  // 2026-09-04 第三处也对齐了:质量尾**按模型取**(`qualityTier` → naiQualityTails)。
+  // 官方从来是每个模型一段,`heavy` 那个 V3+V4.5 拼接串(重复 `very aesthetic`、少空格的
+  // `absurdres,very`)只作为认不出模型时的兜底字面量保留——它同时是移动端仍在读的值,
+  // 竖屏线接上 qualityTier 之前不能动它。
   {
     id: 'heavy',
     name: '重度 (质量标签)',
     scope: 'legacy',
     suffixPositive: true,
+    qualityTier: 'standard',
     positive: 'best quality, amazing quality, very aesthetic, absurdres,very aesthetic, masterpiece, no text',
     negative: 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page',
     isDefault: true,
@@ -56,6 +62,8 @@ export const DEFAULT_PROMPT_PRESETS: PromptPresetData[] = [
     name: '轻度',
     scope: 'legacy',
     suffixPositive: true,
+    // 旧模型族只有一档质量尾;轻度与重度的差别在负面档,不在质量尾。
+    qualityTier: 'standard',
     positive: 'very aesthetic, masterpiece, no text',
     negative: 'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page',
     isDefault: true,
