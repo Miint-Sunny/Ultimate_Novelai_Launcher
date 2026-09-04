@@ -250,7 +250,9 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                   if (activeRedrawScale === 'x1') return `同尺寸精修（${size}），消耗 ${result.total} Anlas`;
                   return `基于图生图重绘至 ${size}，消耗 ${result.total} Anlas`;
                 })()
-                : '模型原生 4x 放大，2x 会额外缩放'}
+                : method === 'api'
+                  ? 'V5 扩散超分固定 2×，按源图像素计费'
+                  : '模型原生 4x 放大，2x 会额外缩放'}
             </p>
           </div>
 
