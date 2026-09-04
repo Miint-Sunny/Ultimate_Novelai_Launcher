@@ -1528,6 +1528,132 @@ async def generate_novelai_image_stream(
         raise
 
 
+def _decrement_generation_pending_once(task: dict[str, Any] | None) -> None:
+    """Atomically claim and apply one legacy pending-count decrement."""
+
+    if not task:
+        return
+    with _state_lock:
+        if task.get("_pending_decremented"):
+            return
+        task["_pending_decremented"] = True
+        task_user_id = task.get("user_id", "")
+        if task_user_id:
+            cnt = _user_pending.get(task_user_id, 0)
+            if cnt > 0:
+                _user_pending[task_user_id] = cnt - 1
+
+
+async def _finish_dequeued_task_without_provider(
+    task_id: str,
+    *,
+    status: str,
+    error: str,
+    params: dict[str, Any],
+    task_seq: int,
+) -> None:
+    """Commit one pre-provider terminal result and always release its queue slot."""
+
+    final_status = status
+    final_error = error
+    terminal_confirmed = False
+    try:
+        for attempt in range(2):
+            try:
+                await _notify_task_update(task_id, status, error=error)
+                terminal_confirmed = True
+                break
+            except JobStateConflictError:
+                try:
+                    persisted = await _cloud_jobs.get(task_id)
+                except Exception as exc:
+                    logger.warning(
+                        f"[worker] terminal conflict read retry: id={task_id}, "
+                        f"error={type(exc).__name__}"
+                    )
+                else:
+                    if persisted is not None and persisted.terminal:
+                        terminal_confirmed = True
+                        final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
+                        final_error = persisted.error or error
+                        break
+                if attempt == 0:
+                    await asyncio.sleep(0)
+                    continue
+                logger.exception(
+                    f"[worker] pre-provider terminal conflict remained unresolved: "
+                    f"id={task_id}"
+                )
+            except Exception as exc:
+                if attempt == 0:
+                    logger.warning(
+                        f"[worker] pre-provider terminal write retry: id={task_id}, "
+                        f"error={type(exc).__name__}"
+                    )
+                    await asyncio.sleep(0)
+                    continue
+                logger.exception(
+                    f"[worker] pre-provider terminal write unavailable: id={task_id}, "
+                    f"error={type(exc).__name__}"
+                )
+
+        if not terminal_confirmed:
+            try:
+                persisted = await _cloud_jobs.get(task_id)
+            except Exception as exc:
+                logger.warning(
+                    f"[worker] pre-provider terminal confirmation unavailable: id={task_id}, "
+                    f"error={type(exc).__name__}"
+                )
+            else:
+                if persisted is not None and persisted.terminal:
+                    terminal_confirmed = True
+                    final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
+                    final_error = persisted.error or error
+
+        if terminal_confirmed:
+            task = _generation_tasks.get(task_id)
+            if task:
+                task["status"] = final_status
+                task["error"] = final_error
+            await _settle_generation_quota(task_id)
+        else:
+            await asyncio.sleep(0.1)
+            _image_queue.put_nowait((task_id, params, task_seq))
+            logger.error(
+                f"[worker] pre-provider terminal write deferred; requeued task: id={task_id}"
+            )
+    finally:
+        task = _generation_tasks.get(task_id)
+        if task and terminal_confirmed:
+            _decrement_generation_pending_once(task)
+            task.pop("params", None)
+        if terminal_confirmed:
+            _generation_websockets.pop(task_id, None)
+        _image_queue.task_done()
+        await _broadcast_queue_position_update()
+
+
+async def _increase_dequeued_task_quota(task_id: str, units: int) -> None:
+    """Synchronize the reservation, durable job, and legacy task before billing."""
+
+    await _ensure_cloud_job_storage()
+    job = await _cloud_jobs.get(task_id)
+    if job is None:
+        raise ResourceNotFoundError()
+    principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
+    record: dict[str, Any] = {
+        "tenant_id": job.resource.tenant_id,
+        "owner_id": job.resource.owner_id,
+        "quota_reservation_id": job.quota_reservation_id,
+    }
+    await _quota_ledger.increase_reservation(record, principal, units=units)
+    await _cloud_jobs.update_cost_units(task_id, units)
+    task = _generation_tasks.get(task_id)
+    if task:
+        task["quota_units"] = units
+
+
 async def novelai_worker(worker_id: int, token: str):
     """NovelAI 图片生成 Worker"""
     global _current_task, _running_count
@@ -1552,19 +1678,82 @@ async def novelai_worker(worker_id: int, token: str):
         if task and task.get("status") == "cancelled":
             logger.warning(f"[{worker_name}] 跳过已取消的任务: id={task_id}, user={user_id}")
             # 减少用户待处理计数（仅当取消 API 未提前减过时）
-            if not task.get("_pending_decremented"):
-                task_user_id = task.get("user_id", "")
-                if task_user_id:
-                    with _state_lock:
-                        cnt = _user_pending.get(task_user_id, 0)
-                        if cnt > 0:
-                            _user_pending[task_user_id] = cnt - 1
+            _decrement_generation_pending_once(task)
             # 清理 WebSocket 订阅
             _generation_websockets.pop(task_id, None)
             _image_queue.task_done()
             # 广播队列位置更新
             await _broadcast_queue_position_update()
             continue
+
+        model = str(params.get("model", ""))
+        opus_exhausted = await _opus_usage_exhausted_for(model)
+        task = _generation_tasks.get(task_id)
+        if task and task.get("status") == "cancelled":
+            logger.warning(f"[{worker_name}] Opus 检查期间任务已取消: id={task_id}, user={user_id}")
+            _decrement_generation_pending_once(task)
+            _generation_websockets.pop(task_id, None)
+            _image_queue.task_done()
+            await _broadcast_queue_position_update()
+            continue
+        if opus_exhausted:
+            if _opus_exhausted_policy() is OpusExhaustedPolicy.REJECT:
+                error = (
+                    "宿主 Opus 额度已耗尽,V5 生成暂停以保护宿主钱包;"
+                    "请联系管理员或改用非 V5 模型"
+                )
+                await _finish_dequeued_task_without_provider(
+                    task_id,
+                    status="failed",
+                    error=error,
+                    params=params,
+                    task_seq=task_seq,
+                )
+                continue
+            quota_units = max(
+                1,
+                calculate_anlas_cost(
+                    width,
+                    height,
+                    steps,
+                    model,
+                    params.get("strength") if params.get("image") else None,
+                    len(params.get("director_reference_images", []) or []),
+                    opus_usage_exhausted=True,
+                ),
+            )
+            try:
+                await _increase_dequeued_task_quota(task_id, quota_units)
+            except CloudBackendError as exc:
+                logger.warning(
+                    f"[{worker_name}] V5 实价预留失败: id={task_id}, code={exc.code}"
+                )
+                error = (
+                    "用户额度不足，无法按实际价格执行 V5 生成"
+                    if exc.code == "quota_exceeded"
+                    else "生成计费准备失败，请稍后重试"
+                )
+                await _finish_dequeued_task_without_provider(
+                    task_id,
+                    status="failed",
+                    error=error,
+                    params=params,
+                    task_seq=task_seq,
+                )
+                continue
+            except Exception as exc:
+                logger.exception(
+                    f"[{worker_name}] V5 实价预留异常: id={task_id}, "
+                    f"error={type(exc).__name__}"
+                )
+                await _finish_dequeued_task_without_provider(
+                    task_id,
+                    status="failed",
+                    error="生成计费准备失败，请稍后重试",
+                    params=params,
+                    task_seq=task_seq,
+                )
+                continue
         
         logger.info(f"[{worker_name}] 开始处理任务: id={task_id}, user={user_id}, seq={task_seq}, size={width}x{height}, steps={steps}, seed={seed}")
         
@@ -1594,7 +1783,7 @@ async def novelai_worker(worker_id: int, token: str):
             
             # 智能选择并独占一个可用的 Token（解决并发 429 报错）
             # 注意：acquire_token() 可能阻塞等待，此时任务状态仍为 queued
-            need_anlas = _task_needs_anlas(params)
+            need_anlas = _task_needs_anlas(params) or opus_exhausted
             use_token = await token_manager.acquire_token(need_anlas=need_anlas)
             
             try:
@@ -1675,13 +1864,7 @@ async def novelai_worker(worker_id: int, token: str):
             # 减少用户待处理计数（仅当取消 API 未提前减过时）
             task = _generation_tasks.get(task_id)
             if task:
-                if not task.get("_pending_decremented"):
-                    task_user_id = task.get("user_id", "")
-                    if task_user_id:
-                        with _state_lock:
-                            cnt = _user_pending.get(task_user_id, 0)
-                            if cnt > 0:
-                                _user_pending[task_user_id] = cnt - 1
+                _decrement_generation_pending_once(task)
                 # 任务结束后清理大体积的 params 数据，释放内存（保留关键字段用于状态查询）
                 task.pop("params", None)
 
@@ -2413,19 +2596,21 @@ def _principal_for_task_record(task: dict[str, Any]) -> Principal:
 
 async def _settle_generation_quota(task_id: str) -> None:
     """Settle by durable provider-attempt stage, never by optimistic memory state."""
-    await _ensure_cloud_job_storage()
-    job = await _cloud_jobs.get(task_id)
-    if job is None or not job.terminal or job.quota_settled:
-        return
-    if _is_workshop_job(job):
-        return
-    task = _generation_tasks.get(task_id)
-    if not job.quota_reservation_id:
-        return
-    if not _quota_ledger.enabled:
-        logger.info(f"[quota] task={task_id} reservation remains unsettled because ledger is disabled")
-        return
     try:
+        await _ensure_cloud_job_storage()
+        job = await _cloud_jobs.get(task_id)
+        if job is None or not job.terminal or job.quota_settled:
+            return
+        if _is_workshop_job(job):
+            return
+        task = _generation_tasks.get(task_id)
+        if not job.quota_reservation_id:
+            return
+        if not _quota_ledger.enabled:
+            logger.info(
+                f"[quota] task={task_id} reservation remains unsettled because ledger is disabled"
+            )
+            return
         principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
         record = {
             "tenant_id": job.resource.tenant_id,
@@ -3801,14 +3986,8 @@ async def cancel_task(
         task["error"] = "用户取消"
     
     # 减少用户待处理计数，并标记已减，防止 Worker 重复减
-    task_user_id = task.get("user_id", "") if task else ""
-    if task_user_id and job.status is JobStatus.CANCELLED:
-        with _state_lock:
-            cnt = _user_pending.get(task_user_id, 0)
-            if cnt > 0:
-                _user_pending[task_user_id] = cnt - 1
-    if task and job.status is JobStatus.CANCELLED:
-        task["_pending_decremented"] = True
+    if job.status is JobStatus.CANCELLED:
+        _decrement_generation_pending_once(task)
 
     if job.status is JobStatus.CANCELLING:
         upstream = _generation_upstream_tasks.get(task_id)

@@ -116,7 +116,12 @@ _SCHEMA = (
 )
 
 _ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
-    JobStatus.QUEUED: {JobStatus.RUNNING, JobStatus.CANCELLED, JobStatus.INTERRUPTED},
+    JobStatus.QUEUED: {
+        JobStatus.RUNNING,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+        JobStatus.INTERRUPTED,
+    },
     JobStatus.RUNNING: {
         JobStatus.CANCELLING,
         JobStatus.SUCCEEDED,
@@ -348,6 +353,65 @@ class SQLiteCloudJobRepository:
     async def get_job_owner(self, job_id: str) -> ResourceOwner | None:
         job = await self.get(job_id)
         return job.resource if job is not None else None
+
+    async def update_cost_units(
+        self,
+        job_id: str,
+        cost_units: int,
+    ) -> tuple[CloudJob, CloudJobEvent | None]:
+        """Persist a higher price while the job is still before its provider boundary."""
+
+        _validate_job_id(job_id)
+        cost_units = _counter(cost_units, "cost_units")
+        now = _timestamp(self._clock())
+        async with self._transaction() as connection:
+            row = await _fetchone(connection, "SELECT * FROM cloud_jobs WHERE id = ?", (job_id,))
+            if row is None:
+                raise ResourceNotFoundError()
+            current = _row_to_job(row)
+            if current.cost_units == cost_units:
+                return current, None
+            if cost_units < current.cost_units:
+                raise InvalidRequestError("cost_units cannot decrease")
+            if (
+                current.status is not JobStatus.QUEUED
+                or current.provider_attempted
+                or current.quota_settled
+            ):
+                raise JobStateConflictError(
+                    "job cost can only increase before the provider attempt"
+                )
+            await connection.execute(
+                """
+                UPDATE cloud_jobs
+                SET cost_units = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (cost_units, now, job_id),
+            )
+            event = await self._insert_event(
+                connection,
+                job_id=job_id,
+                kind="cost_increased",
+                status=current.status,
+                data_json=_json(
+                    {
+                        "previous_cost_units": current.cost_units,
+                        "cost_units": cost_units,
+                    },
+                    _MAX_EVENT_JSON,
+                    "job event",
+                ),
+                created_at=now,
+            )
+            updated_row = await _fetchone(
+                connection, "SELECT * FROM cloud_jobs WHERE id = ?", (job_id,)
+            )
+            if updated_row is None:  # pragma: no cover - local transaction invariant
+                raise RuntimeError("updated cloud job could not be read")
+            updated = _row_to_job(updated_row)
+        await self._notify_change()
+        return updated, event
 
     async def transition(
         self,

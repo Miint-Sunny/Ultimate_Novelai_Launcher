@@ -77,6 +77,18 @@ class QuotaReservationRequest:
 
 
 @dataclass(frozen=True)
+class QuotaReservationIncreaseRequest:
+    reservation_id: str
+    target_units: int
+    tenant_id: str | None = None
+    owner_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _record_id(self.reservation_id, "reservation_id")
+        _positive_units(self.target_units)
+
+
+@dataclass(frozen=True)
 class QuotaSettlementRequest:
     reservation_id: str
     idempotency_key: str
@@ -103,6 +115,14 @@ class QuotaRepository(Protocol):
         idempotency_key: str,
         actor: Principal,
     ) -> ReservationResult: ...
+
+    async def increase_reservation(
+        self,
+        resource: ResourceOwner,
+        *,
+        reservation_id: str,
+        target_units: int,
+    ) -> QuotaReservation: ...
 
     async def settle(
         self,
@@ -155,6 +175,18 @@ class QuotaService:
         request: QuotaSettlementRequest,
     ) -> SettlementResult:
         return await self._settle(principal, request, SettlementAction.CAPTURE)
+
+    async def increase_reservation(
+        self,
+        principal: Principal,
+        request: QuotaReservationIncreaseRequest,
+    ) -> QuotaReservation:
+        resource = self._quota_resource(principal, request)
+        return await self._repository.increase_reservation(
+            resource,
+            reservation_id=request.reservation_id,
+            target_units=request.target_units,
+        )
 
     async def refund(
         self,
