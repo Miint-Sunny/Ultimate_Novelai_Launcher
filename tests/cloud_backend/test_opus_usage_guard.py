@@ -20,11 +20,11 @@ from typing import Any
 
 import pytest
 
+from cloud_backend.identity import ResourceOwner
 from cloud_backend.infrastructure import (
     CloudJobResultStore,
     SQLiteCloudJobRepository,
 )
-from cloud_backend.identity import ResourceOwner
 from cloud_backend.legacy_adapter import LegacyQuotaLedger
 from cloud_backend.opus_usage import (
     OpusExhaustedPolicy,
