@@ -44,6 +44,7 @@ from .history_adapter import (
     load_history_for_agent,
 )
 from .llm import BinaryContent
+from .model_family import normalize_model_family
 from .model_provider import (
     get_model,
     get_model_settings,
@@ -585,8 +586,8 @@ async def chat(
     user_key = _build_user_key(req)
 
     # 按 req.image_model 解析 prompt 预设 + 图像后端（与 LLM 渠道 req.model 正交）。
-    # bot 端读 NOVELAI_MODEL_MODE[ctx] 后归一化为 anima / nai_v45_full / nai_v45_curated，
-    # 通过 ChatRequest.image_model 透传到这里。
+    # bot 端读 NOVELAI_MODEL_MODE[ctx] 后归一化为契约中的 nai_v5_* / nai_v45_* /
+    # anima，通过 ChatRequest.image_model 透传到这里。
     #   image_model == "anima" → preset="anima"（用 prompts_anima.yaml） + backend="anima"
     #   其他 / 空 / 任何 nai_* 值 → 默认 prompts.yaml + backend="novelai"
     _image_model = (req.image_model or "").strip().lower()
@@ -648,6 +649,7 @@ async def chat(
         scene=req.scene,
         group_id=req.group_id,
         selected_model=req.model,
+        image_model_family=normalize_model_family(req.image_model),
         prompt_preset=_prompt_preset,
         debug_context=req.debug_context,
         http_client=_get_http_client(),

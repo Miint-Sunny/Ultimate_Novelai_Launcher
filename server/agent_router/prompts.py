@@ -82,7 +82,7 @@ _PRESET_FILES: dict[str, str] = {
 }
 
 _REQUIRED_CHAT_SECTIONS = ("persona", "workflow", "tools_hint", "reply_rules")
-_REQUIRED_PLANNER_SECTIONS = (
+_BASE_REQUIRED_PLANNER_SECTIONS = (
     "mission",
     "skill_mandate",
     "input_format",
@@ -95,6 +95,10 @@ _REQUIRED_PLANNER_SECTIONS = (
     "art_craft",
     "reference_examples",
     "draw_output",
+)
+_REQUIRED_PLANNER_SECTIONS = (
+    *_BASE_REQUIRED_PLANNER_SECTIONS,
+    "skill_mandate_v45",
 )
 
 
@@ -151,7 +155,20 @@ _prompts_logger = logging.getLogger("agent_router.prompts")
 def _load_yaml_cached(source: str, digest: str, text: str) -> dict[str, Any]:
     """Cache by source and content hash so modified resources reload."""
     del digest
-    data = _parse_and_validate_yaml(text, source)
+    # Deployment-only preset files predate model-family overrides. Keep their
+    # base-section contract stable; a missing family override is supplied from
+    # the formal packaged prompts.yaml by load_planner_section().
+    alternate_filenames = set(_PRESET_FILES.values()) - {_PROMPTS_FILE}
+    required_sections = (
+        _BASE_REQUIRED_PLANNER_SECTIONS
+        if Path(source).name in alternate_filenames
+        else _REQUIRED_PLANNER_SECTIONS
+    )
+    data = _parse_and_validate_yaml(
+        text,
+        source,
+        required_planner_sections=required_sections,
+    )
     _prompts_logger.info(
         f"[prompts] reload {source} — "
         f"sections: chat={list((data.get('chat') or {}).keys())} "
@@ -184,6 +201,20 @@ def _read_prompt_source(filename: str) -> tuple[str, str]:
     except (FileNotFoundError, ModuleNotFoundError):
         pass
 
+    # prompt2 is a deployment-only Bot override. A source checkout and the
+    # desktop bundle intentionally do not ship it, so fall back to the formal
+    # packaged prompts.yaml while still preferring BOT_DATA_DIR when present.
+    if filename == _PRESET_FILES["prompt2"]:
+        try:
+            packaged_default = _package_resource(_PROMPTS_FILE)
+            if packaged_default.is_file():
+                return (
+                    f"package:{__package__}.resources/{_PROMPTS_FILE}",
+                    packaged_default.read_text(encoding="utf-8"),
+                )
+        except (FileNotFoundError, ModuleNotFoundError):
+            pass
+
     raise PromptResourceError(_format_missing_resource_error(filename, legacy_path))
 
 
@@ -201,7 +232,12 @@ def _non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
-def _validate_prompt_data(data: dict[str, Any], source: str) -> None:
+def _validate_prompt_data(
+    data: dict[str, Any],
+    source: str,
+    *,
+    required_planner_sections: tuple[str, ...] = _REQUIRED_PLANNER_SECTIONS,
+) -> None:
     errors: list[str] = []
     chat = data.get("chat")
     if not isinstance(chat, dict):
@@ -237,7 +273,7 @@ def _validate_prompt_data(data: dict[str, Any], source: str) -> None:
                 if name in planner_names:
                     errors.append(f"planner.system_prompts 段名重复: {name}")
                 planner_names.add(name)
-        missing = [name for name in _REQUIRED_PLANNER_SECTIONS if name not in planner_names]
+        missing = [name for name in required_planner_sections if name not in planner_names]
         if missing:
             errors.append(f"planner 缺少命名段: {', '.join(missing)}")
 
@@ -245,9 +281,18 @@ def _validate_prompt_data(data: dict[str, Any], source: str) -> None:
         raise PromptResourceError(f"Agent 提示词校验失败 ({source}): {'; '.join(errors)}")
 
 
-def _parse_and_validate_yaml(text: str, source: str) -> dict[str, Any]:
+def _parse_and_validate_yaml(
+    text: str,
+    source: str,
+    *,
+    required_planner_sections: tuple[str, ...] = _REQUIRED_PLANNER_SECTIONS,
+) -> dict[str, Any]:
     data = _parse_yaml(text, source)
-    _validate_prompt_data(data, source)
+    _validate_prompt_data(
+        data,
+        source,
+        required_planner_sections=required_planner_sections,
+    )
     return data
 
 
@@ -276,6 +321,11 @@ def preflight_prompt_resource(path: str | Path | None = None) -> dict[str, Any]:
             "file": _PROMPTS_FILE,
             "source": resolved_source,
             "chat_sections": list(data["chat"].keys()),
+            "planner_sections": [
+                item["name"]
+                for item in data["planner"]["system_prompts"]
+                if isinstance(item, dict) and _non_empty_string(item.get("name"))
+            ],
             "planner_prompts_count": len(data["planner"]["system_prompts"]),
         }
     except (OSError, UnicodeError, PromptResourceError) as exc:
@@ -417,6 +467,8 @@ def load_planner_section(name: str, preset: str | None = None) -> str:
             content = item.get("content", "")
             if isinstance(content, str):
                 return content.strip()
+    if _preset_file(preset) != _PROMPTS_FILE:
+        return load_packaged_prompt_bundle().planner(name)
     return ""
 
 

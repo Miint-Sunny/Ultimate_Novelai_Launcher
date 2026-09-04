@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from ..deps import AgentDeps
 from ..llm import Agent, PromptedOutput, RunContext
-from ..prompts import load_planner_section
+from ..model_family import ModelFamily
+from ..prompts import load_packaged_prompt_bundle, load_planner_section
 from ..schemas import DrawSpec
 from ..skills import load_index, load_mandate
 from ..tools import register_knowledge_tools, register_skill_tools
@@ -50,6 +51,16 @@ _PLANNER_SECTIONS = [
     "draw_output",
 ]
 
+_MODEL_FAMILY_SECTION_OVERRIDES: dict[ModelFamily, dict[str, str]] = {
+    "v45": {"skill_mandate": "skill_mandate_v45"},
+}
+
+
+def _planner_section_name(name: str, family: ModelFamily) -> str:
+    """Resolve the one model-specific planner section at the assembly boundary."""
+
+    return _MODEL_FAMILY_SECTION_OVERRIDES.get(family, {}).get(name, name)
+
 
 def _register_planner_sections() -> None:
     """把每个 yaml 段注册成一个独立 @system_prompt（每段一条 role:system）。
@@ -58,9 +69,13 @@ def _register_planner_sections() -> None:
 
         def _make_loader(name: str):
             async def _loader(ctx: RunContext[AgentDeps]) -> str:
+                selected_name = _planner_section_name(name, ctx.deps.image_model_family)
                 if ctx.deps.prompt_bundle is not None:
-                    return ctx.deps.prompt_bundle.planner(name)
-                return load_planner_section(name, preset=ctx.deps.prompt_preset)
+                    content = ctx.deps.prompt_bundle.planner(selected_name)
+                    if content or selected_name == name:
+                        return content
+                    return load_packaged_prompt_bundle().planner(selected_name)
+                return load_planner_section(selected_name, preset=ctx.deps.prompt_preset)
 
             _loader.__name__ = f"_planner_{name}"
             return _loader

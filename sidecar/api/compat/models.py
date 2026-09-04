@@ -116,6 +116,14 @@ class AgentWebGeneratePromptRequest(StrictRequest):
 
     user_request: str = Field(default="", max_length=MAX_TEXT_CONTEXT_BYTES)
     model: str = Field(default="", max_length=256)
+    image_model: str = Field(
+        default="",
+        max_length=256,
+        description=(
+            "Image model: nai_v5_full, nai_v5_curated, nai_v45_full, "
+            "nai_v45_curated, or anima; empty means unknown"
+        ),
+    )
     image_b64: str | None = Field(
         default=None,
         max_length=(MAX_AGENT_IMAGE_BYTES * 4 // 3) + 32,

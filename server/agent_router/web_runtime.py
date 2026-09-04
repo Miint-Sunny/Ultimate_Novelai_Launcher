@@ -12,6 +12,7 @@ import httpx
 
 from .deps import AgentDeps
 from .llm import BinaryContent
+from .model_family import normalize_model_family
 from .prompts import AgentPromptBundle
 from .schemas import AgentResult, ChatOutput, SseEvent, WebPromptRequest
 
@@ -134,6 +135,7 @@ async def run_web_agent(
         platform="web",
         scene="web",
         selected_model=req.model,
+        image_model_family=normalize_model_family(req.image_model),
         prompt_preset=runtime.prompt_preset,
         prompt_bundle=runtime.prompt_bundle,
         http_client=runtime.http_client,  # type: ignore[arg-type]

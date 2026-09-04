@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
+from hashlib import sha256
 
 import pytest
 
@@ -31,6 +33,7 @@ class FakeModel(Model):
             {
                 "tool_names": [t.name for t in tools],
                 "system_n": len(system_parts),
+                "system_parts": list(system_parts),
                 "require_tool": require_tool,
             }
         )
@@ -68,6 +71,110 @@ async def test_pure_planner_produces_drawspec():
     assert fake.calls[0]["system_n"] >= 10
     # prompted JSON 结构化输出不强制工具调用
     assert fake.calls[0]["require_tool"] is False
+
+
+@pytest.mark.parametrize("family", ["unknown", "v5"])
+@pytest.mark.asyncio
+async def test_v5_compatible_families_preserve_existing_planner_prompt_bytes(
+    family,
+    monkeypatch,
+    tmp_path,
+):
+    """Old clients and V5 requests share the existing planner prompt contract."""
+    from agent_router import prompts
+    from agent_router.agents.pure_planner import pure_planner_agent
+
+    monkeypatch.setenv("CPA_ENABLE_ANTI_MARKER", "false")
+    monkeypatch.setattr(prompts, "_data_dir", lambda: tmp_path)
+    prompts._load_yaml_cached.cache_clear()
+    response = {
+        "positive": "1girl",
+        "negative": "",
+        "characters": [],
+        "size": None,
+    }
+    fake = FakeModel([ModelResponse(parts=[TextPart(content=json.dumps(response))])])
+
+    await pure_planner_agent.run(
+        "画一个女孩",
+        deps=AgentDeps(user_id="t", image_model_family=family),
+        model=fake,
+    )
+
+    contents = [part.content for part in fake.calls[0]["system_parts"]]
+    payload = json.dumps(contents, ensure_ascii=False, separators=(",", ":")).encode()
+    assert sha256(payload).hexdigest() == (
+        "ee9f4a187987b1b29786be16f7f2f1bf436cb02c0058ce2d43a220190bb2b944"
+    )
+
+
+@pytest.mark.asyncio
+async def test_v45_planner_uses_tag_only_mandate_and_keeps_skill_tools(monkeypatch):
+    from agent_router.agents.pure_planner import pure_planner_agent
+
+    monkeypatch.setenv("CPA_ENABLE_ANTI_MARKER", "false")
+    response = {
+        "positive": "1girl, city, night",
+        "negative": "",
+        "characters": [],
+        "size": None,
+    }
+    fake = FakeModel([ModelResponse(parts=[TextPart(content=json.dumps(response))])])
+
+    await pure_planner_agent.run(
+        "画一个女孩",
+        deps=AgentDeps(user_id="t", image_model_family="v45"),
+        model=fake,
+    )
+
+    system_text = "\n\n".join(part.content for part in fake.calls[0]["system_parts"])
+    assert "V4.5 纯 tag 路线" in system_text
+    assert "§3 / §4 的句子判据在 V4.5 上不适用" in system_text
+    assert "`text:` 块不可用" in system_text
+    assert "角色上限为 6" in system_text
+    assert "目前 deps 里没有 NAI 模型信息" not in system_text
+    assert "read_prompting_skill" in fake.calls[0]["tool_names"]
+
+
+@pytest.mark.asyncio
+async def test_v45_planner_falls_back_when_override_bundle_predates_family_section(
+    monkeypatch,
+):
+    from agent_router.agents.pure_planner import pure_planner_agent
+    from agent_router.prompts import load_packaged_prompt_bundle
+
+    monkeypatch.setenv("CPA_ENABLE_ANTI_MARKER", "false")
+    packaged = load_packaged_prompt_bundle()
+    old_override = replace(
+        packaged,
+        source="legacy prompts2.yaml",
+        planner_sections={
+            name: content
+            for name, content in packaged.planner_sections.items()
+            if name != "skill_mandate_v45"
+        },
+    )
+    response = {
+        "positive": "1girl",
+        "negative": "",
+        "characters": [],
+        "size": None,
+    }
+    fake = FakeModel([ModelResponse(parts=[TextPart(content=json.dumps(response))])])
+
+    await pure_planner_agent.run(
+        "画一个女孩",
+        deps=AgentDeps(
+            user_id="t",
+            image_model_family="v45",
+            prompt_bundle=old_override,
+        ),
+        model=fake,
+    )
+
+    system_text = "\n\n".join(part.content for part in fake.calls[0]["system_parts"])
+    assert "V4.5 纯 tag 路线" in system_text
+    assert "目前 deps 里没有 NAI 模型信息" not in system_text
 
 
 @pytest.mark.asyncio

@@ -60,10 +60,17 @@ if (!result || result.ok !== true) {
   fail(String(detail));
 }
 
+const requiredPlannerSections = ['skill_mandate_v45'];
+const plannerSections = Array.isArray(result.planner_sections) ? result.planner_sections : [];
+const missingPlannerSections = requiredPlannerSections.filter(name => !plannerSections.includes(name));
+if (missingPlannerSections.length > 0) {
+  fail(`Required planner sections are missing: ${missingPlannerSections.join(', ')}`);
+}
+
 console.log(`Desktop Agent prompt resource validated: ${path.relative(root, promptResource)}`);
 
 // ---- 方法层(nai5-prompting)---------------------------------------------
-// planner 现在按这份 skill 写 V5 提示词。它缺了不会报错到用户脸上,只会让 agent
+// planner 按模型代际应用这份 skill。它缺了不会报错到用户脸上,只会让 agent
 // 悄悄退回「查 tag 再拼起来」—— 正是我们要修的那个毛病。所以在打包前一起验。
 const skillCheck = [
   'import json',
