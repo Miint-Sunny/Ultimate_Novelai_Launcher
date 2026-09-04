@@ -3,6 +3,8 @@ import confetti from 'canvas-confetti';
 import type { PromptEditorRef } from './PromptEditor';
 import { useArtistManager, ArtistManagerModal } from './artist';
 import { PromptChunkManagerModal } from './prompt-chunks';
+import { usePromptChunkLibrary } from '../hooks/usePromptChunkLibrary';
+import { expandPromptChunksForSend } from '../services/promptChunkMacros';
 import { useOCManager, OCManagerModal } from './oc';
 import { useCRManager, CRManagerModal, CREditModal } from './cr';
 import { TagManagerModal } from './tag-manager';
@@ -631,11 +633,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   // 使用 GLM Tokenizer 计算 token 数。分词口径随型号(V5=Qwen / V4系=T5)由能力表决定;
   // Qwen 资产懒加载,就绪后经依赖重算,把读数从 T5 近似升级成精确口径。
   const qwenTokenizerReady = useQwenTokenizerReady();
+  // 片段引用按展开后的正文计数——发出去的是正文,`!macro:Face!` 这串字面不会到模型那里。
+  const promptChunkLibrary = usePromptChunkLibrary();
   const totalTokenCount = useMemo(() => {
     const tokenizer = promptTokenizerForModel(selectedModel.id);
     // 剔除 ~ 开头的禁用标签后再计数（与生成时的 filterHiddenTags 保持一致）
     const countActive = (prompt: string) =>
-      countTokens(prompt.split(/[,，]/).map(t => t.trim()).filter(t => !t.startsWith('~')).join(', '), tokenizer);
+      countTokens(
+        expandPromptChunksForSend(prompt, promptChunkLibrary).text
+          .split(/[,，]/).map(t => t.trim()).filter(t => !t.startsWith('~')).join(', '),
+        tokenizer,
+      );
     if (activeTab === 'prompt') {
       let total = countActive(positivePrompt);
       characterPrompts.filter(p => p.enabled).forEach(p => {
@@ -655,7 +663,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       }
       return total;
     }
-  }, [activeTab, positivePrompt, negativePrompt, characterPrompts, activePreset, selectedModel.id, qwenTokenizerReady]);
+  }, [promptChunkLibrary, activeTab, positivePrompt, negativePrompt, characterPrompts, activePreset, selectedModel.id, qwenTokenizerReady]);
 
   const handleResolutionChange = (res: typeof RESOLUTIONS[0]) => {
     resolutionSourceRef.current = `用户选择预设 ${res.label} ${res.width}×${res.height}`;

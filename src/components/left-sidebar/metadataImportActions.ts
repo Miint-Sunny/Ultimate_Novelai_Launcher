@@ -11,6 +11,8 @@ import {
   type ResolutionPreset,
 } from '../generation/modelResolutionOptions';
 import { stripAutoText } from '../../utils/autoText';
+import { collapsePromptChunks } from '../../services/promptChunkMacros';
+import { getCachedPromptChunks } from '../../services/promptChunkCache';
 import type { MetadataVibeInput } from './metadataVibeImport';
 
 export interface MetadataImportPayload {
@@ -75,6 +77,9 @@ export const MODEL_MATCH_MAP: Array<{ keywords: string[]; modelName: string }> =
  * 所以这里剥掉自动块 —— 但只剥**算得出来**的那一个:stripAutoText 会拿同一批角色
  * 重算一遍,对不上就原样保留,所以别人家客户端写的块、或用户手改过的块都不会被吃掉。
  *
+ * 然后把与片段正文相同的子串折回 `!macro:名字!` 引用(官方导入也这么做:片段不进
+ * 元数据,导入时按正文认回来)。片段库读的是同步快照,还没加载到就不折叠,不会等。
+ *
  * 元数据详情那边**不做**这一步:那个视图要如实显示发出去的原文。
  */
 export function importedPositivePrompt(metadata: {
@@ -85,12 +90,13 @@ export function importedPositivePrompt(metadata: {
   useCoords?: boolean;
 }): string {
   const characters = metadata.characterPrompts ?? [];
-  return stripAutoText(metadata.prompt ?? '', {
+  const stripped = stripAutoText(metadata.prompt ?? '', {
     characters: characters.map((character) => ({ prompt: character.prompt, center: character.center })),
     // 用原图记下来的 use_coords。老元数据没这个字段时才退回「有角色就按坐标排」,
     // 那正是我们 2026-08 之前一直发的取值,所以旧图剥离结果不变。
     useCoords: metadata.useCoords ?? characters.length > 0,
   });
+  return collapsePromptChunks(stripped, getCachedPromptChunks());
 }
 
 export function applyImportedModel(

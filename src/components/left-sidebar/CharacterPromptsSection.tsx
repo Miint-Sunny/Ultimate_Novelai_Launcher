@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, Ban, ChevronDown, MapPin, Plus, Power, Sparkles, Tr
 import PromptEditor from '../PromptEditor';
 import { DesktopChipEditor } from '../DesktopChipEditor';
 import { countTokens } from '../../services/tokenizer';
+import { usePromptChunkLibrary } from '../../hooks/usePromptChunkLibrary';
+import { expandPromptChunksForSend } from '../../services/promptChunkMacros';
 import type { CharacterPrompt } from './types';
 import { legacyCellToCenter } from '../../services/characterPosition';
 
@@ -243,10 +245,13 @@ function PositionButton({ char, onEdit }: { char: CharacterPrompt; onEdit: (id: 
 }
 
 function TokenCount({ value, emphasisOnHover = false }: { value: string; emphasisOnHover?: boolean }) {
+  // 与主提示词同口径:片段引用按展开后的正文计数。
+  const chunks = usePromptChunkLibrary();
+  const counted = expandPromptChunksForSend(value, chunks).text;
   return (
     <div className={`absolute bottom-1 right-2 pointer-events-none opacity-60 z-10 ${emphasisOnHover ? 'group-hover:opacity-100 group-focus-within/input:opacity-100 transition-opacity' : ''}`}>
       <span className="text-xs font-bold text-gray-500 font-mono">
-        {countTokens(value)}
+        {countTokens(counted)}
       </span>
     </div>
   );

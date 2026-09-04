@@ -48,8 +48,9 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
 
+  // 开和关都重置:关掉时留着半截草稿,下次打开会把上次没存上的东西当成新内容。
   useEffect(() => {
-    if (isOpen) setDraft(emptyDraft());
+    setDraft(emptyDraft());
   }, [isOpen]);
 
   const grouped = useMemo(() => {

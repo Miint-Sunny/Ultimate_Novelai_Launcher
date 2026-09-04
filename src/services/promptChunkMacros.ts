@@ -133,6 +133,10 @@ export function collapseDuplicateCommas(text: string): string {
  * 自己展开(静默),按展开后长度从长到短,纯子串 `split/join`。
  * 官方折成 id 引用给它的编辑器节点用;我们的芯片承载的是 label 形式,所以默认折成
  * `!macro:label!`。
+ *
+ * 官方编辑器不按逗号切,我们的芯片编辑器按逗号切:片段正文习惯以逗号结尾
+ * (文档就是这么建议的),被匹配掉的那个逗号要还回来,否则 `!macro:Face! location`
+ * 会被切成一枚认不出来的芯片。发送时重复逗号会再并掉,往返不受影响。
  */
 export function collapsePromptChunks(
   text: string,
@@ -146,7 +150,8 @@ export function collapsePromptChunks(
     .sort((a, b) => b.resolved.length - a.resolved.length);
   let out = text;
   for (const { chunk, resolved } of entries) {
-    const ref = form === 'id' ? chunkIdReference(chunk.id) : chunkReference(chunk.label);
+    const base = form === 'id' ? chunkIdReference(chunk.id) : chunkReference(chunk.label);
+    const ref = /,\s*$/.test(resolved) ? `${base},` : base;
     out = out.split(resolved).join(ref);
   }
   return out;

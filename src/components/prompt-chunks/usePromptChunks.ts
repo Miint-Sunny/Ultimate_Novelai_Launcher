@@ -5,6 +5,7 @@ import {
   savePromptChunk,
   type PromptChunkData,
 } from '../../services/localLibrary/promptChunks';
+import { refreshPromptChunkCache } from '../../services/promptChunkCache';
 
 /** 片段库的读写壳:列表缓存 + 增删改后重读。同名查重在这里做,存储层不管。 */
 export function usePromptChunks(enabled: boolean) {
@@ -14,6 +15,8 @@ export function usePromptChunks(enabled: boolean) {
   const reload = useCallback(async () => {
     try {
       setChunks(await getPromptChunks());
+      // 计数与导入折叠读的是同步快照,库一变就得跟上。
+      void refreshPromptChunkCache();
     } catch {
       setChunks([]);
     } finally {

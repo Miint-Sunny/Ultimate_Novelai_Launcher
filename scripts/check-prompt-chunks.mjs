@@ -109,6 +109,13 @@ check('反向折叠: 从长到短做子串替换,默认折成 label 引用', () 
   assert.equal(collapsePromptChunks('x', []), 'x');
 });
 
+check('反向折叠: 正文以逗号结尾时把吃掉的逗号还回来,引用保持独立芯片', () => {
+  const trailing = [{ id: 'c-face2', label: 'Face', expansion: 'red eyes, long hair,' }];
+  const collapsed = collapsePromptChunks('1girl, red eyes, long hair, smile', trailing);
+  assert.equal(collapsed, '1girl, !macro:Face!, smile');
+  assert.equal(expandPromptChunksForSend(collapsed, trailing).text, '1girl, red eyes, long hair, smile');
+});
+
 check('折叠/展开往返: 折叠再展开回到原文', () => {
   const text = '1girl, school uniform, red eyes, long hair, smile';
   assert.equal(expandPromptChunks(collapsePromptChunks(text, chunks), chunks).text, text);
@@ -141,5 +148,14 @@ check('lint: 空名/名字带 ! 是硬错;单竖线与未闭合权重是警告',
   assert.ok(lintPromptChunk('a', '1.3::red eyes').some((l) => l.level === 'warning'));
   assert.equal(lintPromptChunk('a', '1.3::red eyes::').length, 0);
 });
+
+const Cache = await import('../src/services/promptChunkCache.ts');
+
+check('快照: 没有 IndexedDB 的环境里同步取值给空数组,刷新不抛错', async () => {
+  assert.deepEqual([...Cache.getCachedPromptChunks()], []);
+});
+// 上面那次取值已把加载踢出去了;等它落地,确认失败路径也是「空数组 + 不抛」。
+assert.deepEqual([...(await Cache.refreshPromptChunkCache())], []);
+assert.deepEqual([...Cache.getCachedPromptChunks()], []);
 
 console.log(`\n${checks} 项提示词片段校验全部通过。`);
