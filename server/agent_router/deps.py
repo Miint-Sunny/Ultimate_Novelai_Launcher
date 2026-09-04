@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from .model_family import ModelFamily
 from .schemas import Scene, SseEvent
 
 if TYPE_CHECKING:
@@ -43,6 +44,9 @@ class AgentDeps:
 
     # === 选用的 model（MODEL_CHOICES 的 key；空 = 全局 ACTIVE_MODEL）===
     selected_model: str = ""
+
+    # === NovelAI 图像模型代际（决定 planner 的提示词写法；未知保持 V5 旧行为）===
+    image_model_family: ModelFamily = "unknown"
 
     # === 当前 model 的 prompt 预设名（MODEL_CHOICES[key].prompt_preset；空 = 默认 prompts.yaml）===
     # 由 router.chat 在 deps 构造时按 req.model 注入；agent 的 @system_prompt 函数读取

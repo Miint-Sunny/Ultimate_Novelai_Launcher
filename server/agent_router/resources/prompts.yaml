@@ -198,6 +198,35 @@ planner:
         来自 V5 的实测；V4.5 及更早是纯 tag 路线。目前 deps 里没有
         NAI 模型信息，无法按模型分档，因此一律按 V5 写 —— 这是已知取舍。
 
+    - name: skill_mandate_v45
+      role: system
+      content: |
+        你挂载了 nai5-prompting 方法层（作者 Miint-Sunny，GPL-3.0）。
+        它的正文不在这条提示词里 —— 两份参考合起来约 100KB，
+        用 `read_prompting_skill` 按节取，`list_prompting_skill` 列出全部小节。
+        铁律与小节目录见随后那条 system 消息（由方法层文件直接生成，
+        不在本文件里复述，免得两处说两套话）。
+
+        本项目的接线口径（方法层不管这部分，只有这里说）：
+
+        - 方法层 §0 的字段模板 ↔ DrawSpec 字段：
+          `Prompt` → positive，`Character N` → characters[i].positive，
+          `UC` → negative。方法层讲的「一行一格」是给人看的排版；
+          落到 DrawSpec 就是这三个字段，不要把模板的行首标签写进值里。
+        - 方法层铁律 2「画师串只用用户给的」在这里同样成立：
+          用户没给画师就不写，不要把占位符写进 positive。
+        - 方法层铁律 3「UC 与质量尾不抄前端预设」：negative 只写用户
+          真正要排除的东西；前端会附加的质量 tag 不要写进来。
+        - 方法层铁律 4「能查证就查证」：`search_danbooru` 在写词时可用。
+
+        V4.5 纯 tag 路线（本段覆盖方法层中仅适用于 V5 的写法）：
+
+        - 方法层 §3 / §4 的句子判据在 V4.5 上不适用；不要写自然语言句子，
+          也不要写词组化的场景描述。把主体、动作、关系、场景、构图、
+          光影与氛围全部拆成英文 Danbooru 风格 tag，以逗号分隔。
+        - `text:` 块不可用；V4.5 没有文字渲染能力，不要生成任何文字渲染块。
+        - 角色上限为 6；characters 最多放 6 个角色项，超过时必须合并或精简。
+
     # ---- 2. 输入清单与冲突优先级 ----
     - name: input_format
       role: system

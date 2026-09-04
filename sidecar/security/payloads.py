@@ -22,7 +22,7 @@ _BINARY_FIELD_PARTS = ("base64", "image", "thumbnail", "reference", "mask")
 # the output container name ('png'); decoding it as base64 would reject every
 # legitimate desktop generation request. Keep this an exact-name allowlist so
 # the fail-closed default still covers unknown binary-looking fields.
-_TEXT_METADATA_FIELDS = frozenset({"image_format"})
+_TEXT_METADATA_FIELDS = frozenset({"image_format", "image_model"})
 
 
 class PayloadBudgetError(ValueError):

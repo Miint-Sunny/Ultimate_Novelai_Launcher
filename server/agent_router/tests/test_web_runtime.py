@@ -16,6 +16,7 @@ from agent_router.llm.messages import (
 from agent_router.llm.models.base import Model
 from agent_router.llm.output import OUTPUT_TOOL_NAME
 from agent_router.llm.result import Usage
+from agent_router.prompts import load_prompt_bundle
 from agent_router.schemas import WebPromptRequest
 from agent_router.tools.knowledge import (
     _get_role_mapping,
@@ -100,6 +101,7 @@ async def test_web_runtime_runs_two_stages_with_request_first_snapshot(tmp_data_
     req = WebPromptRequest.model_validate(
         {
             "user_request": "用A1画普拉娜",
+            "image_model": "nai-diffusion-4-5-full",
             "history": [{"role": "user", "content": "上一轮画了校服"}],
             "image_b64": "iVBORw0KGgpwYXlsb2Fk",
             "knowledge_sources": ["artists", "ocs", "roleTags"],
@@ -121,6 +123,7 @@ async def test_web_runtime_runs_two_stages_with_request_first_snapshot(tmp_data_
         planner_model=planner,
         prefilter_model=lite,
         hooks=build_web_agent_hooks(),
+        prompt_bundle=load_prompt_bundle(),
         planner_model_settings={"temperature": 0.2},
         prefilter_model_settings={"temperature": 0.1},
         runtime_artists=[
@@ -153,6 +156,11 @@ async def test_web_runtime_runs_two_stages_with_request_first_snapshot(tmp_data_
     assert events == []
     assert lite.calls[0]["model_settings"] == {"temperature": 0.1}
     assert planner.calls[0]["model_settings"] == {"temperature": 0.2}
+    planner_system = "\n\n".join(
+        part.content for part in planner.calls[0]["system_parts"]
+    )
+    assert "skill_mandate_v45 测试段" in planner_system
+    assert "skill_mandate 测试段" not in planner_system
 
     lite_input = "\n".join(_user_texts(lite.calls[0]))
     assert "A1 → artist:req_style" in lite_input

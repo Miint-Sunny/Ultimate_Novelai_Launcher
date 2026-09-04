@@ -368,16 +368,18 @@ class DecodedPayloadBudgetTests(unittest.TestCase):
                 maximum_single_asset=6,
             )
 
-    def test_image_format_metadata_is_text_not_base64(self) -> None:
-        # The NovelAI wire payload always carries image_format='png'. The
-        # binary-name heuristic must not decode it, or every legitimate
-        # desktop generation request is rejected as invalid base64.
+    def test_image_metadata_fields_are_text_not_base64(self) -> None:
+        # These fields describe images but never contain image bytes. The
+        # binary-name heuristic must not decode them as base64.
         self.assertEqual(
             enforce_json_decoded_budget(
-                {"parameters": {"image_format": "png"}},
+                {
+                    "parameters": {"image_format": "png"},
+                    "image_model": "nai_v45_full",
+                },
                 maximum=64,
             ),
-            len(b"parametersimage_formatpng"),
+            len(b"parametersimage_formatpngimage_modelnai_v45_full"),
         )
         # Unknown binary-looking names keep failing closed.
         with self.assertRaises(PayloadBudgetError):

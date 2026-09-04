@@ -56,6 +56,7 @@ def test_chat_request_default_scene():
     req = ChatRequest(user_id="123", text="你好")
     assert req.scene == "private"
     assert req.model == ""  # 空 = 用全局默认 model
+    assert req.image_model == ""
     assert req.platform == "qq"
     assert req.images == []
 
@@ -106,6 +107,7 @@ def test_sse_event_serialization():
 def test_web_prompt_request_default_knowledge_sources():
     req = WebPromptRequest(user_request="画 hatsune")
     assert req.model == ""  # 空 = 用全局默认 model
+    assert req.image_model == ""
     assert "roleTags" in req.knowledge_sources
     assert req.history == []
     assert req.use_codex is False

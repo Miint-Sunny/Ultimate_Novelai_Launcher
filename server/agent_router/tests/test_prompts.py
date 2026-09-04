@@ -7,6 +7,27 @@ from __future__ import annotations
 import pytest
 
 
+def _prompt_yaml(planner_names: tuple[str, ...]) -> str:
+    planner = "".join(
+        "    - role: system\n"
+        f"      name: {name}\n"
+        f"      content: {name} override\n"
+        for name in planner_names
+    )
+    return (
+        "chat:\n"
+        "  persona: test\n"
+        "  workflow: test\n"
+        "  tools_hint: test\n"
+        "  reply_rules: test\n"
+        "lite_chat:\n"
+        "  system_prompt: test\n"
+        "planner:\n"
+        "  system_prompts:\n"
+        + planner
+    )
+
+
 def test_load_chat_section(tmp_data_dir):
     """从合并预设 prompts.yaml 读 chat 段"""
     from agent_router import prompts as p
@@ -78,10 +99,58 @@ def test_prompt_bundle_exposes_validated_sections(tmp_data_dir):
 
 def test_prompt_contract_matches_sections_consumed_by_agents():
     from agent_router import prompts as p
-    from agent_router.agents.pure_planner import _PLANNER_SECTIONS
+    from agent_router.agents.pure_planner import (
+        _MODEL_FAMILY_SECTION_OVERRIDES,
+        _PLANNER_SECTIONS,
+    )
 
-    assert tuple(_PLANNER_SECTIONS) == p._REQUIRED_PLANNER_SECTIONS
+    consumed = set(_PLANNER_SECTIONS)
+    for overrides in _MODEL_FAMILY_SECTION_OVERRIDES.values():
+        consumed.update(overrides.values())
+    assert consumed == set(p._REQUIRED_PLANNER_SECTIONS)
     assert p._REQUIRED_CHAT_SECTIONS == ("persona", "workflow", "tools_hint", "reply_rules")
+
+
+def test_prompt2_override_keeps_base_sections_and_falls_back_for_v45(
+    tmp_data_dir,
+):
+    from agent_router import prompts as p
+
+    (tmp_data_dir / "prompts2.yaml").write_text(
+        _prompt_yaml(p._BASE_REQUIRED_PLANNER_SECTIONS),
+        encoding="utf-8",
+    )
+    p._load_yaml_cached.cache_clear()
+
+    assert p.load_planner_section("mission", preset="prompt2") == "mission override"
+    assert "V4.5 纯 tag 路线" in p.load_planner_section(
+        "skill_mandate_v45",
+        preset="prompt2",
+    )
+
+
+def test_missing_prompt2_uses_packaged_default(tmp_data_dir):
+    from agent_router import prompts as p
+
+    assert "V4.5 纯 tag 路线" in p.load_planner_section(
+        "skill_mandate_v45",
+        preset="prompt2",
+    )
+
+
+def test_formal_prompt_preflight_requires_v45_mandate(tmp_path):
+    from agent_router import prompts as p
+
+    prompt = tmp_path / "prompts.yaml"
+    prompt.write_text(
+        _prompt_yaml(p._BASE_REQUIRED_PLANNER_SECTIONS),
+        encoding="utf-8",
+    )
+
+    status = p.preflight_prompt_resource(prompt)
+
+    assert status["ok"] is False
+    assert "skill_mandate_v45" in status["error"]
 
 
 def test_packaged_bundle_never_falls_back_to_legacy(tmp_data_dir, tmp_path, monkeypatch):

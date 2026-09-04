@@ -649,6 +649,7 @@ class AgentKnowledgeTests(unittest.IsolatedAsyncioTestCase):
             prepared = await adapter.prepare(
                 AgentWebGeneratePromptRequest(
                     user_request="",
+                    image_model="nai_v45_full",
                     image_b64=f"data:image/png;base64,{_PNG_B64}",
                     knowledge_sources=[],
                 ),
@@ -657,6 +658,7 @@ class AgentKnowledgeTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(prepared.request.image_b64, _PNG_B64)
             self.assertEqual(prepared.request.image_mime_type, "image/png")
+            self.assertEqual(prepared.request.image_model, "nai_v45_full")
             self.assertEqual(prepared.runtime.runtime_artists, ())
             self.assertEqual(prepared.runtime.runtime_ocs, ())
             self.assertEqual(prepared.runtime.role_mapping, {})

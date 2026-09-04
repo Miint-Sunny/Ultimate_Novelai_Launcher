@@ -245,12 +245,18 @@ class ChatRequest(BaseModel):
     model: str = Field(
         default="", description="选用的 LLM 渠道（MODEL_CHOICES 的 key/别名；空 = 全局默认）"
     )
-    # 图片生成模型: 'anima' / 'nai_v45_full' / 'nai_v45_curated' 之一。
+    # 图片生成模型: nai_v5_full / nai_v5_curated / nai_v45_full /
+    # nai_v45_curated / anima 之一（空 = 未知，planner 保持 V5 旧行为）。
     # 'anima' → server 用 prompts_anima.yaml + 出图走 cnb ComfyUI 后端；
     # 其他 / 空 → 用默认预设 + 走 NAI 出图后端。
     # 由 bot 端读 NOVELAI_MODEL_MODE[ctx] 后归一化后传入（与 LLM 渠道正交）。
     image_model: str = Field(
-        default="", description="图片生成模型 (anima / nai_v45_full / nai_v45_curated)"
+        default="",
+        max_length=256,
+        description=(
+            "图片生成模型 (nai_v5_full / nai_v5_curated / nai_v45_full / "
+            "nai_v45_curated / anima；空 = 未知)"
+        ),
     )
     clear_history: bool = Field(default=False)
     debug_context: bool = Field(default=False, description="是否返回本轮各模型实际收到的完整上下文")
@@ -325,6 +331,14 @@ class WebPromptRequest(_StrictWebInput):
         default="", max_length=4 * 1024 * 1024, description="用户输入（可与图片二选一）"
     )
     model: str = Field(default="", max_length=256, description="选用的 model；空 = 运行时主模型")
+    image_model: str = Field(
+        default="",
+        max_length=256,
+        description=(
+            "图片生成模型 (nai_v5_full / nai_v5_curated / nai_v45_full / "
+            "nai_v45_curated / anima；空 = 未知)"
+        ),
+    )
     image_b64: str | None = Field(default=None, max_length=(20 * 1024 * 1024 * 4 // 3) + 32)
     image_mime_type: str = Field(default="image/png", max_length=100)
     history: list[WebHistoryMessage] = Field(default_factory=list, max_length=200)
