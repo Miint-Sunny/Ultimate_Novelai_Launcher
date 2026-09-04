@@ -70,6 +70,10 @@ class AppRuntime:
     pairing: Any = None
     tasks: Any = None
     agent: Any = None
+    # Lifecycle-owned outbound HTTP pool (HttpClientPool). Optional so minimal
+    # test runtimes can mount without one; v1 provider routes (upscale, ...)
+    # resolve it through the runtime instead of the compat-only components bag.
+    http: Any = None
     mutations: MutationGate = field(default_factory=MutationGate)
     process_control: Any = None
     capability_provider: Callable[[], dict[str, Any]] | None = None
