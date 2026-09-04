@@ -17,6 +17,7 @@ from .errors import IdempotencyConflictError, InvalidCapabilityError, ResourceNo
 from .identity import Principal, ResourceAccessPolicy, ResourceOwner
 from .infrastructure.sqlite_quota import SQLiteQuotaRepository
 from .quota import (
+    QuotaReservationIncreaseRequest,
     QuotaReservationRequest,
     QuotaService,
     QuotaSettlementRequest,
@@ -237,6 +238,27 @@ class LegacyQuotaLedger:
                 "generation idempotency key belongs to a settled request"
             )
         record[TASK_RESERVATION_FIELD] = result.reservation.id
+
+    async def increase_reservation(
+        self,
+        record: MutableMapping[str, Any],
+        principal: Principal,
+        *,
+        units: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        reservation_id = record.get(TASK_RESERVATION_FIELD)
+        if not isinstance(reservation_id, str) or not reservation_id:
+            return
+        result = await self.service.increase_reservation(
+            principal,
+            QuotaReservationIncreaseRequest(
+                reservation_id=reservation_id,
+                target_units=max(1, units),
+            ),
+        )
+        record["quota_units"] = result.units
 
     async def settle(
         self,

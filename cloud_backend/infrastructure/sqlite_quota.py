@@ -23,6 +23,7 @@ from ..identity import Principal, ResourceOwner
 from ..quota import (
     QuotaBalance,
     QuotaReservation,
+    QuotaReservationIncreaseRequest,
     QuotaReservationRequest,
     QuotaSettlementRequest,
     ReservationResult,
@@ -409,6 +410,88 @@ class SQLiteQuotaRepository:
             if row is None:  # pragma: no cover - protects an impossible local invariant
                 raise RuntimeError("created quota reservation could not be read")
             return ReservationResult(_row_to_reservation(row), created=True)
+
+    async def increase_reservation(
+        self,
+        resource: ResourceOwner,
+        *,
+        reservation_id: str,
+        target_units: int,
+    ) -> QuotaReservation:
+        """Atomically debit the delta and grow one still-open reservation."""
+
+        _require_quota_resource(resource)
+        QuotaReservationIncreaseRequest(reservation_id, target_units)
+        now = _timestamp(self._clock())
+        async with self._transaction() as connection:
+            row = await self._reservation_by_id(connection, resource, reservation_id)
+            if row is None:
+                raise ResourceNotFoundError()
+            reservation = _row_to_reservation(row)
+            if reservation.state is not ReservationState.RESERVED:
+                raise ReservationStateError(
+                    "reservation increase requires a reserved reservation"
+                )
+            if target_units < reservation.units:
+                raise InvalidRequestError("reservation units cannot decrease")
+            if target_units == reservation.units:
+                return reservation
+
+            additional_units = target_units - reservation.units
+            cursor = await connection.execute(
+                """
+                UPDATE cloud_quota_accounts
+                SET available_units = available_units - ?, updated_at = ?
+                WHERE tenant_id = ? AND owner_id = ? AND available_units >= ?
+                """,
+                (
+                    additional_units,
+                    now,
+                    resource.tenant_id,
+                    resource.owner_id,
+                    additional_units,
+                ),
+            )
+            changed = cursor.rowcount
+            await cursor.close()
+            if changed != 1:
+                balance = await _fetchone(
+                    connection,
+                    """
+                    SELECT available_units
+                    FROM cloud_quota_accounts
+                    WHERE tenant_id = ? AND owner_id = ?
+                    """,
+                    (resource.tenant_id, resource.owner_id),
+                )
+                if balance is None:
+                    raise ResourceNotFoundError()
+                raise QuotaExceededError(
+                    "quota is insufficient",
+                    details={
+                        "available_units": int(balance["available_units"]),
+                        "required_units": additional_units,
+                    },
+                )
+
+            await connection.execute(
+                """
+                UPDATE cloud_quota_reservations
+                SET units = ?, updated_at = ?
+                WHERE id = ? AND tenant_id = ? AND owner_id = ? AND state = 'reserved'
+                """,
+                (
+                    target_units,
+                    now,
+                    reservation_id,
+                    resource.tenant_id,
+                    resource.owner_id,
+                ),
+            )
+            updated = await self._reservation_by_id(connection, resource, reservation_id)
+            if updated is None:  # pragma: no cover - guarded by transaction
+                raise RuntimeError("updated quota reservation could not be read")
+            return _row_to_reservation(updated)
 
     async def settle(
         self,

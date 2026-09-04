@@ -1528,6 +1528,67 @@ async def generate_novelai_image_stream(
         raise
 
 
+async def _finish_dequeued_task_without_provider(
+    task_id: str,
+    *,
+    status: str,
+    error: str,
+) -> None:
+    """Commit one pre-provider terminal result and always release its queue slot."""
+
+    final_status = status
+    final_error = error
+    try:
+        try:
+            await _notify_task_update(task_id, status, error=error)
+        except JobStateConflictError:
+            persisted = await _cloud_jobs.get(task_id)
+            if persisted is None or not persisted.terminal:
+                raise
+            final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
+            final_error = persisted.error or error
+
+        task = _generation_tasks.get(task_id)
+        if task:
+            task["status"] = final_status
+            task["error"] = final_error
+        await _settle_generation_quota(task_id)
+    finally:
+        task = _generation_tasks.get(task_id)
+        if task:
+            if not task.get("_pending_decremented"):
+                task_user_id = task.get("user_id", "")
+                if task_user_id:
+                    with _state_lock:
+                        cnt = _user_pending.get(task_user_id, 0)
+                        if cnt > 0:
+                            _user_pending[task_user_id] = cnt - 1
+            task.pop("params", None)
+        _generation_websockets.pop(task_id, None)
+        _image_queue.task_done()
+        await _broadcast_queue_position_update()
+
+
+async def _increase_dequeued_task_quota(task_id: str, units: int) -> None:
+    """Synchronize the reservation, durable job, and legacy task before billing."""
+
+    await _ensure_cloud_job_storage()
+    job = await _cloud_jobs.get(task_id)
+    if job is None:
+        raise ResourceNotFoundError()
+    principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
+    record: dict[str, Any] = {
+        "tenant_id": job.resource.tenant_id,
+        "owner_id": job.resource.owner_id,
+        "quota_reservation_id": job.quota_reservation_id,
+    }
+    await _quota_ledger.increase_reservation(record, principal, units=units)
+    await _cloud_jobs.update_cost_units(task_id, units)
+    task = _generation_tasks.get(task_id)
+    if task:
+        task["quota_units"] = units
+
+
 async def novelai_worker(worker_id: int, token: str):
     """NovelAI 图片生成 Worker"""
     global _current_task, _running_count
@@ -1588,37 +1649,52 @@ async def novelai_worker(worker_id: int, token: str):
                     "宿主 Opus 额度已耗尽,V5 生成暂停以保护宿主钱包;"
                     "请联系管理员或改用非 V5 模型"
                 )
-                if task:
-                    task["status"] = "failed"
-                    task["error"] = error
-                await _notify_task_update(task_id, "failed", error=error)
-                await _settle_generation_quota(task_id)
-                if task:
-                    if not task.get("_pending_decremented"):
-                        task_user_id = task.get("user_id", "")
-                        if task_user_id:
-                            with _state_lock:
-                                cnt = _user_pending.get(task_user_id, 0)
-                                if cnt > 0:
-                                    _user_pending[task_user_id] = cnt - 1
-                    task.pop("params", None)
-                _generation_websockets.pop(task_id, None)
-                _image_queue.task_done()
-                await _broadcast_queue_position_update()
-                continue
-            if task:
-                task["quota_units"] = max(
-                    1,
-                    calculate_anlas_cost(
-                        width,
-                        height,
-                        steps,
-                        model,
-                        params.get("strength") if params.get("image") else None,
-                        len(params.get("director_reference_images", []) or []),
-                        opus_usage_exhausted=True,
-                    ),
+                await _finish_dequeued_task_without_provider(
+                    task_id,
+                    status="failed",
+                    error=error,
                 )
+                continue
+            quota_units = max(
+                1,
+                calculate_anlas_cost(
+                    width,
+                    height,
+                    steps,
+                    model,
+                    params.get("strength") if params.get("image") else None,
+                    len(params.get("director_reference_images", []) or []),
+                    opus_usage_exhausted=True,
+                ),
+            )
+            try:
+                await _increase_dequeued_task_quota(task_id, quota_units)
+            except CloudBackendError as exc:
+                logger.warning(
+                    f"[{worker_name}] V5 实价预留失败: id={task_id}, code={exc.code}"
+                )
+                error = (
+                    "用户额度不足，无法按实际价格执行 V5 生成"
+                    if exc.code == "quota_exceeded"
+                    else "生成计费准备失败，请稍后重试"
+                )
+                await _finish_dequeued_task_without_provider(
+                    task_id,
+                    status="failed",
+                    error=error,
+                )
+                continue
+            except Exception as exc:
+                logger.exception(
+                    f"[{worker_name}] V5 实价预留异常: id={task_id}, "
+                    f"error={type(exc).__name__}"
+                )
+                await _finish_dequeued_task_without_provider(
+                    task_id,
+                    status="failed",
+                    error="生成计费准备失败，请稍后重试",
+                )
+                continue
         
         logger.info(f"[{worker_name}] 开始处理任务: id={task_id}, user={user_id}, seq={task_seq}, size={width}x{height}, steps={steps}, seed={seed}")
         

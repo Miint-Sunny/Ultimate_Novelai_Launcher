@@ -1,8 +1,8 @@
 """宿主钱包保护(P5-5):opus_usage_exhausted 第四道闸的接线与失败路径。
 
 计价函数本身的翻转已有 test_legacy_v5_support 锚定;这里测的是**接线**:
-usage 判定、60s 单飞缓存、fail-closed 方向、策略切换,以及两个调用点
-(生成端点的预留计价、_record_web_stats 的记账)真正吃到这个布尔。
+usage 判定、60s 单飞缓存、fail-closed 方向、策略切换,以及入口、统计和
+paid worker 出队调用点真正吃到这个布尔。
 付费上游(/user/subscription 与生成)一律 fake。
 """
 
@@ -24,6 +24,8 @@ from cloud_backend.infrastructure import (
     CloudJobResultStore,
     SQLiteCloudJobRepository,
 )
+from cloud_backend.identity import ResourceOwner
+from cloud_backend.legacy_adapter import LegacyQuotaLedger
 from cloud_backend.opus_usage import (
     OpusExhaustedPolicy,
     OpusUsageCache,
@@ -341,10 +343,21 @@ class FakeQuotaLedger:
         assert isinstance(succeeded, bool)
         assert job_id
 
+    async def increase_reservation(
+        self,
+        record: dict[str, Any],
+        _principal: Any,
+        *,
+        units: int,
+    ) -> None:
+        record["quota_units"] = units
+
 
 def _install_paid_worker_fakes(
     legacy_app: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    quota_ledger: Any | None = None,
 ) -> tuple[FakePaidTokenManager, list[dict[str, Any]]]:
     queue: asyncio.Queue[tuple[str, dict[str, Any], int]] = asyncio.Queue()
     token_manager = FakePaidTokenManager()
@@ -391,7 +404,11 @@ def _install_paid_worker_fakes(
     monkeypatch.setattr(legacy_app, "_record_web_stats", no_stats)
     monkeypatch.setattr(legacy_app, "_record_generation_duration", no_stats)
     monkeypatch.setattr(legacy_app, "generate_novelai_image_stream", fake_generate)
-    monkeypatch.setattr(legacy_app, "_quota_ledger", FakeQuotaLedger())
+    monkeypatch.setattr(
+        legacy_app,
+        "_quota_ledger",
+        quota_ledger if quota_ledger is not None else FakeQuotaLedger(),
+    )
     return token_manager, upstream_calls
 
 
@@ -727,6 +744,76 @@ async def test_paid_worker_preserves_cancel_during_opus_cache_check(
 
 
 @pytest.mark.asyncio
+async def test_paid_worker_preserves_cancel_winning_failed_transition_race(
+    legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token_manager, upstream_calls = _install_paid_worker_fakes(legacy_app, monkeypatch)
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.delenv("HOST_OPUS_EXHAUSTED_POLICY", raising=False)
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+
+    task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-cancel-transition-race",
+    )
+    usage.expire_with(exhausted=True)
+
+    failed_transition_started = asyncio.Event()
+    resume_failed_transition = asyncio.Event()
+    original_notify = legacy_app._notify_task_update
+
+    async def block_failed_transition(
+        notified_task_id: str,
+        status: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        if notified_task_id == task_id and status == "failed":
+            failed_transition_started.set()
+            await resume_failed_transition.wait()
+        await original_notify(notified_task_id, status, *args, **kwargs)
+
+    monkeypatch.setattr(legacy_app, "_notify_task_update", block_failed_transition)
+    worker = asyncio.create_task(legacy_app.novelai_worker(0, "worker-token"))
+    try:
+        await asyncio.wait_for(failed_transition_started.wait(), timeout=2.0)
+
+        import httpx
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=legacy_app.app),
+            base_url="http://test",
+        ) as client:
+            cancelled = await client.delete(
+                f"/api/task/{task_id}",
+                params={"session_id": "owner-session"},
+            )
+        assert cancelled.status_code == 200
+
+        resume_failed_transition.set()
+        await asyncio.wait_for(legacy_app._image_queue.join(), timeout=2.0)
+        await asyncio.sleep(0)
+        assert worker.done() is False
+    finally:
+        resume_failed_transition.set()
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError, legacy_app.JobStateConflictError):
+            await worker
+
+    task = legacy_app._generation_tasks[task_id]
+    job = await legacy_app._cloud_jobs.get(task_id)
+    assert task["status"] == "cancelled"
+    assert job is not None and job.status is legacy_app.JobStatus.CANCELLED
+    assert job.provider_attempted is False
+    assert job.quota_settled is True
+    assert legacy_app._user_pending["web_owner"] == 0
+    assert token_manager.acquisitions == 0
+    assert upstream_calls == []
+
+
+@pytest.mark.asyncio
 async def test_paid_worker_charge_updates_v5_quota_metadata_before_upstream(
     legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -759,6 +846,107 @@ async def test_paid_worker_charge_updates_v5_quota_metadata_before_upstream(
     assert token_manager.need_anlas == [True]
     assert token_manager.releases == 1
     assert usage.fetches == 2
+
+
+@pytest.mark.asyncio
+async def test_paid_worker_charge_reprices_real_reservation_and_persisted_job(
+    legacy_app: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ledger = LegacyQuotaLedger(tmp_path / "quota.db", enabled=True)
+    await ledger.initialize()
+    resource = ResourceOwner(legacy_app._BOT_TASK_TENANT_ID, "owner")
+    await ledger.repository.provision_account(resource, available_units=100)
+    token_manager, upstream_calls = _install_paid_worker_fakes(
+        legacy_app,
+        monkeypatch,
+        quota_ledger=ledger,
+    )
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.setenv("HOST_OPUS_EXHAUSTED_POLICY", "charge")
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+
+    task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-charge-real-ledger",
+    )
+    reservation_id = legacy_app._generation_tasks[task_id]["quota_reservation_id"]
+    assert (await ledger.repository.get_balance(resource)).available_units == 99
+
+    usage.expire_with(exhausted=True)
+    await _run_one_paid_worker(legacy_app)
+
+    import aiosqlite
+
+    async with aiosqlite.connect(str(ledger.repository.path)) as connection:
+        reservation = await connection.execute_fetchall(
+            "SELECT units, state FROM cloud_quota_reservations WHERE id = ?",
+            (reservation_id,),
+        )
+    task = legacy_app._generation_tasks[task_id]
+    job = await legacy_app._cloud_jobs.get(task_id)
+    assert task["status"] == "completed"
+    assert task["quota_units"] == 30
+    assert job is not None and job.cost_units == 30
+    assert job.provider_attempted is True
+    assert job.cost_committed is True
+    assert reservation == [(30, "captured")]
+    assert (await ledger.repository.get_balance(resource)).available_units == 70
+    assert len(upstream_calls) == 1
+    assert token_manager.need_anlas == [True]
+
+
+@pytest.mark.asyncio
+async def test_paid_worker_charge_fails_before_upstream_when_reprice_exceeds_balance(
+    legacy_app: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ledger = LegacyQuotaLedger(tmp_path / "quota.db", enabled=True)
+    await ledger.initialize()
+    resource = ResourceOwner(legacy_app._BOT_TASK_TENANT_ID, "owner")
+    await ledger.repository.provision_account(resource, available_units=1)
+    token_manager, upstream_calls = _install_paid_worker_fakes(
+        legacy_app,
+        monkeypatch,
+        quota_ledger=ledger,
+    )
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.setenv("HOST_OPUS_EXHAUSTED_POLICY", "charge")
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+
+    task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-charge-insufficient",
+    )
+    reservation_id = legacy_app._generation_tasks[task_id]["quota_reservation_id"]
+    assert (await ledger.repository.get_balance(resource)).available_units == 0
+
+    usage.expire_with(exhausted=True)
+    await _run_one_paid_worker(legacy_app)
+
+    import aiosqlite
+
+    async with aiosqlite.connect(str(ledger.repository.path)) as connection:
+        reservation = await connection.execute_fetchall(
+            "SELECT units, state FROM cloud_quota_reservations WHERE id = ?",
+            (reservation_id,),
+        )
+    task = legacy_app._generation_tasks[task_id]
+    job = await legacy_app._cloud_jobs.get(task_id)
+    assert task["status"] == "failed"
+    assert "额度不足" in task["error"]
+    assert job is not None and job.provider_attempted is False
+    assert job.quota_settled is True
+    assert reservation == [(1, "refunded")]
+    assert (await ledger.repository.get_balance(resource)).available_units == 1
+    assert token_manager.acquisitions == 0
+    assert upstream_calls == []
 
 
 @pytest.mark.asyncio
