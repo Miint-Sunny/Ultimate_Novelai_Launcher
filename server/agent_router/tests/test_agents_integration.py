@@ -78,11 +78,15 @@ async def test_pure_planner_produces_drawspec():
 async def test_v5_compatible_families_preserve_existing_planner_prompt_bytes(
     family,
     monkeypatch,
+    tmp_path,
 ):
     """Old clients and V5 requests share the existing planner prompt contract."""
+    from agent_router import prompts
     from agent_router.agents.pure_planner import pure_planner_agent
 
     monkeypatch.setenv("CPA_ENABLE_ANTI_MARKER", "false")
+    monkeypatch.setattr(prompts, "_data_dir", lambda: tmp_path)
+    prompts._load_yaml_cached.cache_clear()
     response = {
         "positive": "1girl",
         "negative": "",
