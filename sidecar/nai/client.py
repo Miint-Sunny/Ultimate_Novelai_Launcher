@@ -646,6 +646,167 @@ async def upscale_image(
     return await _extract_image_from_zip(response.content)
 
 
+# --- V5 扩散超分(与传统超分并存,不是替代) ---
+#
+# V5 上线后 /ai/upscale 换代:multipart(image part + request part)发 image 主机,
+# 载荷是 {image, model, declared_blur_sigma},固定 2×,无输入尺寸白名单,扩散
+# 级耗时(参考实现按 300s 设读超时)。传统 {image, width, height, scale} schema
+# 仍活着,两者各认各的形状(Aaalice nai_image_enhancement_api_service.dart 与
+# Plana nai_client.dart 两份独立实现,结论一致)。
+
+# 只有这两个模型支持 standalone upscaling;其余服务端直接报
+# "doesn't support standalone upscaling"。两份参考实现都硬编码 curated。
+V5_UPSCALE_MODELS = frozenset({"nai-diffusion-5-full", "nai-diffusion-5-curated"})
+V5_UPSCALE_DEFAULT_MODEL = "nai-diffusion-5-curated"
+# V5 扩散超分这一路确定在 image. 主机(两份参考一致)。做成显式参数而非读
+# settings.nai_base_url:「传统 schema 该发哪个主机」尚待实测,别把两路的
+# 歧义耦在一起。
+V5_UPSCALE_DEFAULT_BASE_URL = "https://image.novelai.net"
+
+# 回退白名单,照抄 Aaalice 一个字不放宽:只有服务端明确不认新格式
+# (400/404/405/422)才回退旧 schema。401/402/429/5xx 是鉴权/额度/限流/服务端
+# 错误,换传输格式重发等于重复扣费。
+_V5_UPSCALE_LEGACY_FALLBACK_STATUSES = frozenset({400, 404, 405, 422})
+
+
+def png_dimensions(data: bytes) -> tuple[int, int] | None:
+    """读 PNG IHDR 的宽高;不是 PNG 或头损坏返回 None。"""
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    if data[12:16] != b"IHDR":
+        return None
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
+
+
+async def upscale_image_v5(
+    *,
+    settings: Settings,
+    image: str,
+    model: str = V5_UPSCALE_DEFAULT_MODEL,
+    declared_blur_sigma: float = 0.0,
+    base_url: str = V5_UPSCALE_DEFAULT_BASE_URL,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
+) -> bytes:
+    """V5 扩散超分:multipart 直传源图,固定 2×,zip → PNG。
+
+    源图不再付 base64 的 33% 膨胀:PNG 字节走独立 part,request part 的
+    ``"image": "image"`` 指向 part 名,与生成路径的 multipart 约定一致
+    (body 装配复用 _build_stream_multipart_body)。计费按源图像素查表
+    1-4,是 Anlas 还是 V5 体力条未证实(回执标注)。失败语义:仅当服务端
+    明确不认新格式(400/404/405/422)回退传统 schema,其余错误原样上抛,
+    绝不换格式重发。
+    """
+    if not settings.nai_token:
+        raise NovelAIError("NAI token is not configured")
+    if model not in V5_UPSCALE_MODELS:
+        # 服务端对其他模型直接拒绝;本地拦下省一次往返,也避免把注定
+        # 失败的请求发到计费端点。
+        raise NovelAIError(
+            f"model {model} doesn't support standalone upscaling",
+        )
+    try:
+        raw_image = base64.b64decode(image, validate=True)
+    except Exception as exc:
+        raise NovelAIError("V5 upscale image is not valid base64") from exc
+
+    payload = {
+        "image": "image",
+        "model": model,
+        "declared_blur_sigma": declared_blur_sigma,
+    }
+    parts = [_StreamBinaryPart("image", raw_image)]
+    body, boundary = _build_stream_multipart_body(payload, parts)
+    headers = {
+        "Authorization": f"Bearer {settings.nai_token}",
+        "User-Agent": USER_AGENT,
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Accept": "application/x-zip-compressed",
+        "Origin": "https://novelai.net",
+        "Referer": "https://novelai.net",
+    }
+    url = urljoin(base_url.rstrip("/") + "/", "ai/upscale")
+    response = await _request_with_runtime_client(
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
+        method="POST",
+        url=url,
+        headers=headers,
+        content=body,
+        timeout=httpx.Timeout(30.0, read=300.0),
+        long_running=True,
+    )
+
+    if response.status_code in _V5_UPSCALE_LEGACY_FALLBACK_STATUSES:
+        logger.warning(
+            "V5 upscale rejected with HTTP %s (server does not recognize the "
+            "new format); falling back to the legacy upscale schema",
+            response.status_code,
+        )
+        return await _upscale_image_v5_legacy_fallback(
+            settings=settings,
+            image=image,
+            http=http,
+            client=client,
+            outbound_policy=outbound_policy,
+        )
+
+    if response.status_code != 200:
+        message = f"NovelAI V5 upscale failed with HTTP {response.status_code}"
+        try:
+            error_body = response.json()
+            message = error_body.get("message") or error_body.get("error") or message
+        except Exception:
+            error_body = response.text[:500]
+        raise NovelAIError(message, response.status_code, str(error_body))
+
+    return await _extract_image_from_zip(response.content)
+
+
+async def _upscale_image_v5_legacy_fallback(
+    *,
+    settings: Settings,
+    image: str,
+    http: HttpClientPool | None,
+    client: httpx.AsyncClient | None,
+    outbound_policy: OutboundPolicy | None,
+) -> bytes:
+    """新格式被拒后的旧 schema 回退:{image, width, height, scale} JSON。
+
+    复用既有 upscale_image():主机歧义(传统 schema 归属 api. 还是 image.)
+    留在它现在所在的那一处,实测结论回来只动一个默认值。宽高从源图 PNG
+    头取(Aaalice 同款本地解码),scale 固定 2 —— V5 扩散超分本身就是 2×,
+    旧端点的 2× 档是最接近的等价物。
+    """
+    try:
+        raw_image = base64.b64decode(image, validate=True)
+    except Exception as exc:
+        raise NovelAIError("V5 upscale image is not valid base64") from exc
+    dimensions = png_dimensions(raw_image)
+    if dimensions is None:
+        raise NovelAIError(
+            "V5 upscale legacy fallback requires a PNG source image "
+            "(could not read dimensions)",
+        )
+    width, height = dimensions
+    return await upscale_image(
+        settings=settings,
+        image=image,
+        width=width,
+        height=height,
+        scale=2,
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
+    )
+
+
 def parse_anlas_subscription(data: dict[str, Any]) -> dict[str, Any]:
     steps = data.get("trainingStepsLeft")
     if not isinstance(steps, dict):
@@ -785,6 +946,7 @@ async def _request_with_runtime_client(
     timeout: httpx.Timeout,
     long_running: bool,
     json: Any = None,
+    content: bytes | str | None = None,
 ) -> httpx.Response:
     if http is not None and client is not None:
         raise ValueError("pass either http or client, not both")
@@ -797,6 +959,7 @@ async def _request_with_runtime_client(
             long_running=long_running,
             headers=headers,
             json=json,
+            content=content,
             timeout=timeout,
         )
     if client is not None:
@@ -807,6 +970,7 @@ async def _request_with_runtime_client(
             url,
             headers=headers,
             json=json,
+            content=content,
             timeout=timeout,
         )
 
@@ -820,6 +984,7 @@ async def _request_with_runtime_client(
             url,
             headers=headers,
             json=json,
+            content=content,
             timeout=timeout,
         )
 

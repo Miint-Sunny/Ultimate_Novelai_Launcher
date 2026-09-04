@@ -43,6 +43,29 @@ class ReadyResponse(StrictModel):
     capabilities: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+V5UpscaleModelValue = Literal["nai-diffusion-5-full", "nai-diffusion-5-curated"]
+
+
+class V5UpscaleRequest(StrictModel):
+    """V5 扩散超分请求。源图 PNG 的 base64;结果固定 2×(服务端行为,无倍率参数)。"""
+
+    image: str = Field(min_length=8)
+    model: V5UpscaleModelValue = "nai-diffusion-5-curated"
+    # 官方默认 0(源图越糊值越大,服务端据此调去模糊力度);上限未见文档,
+    # 这里只给工程边界,真正的校验在服务端。
+    declared_blur_sigma: float = Field(default=0.0, ge=0.0, le=100.0)
+
+
+class V5UpscaleResponse(StrictModel):
+    """结果 PNG 的 base64 与服务端实际返回的尺寸(前端按它对账,不信本地推算)。"""
+
+    image: str
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    model: str
+    declared_blur_sigma: float
+
+
 class PairingChallengeResponse(StrictModel):
     code: str = Field(pattern=r"^[0-9]{6}$")
     expires_at: datetime

@@ -101,6 +101,7 @@ def build_runtime(
     runtime.pairing = pairing
     runtime.tasks = tasks
     runtime.agent = agent
+    runtime.http = clients
     runtime.process_control = process_control
     runtime.capability_provider = lambda: {
         "generation_model_configured": settings_store.current.nai_configured,

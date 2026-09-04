@@ -350,6 +350,29 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/upscale/v5": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Upscale V5
+         * @description V5 扩散超分:固定 2×,multipart 直传源图,响应带回实际输出尺寸。
+         *
+         *     计费按源图像素查表 1-4(前端算价);失败语义见 client.upscale_image_v5
+         *     ——只有服务端明确不认新格式才回退传统 schema,计费类错误原样上抛。
+         */
+        readonly post: operations["upscale_v5_api_v1_upscale_v5_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1028,6 +1051,41 @@ export interface components {
             readonly requested_bytes: number;
             /** Reserve Bytes */
             readonly reserve_bytes: number;
+        };
+        /**
+         * V5UpscaleRequest
+         * @description V5 扩散超分请求。源图 PNG 的 base64;结果固定 2×(服务端行为,无倍率参数)。
+         */
+        readonly V5UpscaleRequest: {
+            /**
+             * Declared Blur Sigma
+             * @default 0
+             */
+            readonly declared_blur_sigma: number;
+            /** Image */
+            readonly image: string;
+            /**
+             * Model
+             * @default nai-diffusion-5-curated
+             * @enum {string}
+             */
+            readonly model: "nai-diffusion-5-full" | "nai-diffusion-5-curated";
+        };
+        /**
+         * V5UpscaleResponse
+         * @description 结果 PNG 的 base64 与服务端实际返回的尺寸(前端按它对账,不信本地推算)。
+         */
+        readonly V5UpscaleResponse: {
+            /** Declared Blur Sigma */
+            readonly declared_blur_sigma: number;
+            /** Height */
+            readonly height: number;
+            /** Image */
+            readonly image: string;
+            /** Model */
+            readonly model: string;
+            /** Width */
+            readonly width: number;
         };
         /** VibeLibraryData */
         readonly VibeLibraryData: {
@@ -4357,6 +4415,138 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ReadyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflicting state */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource expired */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request body too large */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request validation failed */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Capacity or rate limit exceeded */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal server error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Runtime or dependency unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Insufficient storage */
+            readonly 507: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly upscale_v5_api_v1_upscale_v5_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["V5UpscaleRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["V5UpscaleResponse"];
                 };
             };
             /** @description Invalid request */
