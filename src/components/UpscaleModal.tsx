@@ -3,6 +3,7 @@ import { X, Maximize2, Loader2, Check, AlertCircle, Cpu, Cloud, Sparkles } from 
 import { upscaleImage, upscaleViaImg2Img, type UpscaleProgress, type UpscaleMethod, isModelLoaded, UPSCALE_15X_MAX_PIXELS } from '../services/upscaleService';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateCostFromUI } from '../services/costCalculator';
+import { v5UpscaleCost, v5UpscaleTargetSize } from '../services/naiV5Upscale';
 import { getCachedIsOpus, isOpusUsageExhausted, resolveEnhanceModel } from '../services/novelai';
 import { getAISettings } from '../services/localLibrary';
 import {
@@ -210,7 +211,8 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                     {option.label}
                   </button>
                 ))
-                : ([2, 4] as const).map((s) => (
+                // V5 扩散超分固定 2×:NovelAI 方式下不给 4× 档。
+                : ((method === 'api' ? [2] : [2, 4]) as readonly (2 | 4)[]).map((s) => (
                   <button
                     key={s}
                     onClick={() => setUpscaleScale(s)}
@@ -311,7 +313,7 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setMethod('api')}
+                  onClick={() => { setMethod('api'); setUpscaleScale(2); }}
                   disabled={isProcessing}
                   className={`w-full p-4 rounded-xl text-left transition-all ${method === 'api'
                       ? 'bg-nai-accent/20 border-2 border-nai-accent'
@@ -324,10 +326,16 @@ export const UpscaleModal: React.FC<UpscaleModalProps> = ({
                       <div>
                         <div className="text-white font-medium">NovelAI</div>
                         <div className="text-xs text-gray-400 mt-1">
-                          使用 NovelAI Upscale，消耗 Anlas
+                          NovelAI V5 扩散超分，固定 2×，按源图像素计 1–4 Anlas
                         </div>
                         <div className="text-xs text-gray-500 mt-0.5">
-                          仅支持 832×1216 / 1216×832 / 1024×1024
+                          {(() => {
+                            if (!imageSize) return '源图最大约 1024×3072（3.15M 像素）';
+                            const cost = v5UpscaleCost(imageSize.width, imageSize.height);
+                            if (cost === null) return `源图 ${imageSize.width}×${imageSize.height} 超过上限（约 1024×3072），请先缩小`;
+                            const target = v5UpscaleTargetSize(imageSize.width, imageSize.height);
+                            return `${imageSize.width}×${imageSize.height} → ${target.width}×${target.height}，消耗 ${cost} Anlas`;
+                          })()}
                         </div>
                       </div>
                     </div>

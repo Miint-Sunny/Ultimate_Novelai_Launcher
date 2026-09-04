@@ -611,6 +611,12 @@ export const localSidecarApi = {
 
 export const sidecarV1Api = {
   ready: () => refreshLocalSidecarReady(),
+  /** V5 扩散超分(固定 2×,按源图像素扣 1–4 Anlas)。传统 /upscale 在生产上已打不通。 */
+  upscaleV5: (body: SidecarV1Schemas['V5UpscaleRequest']) =>
+    requestJson<SidecarV1Schemas['V5UpscaleResponse']>('/api/v1/upscale/v5', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   createGenerationJob: (
     body: CanonicalGenerationJobCreate,
     idempotencyKey?: string,

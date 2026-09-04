@@ -1,4 +1,5 @@
-import { sidecarApi } from '../api/sidecar';
+import { sidecarApi, sidecarV1Api } from '../api/sidecar';
+import { V5_UPSCALE_DEFAULT_MODEL, v5UpscaleAvailable, V5_UPSCALE_MAX_SOURCE_PIXELS } from './naiV5Upscale';
 import { getAISettings, getAppSettings } from './localLibrary';
 import { generateImageStream, processImg2ImgImage, resolveEnhanceModel } from './novelai';
 import { extractImageMetadata } from '../utils/imageMetadata';
@@ -28,6 +29,13 @@ async function blobToBase64(blob: Blob): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
+}
+
+function base64ToBlob(base64: string, type = 'image/png'): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type });
 }
 
 async function getImageSize(blob: Blob): Promise<{ width: number; height: number }> {
@@ -64,17 +72,15 @@ export async function upscaleImageAPI(
 ): Promise<Blob> {
   onProgress?.({ stage: 'loading', progress: 10, message: '正在检查图片...' });
 
+  // 2026-09-04 实测:传统超分 {image,width,height,scale} 在 image. 与 api. 都已打不通,
+  // 现存的只有 V5 扩散超分——固定 2×,无输入尺寸白名单,只卡源图总像素。
+  if (scale !== 2) {
+    throw new Error('NovelAI V5 扩散超分固定 2×,没有 4× 档;要更大请对结果再放大一次(会再扣一次)。');
+  }
   const { width, height } = await getImageSize(imageBlob);
-  const allowedResolutions = [
-    [832, 1216],
-    [1216, 832],
-    [1024, 1024],
-  ];
-  const isValidResolution = allowedResolutions.some(([w, h]) => w === width && h === height);
-
-  if (!isValidResolution) {
+  if (!v5UpscaleAvailable(width, height)) {
     throw new Error(
-      `NAI 超分仅支持以下分辨率: 832×1216, 1216×832, 1024×1024\n当前图片: ${width}×${height}`
+      `源图 ${width}×${height} 超过 V5 扩散超分的源图上限（${V5_UPSCALE_MAX_SOURCE_PIXELS.toLocaleString()} 像素，约 1024×3072），请先缩小原图。`
     );
   }
 
@@ -86,10 +92,11 @@ export async function upscaleImageAPI(
   onProgress?.({ stage: 'loading', progress: 25, message: '正在转换图片...' });
   const image = await blobToBase64(imageBlob);
 
-  onProgress?.({ stage: 'processing', progress: 45, message: '正在通过 sidecar 超分...' });
+  onProgress?.({ stage: 'processing', progress: 45, message: '正在通过 NovelAI V5 扩散超分...' });
   try {
-    const resultBlob = await sidecarApi.upscale({ image, width, height, scale });
-    onProgress?.({ stage: 'done', progress: 100, message: '超分完成！(Sidecar)' });
+    const result = await sidecarV1Api.upscaleV5({ image, model: V5_UPSCALE_DEFAULT_MODEL, declared_blur_sigma: 0 });
+    const resultBlob = base64ToBlob(result.image);
+    onProgress?.({ stage: 'done', progress: 100, message: `超分完成！${result.width}×${result.height}` });
     return resultBlob;
   } catch (error) {
     const message = error instanceof Error ? error.message : '超分失败';

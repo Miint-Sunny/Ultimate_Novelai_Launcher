@@ -238,4 +238,32 @@ check('档位: Magnitude 五档,档 3 与默认强度/噪声同源', () => {
   }
 });
 
+// ---- V5 扩散超分(2026-09-04 真号实测:1024² → 2048²,扣 1 Anlas,体力条不动) ----
+const { v5UpscaleTargetSize, v5UpscaleCost, v5UpscaleAvailable, V5_UPSCALE_MAX_SOURCE_PIXELS } =
+  await import('../src/services/naiV5Upscale.ts');
+
+check('V5 超分尺寸: 边长向下对齐 16 再 ×2,输出没有总像素上限', () => {
+  assert.deepEqual(v5UpscaleTargetSize(1024, 1024), { width: 2048, height: 2048 });
+  assert.deepEqual(v5UpscaleTargetSize(832, 1216), { width: 1664, height: 2432 });
+  assert.deepEqual(v5UpscaleTargetSize(1400, 1200), { width: 2784, height: 2400 });
+  assert.deepEqual(v5UpscaleTargetSize(1000, 1000), { width: 1984, height: 1984 });
+});
+
+check('V5 超分计价: 按源图像素查表,边界含等号,超上限为 null', () => {
+  assert.equal(v5UpscaleCost(1024, 1024), 1);
+  assert.equal(v5UpscaleCost(1024, 1025), 2);
+  assert.equal(v5UpscaleCost(1216, 1437), 2);
+  assert.equal(v5UpscaleCost(1216, 1438), 3);
+  assert.equal(v5UpscaleCost(1024, 3072), 4);
+  assert.equal(v5UpscaleCost(1024, 3073), null);
+  assert.equal(V5_UPSCALE_MAX_SOURCE_PIXELS, 1024 * 3072);
+});
+
+check('V5 超分可用性: 上限之内可用,太小或超限不可用', () => {
+  assert.equal(v5UpscaleAvailable(832, 1216), true);
+  assert.equal(v5UpscaleAvailable(1024, 3072), true);
+  assert.equal(v5UpscaleAvailable(1024, 3073), false);
+  assert.equal(v5UpscaleAvailable(8, 8), false);
+});
+
 console.log(`\n${checks} 项放大重绘尺寸校验全部通过。`);
