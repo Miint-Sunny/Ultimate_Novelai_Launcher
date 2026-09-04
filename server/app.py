@@ -1549,27 +1549,39 @@ async def _finish_dequeued_task_without_provider(
     *,
     status: str,
     error: str,
+    params: dict[str, Any],
+    task_seq: int,
 ) -> None:
     """Commit one pre-provider terminal result and always release its queue slot."""
 
     final_status = status
     final_error = error
+    terminal_confirmed = False
     try:
         for attempt in range(2):
             try:
                 await _notify_task_update(task_id, status, error=error)
+                terminal_confirmed = True
                 break
             except JobStateConflictError:
-                persisted = await _cloud_jobs.get(task_id)
-                if persisted is not None and persisted.terminal:
-                    final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
-                    final_error = persisted.error or error
-                    break
+                try:
+                    persisted = await _cloud_jobs.get(task_id)
+                except Exception as exc:
+                    logger.warning(
+                        f"[worker] terminal conflict read retry: id={task_id}, "
+                        f"error={type(exc).__name__}"
+                    )
+                else:
+                    if persisted is not None and persisted.terminal:
+                        terminal_confirmed = True
+                        final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
+                        final_error = persisted.error or error
+                        break
                 if attempt == 0:
                     await asyncio.sleep(0)
                     continue
                 logger.exception(
-                    f"[worker] pre-provider terminal conflict remained non-terminal: "
+                    f"[worker] pre-provider terminal conflict remained unresolved: "
                     f"id={task_id}"
                 )
             except Exception as exc:
@@ -1585,17 +1597,39 @@ async def _finish_dequeued_task_without_provider(
                     f"error={type(exc).__name__}"
                 )
 
-        task = _generation_tasks.get(task_id)
-        if task:
-            task["status"] = final_status
-            task["error"] = final_error
-        await _settle_generation_quota(task_id)
+        if not terminal_confirmed:
+            try:
+                persisted = await _cloud_jobs.get(task_id)
+            except Exception as exc:
+                logger.warning(
+                    f"[worker] pre-provider terminal confirmation unavailable: id={task_id}, "
+                    f"error={type(exc).__name__}"
+                )
+            else:
+                if persisted is not None and persisted.terminal:
+                    terminal_confirmed = True
+                    final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
+                    final_error = persisted.error or error
+
+        if terminal_confirmed:
+            task = _generation_tasks.get(task_id)
+            if task:
+                task["status"] = final_status
+                task["error"] = final_error
+            await _settle_generation_quota(task_id)
+        else:
+            await asyncio.sleep(0.1)
+            _image_queue.put_nowait((task_id, params, task_seq))
+            logger.error(
+                f"[worker] pre-provider terminal write deferred; requeued task: id={task_id}"
+            )
     finally:
         task = _generation_tasks.get(task_id)
-        if task:
+        if task and terminal_confirmed:
             _decrement_generation_pending_once(task)
             task.pop("params", None)
-        _generation_websockets.pop(task_id, None)
+        if terminal_confirmed:
+            _generation_websockets.pop(task_id, None)
         _image_queue.task_done()
         await _broadcast_queue_position_update()
 
@@ -1672,6 +1706,8 @@ async def novelai_worker(worker_id: int, token: str):
                     task_id,
                     status="failed",
                     error=error,
+                    params=params,
+                    task_seq=task_seq,
                 )
                 continue
             quota_units = max(
@@ -1701,6 +1737,8 @@ async def novelai_worker(worker_id: int, token: str):
                     task_id,
                     status="failed",
                     error=error,
+                    params=params,
+                    task_seq=task_seq,
                 )
                 continue
             except Exception as exc:
@@ -1712,6 +1750,8 @@ async def novelai_worker(worker_id: int, token: str):
                     task_id,
                     status="failed",
                     error="生成计费准备失败，请稍后重试",
+                    params=params,
+                    task_seq=task_seq,
                 )
                 continue
         
@@ -2556,19 +2596,21 @@ def _principal_for_task_record(task: dict[str, Any]) -> Principal:
 
 async def _settle_generation_quota(task_id: str) -> None:
     """Settle by durable provider-attempt stage, never by optimistic memory state."""
-    await _ensure_cloud_job_storage()
-    job = await _cloud_jobs.get(task_id)
-    if job is None or not job.terminal or job.quota_settled:
-        return
-    if _is_workshop_job(job):
-        return
-    task = _generation_tasks.get(task_id)
-    if not job.quota_reservation_id:
-        return
-    if not _quota_ledger.enabled:
-        logger.info(f"[quota] task={task_id} reservation remains unsettled because ledger is disabled")
-        return
     try:
+        await _ensure_cloud_job_storage()
+        job = await _cloud_jobs.get(task_id)
+        if job is None or not job.terminal or job.quota_settled:
+            return
+        if _is_workshop_job(job):
+            return
+        task = _generation_tasks.get(task_id)
+        if not job.quota_reservation_id:
+            return
+        if not _quota_ledger.enabled:
+            logger.info(
+                f"[quota] task={task_id} reservation remains unsettled because ledger is disabled"
+            )
+            return
         principal = Principal.user(job.resource.owner_id, job.resource.tenant_id)
         record = {
             "tenant_id": job.resource.tenant_id,

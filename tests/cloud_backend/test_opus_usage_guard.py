@@ -971,6 +971,116 @@ async def test_paid_worker_survives_transient_pre_provider_terminal_failure(
 
 
 @pytest.mark.asyncio
+async def test_paid_worker_survives_transient_pre_provider_settlement_read_failure(
+    legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token_manager, upstream_calls = _install_paid_worker_fakes(legacy_app, monkeypatch)
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.delenv("HOST_OPUS_EXHAUSTED_POLICY", raising=False)
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+
+    rejected_task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-transient-settlement-failure",
+    )
+    generated_task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS, model="nai-diffusion-4-5-full"),
+        idempotency_key="worker-opus-after-settlement-failure",
+    )
+    usage.expire_with(exhausted=True)
+
+    original_get = legacy_app._cloud_jobs.get
+    failed_once = False
+
+    async def fail_first_terminal_read(job_id: str) -> Any:
+        nonlocal failed_once
+        job = await original_get(job_id)
+        if (
+            job_id == rejected_task_id
+            and job is not None
+            and job.status is legacy_app.JobStatus.FAILED
+            and not failed_once
+        ):
+            failed_once = True
+            raise RuntimeError("transient settlement read failure")
+        return job
+
+    monkeypatch.setattr(legacy_app._cloud_jobs, "get", fail_first_terminal_read)
+    worker = asyncio.create_task(legacy_app.novelai_worker(0, "worker-token"))
+    try:
+        await asyncio.wait_for(legacy_app._image_queue.join(), timeout=2.0)
+        await asyncio.sleep(0)
+        assert worker.done() is False
+    finally:
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError, RuntimeError):
+            await worker
+
+    rejected = legacy_app._generation_tasks[rejected_task_id]
+    generated = legacy_app._generation_tasks[generated_task_id]
+    rejected_job = await original_get(rejected_task_id)
+    generated_job = await original_get(generated_task_id)
+    assert failed_once is True
+    assert rejected["status"] == "failed"
+    assert rejected_job is not None and rejected_job.status is legacy_app.JobStatus.FAILED
+    assert rejected_job.quota_settled is False
+    assert generated["status"] == "completed"
+    assert generated_job is not None and generated_job.status is legacy_app.JobStatus.SUCCEEDED
+    assert len(upstream_calls) == 1
+    assert token_manager.acquisitions == 1
+    assert legacy_app._user_pending["web_owner"] == 0
+
+
+@pytest.mark.asyncio
+async def test_pre_provider_terminal_write_outage_requeues_without_state_split(
+    legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_paid_worker_fakes(legacy_app, monkeypatch)
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.delenv("HOST_OPUS_EXHAUSTED_POLICY", raising=False)
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+    task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-terminal-write-outage",
+    )
+    item = legacy_app._image_queue.get_nowait()
+    attempts = 0
+
+    async def fail_terminal_write(*_args: Any, **_kwargs: Any) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("terminal storage unavailable")
+
+    monkeypatch.setattr(legacy_app, "_notify_task_update", fail_terminal_write)
+    await legacy_app._finish_dequeued_task_without_provider(
+        task_id,
+        status="failed",
+        error="test failure",
+        params=item[1],
+        task_seq=item[2],
+    )
+
+    task = legacy_app._generation_tasks[task_id]
+    job = await legacy_app._cloud_jobs.get(task_id)
+    assert attempts == 2
+    assert task["status"] == "queued"
+    assert task["params"] is item[1]
+    assert "_pending_decremented" not in task
+    assert legacy_app._user_pending["web_owner"] == 1
+    assert job is not None and job.status is legacy_app.JobStatus.QUEUED
+    assert job.quota_settled is False
+    assert legacy_app._image_queue.qsize() == 1
+    assert legacy_app._image_queue.get_nowait() == item
+    legacy_app._image_queue.task_done()
+
+
+@pytest.mark.asyncio
 async def test_paid_worker_charge_updates_v5_quota_metadata_before_upstream(
     legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
