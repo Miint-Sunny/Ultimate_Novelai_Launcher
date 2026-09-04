@@ -1078,6 +1078,7 @@ async def test_pre_provider_terminal_write_outage_requeues_without_state_split(
     assert legacy_app._image_queue.qsize() == 1
     assert legacy_app._image_queue.get_nowait() == item
     legacy_app._image_queue.task_done()
+    await asyncio.wait_for(legacy_app._image_queue.join(), timeout=2.0)
 
 
 @pytest.mark.asyncio
