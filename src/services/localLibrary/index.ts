@@ -9,6 +9,7 @@ export * from './directoryHandles';
 export * from './imageHistory';
 export * from './inspirationFavorites';
 export * from './oc';
+export * from './promptChunks';
 export * from './promptPresets';
 export * from './vibeFiles';
 export * from './vibeHash';

@@ -1,12 +1,13 @@
 export const DB_NAME = 'NovelAI_Web_UI_DB';
 export const STORE_NAME = 'vibes';
-export const DB_VERSION = 7;
+export const DB_VERSION = 8;
 export const SETTINGS_STORE = 'settings';
 export const OC_STORE = 'oc_files';
 export const ARTIST_STORE = 'artist_files';
 export const CR_STORE = 'cr_files';
 export const IMAGE_HISTORY_STORE = 'image_history';
 export const CUSTOM_TAG_STORE = 'custom_tag_files';
+export const PROMPT_CHUNK_STORE = 'prompt_chunk_files';
 
 const REQUIRED_STORES = [
   STORE_NAME,
@@ -16,6 +17,7 @@ const REQUIRED_STORES = [
   CR_STORE,
   IMAGE_HISTORY_STORE,
   CUSTOM_TAG_STORE,
+  PROMPT_CHUNK_STORE,
 ];
 
 function createMissingStores(db: IDBDatabase): void {
@@ -39,6 +41,9 @@ function createMissingStores(db: IDBDatabase): void {
   }
   if (!db.objectStoreNames.contains(CUSTOM_TAG_STORE)) {
     db.createObjectStore(CUSTOM_TAG_STORE, { keyPath: 'id' });
+  }
+  if (!db.objectStoreNames.contains(PROMPT_CHUNK_STORE)) {
+    db.createObjectStore(PROMPT_CHUNK_STORE, { keyPath: 'id' });
   }
 }
 

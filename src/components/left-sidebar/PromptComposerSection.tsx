@@ -46,6 +46,7 @@ interface PromptComposerSectionProps {
   totalTokenCount: number;
   onOpenInspiration: () => void;
   onOpenTagManager: () => void;
+  onOpenPromptChunks: () => void;
   onOpenPresetModal: () => void;
 }
 
@@ -75,6 +76,7 @@ export function PromptComposerSection({
   totalTokenCount,
   onOpenInspiration,
   onOpenTagManager,
+  onOpenPromptChunks,
   onOpenPresetModal,
 }: PromptComposerSectionProps) {
   // Agent 模型与开合状态来自停靠面板上下文；结果展示已整体迁往右侧 AgentDock。
@@ -122,6 +124,7 @@ export function PromptComposerSection({
         onAiModelChange={setAiModel}
         onOpenInspiration={onOpenInspiration}
         onOpenTagManager={onOpenTagManager}
+        onOpenPromptChunks={onOpenPromptChunks}
         onOpenPresetModal={onOpenPresetModal}
       />
 

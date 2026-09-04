@@ -27,6 +27,7 @@ import {
   type CharacterPromptContent,
   type PromptPresetContent,
 } from './generationPrompts.ts';
+import { expandPromptChunksForSend, type PromptChunkLike } from '../../services/promptChunkMacros.ts';
 
 export interface SavedInpaintParams {
   imageBase64: string;
@@ -119,9 +120,16 @@ export interface BaseGenerationParamsInput {
 export async function buildBaseGenerationParams(input: BaseGenerationParamsInput): Promise<GenerateImageParams> {
   const preparePromptPair = input.preparePromptPair ?? buildPromptPair;
   const prepareCharacterPrompts = input.prepareCharacterPrompts ?? buildCharacterPromptParams;
-  const { positive: finalPositive, negative: finalNegative } = await preparePromptPair({
+  // 片段引用在这里展开——两端的发包都经过此处,且早于预设/质量尾/autoText,
+  // 所以模型和元数据看到的只有正文,与官方「片段不进元数据」一致。
+  const expanded = await expandPromptChunkReferences({
     positivePrompt: input.positivePrompt,
     negativePrompt: input.negativePrompt,
+    characterPrompts: input.characterPrompts,
+  });
+  const { positive: finalPositive, negative: finalNegative } = await preparePromptPair({
+    positivePrompt: expanded.positivePrompt,
+    negativePrompt: expanded.negativePrompt,
     activePreset: input.activePreset,
     model: input.model,
   });
@@ -164,7 +172,7 @@ export async function buildBaseGenerationParams(input: BaseGenerationParamsInput
     ...(input.transparentBackground ? { transparentBackground: true } : {}),
     normalizeVibeStrength: input.normalizeVibeStrength,
     resolutionSource: input.resolutionSource,
-    characterPrompts: prepareCharacterPrompts(input.characterPrompts),
+    characterPrompts: prepareCharacterPrompts(expanded.characterPrompts),
     preciseReferences,
     vibeReferences,
   };
@@ -259,5 +267,49 @@ export async function assembleInpaintParams(input: AssembleInpaintParamsInput): 
       strength: input.inpaint.strength,
     },
     skipHistory: input.skipHistory,
+  };
+}
+
+const CHUNK_REFERENCE_HINT = /!macro:|\u231Cmacro:/;
+
+/**
+ * 只有文本里真有引用时才去开库;普通提示词一次库都不碰,逐字节原样过去。
+ * 库是动态 import 的:本模块要能被 node --experimental-strip-types 直接加载做对等
+ * 校验,不能在顶层把 IndexedDB 那条链拉进来。库打不开(脚本环境、隐私模式)就当
+ * 没有片段——引用按官方规则变空串,而不是让整次生成失败。
+ */
+async function expandPromptChunkReferences(input: {
+  positivePrompt: string;
+  negativePrompt: string;
+  characterPrompts: CharacterPromptContent[];
+}): Promise<typeof input> {
+  const texts = [
+    input.positivePrompt,
+    input.negativePrompt,
+    ...input.characterPrompts.flatMap((character) => [character.positive, character.negative]),
+  ];
+  if (!texts.some((text) => CHUNK_REFERENCE_HINT.test(text))) return input;
+
+  let chunks: PromptChunkLike[] = [];
+  try {
+    const store = await import('../../services/localLibrary/promptChunks.ts');
+    chunks = await store.getPromptChunks();
+  } catch {
+    chunks = [];
+  }
+  const expand = (text: string) => {
+    const result = expandPromptChunksForSend(text, chunks);
+    if (result.missing.length > 0) console.warn('[prompt-chunks] 引用了不存在的片段,已按官方规则移除:', result.missing);
+    if (result.circular.length > 0) console.warn('[prompt-chunks] 片段循环引用,已按官方规则移除:', result.circular);
+    return result.text;
+  };
+  return {
+    positivePrompt: expand(input.positivePrompt),
+    negativePrompt: expand(input.negativePrompt),
+    characterPrompts: input.characterPrompts.map((character) => ({
+      ...character,
+      positive: expand(character.positive),
+      negative: expand(character.negative),
+    })),
   };
 }

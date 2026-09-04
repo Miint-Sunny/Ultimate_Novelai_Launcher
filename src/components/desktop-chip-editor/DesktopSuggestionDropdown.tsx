@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Dices, Eye, EyeOff, Languages, Palette, Sparkles, Tag, User, Users } from 'lucide-react';
+import { Dices, Eye, EyeOff, Languages, Palette, Puzzle, Sparkles, Tag, User, Users } from 'lucide-react';
 import { lookupCharacterChineseName, type TagSuggestion } from '../../services/tagAutocomplete';
 import { getAppSettings } from '../../services/localLibrary';
 import { canCheckSuggestionWiki, normalizeWikiTagKey } from '../prompt-editor/wikiUtils';
@@ -24,6 +24,7 @@ interface DesktopSuggestionDropdownProps {
 
 const SECTION_MAX_H: Record<string, number> = {
   nl: 47,
+  chunks: 141,
   artists: 141,
   ocs: 141,
   characters: 141,
@@ -34,6 +35,7 @@ const SECTION_MAX_H: Record<string, number> = {
 function getSectionInfo(suggestion: TagSuggestion) {
   if (suggestion.isAiLoading) return { key: 'danbooru', label: '标签', color: '#fcd34d', Icon: Tag };
   if (suggestion.isNaturalLanguage) return { key: 'nl', label: '翻译', color: '#67e8f9', Icon: Languages };
+  if (suggestion.isChunk) return { key: 'chunks', label: '片段', color: '#5eead4', Icon: Puzzle };
   if (suggestion.isArtist) return { key: 'artists', label: '画师', color: '#f0abfc', Icon: Palette };
   if (suggestion.isOC) return { key: 'ocs', label: 'OC', color: '#86efac', Icon: Users };
   if (suggestion.isOrigin) return { key: 'origins', label: '作品', color: '#67e8f9', Icon: Dices };
@@ -43,6 +45,7 @@ function getSectionInfo(suggestion: TagSuggestion) {
 
 function getTypeInfo(suggestion: TagSuggestion) {
   if (suggestion.isNaturalLanguage) return { color: '#67e8f9', Icon: Languages };
+  if (suggestion.isChunk) return { color: '#5eead4', Icon: Puzzle };
   if (suggestion.isArtist) return { color: '#f0abfc', Icon: Palette };
   if (suggestion.isOC) return { color: '#86efac', Icon: Users };
   if (suggestion.isOrigin) return { color: '#67e8f9', Icon: Dices };
@@ -168,9 +171,11 @@ function SuggestionRow({
 
   const typeInfo = getTypeInfo(suggestion);
   const { Icon } = typeInfo;
-  const mainText = suggestion.isNaturalLanguage ? suggestion.label : suggestion.value;
+  const mainText = suggestion.isNaturalLanguage ? suggestion.label : suggestion.isChunk ? `@${suggestion.label}` : suggestion.value;
   const subtitle = suggestion.isNaturalLanguage
     ? suggestion.chineseName
+    : suggestion.isChunk
+      ? (suggestion.chunkExpansion || '(空片段)')
     : suggestion.isArtist
       ? '画师串'
       : suggestion.isOC
@@ -178,7 +183,7 @@ function SuggestionRow({
         : suggestion.isOrigin
           ? `${suggestion.chineseName || ''}${suggestion.chineseName ? ' · ' : ''}${suggestion.originCharCount}个角色`
           : (suggestion.chineseName && getAppSettings().autocompleteShowWiki ? suggestion.chineseName : null);
-  const countText = suggestion.postCount && !suggestion.isOrigin && !suggestion.isArtist && !suggestion.isOC
+  const countText = suggestion.postCount && !suggestion.isOrigin && !suggestion.isArtist && !suggestion.isOC && !suggestion.isChunk
     ? (suggestion.postCount >= 1000 ? `${(suggestion.postCount / 1000).toFixed(0)}k` : String(suggestion.postCount))
     : null;
 

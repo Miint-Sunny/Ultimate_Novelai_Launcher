@@ -63,6 +63,13 @@ export function useDesktopSuggestionSelection({
       return;
     }
 
+    if (suggestion.isChunk) {
+      // 芯片里存的是 `!macro:Label!` 引用本身,正文在发送时才展开(官方:片段不进元数据)。
+      commitInput(suggestion.value);
+      clearSuggestions();
+      return;
+    }
+
     if (suggestion.isNaturalLanguage) {
       const chineseText = inputText.trim();
       setInputText('');

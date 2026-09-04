@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ClipboardEvent, Dispatch, RefObject, SetStateAction } from 'react';
-import { getTagSuggestionsDebounced, type TagSuggestion } from '../../services/tagAutocomplete';
+import { cancelPendingAutocomplete, getTagSuggestionsDebounced, type TagSuggestion } from '../../services/tagAutocomplete';
+import { chunkReference, filterPromptChunks, findPromptChunkQuery } from '../../services/promptChunkMacros';
 import { isInsideUnclosedQuote } from '../../utils/textRenderHints';
 
 interface EditingTagState {
@@ -61,6 +62,37 @@ export function useDesktopChipInput({
     if (suppressAutocompleteInQuotes && isInsideUnclosedQuote(trimmed)) {
       setShowSuggestions(false);
       setSuggestions([]);
+      return;
+    }
+    // 官方 Prompt Chunks:`@` 起头就切到片段列表,边打边过滤;这条不走 Danbooru。
+    const chunkQuery = findPromptChunkQuery(trimmed);
+    if (chunkQuery) {
+      cancelPendingAutocomplete();
+      const posRef = editingTag ? editInputRef.current : inputRef.current;
+      if (posRef) {
+        const rect = posRef.getBoundingClientRect();
+        setSuggestionPos({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX });
+      }
+      void import('../../services/localLibrary/promptChunks').then(async ({ getPromptChunks }) => {
+        const matched = filterPromptChunks(await getPromptChunks(), chunkQuery.query);
+        if (matched.length === 0) {
+          setShowSuggestions(false);
+          setSuggestions([]);
+          return;
+        }
+        setSuggestions(matched.map((chunk) => ({
+          value: chunkReference(chunk.label),
+          label: chunk.label,
+          isChunk: true,
+          chunkExpansion: chunk.expansion,
+          source: 'local' as const,
+        })));
+        setShowSuggestions(true);
+        setSelectedSuggIdx(0);
+      }).catch(() => {
+        setShowSuggestions(false);
+        setSuggestions([]);
+      });
       return;
     }
     const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);

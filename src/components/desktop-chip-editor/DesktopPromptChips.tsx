@@ -9,6 +9,7 @@ import {
   type TagGroupInfo,
 } from '../../utils/promptTags';
 import { getMarkerVisual } from '../tag-manager/markerVisual';
+import { parseChunkReference } from '../../services/promptChunkMacros';
 
 type DragStartHandler = (event: DragEvent, index: number) => void;
 type DragOverHandler = (event: DragEvent, index: number) => void;
@@ -101,8 +102,10 @@ export function DesktopTagChip({
   handleChipDoubleClick,
 }: DesktopTagChipProps) {
   const clean = cleanTagName(rawTag);
+  // 片段引用芯片:显示 `@名字`,正文发送时才展开,所以不翻译、不算权重。
+  const chunkLabel = parseChunkReference(rawTag);
   const translation = tagTranslations.get(clean);
-  const needsTranslation = clean && !/[\u4e00-\u9fa5]/.test(clean) && /[a-zA-Z]/.test(clean) && !clean.startsWith('artist:');
+  const needsTranslation = !chunkLabel && clean && !/[\u4e00-\u9fa5]/.test(clean) && /[a-zA-Z]/.test(clean) && !clean.startsWith('artist:');
   const isTranslating = needsTranslation && !translation && translatingTags.has(clean);
   const isSelected = selectedTags.has(index);
   const isGroupSelected = selectedTags.size > 0 && group.groupId !== -1 && Array.from(selectedTags).some(selectedIndex => tagGroups[selectedIndex]?.groupId === group.groupId);
@@ -114,7 +117,9 @@ export function DesktopTagChip({
   const roundedClass = group.position === 'first' ? 'rounded-l rounded-r-none' : group.position === 'middle' ? 'rounded-none' : group.position === 'last' ? 'rounded-r rounded-l-none' : 'rounded';
   const gapClass = (group.position === 'first' || group.position === 'middle') ? '-mr-[2px]' : '';
   const weightStyle = getWeightStyle(effectiveWeight);
-  const chipStyle: CSSProperties = abnormalWeight
+  const chipStyle: CSSProperties = chunkLabel && !isSelected
+    ? { backgroundColor: 'rgba(94, 234, 212, 0.12)', borderColor: 'rgba(94, 234, 212, 0.45)' }
+    : abnormalWeight
     ? { backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: 'rgba(248, 113, 113, 0.5)' }
     : isSelected
       ? { backgroundColor: 'rgba(252, 237, 164, 0.15)', borderColor: 'rgba(252, 237, 164, 0.5)' }
@@ -123,7 +128,7 @@ export function DesktopTagChip({
         : isSDFormat
           ? { backgroundColor: 'rgba(245, 158, 11, 0.25)', borderColor: 'rgba(251, 191, 36, 0.4)' }
           : weightStyle;
-  const usesDynamicColor = !abnormalWeight && !isSelected && !isGroupSelected && !isSDFormat && !isHidden;
+  const usesDynamicColor = !chunkLabel && !abnormalWeight && !isSelected && !isGroupSelected && !isSDFormat && !isHidden;
   if (isHidden && !isSelected) {
     chipStyle.backgroundColor = 'rgba(255, 255, 255, 0.03)';
     chipStyle.borderColor = 'rgba(255, 255, 255, 0.08)';
@@ -140,18 +145,19 @@ export function DesktopTagChip({
       style={chipStyle}
       onClick={(event) => handleChipClick(event, index)}
       onDoubleClick={(event) => handleChipDoubleClick(event, index)}
-      title={abnormalTip ? `⚠️ ${abnormalTip}` : isSDFormat ? `SD格式: ${rawTag.trim()} - 点击转换` : rawTag.trim()}
+      title={chunkLabel ? `片段「${chunkLabel}」:发送时展开为正文` : abnormalTip ? `⚠️ ${abnormalTip}` : isSDFormat ? `SD格式: ${rawTag.trim()} - 点击转换` : rawTag.trim()}
     >
       <span className="flex flex-col items-start">
         <span className="flex items-center gap-1">
           {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalTip}>⚠️</span>}
           {isSDFormat && !abnormalWeight && <span className="text-[9px] text-amber-300" title="SD WebUI 格式">SD</span>}
-          <span className={`font-tag text-sm leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-[#fceda4]' : isSDFormat ? 'text-amber-200' : 'text-white/85'}`}>{rawTag.trim()}</span>
+          <span className={`font-tag text-sm leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-[#fceda4]' : isSDFormat ? 'text-amber-200' : chunkLabel ? 'text-teal-200' : 'text-white/85'}`}>{chunkLabel ? `@${chunkLabel}` : rawTag.trim()}</span>
         </span>
         {abnormalWeight ? (<>
           <span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight.message}</span>
           {abnormalWeight.suggestion && <span className="text-[10px] leading-tight text-red-300/60">{abnormalWeight.suggestion}</span>}
         </>)
+          : chunkLabel ? (<span className="text-[10px] leading-tight text-teal-200/50">片段</span>)
           : translation ? (<span className={`text-[10px] leading-tight ${isSelected ? 'text-[#fceda4]/50' : 'text-white/35'}`}>{translation}</span>)
             : isTranslating ? (<span className="text-[10px] leading-tight text-white/20 animate-pulse">翻译中…</span>)
               : needsTranslation ? (<span className="text-[10px] leading-tight text-white/15">…</span>) : <span className="text-[10px] leading-tight">&nbsp;</span>}

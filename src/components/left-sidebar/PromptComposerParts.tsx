@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { AlignLeft, Ban, Bot, Grid, Loader2, Settings, Sparkles, Tags, X } from 'lucide-react';
+import { AlignLeft, Ban, Bot, Grid, Loader2, Puzzle, Settings, Sparkles, Tags, X } from 'lucide-react';
 import PromptEditor from '../PromptEditor';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import { DesktopChipEditor } from '../DesktopChipEditor';
@@ -24,6 +24,7 @@ export function PromptToolbar({
   onAiModelChange,
   onOpenInspiration,
   onOpenTagManager,
+  onOpenPromptChunks,
   onOpenPresetModal,
   furry,
 }: {
@@ -36,6 +37,7 @@ export function PromptToolbar({
   onAiModelChange: (model: string) => void;
   onOpenInspiration: () => void;
   onOpenTagManager: () => void;
+  onOpenPromptChunks: () => void;
   onOpenPresetModal: () => void;
 }) {
   return (
@@ -97,6 +99,9 @@ export function PromptToolbar({
             </button>
             <button className="text-gray-400 hover:text-white transition-colors" onClick={onOpenTagManager} title="Tag 管理器 (统一: 角色 / 画风 / 场景)">
               <Tags className="w-5 h-5" />
+            </button>
+            <button className="text-gray-400 hover:text-white transition-colors" onClick={onOpenPromptChunks} title="提示词片段 (提示词里打 @ 插入)">
+              <Puzzle className="w-5 h-5" />
             </button>
             <button className="text-gray-400 hover:text-white transition-colors" onClick={onOpenPresetModal} title="预设设置">
               <Settings className="w-5 h-5" />

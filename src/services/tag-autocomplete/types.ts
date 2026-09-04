@@ -38,6 +38,9 @@ export interface TagSuggestion {
   // OC相关
   isOC?: boolean;       // 是否为OC
   ocContent?: string;   // OC的tag_group内容（用于插入）
+  // 提示词片段(官方 Prompt Chunks,`@` 触发)
+  isChunk?: boolean;     // 是否为片段;value 是 `!macro:Label!` 引用
+  chunkExpansion?: string; // 片段正文,列表里做预览
   // AI加载占位
   isAiLoading?: boolean; // AI推荐加载中占位项
   // AI 来源标签（用于按来源分类与排序）

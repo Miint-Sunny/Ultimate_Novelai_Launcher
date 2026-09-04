@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, startTransiti
 import confetti from 'canvas-confetti';
 import type { PromptEditorRef } from './PromptEditor';
 import { useArtistManager, ArtistManagerModal } from './artist';
+import { PromptChunkManagerModal } from './prompt-chunks';
 import { useOCManager, OCManagerModal } from './oc';
 import { useCRManager, CRManagerModal, CREditModal } from './cr';
 import { TagManagerModal } from './tag-manager';
@@ -241,6 +242,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const [isArtistModalOpen, setIsArtistModalOpen] = useState(false);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   const [isInspirationModalOpen, setIsInspirationModalOpen] = useState(false);
+  const [isPromptChunkModalOpen, setIsPromptChunkModalOpen] = useState(false);
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -998,6 +1000,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             totalTokenCount={totalTokenCount}
             onOpenInspiration={() => setIsInspirationModalOpen(true)}
             onOpenTagManager={() => setIsTagManagerOpen(true)}
+            onOpenPromptChunks={() => setIsPromptChunkModalOpen(true)}
             onOpenPresetModal={() => setIsPresetModalOpen(true)}
           />
 
@@ -1247,6 +1250,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         currentMainNegative={negativePrompt}
         currentCharacterPrompts={characterPrompts}
         imageHistory={generationHistory}
+      />
+
+      {/* 提示词片段(官方 Prompt Chunks 的本地版) */}
+      <PromptChunkManagerModal
+        isOpen={isPromptChunkModalOpen}
+        onClose={() => setIsPromptChunkModalOpen(false)}
+        showToast={showToast}
       />
 
       {/* Inspiration Modal */}
