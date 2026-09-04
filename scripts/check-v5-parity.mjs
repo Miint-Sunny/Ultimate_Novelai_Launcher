@@ -562,4 +562,16 @@ check('分词: 同一段文本在 V5 与 V4 口径下读数不同', () => {
 });
 
 
+// ---- agent 契约:发给 planner 的图像模型代际(黑板 #10) ----
+const { agentImageModelFor } = await import('../src/services/agentImageModel.ts');
+check('agent 契约: UI id 与官方 id 都映到 nai_v5_* / nai_v45_*,V4/V3 报未知', () => {
+  assert.equal(agentImageModelFor('nai-diffusion-5-full'), 'nai_v5_full');
+  assert.equal(agentImageModelFor('nai-diffusion-5-curated'), 'nai_v5_curated');
+  assert.equal(agentImageModelFor('v4.5-full'), 'nai_v45_full');
+  assert.equal(agentImageModelFor('v4.5-curated'), 'nai_v45_curated');
+  assert.equal(agentImageModelFor('v4-full'), '');
+  assert.equal(agentImageModelFor('v3'), '');
+  assert.equal(agentImageModelFor(''), '');
+});
+
 console.log(`\n${checks} 项 V5 支持对等校验全部通过。`);

@@ -677,6 +677,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   };
 
   const { handleAIGenerate, handleAIGenerateWithRequest } = useAgentPromptGeneration({
+    selectedModelId: selectedModel.id,
     aiModel,
     setIsGeneratingPrompt,
     publicFiles,

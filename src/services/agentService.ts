@@ -144,6 +144,8 @@ export interface AgentContext {
   currentPositive: string;
   currentNegative: string;
   currentCharacters: Array<{ name: string; positive: string; negative?: string }>;
+  /** 图像模型代际(见 services/agentImageModel);缺省 = 未知,服务端按 V5 写。 */
+  imageModel?: string;
   /** 生成发起时左栏选中的 vibe id（进快照 preVibes，撤回/重试用） */
   currentVibes?: string[];
   codex?: Array<{ id: string; category: string; title: string; content: string; isR18: boolean }>;
@@ -177,6 +179,7 @@ type AgentHistoryMessage = { role: 'user' | 'assistant'; content: string };
 interface AgentWebRequest {
   user_request: string;
   model: string;
+  image_model: string;
   image_b64?: string;
   image_mime_type: string;
   history: AgentHistoryMessage[];
@@ -526,6 +529,8 @@ class AgentService {
         // Both Agent phases use the sidecar's configured primary model. The
         // private-cloud protocol keeps the existing per-request model keys.
         model: isLocalSidecar ? '' : model,
+        // #10 的契约:服务端按代际选 planner 写法;空串 = 未知,走 V5 旧行为。
+        image_model: this.context.imageModel ?? '',
         image_b64: image.base64,
         image_mime_type: image.mimeType,
         history,

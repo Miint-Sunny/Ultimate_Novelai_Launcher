@@ -91,6 +91,8 @@ export interface AgentContextSources {
   currentCharacters: AgentCharacterPromptEntry[];
   /** 当前选中的 vibe id(进快照 preVibes,撤回/重试用) */
   selectedVibeIds: string[];
+  /** 图像模型代际(契约值,见 services/agentImageModel);缺省 = 未知。 */
+  imageModel?: string;
 }
 
 export function mapCurrentCharactersToContext(characterPrompts: AgentCharacterPromptEntry[]) {
@@ -130,6 +132,7 @@ export function buildAgentContext(
     currentNegative: preState?.negative ?? sources.currentNegative,
     currentCharacters: preState?.characters ?? mapCurrentCharactersToContext(sources.currentCharacters),
     currentVibes: preState?.vibes ?? sources.selectedVibeIds,
+    imageModel: sources.imageModel ?? '',
   };
 }
 

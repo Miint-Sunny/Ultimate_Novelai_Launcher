@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { agentImageModelFor } from '../../services/agentImageModel';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import { agentService } from '../../services/agentService';
 import { getPublicVibeFile } from '../../services/publicLibrary';
@@ -29,6 +30,8 @@ interface UseAgentPromptGenerationParams {
   negativePrompt: string;
   characterPrompts: SidebarCharacterPrompt[];
   selectedVibes: string[];
+  /** 当前选中的 NAI 模型 id(UI id),agent 据此按代际写词。 */
+  selectedModelId: string;
   setPositivePrompt: Dispatch<SetStateAction<string>>;
   setNegativePrompt: Dispatch<SetStateAction<string>>;
   setSelectedVibes: Dispatch<SetStateAction<string[]>>;
@@ -61,6 +64,7 @@ export function useAgentPromptGeneration(params: UseAgentPromptGenerationParams)
         currentNegative: params.negativePrompt,
         currentCharacters: params.characterPrompts,
         selectedVibeIds: params.selectedVibes,
+        imageModel: agentImageModelFor(params.selectedModelId),
       },
       setIsGeneratingPrompt: params.setIsGeneratingPrompt,
       setAgentContext: (context) => agentService.setContext(context),
