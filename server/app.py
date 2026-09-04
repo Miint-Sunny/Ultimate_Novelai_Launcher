@@ -1565,6 +1565,60 @@ async def novelai_worker(worker_id: int, token: str):
             # 广播队列位置更新
             await _broadcast_queue_position_update()
             continue
+
+        model = str(params.get("model", ""))
+        opus_exhausted = await _opus_usage_exhausted_for(model)
+        task = _generation_tasks.get(task_id)
+        if task and task.get("status") == "cancelled":
+            logger.warning(f"[{worker_name}] Opus 检查期间任务已取消: id={task_id}, user={user_id}")
+            if not task.get("_pending_decremented"):
+                task_user_id = task.get("user_id", "")
+                if task_user_id:
+                    with _state_lock:
+                        cnt = _user_pending.get(task_user_id, 0)
+                        if cnt > 0:
+                            _user_pending[task_user_id] = cnt - 1
+            _generation_websockets.pop(task_id, None)
+            _image_queue.task_done()
+            await _broadcast_queue_position_update()
+            continue
+        if opus_exhausted:
+            if _opus_exhausted_policy() is OpusExhaustedPolicy.REJECT:
+                error = (
+                    "宿主 Opus 额度已耗尽,V5 生成暂停以保护宿主钱包;"
+                    "请联系管理员或改用非 V5 模型"
+                )
+                if task:
+                    task["status"] = "failed"
+                    task["error"] = error
+                await _notify_task_update(task_id, "failed", error=error)
+                await _settle_generation_quota(task_id)
+                if task:
+                    if not task.get("_pending_decremented"):
+                        task_user_id = task.get("user_id", "")
+                        if task_user_id:
+                            with _state_lock:
+                                cnt = _user_pending.get(task_user_id, 0)
+                                if cnt > 0:
+                                    _user_pending[task_user_id] = cnt - 1
+                    task.pop("params", None)
+                _generation_websockets.pop(task_id, None)
+                _image_queue.task_done()
+                await _broadcast_queue_position_update()
+                continue
+            if task:
+                task["quota_units"] = max(
+                    1,
+                    calculate_anlas_cost(
+                        width,
+                        height,
+                        steps,
+                        model,
+                        params.get("strength") if params.get("image") else None,
+                        len(params.get("director_reference_images", []) or []),
+                        opus_usage_exhausted=True,
+                    ),
+                )
         
         logger.info(f"[{worker_name}] 开始处理任务: id={task_id}, user={user_id}, seq={task_seq}, size={width}x{height}, steps={steps}, seed={seed}")
         
@@ -1594,7 +1648,7 @@ async def novelai_worker(worker_id: int, token: str):
             
             # 智能选择并独占一个可用的 Token（解决并发 429 报错）
             # 注意：acquire_token() 可能阻塞等待，此时任务状态仍为 queued
-            need_anlas = _task_needs_anlas(params)
+            need_anlas = _task_needs_anlas(params) or opus_exhausted
             use_token = await token_manager.acquire_token(need_anlas=need_anlas)
             
             try:

@@ -116,7 +116,12 @@ _SCHEMA = (
 )
 
 _ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
-    JobStatus.QUEUED: {JobStatus.RUNNING, JobStatus.CANCELLED, JobStatus.INTERRUPTED},
+    JobStatus.QUEUED: {
+        JobStatus.RUNNING,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+        JobStatus.INTERRUPTED,
+    },
     JobStatus.RUNNING: {
         JobStatus.CANCELLING,
         JobStatus.SUCCEEDED,
