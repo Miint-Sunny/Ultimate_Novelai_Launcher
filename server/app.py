@@ -1528,6 +1528,22 @@ async def generate_novelai_image_stream(
         raise
 
 
+def _decrement_generation_pending_once(task: dict[str, Any] | None) -> None:
+    """Atomically claim and apply one legacy pending-count decrement."""
+
+    if not task:
+        return
+    with _state_lock:
+        if task.get("_pending_decremented"):
+            return
+        task["_pending_decremented"] = True
+        task_user_id = task.get("user_id", "")
+        if task_user_id:
+            cnt = _user_pending.get(task_user_id, 0)
+            if cnt > 0:
+                _user_pending[task_user_id] = cnt - 1
+
+
 async def _finish_dequeued_task_without_provider(
     task_id: str,
     *,
@@ -1539,14 +1555,35 @@ async def _finish_dequeued_task_without_provider(
     final_status = status
     final_error = error
     try:
-        try:
-            await _notify_task_update(task_id, status, error=error)
-        except JobStateConflictError:
-            persisted = await _cloud_jobs.get(task_id)
-            if persisted is None or not persisted.terminal:
-                raise
-            final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
-            final_error = persisted.error or error
+        for attempt in range(2):
+            try:
+                await _notify_task_update(task_id, status, error=error)
+                break
+            except JobStateConflictError:
+                persisted = await _cloud_jobs.get(task_id)
+                if persisted is not None and persisted.terminal:
+                    final_status = _JOB_TO_LEGACY_STATUS[persisted.status]
+                    final_error = persisted.error or error
+                    break
+                if attempt == 0:
+                    await asyncio.sleep(0)
+                    continue
+                logger.exception(
+                    f"[worker] pre-provider terminal conflict remained non-terminal: "
+                    f"id={task_id}"
+                )
+            except Exception as exc:
+                if attempt == 0:
+                    logger.warning(
+                        f"[worker] pre-provider terminal write retry: id={task_id}, "
+                        f"error={type(exc).__name__}"
+                    )
+                    await asyncio.sleep(0)
+                    continue
+                logger.exception(
+                    f"[worker] pre-provider terminal write unavailable: id={task_id}, "
+                    f"error={type(exc).__name__}"
+                )
 
         task = _generation_tasks.get(task_id)
         if task:
@@ -1556,13 +1593,7 @@ async def _finish_dequeued_task_without_provider(
     finally:
         task = _generation_tasks.get(task_id)
         if task:
-            if not task.get("_pending_decremented"):
-                task_user_id = task.get("user_id", "")
-                if task_user_id:
-                    with _state_lock:
-                        cnt = _user_pending.get(task_user_id, 0)
-                        if cnt > 0:
-                            _user_pending[task_user_id] = cnt - 1
+            _decrement_generation_pending_once(task)
             task.pop("params", None)
         _generation_websockets.pop(task_id, None)
         _image_queue.task_done()
@@ -1613,13 +1644,7 @@ async def novelai_worker(worker_id: int, token: str):
         if task and task.get("status") == "cancelled":
             logger.warning(f"[{worker_name}] 跳过已取消的任务: id={task_id}, user={user_id}")
             # 减少用户待处理计数（仅当取消 API 未提前减过时）
-            if not task.get("_pending_decremented"):
-                task_user_id = task.get("user_id", "")
-                if task_user_id:
-                    with _state_lock:
-                        cnt = _user_pending.get(task_user_id, 0)
-                        if cnt > 0:
-                            _user_pending[task_user_id] = cnt - 1
+            _decrement_generation_pending_once(task)
             # 清理 WebSocket 订阅
             _generation_websockets.pop(task_id, None)
             _image_queue.task_done()
@@ -1632,13 +1657,7 @@ async def novelai_worker(worker_id: int, token: str):
         task = _generation_tasks.get(task_id)
         if task and task.get("status") == "cancelled":
             logger.warning(f"[{worker_name}] Opus 检查期间任务已取消: id={task_id}, user={user_id}")
-            if not task.get("_pending_decremented"):
-                task_user_id = task.get("user_id", "")
-                if task_user_id:
-                    with _state_lock:
-                        cnt = _user_pending.get(task_user_id, 0)
-                        if cnt > 0:
-                            _user_pending[task_user_id] = cnt - 1
+            _decrement_generation_pending_once(task)
             _generation_websockets.pop(task_id, None)
             _image_queue.task_done()
             await _broadcast_queue_position_update()
@@ -1805,13 +1824,7 @@ async def novelai_worker(worker_id: int, token: str):
             # 减少用户待处理计数（仅当取消 API 未提前减过时）
             task = _generation_tasks.get(task_id)
             if task:
-                if not task.get("_pending_decremented"):
-                    task_user_id = task.get("user_id", "")
-                    if task_user_id:
-                        with _state_lock:
-                            cnt = _user_pending.get(task_user_id, 0)
-                            if cnt > 0:
-                                _user_pending[task_user_id] = cnt - 1
+                _decrement_generation_pending_once(task)
                 # 任务结束后清理大体积的 params 数据，释放内存（保留关键字段用于状态查询）
                 task.pop("params", None)
 
@@ -3931,14 +3944,8 @@ async def cancel_task(
         task["error"] = "用户取消"
     
     # 减少用户待处理计数，并标记已减，防止 Worker 重复减
-    task_user_id = task.get("user_id", "") if task else ""
-    if task_user_id and job.status is JobStatus.CANCELLED:
-        with _state_lock:
-            cnt = _user_pending.get(task_user_id, 0)
-            if cnt > 0:
-                _user_pending[task_user_id] = cnt - 1
-    if task and job.status is JobStatus.CANCELLED:
-        task["_pending_decremented"] = True
+    if job.status is JobStatus.CANCELLED:
+        _decrement_generation_pending_once(task)
 
     if job.status is JobStatus.CANCELLING:
         upstream = _generation_upstream_tasks.get(task_id)

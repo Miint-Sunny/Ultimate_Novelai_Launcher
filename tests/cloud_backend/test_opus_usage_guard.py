@@ -814,6 +814,163 @@ async def test_paid_worker_preserves_cancel_winning_failed_transition_race(
 
 
 @pytest.mark.asyncio
+async def test_paid_worker_and_cancel_decrement_pending_only_once_when_cleanup_wins(
+    legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token_manager, upstream_calls = _install_paid_worker_fakes(legacy_app, monkeypatch)
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.delenv("HOST_OPUS_EXHAUSTED_POLICY", raising=False)
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+
+    task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-pending-race",
+    )
+    legacy_app._user_pending["web_owner"] = 2
+    usage.expire_with(exhausted=True)
+
+    failed_transition_started = asyncio.Event()
+    resume_failed_transition = asyncio.Event()
+    original_notify = legacy_app._notify_task_update
+
+    async def block_failed_transition(
+        notified_task_id: str,
+        status: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        if notified_task_id == task_id and status == "failed":
+            failed_transition_started.set()
+            await resume_failed_transition.wait()
+        await original_notify(notified_task_id, status, *args, **kwargs)
+
+    cancel_persisted = asyncio.Event()
+    resume_cancel = asyncio.Event()
+    original_request_cancel = legacy_app._cloud_jobs.request_cancel
+
+    async def block_cancel_after_persist(job_id: str) -> Any:
+        result = await original_request_cancel(job_id)
+        cancel_persisted.set()
+        await resume_cancel.wait()
+        return result
+
+    monkeypatch.setattr(legacy_app, "_notify_task_update", block_failed_transition)
+    monkeypatch.setattr(legacy_app._cloud_jobs, "request_cancel", block_cancel_after_persist)
+    worker = asyncio.create_task(legacy_app.novelai_worker(0, "worker-token"))
+    cancel_request: asyncio.Task[Any] | None = None
+    try:
+        await asyncio.wait_for(failed_transition_started.wait(), timeout=2.0)
+
+        import httpx
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=legacy_app.app),
+            base_url="http://test",
+        ) as client:
+            cancel_request = asyncio.create_task(
+                client.delete(
+                    f"/api/task/{task_id}",
+                    params={"session_id": "owner-session"},
+                )
+            )
+            await asyncio.wait_for(cancel_persisted.wait(), timeout=2.0)
+            resume_failed_transition.set()
+            await asyncio.wait_for(legacy_app._image_queue.join(), timeout=2.0)
+            assert legacy_app._user_pending["web_owner"] == 1
+
+            resume_cancel.set()
+            cancelled = await asyncio.wait_for(cancel_request, timeout=2.0)
+        assert cancelled.status_code == 200
+        assert legacy_app._user_pending["web_owner"] == 1
+        assert worker.done() is False
+    finally:
+        resume_failed_transition.set()
+        resume_cancel.set()
+        if cancel_request is not None and not cancel_request.done():
+            cancel_request.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await cancel_request
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker
+
+    task = legacy_app._generation_tasks[task_id]
+    job = await legacy_app._cloud_jobs.get(task_id)
+    assert task["status"] == "cancelled"
+    assert task["_pending_decremented"] is True
+    assert job is not None and job.status is legacy_app.JobStatus.CANCELLED
+    assert token_manager.acquisitions == 0
+    assert upstream_calls == []
+
+
+@pytest.mark.asyncio
+async def test_paid_worker_survives_transient_pre_provider_terminal_failure(
+    legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token_manager, upstream_calls = _install_paid_worker_fakes(legacy_app, monkeypatch)
+    usage = MutableUsageCache(exhausted=False)
+    monkeypatch.delenv("HOST_OPUS_EXHAUSTED_POLICY", raising=False)
+    monkeypatch.setattr(legacy_app, "_opus_usage_cache", usage.cache)
+
+    rejected_task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS),
+        idempotency_key="worker-opus-transient-terminal-failure",
+    )
+    generated_task_id = await _submit_bot_generation(
+        legacy_app,
+        monkeypatch,
+        dict(V5_PARAMS, model="nai-diffusion-4-5-full"),
+        idempotency_key="worker-opus-after-terminal-failure",
+    )
+    usage.expire_with(exhausted=True)
+
+    original_notify = legacy_app._notify_task_update
+    failed_once = False
+
+    async def fail_first_terminal_write(
+        notified_task_id: str,
+        status: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        nonlocal failed_once
+        if notified_task_id == rejected_task_id and status == "failed" and not failed_once:
+            failed_once = True
+            raise RuntimeError("transient terminal write failure")
+        await original_notify(notified_task_id, status, *args, **kwargs)
+
+    monkeypatch.setattr(legacy_app, "_notify_task_update", fail_first_terminal_write)
+    worker = asyncio.create_task(legacy_app.novelai_worker(0, "worker-token"))
+    try:
+        await asyncio.wait_for(legacy_app._image_queue.join(), timeout=2.0)
+        await asyncio.sleep(0)
+        assert worker.done() is False
+    finally:
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError, RuntimeError):
+            await worker
+
+    rejected = legacy_app._generation_tasks[rejected_task_id]
+    generated = legacy_app._generation_tasks[generated_task_id]
+    rejected_job = await legacy_app._cloud_jobs.get(rejected_task_id)
+    generated_job = await legacy_app._cloud_jobs.get(generated_task_id)
+    assert failed_once is True
+    assert rejected["status"] == "failed"
+    assert rejected_job is not None and rejected_job.status is legacy_app.JobStatus.FAILED
+    assert rejected_job.quota_settled is True
+    assert generated["status"] == "completed"
+    assert generated_job is not None and generated_job.status is legacy_app.JobStatus.SUCCEEDED
+    assert len(upstream_calls) == 1
+    assert upstream_calls[0]["params"]["model"] == "nai-diffusion-4-5-full"
+    assert token_manager.acquisitions == 1
+    assert legacy_app._user_pending["web_owner"] == 0
+
+
+@pytest.mark.asyncio
 async def test_paid_worker_charge_updates_v5_quota_metadata_before_upstream(
     legacy_app: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
