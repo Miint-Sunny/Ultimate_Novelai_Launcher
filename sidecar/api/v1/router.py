@@ -14,6 +14,7 @@ from sidecar.runtime import AppRuntime
 from ..dependencies import authorize_request, require_jobs, resolve_runtime
 from ..models import ProblemDetails
 from ..problems import PROBLEM_MEDIA_TYPE, ProblemDetailsRoute
+from .agent import create_agent_router
 from .auth import create_auth_router
 from .backups import create_backup_router
 from .cursors import decode_cursor, encode_cursor, resolve_event_cursor
@@ -285,4 +286,5 @@ def create_v1_router(runtime: AppRuntime | None = None) -> APIRouter:
     router.include_router(create_storage_router(runtime))
     router.include_router(create_backup_router(runtime))
     router.include_router(create_upscale_router(runtime))
+    router.include_router(create_agent_router(runtime))
     return router

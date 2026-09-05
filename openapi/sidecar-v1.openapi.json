@@ -1,6 +1,426 @@
 {
   "components": {
     "schemas": {
+      "AgentChatContentPart": {
+        "additionalProperties": false,
+        "properties": {
+          "image_url": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentChatImageUrl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "type": {
+            "enum": [
+              "text",
+              "image_url"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "AgentChatContentPart",
+        "type": "object"
+      },
+      "AgentChatImageUrl": {
+        "additionalProperties": false,
+        "description": "Only ``data:`` URLs are accepted: the provider must never fetch a URL for us.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "low",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "url": {
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "AgentChatImageUrl",
+        "type": "object"
+      },
+      "AgentChatMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgentChatContentPart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "enum": [
+              "system",
+              "user",
+              "assistant",
+              "tool"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgentChatToolCall"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Calls"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "AgentChatMessage",
+        "type": "object"
+      },
+      "AgentChatRequest": {
+        "additionalProperties": false,
+        "description": "One harness turn: OpenAI-shaped messages and tools; the model is the slot's.",
+        "properties": {
+          "extra_body": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Extra Body",
+            "type": "object"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "maximum": 131072.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/AgentChatMessage"
+            },
+            "maxItems": 400,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          },
+          "prompt_cache_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Cache Key"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "slot": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "primary",
+              "backup"
+            ],
+            "title": "Slot",
+            "type": "string"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "tool_choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Choice"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/AgentChatTool"
+            },
+            "maxItems": 64,
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "AgentChatRequest",
+        "type": "object"
+      },
+      "AgentChatTool": {
+        "additionalProperties": false,
+        "properties": {
+          "function": {
+            "$ref": "#/components/schemas/AgentChatToolFunction"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "function"
+        ],
+        "title": "AgentChatTool",
+        "type": "object"
+      },
+      "AgentChatToolCall": {
+        "additionalProperties": false,
+        "properties": {
+          "function": {
+            "$ref": "#/components/schemas/AgentChatToolCallFunction"
+          },
+          "id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "AgentChatToolCall",
+        "type": "object"
+      },
+      "AgentChatToolCallFunction": {
+        "additionalProperties": false,
+        "properties": {
+          "arguments": {
+            "default": "",
+            "maxLength": 1048576,
+            "title": "Arguments",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentChatToolCallFunction",
+        "type": "object"
+      },
+      "AgentChatToolFunction": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "strict": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strict"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentChatToolFunction",
+        "type": "object"
+      },
       "ArtistLibraryData": {
         "additionalProperties": false,
         "properties": {
@@ -2200,6 +2620,167 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/agent/llm/chat": {
+      "post": {
+        "description": "把一次对话轮次转发到已配置的 LLM 槽位,原样回传流式 chunk。\n\n密钥不出 sidecar;主槽位在发出任何字节前失败才切备用槽位(并先发\n``degraded`` 事件);流中断以 ``error`` 事件收尾,由客户端决定是否重试。",
+        "operationId": "stream_llm_chat_api_v1_agent_llm_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OpenAI chat.completion.chunk events relayed from the configured LLM slot, terminated by `data: [DONE]`; `degraded` and `error` events carry sidecar-side signals"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Permission denied"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflicting state"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Resource expired"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Capacity or rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Runtime or dependency unavailable"
+          },
+          "507": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Insufficient storage"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Stream Llm Chat",
+        "tags": [
+          "v1",
+          "v1-agent"
+        ]
+      }
+    },
     "/api/v1/assets": {
       "get": {
         "operationId": "list_assets_api_v1_assets_get",

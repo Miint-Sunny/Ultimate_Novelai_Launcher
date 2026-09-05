@@ -4,6 +4,29 @@
  */
 
 export interface paths {
+    readonly "/api/v1/agent/llm/chat": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Stream Llm Chat
+         * @description 把一次对话轮次转发到已配置的 LLM 槽位,原样回传流式 chunk。
+         *
+         *     密钥不出 sidecar;主槽位在发出任何字节前失败才切备用槽位(并先发
+         *     ``degraded`` 事件);流中断以 ``error`` 事件收尾,由客户端决定是否重试。
+         */
+        readonly post: operations["stream_llm_chat_api_v1_agent_llm_chat_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets": {
         readonly parameters: {
             readonly query?: never;
@@ -377,6 +400,125 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentChatContentPart */
+        readonly AgentChatContentPart: {
+            readonly image_url?: components["schemas"]["AgentChatImageUrl"] | null;
+            /** Text */
+            readonly text?: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            readonly type: "text" | "image_url";
+        };
+        /**
+         * AgentChatImageUrl
+         * @description Only ``data:`` URLs are accepted: the provider must never fetch a URL for us.
+         */
+        readonly AgentChatImageUrl: {
+            /** Detail */
+            readonly detail?: ("auto" | "low" | "high") | null;
+            /** Url */
+            readonly url: string;
+        };
+        /** AgentChatMessage */
+        readonly AgentChatMessage: {
+            /** Content */
+            readonly content?: string | readonly components["schemas"]["AgentChatContentPart"][] | null;
+            /** Name */
+            readonly name?: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            readonly role: "system" | "user" | "assistant" | "tool";
+            /** Tool Call Id */
+            readonly tool_call_id?: string | null;
+            /** Tool Calls */
+            readonly tool_calls?: readonly components["schemas"]["AgentChatToolCall"][] | null;
+        };
+        /**
+         * AgentChatRequest
+         * @description One harness turn: OpenAI-shaped messages and tools; the model is the slot's.
+         */
+        readonly AgentChatRequest: {
+            /** Extra Body */
+            readonly extra_body?: {
+                readonly [key: string]: string | number | boolean | readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | null;
+            };
+            /** Max Tokens */
+            readonly max_tokens?: number | null;
+            /** Messages */
+            readonly messages: readonly components["schemas"]["AgentChatMessage"][];
+            /** Prompt Cache Key */
+            readonly prompt_cache_key?: string | null;
+            /** Reasoning Effort */
+            readonly reasoning_effort?: ("none" | "minimal" | "low" | "medium" | "high" | "xhigh") | null;
+            /**
+             * Slot
+             * @default auto
+             * @enum {string}
+             */
+            readonly slot: "auto" | "primary" | "backup";
+            /** Temperature */
+            readonly temperature?: number | null;
+            /** Tool Choice */
+            readonly tool_choice?: ("auto" | "none" | "required") | null;
+            /** Tools */
+            readonly tools?: readonly components["schemas"]["AgentChatTool"][];
+        };
+        /** AgentChatTool */
+        readonly AgentChatTool: {
+            readonly function: components["schemas"]["AgentChatToolFunction"];
+            /**
+             * Type
+             * @default function
+             * @constant
+             */
+            readonly type: "function";
+        };
+        /** AgentChatToolCall */
+        readonly AgentChatToolCall: {
+            readonly function: components["schemas"]["AgentChatToolCallFunction"];
+            /** Id */
+            readonly id: string;
+            /**
+             * Type
+             * @default function
+             * @constant
+             */
+            readonly type: "function";
+        };
+        /** AgentChatToolCallFunction */
+        readonly AgentChatToolCallFunction: {
+            /**
+             * Arguments
+             * @default
+             */
+            readonly arguments: string;
+            /** Name */
+            readonly name: string;
+        };
+        /** AgentChatToolFunction */
+        readonly AgentChatToolFunction: {
+            /**
+             * Description
+             * @default
+             */
+            readonly description: string;
+            /** Name */
+            readonly name: string;
+            /** Parameters */
+            readonly parameters?: {
+                readonly [key: string]: string | number | boolean | readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | null;
+            };
+            /** Strict */
+            readonly strict?: boolean | null;
+        };
         /** ArtistLibraryData */
         readonly ArtistLibraryData: {
             /**
@@ -1135,6 +1277,139 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly stream_llm_chat_api_v1_agent_llm_chat_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentChatRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description OpenAI chat.completion.chunk events relayed from the configured LLM slot, terminated by `data: [DONE]`; `degraded` and `error` events carry sidecar-side signals */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                    readonly "text/event-stream": string;
+                };
+            };
+            /** @description Invalid request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflicting state */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource expired */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request body too large */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request validation failed */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Capacity or rate limit exceeded */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal server error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Runtime or dependency unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Insufficient storage */
+            readonly 507: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     readonly list_assets_api_v1_assets_get: {
         readonly parameters: {
             readonly query?: {
