@@ -93,6 +93,8 @@ def _register_middleware(app: FastAPI, components: RuntimeComponents) -> None:
             # 20 MiB decoded image + 4 MiB UTF-8 context requires just under
             # 31 MiB once the image is represented as base64 JSON.
             "/api/agent": 32 * 1024 * 1024,
+            # Client-side harness turns: history + a few <=1024px data-URL images.
+            "/api/v1/agent": 32 * 1024 * 1024,
             "/vibe": 45 * 1024 * 1024,
             "/upscale": 45 * 1024 * 1024,
             # V5 扩散超分:源图以 base64 JSON 进来,预算与 compat /upscale 同档。
