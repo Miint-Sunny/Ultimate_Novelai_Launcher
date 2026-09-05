@@ -16,8 +16,9 @@ export function parseQuestions(args: Record<string, unknown>): AgentQuestion[] |
     if (!Array.isArray(rawOptions) || rawOptions.length < 2 || rawOptions.length > 4) return null;
     const options = [];
     for (const rawOption of rawOptions) {
-      if (!rawOption || typeof rawOption !== 'object') return null;
-      const o = rawOption as Record<string, unknown>;
+      // Models often send bare strings for options; treat them as label-only entries.
+      const o: Record<string, unknown> = typeof rawOption === 'string' ? { label: rawOption } : (rawOption as Record<string, unknown>);
+      if (!o || typeof o !== 'object') return null;
       if (typeof o.label !== 'string' || !o.label.trim()) return null;
       options.push({ label: o.label.trim(), description: typeof o.description === 'string' ? o.description : undefined });
     }

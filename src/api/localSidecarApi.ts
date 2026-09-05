@@ -520,6 +520,15 @@ export const localSidecarApi = {
     if (!response.ok) throw new Error(await readError(response));
     return response;
   },
+  /**
+   * 同 openSse,但**不**把非 2xx 折成 Error:Agent harness 要按状态码与 Problem Details
+   * 的 retryable 决定重不重试(401/422 永不重试,503 看 retryable),抛成字符串就分不清了。
+   */
+  fetchSse: async (path: string, init?: RequestInit, query?: ApiQuery) => {
+    const headers = new Headers(init?.headers);
+    headers.set('Accept', 'text/event-stream');
+    return request(path, { ...init, headers }, query);
+  },
   health: () => requestJson<{ ok: boolean; version: string }>('/health'),
   settings: () => requestJson<AppSettings>('/settings'),
   primaryLlmModel: async () => {

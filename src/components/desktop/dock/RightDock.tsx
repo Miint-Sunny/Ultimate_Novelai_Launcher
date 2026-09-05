@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { useAgentDock } from '../../../contexts/AgentDockContext';
-import { AgentPanel } from '../AIAssistant/AgentPanel';
+import { AssistantSwitch } from '../AIAssistant/harness/AssistantSwitch';
 import { SessionsPanel } from '../AIAssistant/SessionsPanel';
 import { C } from '../AIAssistant/tokens';
 import { DockPanelFrame } from './DockPanelFrame';
@@ -19,7 +19,7 @@ import {
  * 外壳、勾选菜单、排序、持久化都不用动。
  */
 const PANEL_BODIES: Record<DockPanelId, React.FC> = {
-  assistant: AgentPanel,
+  assistant: AssistantSwitch,
   sessions: SessionsPanel,
 };
 

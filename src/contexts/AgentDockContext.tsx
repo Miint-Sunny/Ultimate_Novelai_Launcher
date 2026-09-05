@@ -12,6 +12,7 @@ import { APP_SETTINGS_CHANGED_EVENT } from '../services/localLibrary/appSettings
 import { loadCurrentLogs, saveCurrentLogs, useSessions } from '../components/desktop/AIAssistant/useSessions';
 import type { ArchivedSession } from '../components/desktop/AIAssistant/types';
 import { useDockLayout, type DockLayoutController } from '../components/desktop/dock/useDockLayout';
+import type { WorkbenchAdapter } from '../services/agentHarness/workbench';
 
 /**
  * 提示词落地回调由 LeftSidebar 注册：提示词状态的所有权仍在左栏，
@@ -33,6 +34,11 @@ export interface AgentDockHandlers {
   restoreSnapshot: (snapshot: GenerationSnapshot) => void;
   /** 固定指令「生成图片」：可选地先替换正向提示词，再按左栏当前参数提交生成 */
   triggerGenerate?: (positive?: string) => void;
+  /**
+   * Agent harness 的工作台桥:工具通过它读写左栏参数、角色槽位、触发生成、取历史图。
+   * askUser 不在这里——那是停靠面板自己的 UI,由 hook 补上。
+   */
+  workbench?: Omit<WorkbenchAdapter, 'askUser'>;
 }
 
 interface AgentDockContextValue {

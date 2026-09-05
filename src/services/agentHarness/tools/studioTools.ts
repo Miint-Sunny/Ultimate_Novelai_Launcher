@@ -124,11 +124,16 @@ export function normalizeStudioUpdate(
 }
 
 /** 写类工具的字段 diff,给确认卡片看。 */
+/** Lines of `key: before → after`, only for fields the patch actually changes. */
 export function describeStudioDiff(patch: Partial<StudioParams>, current: StudioParams): string {
   const lines: string[] = [];
+  const show = (v: unknown) => {
+    const text = typeof v === 'string' ? v : JSON.stringify(v);
+    return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+  };
   for (const [key, next] of Object.entries(patch)) {
     const prev = (current as unknown as Record<string, unknown>)[key];
-    const show = (v: unknown) => (typeof v === 'string' && v.length > 80 ? `${v.slice(0, 80)}…` : String(v));
+    if (JSON.stringify(prev) === JSON.stringify(next)) continue;
     lines.push(`${key}: ${show(prev)} → ${show(next)}`);
   }
   return lines.join('\n') || '(没有实际改动)';

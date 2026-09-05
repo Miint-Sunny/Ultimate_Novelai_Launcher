@@ -148,6 +148,7 @@ await check('ask_user: 参数规则照他的(1–4 题、2–4 项、label 必�
   assert.equal(parseQuestions({ questions: [] }), null);
   assert.equal(parseQuestions({ questions: [{ question: 'q?', options: [{ label: 'a' }] }] }), null);
   assert.equal(parseQuestions({ questions: [{ question: 'q?', options: [{ label: 'a' }, { label: '' }] }] }), null);
+  assert.deepEqual(parseQuestions({ questions: [{ question: 'q?', options: ['a', ' b '] }] })?.[0].options.map((o) => o.label), ['a', 'b']);
   const parsed = parseQuestions({ questions: [{ question: ' q? ', header: 'H', multiSelect: true, options: [{ label: ' a ' }, { label: 'b', description: 'd' }] }] });
   assert.deepEqual(parsed, [{ question: 'q?', header: 'H', multiSelect: true, allowCustomInput: true, options: [{ label: 'a', description: undefined }, { label: 'b', description: 'd' }] }]);
   const { registry, state } = makeDeps();

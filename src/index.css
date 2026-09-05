@@ -51,6 +51,24 @@
      inline style 亦可直接 var(--ease-spring) 消费(页栏 pill/sheet/页头过渡)。 */
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
 
+  /* Agent 面板的设计语言档位,照 nai-autocomplete/STYLE.md:
+     容器走圆角档位;胶囊 999px;控件填充是「提亮的半透明白」+ 阴影(凸),
+     次要文字走 ink-muted;玻璃只给顶层表面,区块只用半透明背景。 */
+  --nai-agent-radius-xl: 26px;
+  --nai-agent-radius-lg: 20px;
+  --nai-agent-radius-md: 14px;
+  --nai-agent-radius-sm: 10px;
+  --nai-agent-radius-xs: 10px;
+  --nai-agent-chip-bg: rgba(255, 255, 255, 0.06);
+  --nai-agent-chip-border: rgba(255, 255, 255, 0.14);
+  --nai-agent-chip-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --nai-agent-chip-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --nai-agent-ink-muted: rgb(var(--nai-text-2) / 0.72);
+  --nai-agent-ink-faint: rgb(var(--nai-text-2) / 0.45);
+  --nai-agent-card-bg: rgba(255, 255, 255, 0.04);
+  --nai-agent-primary-fill: rgb(var(--nai-accent));
+  --nai-agent-on-primary: rgb(var(--nai-dark));
+
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   line-height: 1.5;
   font-weight: 400;

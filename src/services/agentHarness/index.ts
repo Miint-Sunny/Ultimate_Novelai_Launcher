@@ -5,3 +5,6 @@ export * from './openaiStream';
 export * from './thinkingFormat';
 export * from './provider';
 export * from './harness';
+export * from './workbench';
+export * from './presets';
+export * from './skillCatalog';

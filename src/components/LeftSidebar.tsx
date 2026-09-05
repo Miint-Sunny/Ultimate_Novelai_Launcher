@@ -3,6 +3,8 @@ import confetti from 'canvas-confetti';
 import type { PromptEditorRef } from './PromptEditor';
 import { useArtistManager, ArtistManagerModal } from './artist';
 import { PromptChunkManagerModal } from './prompt-chunks';
+import { createWorkbenchBridge, type WorkbenchState } from './left-sidebar/workbenchBridge';
+import type { GenerateOutcome } from '../services/agentHarness/workbench';
 import { usePromptChunkLibrary } from '../hooks/usePromptChunkLibrary';
 import { expandPromptChunksForSend } from '../services/promptChunkMacros';
 import { useOCManager, OCManagerModal } from './oc';
@@ -94,7 +96,7 @@ interface LeftSidebarProps {
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterApplyMetadata }) => {
   // Generation context
-  const { isGenerating, generate, seedSetting: seed, setSeedSetting: setSeed, currentSeed, setImage, addInpaintedImage, history: generationHistory } = useGeneration();
+  const { isGenerating, generate, seedSetting: seed, setSeedSetting: setSeed, currentSeed, setImage, addInpaintedImage, addUpscaledImage, history: generationHistory } = useGeneration();
 
   // Auth context
   const { isAuthenticated, isBotAuthorized, requireAuth, openLoginModal } = useAuth();
@@ -821,9 +823,35 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positivePrompt]);
 
+  // Agent harness 的工作台桥。工具在 harness 循环里异步调用,注册时的闭包会过期,
+  // 所以每次渲染把最新状态与 setter 存进 ref,桥的每个方法都从 ref 里读。
+  const workbenchRef = useRef<WorkbenchState | null>(null);
+  workbenchRef.current = {
+    positivePrompt, negativePrompt, selectedModel, customWidth, customHeight, steps, scale, sampler, scaleRescale, noiseSchedule,
+    activePresetId, promptPresets, seed, characterPrompts, generationHistory, isGenerating,
+    setPositivePrompt, setNegativePrompt, setSelectedModel, setCustomWidth, setCustomHeight, setCustomWidthInput, setCustomHeightInput,
+    setIsCustomRes, setSteps, setScale, setSampler, setScaleRescale, setNoiseSchedule, setActivePresetId, setSeed, setCharacterPrompts,
+    handleGenerate, addUpscaledImage,
+  };
+  const pendingGenerateRef = useRef<{ resolve: (outcome: GenerateOutcome) => void; historyHead: string | null; timer: number } | null>(null);
+  useEffect(() => {
+    const pending = pendingGenerateRef.current;
+    if (!pending || isGenerating) return;
+    const head = generationHistory[0];
+    pendingGenerateRef.current = null;
+    window.clearTimeout(pending.timer);
+    if (head && head.id !== pending.historyHead) {
+      pending.resolve({ ok: true, message: '生成完成', seed: head.seed, width: head.width, height: head.height });
+    } else {
+      pending.resolve({ ok: false, message: '生成没有产出新图片(可能被取消或失败,看左下角提示)' });
+    }
+  }, [isGenerating, generationHistory]);
+  const workbenchBridge = useMemo(() => createWorkbenchBridge(workbenchRef, pendingGenerateRef), []);
+
   // 把提示词写回入口注册给右侧停靠面板（提示词状态所有权留在左栏）。
   useEffect(() => {
     registerHandlers({
+      workbench: workbenchBridge,
       generate: (request, imageBase64) => { void handleAIGenerate(request, imageBase64); },
       regenerate: (request, preState, imageBase64) => {
         void handleAIGenerateWithRequest(request, preState, imageBase64);
@@ -838,7 +866,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         }
       },
     });
-  }, [registerHandlers, handleAIGenerate, handleAIGenerateWithRequest, restorePromptSnapshot, handleGenerate, positivePrompt]);
+  }, [registerHandlers, handleAIGenerate, handleAIGenerateWithRequest, restorePromptSnapshot, handleGenerate, positivePrompt, workbenchBridge]);
 
 
   useGenerationCompletionEffects({
