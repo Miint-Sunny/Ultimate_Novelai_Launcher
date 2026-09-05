@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
-from typing import Any
 
 from fastapi import APIRouter, Request
 
@@ -19,10 +17,13 @@ from sidecar.config import Settings
 from sidecar.llm.client import LLMNotConfiguredError
 from sidecar.llm.stream import (
     LlmStreamError,
-    LlmStreamInfo,
+    LlmStreamSession,
     LlmStreamUnsupportedError,
     LlmStreamUpstreamError,
+    RelayChannel,
+    drain_relay,
     open_llm_stream,
+    run_relay,
 )
 from sidecar.runtime import AppRuntime
 from sidecar.security import OutboundPolicyError
@@ -33,81 +34,6 @@ from .events import SSEStreamingResponse
 from .models import AgentChatRequest
 
 logger = logging.getLogger(__name__)
-
-_CLOSE: object = object()
-
-
-class _RelayChannel:
-    """Hand-off between the supervised upstream task and the HTTP response."""
-
-    def __init__(self, maxsize: int = 512) -> None:
-        self.queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=maxsize)
-        self.connected: asyncio.Future[LlmStreamInfo] = asyncio.get_running_loop().create_future()
-
-    def set_connected(self, info: LlmStreamInfo) -> None:
-        if not self.connected.done():
-            self.connected.set_result(info)
-
-    def set_failed(self, exc: BaseException) -> None:
-        if not self.connected.done():
-            self.connected.set_exception(exc)
-
-    async def put(self, chunk: str) -> None:
-        await self.queue.put(chunk)
-
-    def close(self) -> None:
-        try:
-            self.queue.put_nowait(_CLOSE)
-        except asyncio.QueueFull:
-            # A vanished consumer must never wedge producer cleanup.
-            try:
-                self.queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
-            self.queue.put_nowait(_CLOSE)
-
-
-async def _relay(
-    settings: Settings,
-    body: AgentChatRequest,
-    http: Any,
-    channel: _RelayChannel,
-) -> None:
-    try:
-        session = await open_llm_stream(
-            settings=settings,
-            fields=body.upstream_fields(),
-            http=http,
-            slot=body.slot,
-        )
-    except asyncio.CancelledError:
-        raise
-    except BaseException as exc:  # noqa: BLE001 - surfaced through the future
-        channel.set_failed(exc)
-        channel.close()
-        return
-    try:
-        async with session:
-            channel.set_connected(session.info)
-            async for chunk in session.iter_sse():
-                await channel.put(chunk)
-    finally:
-        channel.close()
-
-
-async def _drain(channel: _RelayChannel, producer: asyncio.Task[None]) -> AsyncIterator[str]:
-    """Yield relayed chunks; cancel the paid upstream task when the client leaves."""
-
-    try:
-        while True:
-            item = await channel.queue.get()
-            if item is _CLOSE:
-                break
-            yield item
-    finally:
-        if not producer.done():
-            producer.cancel()
-        await asyncio.gather(producer, return_exceptions=True)
 
 
 def _map_open_error(exc: BaseException) -> AppError:
@@ -193,11 +119,19 @@ def create_agent_router(runtime: AppRuntime | None = None) -> APIRouter:
             )
         settings = _current_settings(current)
 
-        channel = _RelayChannel()
+        async def open_session() -> LlmStreamSession:
+            return await open_llm_stream(
+                settings=settings,
+                fields=body.upstream_fields(),
+                http=http_pool,
+                slot=body.slot,
+            )
+
+        channel = RelayChannel()
         request_id = request_id_for(request)
         try:
             producer = supervisor.create_task(
-                _relay(settings, body, http_pool, channel),
+                run_relay(open_session, channel),
                 name=f"agent-llm-chat-{request_id}",
                 paid=True,
             )
@@ -213,7 +147,7 @@ def create_agent_router(runtime: AppRuntime | None = None) -> APIRouter:
             raise _map_open_error(exc) from exc
 
         return SSEStreamingResponse(
-            _drain(channel, producer),
+            drain_relay(channel, producer),
             headers={
                 "Cache-Control": "no-cache, no-transform",
                 "X-Accel-Buffering": "no",

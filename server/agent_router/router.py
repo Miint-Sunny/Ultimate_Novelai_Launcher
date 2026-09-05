@@ -24,7 +24,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from .access import (
@@ -44,6 +44,7 @@ from .history_adapter import (
     load_history_for_agent,
 )
 from .llm import BinaryContent
+from .llm_relay import HostAgentChatRequest, stream_llm_chat
 from .model_family import normalize_model_family
 from .model_provider import (
     get_model,
@@ -925,6 +926,25 @@ async def web_generate_prompt(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ============================================================
+# POST /api/agent/llm/chat —— 客户端 Agent harness 的流式 LLM 代理（宿主同形端点）
+# ============================================================
+
+
+@router.post("/llm/chat")
+async def llm_chat(
+    req: HostAgentChatRequest,
+    access: Annotated[AgentAccess, Depends(require_paid_agent_access)],
+) -> Response:
+    """把一次 harness 轮次转发到部署的 MODEL_CHOICES 模型，原样回传流式 chunk。
+
+    与 sidecar 的 ``/api/v1/agent/llm/chat`` 同一契约（§2）；宿主差异见契约 §2.5：
+    ``model`` 是可选的 MODEL_CHOICES key（空 = ACTIVE_MODEL），没有备用槽位，
+    流开始前的失败是扁平 JSON problem。密钥不出宿主。
+    """
+    return await stream_llm_chat(req, access)
 
 
 # 旧版 /api/agent/draw-plan 和 /api/agent/vision/describe 已下线。

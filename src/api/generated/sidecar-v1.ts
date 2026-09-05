@@ -463,7 +463,7 @@ export interface components {
         };
         /**
          * AgentChatRequest
-         * @description One harness turn: OpenAI-shaped messages and tools; the model is the slot's.
+         * @description One harness turn: OpenAI-shaped messages and tools; the model is the host's.
          */
         readonly AgentChatRequest: {
             /** Extra Body */

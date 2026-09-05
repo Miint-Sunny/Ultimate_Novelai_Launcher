@@ -3495,7 +3495,7 @@ app.add_middleware(
         "X-Bot-Secret",
         "X-Bot-Session",
     ],
-    expose_headers=["Location", "Retry-After"],
+    expose_headers=["Location", "Retry-After", "X-Llm-Model", "X-Llm-Provider", "X-Llm-Slot"],
 )
 
 # Gzip 压缩所有 ≥1KB 的 text/json 响应。
@@ -3597,6 +3597,9 @@ _LEGACY_RATE_LIMIT_PATH_RULES = {
     "/api/wd-tagger": RateLimitRule(limit=20, window_seconds=60),
     "/api/vibe/encode": RateLimitRule(limit=20, window_seconds=60),
     "/api/agent": RateLimitRule(limit=30, window_seconds=60),
+    # The client-side Agent harness makes one LLM call per tool round (hard cap 30
+    # rounds per message), so it gets its own budget instead of sharing /api/agent.
+    "/api/agent/llm/chat": RateLimitRule(limit=60, window_seconds=60),
     # Credential exchange, on top of the per-code attempt limits.
     "/api/bot/auth": RateLimitRule(limit=30, window_seconds=60),
     # Asset writes are size-bounded already but should not be scriptable in bulk.

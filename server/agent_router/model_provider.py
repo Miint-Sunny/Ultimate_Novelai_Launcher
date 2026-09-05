@@ -22,6 +22,7 @@ API:
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 from .llm.models import AnthropicModel, GoogleModel, Model, OpenAIModel
 from .llm.output import PromptedOutput
@@ -488,3 +489,87 @@ def get_active_channel_info() -> dict:
             for key, ch in choices.items()
         },
     }
+
+
+# ============================================================
+# 流式代理（llm_relay）用的连接事实
+# ============================================================
+
+
+@dataclass(frozen=True)
+class LlmStreamTarget:
+    """One ``MODEL_CHOICES`` entry resolved for the streaming relay (``llm_relay``)."""
+
+    key: str
+    model_name: str
+    protocol: str
+    base_url: str
+    api_key: str
+    proxy: str
+    supports_tools: bool
+    supports_vision: bool
+    extra_body: dict
+    model_settings: dict
+
+
+def _fold_choice_token(value: object) -> str:
+    # Same normalisation as config._resolve_model_key: case, spaces and dashes are noise.
+    return str(value).strip().lower().replace(" ", "").replace("-", "")
+
+
+def resolve_choice_key(model_key: str = "") -> str:
+    """Strict variant of ``_normalize_model_key``: an unknown explicit key is an error.
+
+    Empty means the global ``ACTIVE_MODEL``.  Labels, registry keys and aliases
+    resolve like the ``/models/resolve`` route; anything else raises
+    ``LookupError`` instead of silently falling back to the active choice.
+    """
+
+    _, choices, _, active = _load_registry_and_choices()
+    if not model_key:
+        return active
+    if model_key in choices:
+        return model_key
+    wanted = _fold_choice_token(model_key)
+    for key, choice in choices.items():
+        candidates = [key, choice.get("label", ""), choice.get("model", "")]
+        candidates.extend(choice.get("aliases") or [])
+        if any(wanted == _fold_choice_token(item) for item in candidates if item):
+            return key
+    raise LookupError(f"unknown model: {model_key}")
+
+
+def get_stream_target(model_key: str = "") -> LlmStreamTarget:
+    """Resolve the connection facts the streaming relay needs for one choice.
+
+    Unlike :func:`get_model` this returns plain data (the relay speaks HTTP
+    itself).  ``LookupError`` means the caller named a choice that does not
+    exist; ``ValueError`` means the deployment's registry is inconsistent.
+    """
+
+    registry, choices, default_protocol, _active = _load_registry_and_choices()
+    key = resolve_choice_key(model_key)
+    choice = choices.get(key)
+    if not choice:
+        raise ValueError(f"未知 model: {key}（可选: {list(choices.keys())}）")
+    registry_key = choice.get("model")
+    meta = registry.get(registry_key)
+    if not meta:
+        raise ValueError(
+            f"模型 '{registry_key}' 未在 MODEL_REGISTRY 中登记（被 MODEL_CHOICES[{key!r}] 引用）"
+        )
+    protocol = str(meta.get("protocol") or default_protocol)
+    extra_body = meta.get("extra_body")
+    model_settings = meta.get("model_settings")
+    return LlmStreamTarget(
+        key=key,
+        model_name=str(meta.get("model_name") or registry_key),
+        protocol=protocol,
+        base_url=_normalize_base_url(str(meta.get("base_url") or ""), protocol),
+        api_key=str(meta.get("api_key") or ""),
+        proxy=str(meta.get("proxy") or ""),
+        supports_tools=bool(meta.get("supports_tools", True)),
+        supports_vision=bool(meta.get("supports_vision", True)),
+        extra_body=dict(extra_body) if isinstance(extra_body, dict) else {},
+        model_settings=dict(model_settings) if isinstance(model_settings, dict) else {},
+    )
