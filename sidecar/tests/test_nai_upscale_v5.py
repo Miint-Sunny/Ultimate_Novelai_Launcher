@@ -16,6 +16,7 @@ import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import httpx
 from fastapi import FastAPI
@@ -25,6 +26,7 @@ from sidecar.api import mount_api
 from sidecar.application import SettingsStore
 from sidecar.config import Settings
 from sidecar.infrastructure import HttpClientPool
+from sidecar.nai import client as nai_client
 from sidecar.nai.client import (
     NovelAIError,
     png_dimensions,
@@ -229,10 +231,19 @@ class UpscaleV5ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 500)
         self.assertEqual(request_count, 1)
 
-    async def test_rate_limited_429_never_retries(self) -> None:
-        status, request_count = await self._assert_no_fallback(429)
+    async def test_rate_limited_429_retries_once_in_the_same_format_only(self) -> None:
+        sleeps: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        with mock.patch.object(nai_client, "_rate_limit_sleep", fake_sleep):
+            status, request_count = await self._assert_no_fallback(429)
         self.assertEqual(status, 429)
-        self.assertEqual(request_count, 1)
+        # 同一个 multipart 请求等 2.5 s 后重发一次;第二次 429 为最终结果,
+        # 绝不借机换旧 schema(那是另一次可计费的请求)。
+        self.assertEqual(request_count, 2)
+        self.assertEqual(sleeps, [nai_client.RATE_LIMIT_BACKOFF_SECONDS])
 
     async def test_non_v5_model_is_rejected_before_any_request(self) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:
@@ -358,9 +369,7 @@ class UpscaleV5RouteTests(unittest.IsolatedAsyncioTestCase):
         pool = _pool(handler)
         runtime = self._runtime(pool, mock_generation=False)
         with TestClient(self._app(runtime)) as client:  # type: ignore[misc]
-            unauthorized = client.post(
-                "/api/v1/upscale/v5", json={"image": SOURCE_B64}
-            )
+            unauthorized = client.post("/api/v1/upscale/v5", json={"image": SOURCE_B64})
             ok = client.post(
                 "/api/v1/upscale/v5",
                 headers={"Authorization": "Bearer process-token"},
