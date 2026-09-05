@@ -391,4 +391,58 @@ await check('回溯: send 可指定用户消息 id;rewindBeforeMessage 连同该
   assert.equal(h.messages.length, 0);
 });
 
+await check('预设库: 内置永远在;新建/复制/删除/切换;内置不可删可 reset;技能启停含父子继承;SKILL.md 进出对称', async () => {
+  const L = await import('../src/services/agentHarness/presetLibrary.ts');
+  const base = L.defaultPresetLibrary();
+  assert.equal(base.presets.length, 1);
+  assert.equal(L.resolveActivePreset(base).id, base.activeId);
+  const created = L.createPreset(base, '试验');
+  assert.equal(created.presets.length, 2);
+  assert.equal(L.resolveActivePreset(created).name, '试验');
+  const again = L.createPreset(created, '试验');
+  assert.equal(L.resolveActivePreset(again).name, '试验 2', '重名自动编号');
+  const dup = L.duplicatePreset(again, again.activeId);
+  assert.equal(L.resolveActivePreset(dup).name, '试验 2 副本');
+  const builtinId = base.presets[0].id;
+  assert.equal(L.removePreset(dup, builtinId), dup, '内置不能删');
+  const edited = L.upsertPreset(dup, { ...L.resolveActivePreset(L.setActivePreset(dup, builtinId)), systemPrompt: 'changed', enabledToolNames: [] });
+  assert.equal(edited.presets.find((p) => p.id === builtinId).systemPrompt, 'changed');
+  const reset = L.resetBuiltinPreset(edited, builtinId);
+  assert.notEqual(reset.presets.find((p) => p.id === builtinId).systemPrompt, 'changed');
+  assert.ok(reset.presets.find((p) => p.id === builtinId).enabledToolNames.length > 10, 'reset 回出厂工具表');
+  const removed = L.removePreset(dup, dup.activeId);
+  assert.equal(removed.presets.length, dup.presets.length - 1);
+  assert.equal(removed.activeId, removed.presets[0].id, '删掉当前预设后切到第一个');
+  assert.deepEqual(L.toggleId(['a'], 'b', true), ['a', 'b']);
+  assert.deepEqual(L.toggleId(['a', 'b'], 'a', false), ['b']);
+  assert.equal(L.isSkillEnabled('nai5-prompting/通用写法', ['nai5-prompting']), true);
+  assert.equal(L.inheritsFromParent('nai5-prompting/通用写法', ['nai5-prompting']), true);
+  assert.equal(L.inheritsFromParent('nai5-prompting', ['nai5-prompting']), false);
+  const md = '---\nname: "我的技能"\ndescription: 什么时候用\n---\n\n# 正文\n内容';
+  const skill = L.parseSkillMarkdown(md, 'fallback.md');
+  assert.deepEqual(skill, { id: '我的技能', name: '我的技能', description: '什么时候用', systemPrompt: '# 正文\n内容' });
+  const round = L.parseSkillMarkdown(L.skillToMarkdown(skill), 'x.md');
+  assert.deepEqual(round, skill, '导出再导入不变');
+  const plain = L.parseSkillMarkdown('no frontmatter body', 'My Skill.md');
+  assert.equal(plain.id, 'my-skill'); assert.equal(plain.name, 'My Skill'); assert.equal(plain.systemPrompt, 'no frontmatter body');
+  const withSkill = L.upsertUserSkill(L.upsertPreset(base, { ...base.presets[0], enabledSkillIds: ['nai5-prompting', 'my-skill'] }), plain);
+  assert.equal(withSkill.userSkills.length, 1);
+  const without = L.removeUserSkill(withSkill, 'my-skill');
+  assert.deepEqual(without.presets[0].enabledSkillIds, ['nai5-prompting'], '删技能时从预设名单摘掉');
+  const sanitized = L.sanitizePresetLibrary({ presets: [{ id: 'u1', name: 'u', enabledToolNames: ['x', 3], allowedModifiableParams: ['steps', 'nope'] }], activeId: 'ghost', userSkills: [{ id: 's', systemPrompt: 'p' }, { bad: true }] });
+  assert.equal(sanitized.presets[0].id, builtinId, '内置预设补回最前');
+  assert.deepEqual(sanitized.presets[1].enabledToolNames, ['x']);
+  assert.deepEqual(sanitized.presets[1].allowedModifiableParams, ['steps'], '未知参数键丢弃');
+  assert.equal(sanitized.activeId, builtinId, '悬空 activeId 退回第一个');
+  assert.equal(sanitized.userSkills.length, 1);
+  assert.equal(L.sanitizePresetLibrary('garbage').presets.length, 1);
+});
+
+await check('工具目录: listWorkbenchTools 不需要真依赖,列出 19 个带标签与权限类的工具', async () => {
+  const { listWorkbenchTools } = await import('../src/services/agentHarness/tools/index.ts');
+  const tools = listWorkbenchTools();
+  assert.equal(tools.length, 19);
+  assert.ok(tools.every((t) => t.label && ['R', 'W', 'D', 'P', 'A'].includes(t.permissionClass)));
+});
+
 console.log(`\n${checks} 项 agent harness 校验全部通过。`);

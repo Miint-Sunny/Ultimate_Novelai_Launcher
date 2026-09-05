@@ -11,9 +11,10 @@ import { AgentHarness } from '../../../../services/agentHarness/harness';
 import { DEFAULT_PERMISSION_LIMITS } from '../../../../services/agentHarness/permissionGate';
 import { createSidecarLlmProvider, type LlmProvider } from '../../../../services/agentHarness/provider';
 import { BUILTIN_SKILLS, formatSkillsForSystemPrompt } from '../../../../services/agentHarness/skills';
-import { V5_ARCHITECT_PRESET } from '../../../../services/agentHarness/presets';
-import { createWorkbenchToolRegistry, type PromptLibraryEntry, type TagSuggestItem } from '../../../../services/agentHarness/tools/index';
+import { allSkills, resolveActivePreset, type PresetLibrary } from '../../../../services/agentHarness/presetLibrary';
+import { createWorkbenchToolRegistry, listWorkbenchTools, type PromptLibraryEntry, type TagSuggestItem, type WorkbenchToolInfo } from '../../../../services/agentHarness/tools/index';
 import type { HarnessEvent, PermissionDecision, PermissionMode } from '../../../../services/agentHarness/types';
+import type { Skill } from '../../../../services/agentHarness/skillCatalog';
 import type { AgentQuestion, WorkbenchAdapter } from '../../../../services/agentHarness/workbench';
 import { calculateCostFromUI } from '../../../../services/costCalculator';
 import { deletePromptChunk, getPromptChunks, savePromptChunk } from '../../../../services/localLibrary/promptChunks';
@@ -22,6 +23,7 @@ import { v5UpscaleCost, v5UpscaleTargetSize } from '../../../../services/naiV5Up
 import { getCachedIsOpus, isOpusUsageExhausted } from '../../../../services/novelai';
 import { MODEL_MAP } from '../../../generation/modelResolutionOptions';
 import { renderCharacterOverlay } from './overlayRenderer';
+import { loadPresetLibrary, savePresetLibrary } from './presetStorage';
 import { deserializeTranscript, serializeTranscript, transcriptToMessages, type TranscriptItem } from './transcript';
 
 const TRANSCRIPT_KEY = 'desktop_agent_harness_transcript';
@@ -75,6 +77,13 @@ export interface AgentHarnessController {
   clear: () => void;
   /** 回到某条用户消息之前;返回那条消息的文本(放回输入框),忙碌或找不到时返回 null。 */
   rewindTo: (userItemId: string) => string | null;
+  presetLibrary: PresetLibrary;
+  /** 预设 / 技能变了就落盘并让下一次发送重建 harness(消息历史从面板条目回填)。 */
+  updatePresetLibrary: (next: PresetLibrary) => void;
+  /** 当前可用技能(内置 + 用户自建)。 */
+  skills: Skill[];
+  toolCatalog: WorkbenchToolInfo[];
+  activePresetName: string;
 }
 
 export function useAgentHarness(): AgentHarnessController {
@@ -86,6 +95,9 @@ export function useAgentHarness(): AgentHarnessController {
   const [mode, setModeState] = useState<PermissionMode>(() => getAppSettings().agentPermissionMode);
   const [lockedFields, setLockedFields] = useState<Set<string>>(readLockedFields);
   const [llm, setLlm] = useState<{ configured: boolean; baseUrl: string; model: string; provider: string } | null>(null);
+  const [presetLibrary, setPresetLibrary] = useState<PresetLibrary>(loadPresetLibrary);
+  const libraryRef = useRef(presetLibrary); libraryRef.current = presetLibrary;
+  const toolCatalog = useMemo(() => listWorkbenchTools(), []);
 
   const harnessRef = useRef<AgentHarness | null>(null);
   const providerRef = useRef<LlmProvider | null>(null);
@@ -163,7 +175,8 @@ export function useAgentHarness(): AgentHarnessController {
     }
     if (harnessRef.current) return harnessRef.current;
     const adapter: WorkbenchAdapter = { ...bridge, askUser };
-    const preset = V5_ARCHITECT_PRESET;
+    const preset = resolveActivePreset(libraryRef.current);
+    const skills = allSkills(BUILTIN_SKILLS, libraryRef.current);
     const registry = createWorkbenchToolRegistry({
       adapter,
       allowedParams: () => new Set(preset.allowedModifiableParams),
@@ -186,7 +199,7 @@ export function useAgentHarness(): AgentHarnessController {
         save: async (e) => { await savePromptChunk({ id: e.id, label: e.title, expansion: e.prompt, category: e.category, createdAt: e.createdAt }); },
         remove: (id) => deletePromptChunk(id),
       },
-      skills: BUILTIN_SKILLS,
+      skills,
       enabledSkillIds: () => preset.enabledSkillIds,
     });
     const settings = getAppSettings();
@@ -200,7 +213,7 @@ export function useAgentHarness(): AgentHarnessController {
       permissionLimits: () => ({ ...DEFAULT_PERMISSION_LIMITS, anlasBudget: settings.agentAnlasBudget, maxGenerationsPerMessage: settings.agentMaxGenerations }),
       opusExhausted: () => isOpusUsageExhausted(),
       lockedFields: () => lockedRef.current,
-      systemPromptSuffix: () => formatSkillsForSystemPrompt(BUILTIN_SKILLS.filter((s) => preset.enabledSkillIds.some((id) => s.id === id || s.id.startsWith(`${id}/`)))),
+      systemPromptSuffix: () => formatSkillsForSystemPrompt(skills.filter((s) => preset.enabledSkillIds.some((id) => s.id === id || s.id.startsWith(`${id}/`)))),
     });
     // 面板条目是落盘的,harness 的消息历史不是:刷新后从条目重建,模型才记得前文。
     harnessRef.current.restoreMessages(transcriptToMessages(itemsRef.current));
@@ -293,6 +306,14 @@ export function useAgentHarness(): AgentHarnessController {
     setItems([]);
   }, []);
 
+  const updatePresetLibrary = useCallback((next: PresetLibrary) => {
+    setPresetLibrary(next);
+    libraryRef.current = next;
+    savePresetLibrary(next);
+    // 预设决定系统提示词、工具白名单和技能目录,只能重建;历史在 ensureHarness 里从条目回填。
+    harnessRef.current = null;
+  }, []);
+
   const rewindTo = useCallback((userItemId: string): string | null => {
     if (busy) return null;
     const current = itemsRef.current;
@@ -338,5 +359,10 @@ export function useAgentHarness(): AgentHarnessController {
     decidePermission,
     clear,
     rewindTo,
+    presetLibrary,
+    updatePresetLibrary,
+    skills: allSkills(BUILTIN_SKILLS, presetLibrary),
+    toolCatalog,
+    activePresetName: resolveActivePreset(presetLibrary).name,
   };
 }
