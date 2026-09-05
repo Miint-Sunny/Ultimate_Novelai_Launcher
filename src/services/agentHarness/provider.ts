@@ -34,9 +34,14 @@ export interface SidecarLlmProviderOptions {
   thinkingEffort?: string | null;
   thinkingFormat?: string | null;
   maxTokens?: number;
+  /** 端点路径;云模式打宿主同形端点(契约 §2.5),默认 sidecar。 */
+  chatPath?: string;
+  /** 宿主端点可选的模型选择(MODEL_CHOICES 的 key);sidecar 端点没有这一项。 */
+  model?: string;
 }
 
 export const AGENT_LLM_CHAT_PATH = '/api/v1/agent/llm/chat';
+export const HOST_AGENT_LLM_CHAT_PATH = '/api/agent/llm/chat';
 
 const TRANSIENT_STATUSES = new Set([408, 425, 429]);
 
@@ -61,6 +66,7 @@ export function buildAgentChatBody(options: StreamChatOptions, provider: Sidecar
   }
   if (thinking.reasoningEffort) body.reasoning_effort = thinking.reasoningEffort;
   if (provider.maxTokens) body.max_tokens = provider.maxTokens;
+  if (provider.model) body.model = provider.model;
   const cacheKey = clampPromptCacheKey(options.promptCacheKey);
   if (cacheKey) body.prompt_cache_key = cacheKey;
   return body;
@@ -75,7 +81,7 @@ export function createSidecarLlmProvider(options: SidecarLlmProviderOptions): Ll
     async *streamChat(chat: StreamChatOptions): AsyncGenerator<HarnessEvent> {
       let response: Response;
       try {
-        response = await options.fetchImpl(AGENT_LLM_CHAT_PATH, {
+        response = await options.fetchImpl(options.chatPath ?? AGENT_LLM_CHAT_PATH, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
           body: JSON.stringify(buildAgentChatBody(chat, options)),

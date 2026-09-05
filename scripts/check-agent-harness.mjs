@@ -162,6 +162,21 @@ await check('provider: 流前 Problem Details 按 retryable 分瞬态;401/422 �
   assert.equal(netErr[0].transient, true);
 });
 
+await check('provider: 云模式换到宿主同形路径并带 model;本地默认路径、无 model', async () => {
+  const calls = [];
+  const fetchImpl = async (path, init) => { calls.push({ path, body: JSON.parse(init.body) }); return new Response(sse(chunk({ content: 'x' }), 'data: [DONE]'), { status: 200 }); };
+  const req = { messages: [createMessage({ id: 'u', role: 'user', content: 'hi' })], tools: [] };
+  await collect(createSidecarLlmProvider({ fetchImpl, llmBaseUrl: '', chatPath: '/api/agent/llm/chat', model: 'deepseek' }).streamChat(req));
+  assert.equal(calls[0].path, '/api/agent/llm/chat');
+  assert.equal(calls[0].body.model, 'deepseek');
+  await collect(createSidecarLlmProvider({ fetchImpl, llmBaseUrl: '' }).streamChat(req));
+  assert.equal(calls[1].path, '/api/v1/agent/llm/chat');
+  assert.equal('model' in calls[1].body, false);
+  const e402 = await collect(createSidecarLlmProvider({ fetchImpl: async () => new Response('{"detail":"no quota"}', { status: 402 }), llmBaseUrl: '' }).streamChat(req));
+  assert.equal(e402[0].error, 'http_402: no quota');
+  assert.equal(e402[0].transient, false, '402 是额度问题,不重试');
+});
+
 // ---- 4. harness 循环 ----
 
 function scriptedProvider(scripts) {

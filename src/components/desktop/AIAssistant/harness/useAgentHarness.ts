@@ -5,11 +5,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { appBackendApi } from '../../../../api/appBackendApi';
+import { cloudBackendApi } from '../../../../api/cloudBackendApi';
 import { localSidecarApi, sidecarV1Api } from '../../../../api/localSidecarApi';
 import { useAgentDock } from '../../../../contexts/AgentDockContext';
 import { AgentHarness } from '../../../../services/agentHarness/harness';
 import { DEFAULT_PERMISSION_LIMITS } from '../../../../services/agentHarness/permissionGate';
-import { createSidecarLlmProvider, type LlmProvider } from '../../../../services/agentHarness/provider';
+import { HOST_AGENT_LLM_CHAT_PATH, createSidecarLlmProvider, type LlmProvider } from '../../../../services/agentHarness/provider';
+import { AI_MODEL_CHOICES } from '../../../../services/agentService';
+import { botService } from '../../../../services/botService';
 import { BUILTIN_SKILLS, formatSkillsForSystemPrompt } from '../../../../services/agentHarness/skills';
 import { allSkills, resolveActivePreset, type PresetLibrary } from '../../../../services/agentHarness/presetLibrary';
 import { createWorkbenchToolRegistry, listWorkbenchTools, type PromptLibraryEntry, type TagSuggestItem, type WorkbenchToolInfo } from '../../../../services/agentHarness/tools/index';
@@ -87,14 +90,15 @@ export interface AgentHarnessController {
 }
 
 export function useAgentHarness(): AgentHarnessController {
-  const { handlersRef, handlersReady } = useAgentDock();
+  const { handlersRef, handlersReady, aiModel } = useAgentDock();
   const [items, setItems] = useState<TranscriptItem[]>(() => {
     try { return deserializeTranscript(JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]')); } catch { return []; }
   });
   const [busy, setBusy] = useState(false);
   const [mode, setModeState] = useState<PermissionMode>(() => getAppSettings().agentPermissionMode);
   const [lockedFields, setLockedFields] = useState<Set<string>>(readLockedFields);
-  const [llm, setLlm] = useState<{ configured: boolean; baseUrl: string; model: string; provider: string } | null>(null);
+  /** cloud = serverMode 'custom':打宿主同形端点,鉴权是 Bot 会话,模型是助手头部选的 key。 */
+  const [llm, setLlm] = useState<{ configured: boolean; baseUrl: string; model: string; provider: string; cloud: boolean } | null>(null);
   const [presetLibrary, setPresetLibrary] = useState<PresetLibrary>(loadPresetLibrary);
   const libraryRef = useRef(presetLibrary); libraryRef.current = presetLibrary;
   const toolCatalog = useMemo(() => listWorkbenchTools(), []);
@@ -110,19 +114,31 @@ export function useAgentHarness(): AgentHarnessController {
     try { localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(serializeTranscript(items))); } catch { /* 存不下就算了 */ }
   }, [items]);
 
-  // 模型槽位跟着 sidecar 设置走;设置变了重读。
+  // 模型槽位跟着 sidecar 设置走;云模式改看 Bot 授权与头部选的模型。设置或登录变了重读。
   useEffect(() => {
     let alive = true;
     const load = () => {
+      if (getAppSettings().serverMode === 'custom') {
+        const auth = botService.getAuthState();
+        setLlm({ configured: auth.isAuthorized && !!auth.sessionId, baseUrl: '', model: aiModel, provider: 'openai', cloud: true });
+        return;
+      }
       localSidecarApi.settings().then((s) => {
         if (!alive) return;
-        setLlm({ configured: s.llm_configured, baseUrl: s.llm_base_url, model: s.llm_model, provider: s.llm_provider });
-      }).catch(() => { if (alive) setLlm({ configured: false, baseUrl: '', model: '', provider: '' }); });
+        setLlm({ configured: s.llm_configured, baseUrl: s.llm_base_url, model: s.llm_model, provider: s.llm_provider, cloud: false });
+      }).catch(() => { if (alive) setLlm({ configured: false, baseUrl: '', model: '', provider: '', cloud: false }); });
     };
     load();
     window.addEventListener(APP_SETTINGS_CHANGED_EVENT, load);
-    return () => { alive = false; window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, load); };
-  }, []);
+    const unsubscribe = botService.addEventListener(load);
+    return () => { alive = false; window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, load); unsubscribe(); };
+  }, [aiModel]);
+
+  // 端点、鉴权或模型变了,provider 和持有它的 harness 都要重建;历史从条目回填。
+  useEffect(() => {
+    providerRef.current = null;
+    harnessRef.current = null;
+  }, [llm]);
 
   const setMode = useCallback((next: PermissionMode) => {
     setModeState(next);
@@ -167,11 +183,21 @@ export function useAgentHarness(): AgentHarnessController {
     const bridge = handlersRef.current?.workbench;
     if (!bridge || !llm?.configured) return null;
     if (!providerRef.current) {
-      providerRef.current = createSidecarLlmProvider({
-        fetchImpl: (path, init) => localSidecarApi.fetchSse(path, init),
-        llmBaseUrl: llm.baseUrl,
-        reasoning: false,
-      });
+      providerRef.current = llm.cloud
+        ? createSidecarLlmProvider({
+          // 宿主同形端点:X-Bot-Session 由 cloudBackendApi 带上;不用 openSse,它对非 2xx 直接抛,
+          // provider 就读不到问题正文了。
+          fetchImpl: (path, init) => cloudBackendApi.request(path, init),
+          chatPath: HOST_AGENT_LLM_CHAT_PATH,
+          llmBaseUrl: '',
+          model: llm.model || undefined,
+          reasoning: false,
+        })
+        : createSidecarLlmProvider({
+          fetchImpl: (path, init) => localSidecarApi.fetchSse(path, init),
+          llmBaseUrl: llm.baseUrl,
+          reasoning: false,
+        });
     }
     if (harnessRef.current) return harnessRef.current;
     const adapter: WorkbenchAdapter = { ...bridge, askUser };
@@ -285,10 +311,16 @@ export function useAgentHarness(): AgentHarnessController {
           case 'turn_end':
             if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false, model: event.finalMessage.model } : i));
             break;
-          case 'error':
+          case 'error': {
             if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false } : i));
-            setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: 'error', text: event.error, at: Date.now() }]);
+            const text = event.error.startsWith('http_402')
+              ? '云端账号没有生图额度,Agent 暂时不可用。'
+              : event.error.startsWith('rate_limited') || event.error.startsWith('llm_stream_concurrency_exceeded')
+                ? `请求太频繁,稍等再试(${event.error})`
+                : event.error;
+            setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: 'error', text, at: Date.now() }]);
             break;
+          }
         }
       };
       try {
@@ -339,6 +371,7 @@ export function useAgentHarness(): AgentHarnessController {
   const unavailableReason = useMemo(() => {
     if (!handlersReady || !handlersRef.current?.workbench) return '工作台还没有挂载。';
     if (!llm) return null;
+    if (llm.cloud) return llm.configured ? null : '云模式下要先在设置里完成 Bot 授权登录,助手才能连到宿主。';
     if (!llm.configured) return '本地 sidecar 还没有配置 LLM 槽位(设置 → 辅助功能)。';
     if (llm.provider && llm.provider !== 'openai') return `当前槽位是 ${llm.provider},流式 Agent 只支持 OpenAI 兼容地址。`;
     return null;
@@ -349,7 +382,7 @@ export function useAgentHarness(): AgentHarnessController {
     busy,
     available: unavailableReason === null && llm !== null,
     unavailableReason,
-    modelLabel: llm?.model || '',
+    modelLabel: llm?.cloud ? (AI_MODEL_CHOICES.find((c) => c.key === llm.model)?.shortLabel ?? llm.model) : llm?.model || '',
     mode,
     setMode,
     lockedFields,
