@@ -6,7 +6,7 @@
  * P 类一律确认、用户锁定字段一律拒绝。
  */
 
-import type { AgentTool, ToolContext } from './tools';
+import type { AgentTool, ToolContext } from './toolRegistry';
 import type { CostEstimate, PermissionClass, PermissionMode } from './types';
 
 export interface PermissionLimits {

@@ -7,7 +7,7 @@
  */
 
 import { parseOpenAiStream, sseLinesFromReader } from './openaiStream';
-import { toolToOpenAiFunction, type AgentTool } from './tools';
+import { toolToOpenAiFunction, type AgentTool } from './toolRegistry';
 import { messageToOpenAi, type AgentMessage, type HarnessEvent } from './types';
 import { resolveThinkingFormat, thinkingParams } from './thinkingFormat';
 

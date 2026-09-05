@@ -1,0 +1,97 @@
+/**
+ * 工作台适配层:工具能看到、能改的东西。
+ *
+ * 他的工具直接改 Flutter 的 ViewModel;我们的状态在 LeftSidebar / GenerationContext 里,
+ * 所以工具只跟这个接口说话,接口由 LeftSidebar 注册进 AgentDockContext(和现有的
+ * generate / restoreSnapshot 一路)。字段名沿用他的参数键,免得两边翻译。
+ */
+
+import type { AnlasInfo } from './anlas';
+
+export interface StudioParams {
+  prompt: string;
+  negative_prompt: string;
+  /** 官方模型 id(nai-diffusion-5-full …)。 */
+  model: string;
+  width: number;
+  height: number;
+  steps: number;
+  scale: number;
+  cfg_rescale: number;
+  sampler: string;
+  noise_schedule: string;
+  /** 当前预设行的 id(heavy / v5-standard …),供质量档读写。 */
+  quality_preset: string;
+  /** 空串 = 随机。 */
+  seed: string;
+  /** 全局位置模式:true = 交给模型排版,false = 自定义坐标。 */
+  character_ai_position: boolean;
+}
+
+export interface WorkbenchCharacter {
+  id: string;
+  name: string;
+  enabled: boolean;
+  prompt: string;
+  negative_prompt: string;
+  /** null = 自动。 */
+  center: { x: number; y: number } | null;
+}
+
+export interface WorkbenchImage {
+  id: string;
+  width: number;
+  height: number;
+  seed: number;
+  blob: () => Promise<Blob>;
+}
+
+export interface GenerateOutcome {
+  ok: boolean;
+  message: string;
+  seed?: number;
+  width?: number;
+  height?: number;
+}
+
+export interface AgentQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface AgentQuestion {
+  question: string;
+  header?: string;
+  multiSelect: boolean;
+  allowCustomInput: boolean;
+  options: AgentQuestionOption[];
+}
+
+export interface WorkbenchAdapter {
+  getParams(): StudioParams;
+  /** 只做写入;校验、对齐与权限在工具和闸里已经做完。 */
+  applyParams(patch: Partial<StudioParams>): void;
+  /** 可选的模型与预设词表,给工具做校验与回显。 */
+  availableModels(): { id: string; label: string }[];
+  availableQualityPresets(): { id: string; label: string }[];
+
+  listCharacters(): WorkbenchCharacter[];
+  addCharacter(entry: { name?: string; prompt: string; negative_prompt?: string; center?: { x: number; y: number } | null }): WorkbenchCharacter;
+  updateCharacter(id: string, patch: Partial<Omit<WorkbenchCharacter, 'id'>>): WorkbenchCharacter | null;
+  removeCharacter(id: string): boolean;
+  maxCharacters(): number;
+
+  /** 按当前工作台参数生成,等到出图或失败才返回。 */
+  generate(): Promise<GenerateOutcome>;
+  /** 历史图片,最新的在前。 */
+  images(): WorkbenchImage[];
+  /** 把放大结果放回历史坞。 */
+  addUpscaledImage(png: Blob, width: number, height: number, originalSeed: number): void;
+
+  anlas(): Promise<AnlasInfo | null>;
+  isOpus(): boolean;
+  opusExhausted(): boolean;
+
+  /** ask_user 的 UI 落点;用户取消返回 null。 */
+  askUser(questions: AgentQuestion[]): Promise<string[] | null>;
+}

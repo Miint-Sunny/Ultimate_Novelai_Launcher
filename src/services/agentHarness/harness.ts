@@ -13,7 +13,7 @@
 
 import { checkPermission, DEFAULT_PERMISSION_LIMITS, denialToolText, MessageBudget, type PermissionLimits } from './permissionGate';
 import type { LlmProvider } from './provider';
-import { toolError, type AgentTool, type ToolContext, type ToolRegistry } from './tools';
+import { toolError, type AgentTool, type ToolContext, type ToolRegistry } from './toolRegistry';
 import {
   createMessage,
   hasVisionImages,

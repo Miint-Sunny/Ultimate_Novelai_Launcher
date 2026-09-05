@@ -58,6 +58,15 @@ export interface AppSettings {
    */
   sidecarUrl: string;
   weightPresets: number[];
+  /**
+   * Agent 权限模式(契约 §5.2):manual 逐项确认 / auto 自动应用写类 / yolo 硬上限内放行。
+   * 新键,默认 auto;不动旧键。
+   */
+  agentPermissionMode: 'manual' | 'auto' | 'yolo';
+  /** 单条用户消息的 Anlas 预算;0 = 只放行免费生成(契约 §5.3)。 */
+  agentAnlasBudget: number;
+  /** 单条用户消息内的生成次数上限。 */
+  agentMaxGenerations: number;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -78,6 +87,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   autocompleteSortOrder: 'prefix-first',
   autocompleteSources: DEFAULT_AUTOCOMPLETE_SOURCES,
   upscaleModelPrecision: 'fp16',
+  agentPermissionMode: 'auto',
+  agentAnlasBudget: 0,
+  agentMaxGenerations: 3,
   aiMaxContextLength: 30,
   aiPrisonBreakEnabled: true,
   kktServerMode: 'public',
