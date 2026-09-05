@@ -373,6 +373,30 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tags/suggest": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Suggest Tags
+         * @description 三个联想来源并存,前端切 ``source`` 对比:
+         *
+         *     ``official`` 打 NovelAI 官方联想(要 NAI token);``danbooru`` 打
+         *     Danbooru autocomplete;``dictionary`` 用离线词典(nai-autocomplete 扩展同款,
+         *     排序照抄它的 searchTags)。
+         */
+        readonly get: operations["suggest_tags_api_v1_tags_suggest_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/upscale/v5": {
         readonly parameters: {
             readonly query?: never;
@@ -1193,6 +1217,42 @@ export interface components {
             readonly requested_bytes: number;
             /** Reserve Bytes */
             readonly reserve_bytes: number;
+        };
+        /**
+         * TagSuggestItem
+         * @description One suggestion; fields a source cannot provide stay ``null``.
+         */
+        readonly TagSuggestItem: {
+            /** Aliases */
+            readonly aliases?: readonly string[];
+            /** Category */
+            readonly category?: string | null;
+            /** Confidence */
+            readonly confidence?: number | null;
+            /** Count */
+            readonly count?: number | null;
+            /** Group */
+            readonly group?: string | null;
+            /** Matched Alias */
+            readonly matched_alias?: string | null;
+            /** Subgroup */
+            readonly subgroup?: string | null;
+            /** Tag */
+            readonly tag: string;
+            /** Translation */
+            readonly translation?: string | null;
+        };
+        /** TagSuggestResponse */
+        readonly TagSuggestResponse: {
+            /** Items */
+            readonly items?: readonly components["schemas"]["TagSuggestItem"][];
+            /** Query */
+            readonly query: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            readonly source: "official" | "danbooru" | "dictionary";
         };
         /**
          * V5UpscaleRequest
@@ -4690,6 +4750,139 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ReadyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflicting state */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource expired */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request body too large */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request validation failed */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Capacity or rate limit exceeded */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal server error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Runtime or dependency unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Insufficient storage */
+            readonly 507: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly suggest_tags_api_v1_tags_suggest_get: {
+        readonly parameters: {
+            readonly query: {
+                readonly limit?: number;
+                readonly model?: string;
+                readonly q: string;
+                readonly source: "official" | "danbooru" | "dictionary";
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagSuggestResponse"];
                 };
             };
             /** @description Invalid request */
