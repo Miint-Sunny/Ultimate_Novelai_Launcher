@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Dices, Eye, EyeOff, Languages, Palette, Puzzle, Sparkles, Tag, User, Users } from 'lucide-react';
 import { lookupCharacterChineseName, type TagSuggestion } from '../../services/tagAutocomplete';
-import { getAppSettings } from '../../services/localLibrary';
+import { getAppSettings, type TagSuggestSource } from '../../services/localLibrary';
 import { canCheckSuggestionWiki, normalizeWikiTagKey } from '../prompt-editor/wikiUtils';
 
 interface SuggestionPosition {
@@ -20,7 +20,18 @@ interface DesktopSuggestionDropdownProps {
   onHighlight: (index: number) => void;
   onShowWikiPreview: (suggestion: TagSuggestion, anchor: HTMLElement, delay: number, showLoading: boolean) => void;
   onHideWikiPreview: () => void;
+  /** 「标签」一栏的来源;给了 onChangeTagSource 才显示切换条。 */
+  tagSource?: TagSuggestSource;
+  onChangeTagSource?: (source: TagSuggestSource) => void;
 }
+
+const TAG_SOURCE_OPTIONS: { id: TagSuggestSource; label: string; hint: string }[] = [
+  { id: 'danbooru', label: 'Danbooru', hint: 'Danbooru 站内补全' },
+  { id: 'official', label: '官方', hint: 'NovelAI 官方联想(需要 NAI token)' },
+  { id: 'dictionary', label: '词典', hint: '离线词典,带中文释义,支持中文查询' },
+];
+/** 来源切换条的高度,算下拉高度时要加上。 */
+const SOURCE_BAR_H = 26;
 
 const SECTION_MAX_H: Record<string, number> = {
   nl: 47,
@@ -64,8 +75,11 @@ export function DesktopSuggestionDropdown({
   onHighlight,
   onShowWikiPreview,
   onHideWikiPreview,
+  tagSource,
+  onChangeTagSource,
 }: DesktopSuggestionDropdownProps) {
   if (suggestions.length === 0 || !suggestionPos) return null;
+  const showSourceBar = !!onChangeTagSource;
 
   const sectionsMap = new Map<string, { label: string; color: string; Icon: typeof Tag; items: { s: TagSuggestion; index: number }[] }>();
   const orderKeys: string[] = [];
@@ -84,10 +98,37 @@ export function DesktopSuggestionDropdown({
     <div
       ref={suggestionsRef}
       className="chip-suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden flex flex-col"
-      style={computeDropdownStyle(suggestionPos, suggestions.length, sections, isMulti)}
+      style={computeDropdownStyle(suggestionPos, suggestions.length, sections, isMulti, showSourceBar ? SOURCE_BAR_H : 0)}
     >
       {sections.map((section) => (
         <div key={section.key} className="flex flex-col min-h-0">
+          {section.key === 'danbooru' && showSourceBar && (
+            <div
+              className="flex items-center gap-1 px-2 shrink-0 select-none"
+              style={{ height: SOURCE_BAR_H, borderBottom: '1px solid rgba(252,237,164,0.08)' }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <span className="text-[10px] text-white/40 mr-1">标签来源</span>
+              {TAG_SOURCE_OPTIONS.map((opt) => {
+                const on = (tagSource ?? 'danbooru') === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    title={opt.hint}
+                    aria-pressed={on}
+                    onClick={() => { if (!on) onChangeTagSource?.(opt.id); }}
+                    className="text-[10px] leading-none px-2 py-[3px] rounded-full transition-colors"
+                    style={on
+                      ? { background: 'rgba(252,237,164,0.9)', color: '#1a1a1a', fontWeight: 700 }
+                      : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)' }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="overflow-y-auto scrollbar-hide" style={{ maxHeight: isMulti ? (SECTION_MAX_H[section.key] ?? 168) : 360 }}>
             {section.items.map(({ s: suggestion, index }) => (
               <SuggestionRow
@@ -115,6 +156,7 @@ function computeDropdownStyle(
   suggestionCount: number,
   sections: Array<{ key: string; items: { s: TagSuggestion; index: number }[] }>,
   isMulti: boolean,
+  sourceBarHeight = 0,
 ) {
   const MAX_H = 600;
   const GAP = 4;
@@ -126,11 +168,12 @@ function computeDropdownStyle(
   const anchorTopVp = anchorBottomVp - 28;
   const spaceBelow = viewportHeight - anchorBottomVp - MARGIN - GAP;
   const spaceAbove = anchorTopVp - MARGIN - GAP;
+  const hasTagSection = sections.some((section) => section.key === 'danbooru');
   const desiredHeight = Math.min(
     MAX_H,
-    isMulti
+    (isMulti
       ? sections.reduce((acc, section) => acc + Math.min(SECTION_MAX_H[section.key] ?? 168, section.items.length * ITEM_H), 0)
-      : Math.min(360, suggestionCount * ITEM_H),
+      : Math.min(360, suggestionCount * ITEM_H)) + (hasTagSection ? sourceBarHeight : 0),
   );
   const placeAbove = desiredHeight > spaceBelow && spaceAbove > spaceBelow;
   const maxHeight = Math.max(MIN_H, Math.min(desiredHeight, placeAbove ? spaceAbove : spaceBelow));

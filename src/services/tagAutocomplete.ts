@@ -16,7 +16,7 @@ import { botService } from './botService';
 import type { TagSuggestion } from './tag-autocomplete/types';
 import { cache } from './tag-autocomplete/suggestionCache';
 import { getSrcCfg, reorderByConfig } from './tag-autocomplete/ranking';
-import { fetchDanbooruAutocomplete, fetchDanbooruSemanticSearch, verifyTags } from './tag-autocomplete/remoteClient';
+import { fetchDanbooruSemanticSearch, fetchTagSuggestions, verifyTags } from './tag-autocomplete/remoteClient';
 import { fetchWikiChineseNames } from './tag-autocomplete/wiki';
 import { searchLocalTags } from './tag-autocomplete/localSearch';
 import { aiDirectTranslate, aiRecommendTags, translateTagWithGemini } from './tag-autocomplete/translation';
@@ -57,7 +57,8 @@ export async function getTagSuggestions(
   // 中文1个字符就触发，英文需要2个
   if (!hasChinese && query.length < 2) return [];
 
-  const cacheKey = query.toLowerCase();
+  // 换了「标签」来源就是另一份结果,不能共用缓存。
+  const cacheKey = `${settings.tagSuggestSource}:${query.toLowerCase()}`;
   if (cache.has(cacheKey)) {
     const raw = cache.get(cacheKey)!;
     // 用户可能在上次缓存后调整过数据源配置，这里按最新配置再过滤/重排
@@ -179,7 +180,7 @@ export async function getTagSuggestions(
       // Danbooru 异步补充（中文命中率低，但仍尝试）
       const danbooruLimit = danbooruCfg.enabled ? Math.min(Math.max(danbooruCfg.maxCount ?? 7, 1), 20) : 0;
       const danbooruPromise = danbooruLimit > 0
-        ? fetchDanbooruAutocomplete(query, danbooruLimit)
+        ? fetchTagSuggestions(settings.tagSuggestSource, query, danbooruLimit)
         : Promise.resolve([]);
 
       // DanbooruSearch HF Space 语义搜索（中文场景命中率高，与 /autocomplete 互补）
@@ -210,6 +211,7 @@ export async function getTagSuggestions(
             suggestions.push({
               value: val,
               label: item.label || item.value || item.name || '',
+              chineseName: item.chinese,
               postCount: item.post_count,
               source: 'danbooru' as const,
             });
@@ -333,7 +335,7 @@ export async function getTagSuggestions(
       // Danbooru 异步获取并合并
       const danbooruLimit = danbooruCfg.enabled ? Math.min(Math.max(danbooruCfg.maxCount ?? 7, 1), 20) : 0;
       const danbooruPromise = danbooruLimit > 0
-        ? fetchDanbooruAutocomplete(query, danbooruLimit)
+        ? fetchTagSuggestions(settings.tagSuggestSource, query, danbooruLimit)
         : Promise.resolve([]);
 
       (async () => {
@@ -343,6 +345,7 @@ export async function getTagSuggestions(
           const danbooruSuggestions: TagSuggestion[] = data.map((item: any) => ({
             value: item.value?.replace(/ /g, '_') || item.name?.replace(/ /g, '_') || '',
             label: item.label || item.value || item.name || '',
+            chineseName: item.chinese,
             postCount: item.post_count,
             source: 'danbooru' as const,
           })).filter((s: TagSuggestion) => s.value && s.value.length > 1 && (!s.postCount || s.postCount >= 50));

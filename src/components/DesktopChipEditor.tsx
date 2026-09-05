@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { type TagSuggestion } from '../services/tagAutocomplete';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { clearTagCache, type TagSuggestion } from '../services/tagAutocomplete';
+import { APP_SETTINGS_CHANGED_EVENT, getAppSettings, saveAppSettings, type TagSuggestSource } from '../services/localLibrary/appSettings';
 import { useDesktopContentHeight } from './desktop-chip-editor/useDesktopContentHeight';
 import { useDesktopChipDrag } from './desktop-chip-editor/useDesktopChipDrag';
 import { useDesktopChipInput } from './desktop-chip-editor/useDesktopChipInput';
@@ -48,6 +49,12 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const chipContainerRef = useRef<HTMLDivElement>(null);
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([]);
+  const [tagSource, setTagSource] = useState<TagSuggestSource>(() => getAppSettings().tagSuggestSource);
+  useEffect(() => {
+    const sync = () => setTagSource(getAppSettings().tagSuggestSource);
+    window.addEventListener(APP_SETTINGS_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, sync);
+  }, []);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggIdx, setSelectedSuggIdx] = useState(0);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -164,6 +171,15 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
     setSelectedSuggIdx,
     suppressAutocompleteInQuotes,
   });
+
+  // 下拉里切「标签」来源:落到设置(别的编辑器与设置页同步),清缓存,按当前输入重查。
+  const changeTagSource = useCallback((source: TagSuggestSource) => {
+    saveAppSettings({ ...getAppSettings(), tagSuggestSource: source });
+    window.dispatchEvent(new Event(APP_SETTINGS_CHANGED_EVENT));
+    clearTagCache();
+    setTagSource(source);
+    if (inputText.trim()) triggerAutocomplete(inputText);
+  }, [inputText, triggerAutocomplete]);
 
   const { nlTranslating, selectSuggestion } = useDesktopSuggestionSelection({
     value,
@@ -299,6 +315,8 @@ export const DesktopChipEditor: React.FC<DesktopChipEditorProps> = ({
 
       {showSuggestions && (
         <DesktopSuggestionDropdown
+          tagSource={tagSource}
+          onChangeTagSource={changeTagSource}
           suggestions={displaySuggs}
           selectedIndex={selectedSuggIdx}
           suggestionPos={suggestionPos}

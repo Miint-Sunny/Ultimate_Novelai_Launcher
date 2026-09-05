@@ -9,6 +9,13 @@ export const THEME_OPTIONS = [
 
 export type AutocompleteSourceId = 'artists' | 'ocs' | 'characters' | 'origins' | 'danbooru' | 'aiRecommend' | 'nl';
 
+/**
+ * 补全里「标签」一栏的来源。用户要三个来源并存、能切着比:
+ * danbooru = 原来的 Danbooru 补全;official = NovelAI 官方联想;dictionary = 离线词典(带中文释义)。
+ * 后两个走 sidecar 的 GET /api/v1/tags/suggest。
+ */
+export type TagSuggestSource = 'danbooru' | 'official' | 'dictionary';
+
 export interface AutocompleteSourceConfig {
   id: AutocompleteSourceId;
   enabled: boolean;
@@ -43,6 +50,7 @@ export interface AppSettings {
   autocompleteShowWiki: boolean;
   autocompleteSortOrder: 'count' | 'prefix-first';
   autocompleteSources: AutocompleteSourceConfig[];
+  tagSuggestSource: TagSuggestSource;
   upscaleModelPrecision: 'fp16' | 'fp32';
   aiMaxContextLength: number;
   aiPrisonBreakEnabled: boolean;
@@ -86,6 +94,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   autocompleteShowWiki: true,
   autocompleteSortOrder: 'prefix-first',
   autocompleteSources: DEFAULT_AUTOCOMPLETE_SOURCES,
+  tagSuggestSource: 'danbooru',
   upscaleModelPrecision: 'fp16',
   agentPermissionMode: 'auto',
   agentAnlasBudget: 0,

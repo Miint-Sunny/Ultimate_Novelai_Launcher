@@ -133,7 +133,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     window.dispatchEvent(new Event('app-settings-changed'));
 
     // 如果是补全相关设置变更，清除缓存使其立即生效
-    const autocompleteKeys = ['autocompleteEnabled', 'autocompleteChineseEnabled', 'autocompleteShowWiki', 'autocompleteSortOrder'];
+    const autocompleteKeys = ['autocompleteEnabled', 'autocompleteChineseEnabled', 'autocompleteShowWiki', 'autocompleteSortOrder', 'tagSuggestSource'];
     if (autocompleteKeys.some(key => key in updates)) {
       clearTagCache();
     }
