@@ -191,6 +191,12 @@ export function createWorkbenchBridge(
       s.setCharacterPrompts((prev) => prev.filter((c) => c.id !== id));
       return true;
     },
+    replaceCharacters: (characters) => {
+      state().setCharacterPrompts(characters.map((c): CharacterPrompt => ({
+        id: c.id, positive: c.prompt, negative: c.negative_prompt, activeTab: 'prompt', enabled: c.enabled,
+        position: '', center: c.center, name: c.name?.trim() || undefined,
+      })));
+    },
     maxCharacters: () => maxCharactersForModel(state().selectedModel.id),
 
     generate: () => new Promise<GenerateOutcome>((resolve) => {
@@ -214,6 +220,12 @@ export function createWorkbenchBridge(
       height: item.height,
       seed: item.seed,
       blob: () => fetch(item.imageUrl).then((r) => r.blob()),
+      createdAt: item.timestamp,
+      model: item.metadata?.model ? (MODEL_MAP[item.metadata.model] ?? item.metadata.model) : undefined,
+      characters: item.metadata?.characterPrompts?.map((c, i): WorkbenchCharacter => ({
+        id: `hist_${i}`, name: '', enabled: c.enabled, prompt: c.positive, negative_prompt: c.negative,
+        center: c.center ?? legacyCellToCenter(c.position) ?? null,
+      })),
     })),
     addUpscaledImage: (png, width, height, originalSeed) => {
       state().addUpscaledImage(URL.createObjectURL(png), width, height, originalSeed, 2);

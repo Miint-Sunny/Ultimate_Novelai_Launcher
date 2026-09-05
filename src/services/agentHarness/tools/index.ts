@@ -9,9 +9,10 @@ import { createPromptLibraryTools } from './promptLibraryTools';
 import { createSkillTool } from './skillTool';
 import { createStudioTools } from './studioTools';
 
-export type { ToolDeps, PromptLibraryEntry } from './deps';
+export type { ToolDeps, PromptLibraryEntry, TagSuggestItem, TagSuggestSource } from './deps';
 export { normalizeStudioUpdate, describeStudioDiff, RESOLUTION_PRESETS } from './studioTools';
 export { parseQuestions } from './askUserTool';
+export { buildOverlaySpec, anchorDisplayFor, freePositioningForModel, type OverlaySpec, type OverlayAnchor } from './canvasOverlay';
 
 /** 一期全部工具,注册进一个 registry。白名单过滤在 harness 里按预设做。 */
 export function createWorkbenchToolRegistry(deps: ToolDeps): ToolRegistry {

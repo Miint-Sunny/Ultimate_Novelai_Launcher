@@ -5,6 +5,9 @@ test conversations can be run without restarting.
 
   user text contains "步数"   -> get_studio_parameters, then update_studio_parameters, then answer
   user text contains "问我"   -> ask_user (single choice), then answer echoing the reply
+  user text contains "回忆"   -> answer with how many user messages the request carried (history check)
+  user text contains "看图"   -> view_canvas_image index 0, then answer echoing the tool text
+  user text contains "联想"   -> novelai_suggest_tags (dictionary), then answer
   tool result for get_...     -> update_studio_parameters
   tool result for update_...  -> final answer
   anything else               -> plain streamed answer (with a short reasoning delta)
@@ -89,6 +92,8 @@ def pick(req):
             return answer("已按要求改好步数,提示词换成雨夜街头。要出图的话我可以调用 novelai_generate。")
         if name == "ask_user":
             return answer(f"收到,你选的是:{result[:80]}")
+        if name == "view_canvas_image":
+            return answer(f"看到了。工具说:{result[:160]}")
         return answer(f"工具 {name} 返回了:{result[:120]}")
     user_text = text_of(last)
     if "问我" in user_text:
@@ -96,6 +101,13 @@ def pick(req):
                          "call_ask", thought="先确认画风偏好。")
     if "步数" in user_text:
         return tool_call("get_studio_parameters", {"keys": ["steps", "resolution"]}, "call_read")
+    if "回忆" in user_text:
+        users = [text_of(m) for m in messages if m.get("role") == "user"]
+        return answer(f"这轮请求里有 {len(users)} 条用户消息,第一条是「{users[0][:30]}」。", thought="数一下上下文。")
+    if "看图" in user_text:
+        return tool_call("view_canvas_image", {"index": 0}, "call_view", thought="先看一眼最新那张。")
+    if "联想" in user_text:
+        return tool_call("novelai_suggest_tags", {"query": "silver hair", "source": "dictionary"}, "call_suggest", thought="查一下规范拼法。")
     return answer("(mock) 我在,说说你想怎么改。", thought="普通对话,不需要工具。")
 
 

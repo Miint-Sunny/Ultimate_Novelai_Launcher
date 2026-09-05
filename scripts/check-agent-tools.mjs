@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 await import('./lib/load-frontend-module.mjs');
 
 const T = await import('../src/services/agentHarness/tools/index.ts');
-const { createWorkbenchToolRegistry, normalizeStudioUpdate, describeStudioDiff, parseQuestions, RESOLUTION_PRESETS } = T;
+const { createWorkbenchToolRegistry, normalizeStudioUpdate, describeStudioDiff, parseQuestions, RESOLUTION_PRESETS, buildOverlaySpec, anchorDisplayFor, freePositioningForModel } = T;
 const { findSkill, formatSkillsForSystemPrompt } = await import('../src/services/agentHarness/skillCatalog.ts');
 
 let checks = 0;
@@ -21,10 +21,16 @@ function fakeAdapter() {
   const state = {
     params: { prompt: '1girl', negative_prompt: '', model: 'nai-diffusion-5-full', width: 832, height: 1216, steps: 28, scale: 5, cfg_rescale: 0, sampler: 'k_euler_ancestral', noise_schedule: 'karras', quality_preset: 'Standard', seed: '', character_ai_position: true },
     characters: [],
-    images: [{ id: 'img1', width: 832, height: 1216, seed: 42, blob: async () => new Blob(['x']) }],
+    images: [
+      { id: 'img1', width: 832, height: 1216, seed: 42, blob: async () => new Blob(['x']) },
+      { id: 'img2', width: 1024, height: 1024, seed: 7, createdAt: 0, model: 'nai-diffusion-4-5-full', blob: async () => new Blob(['y']),
+        characters: [{ id: 'a', name: '', enabled: true, prompt: '1girl, red hair', negative_prompt: '', center: { x: 0.3, y: 0.6 } }, { id: 'b', name: 'Bob', enabled: false, prompt: '1boy', negative_prompt: '', center: null }] },
+    ],
     upscaled: [],
     asked: null,
     generateCalls: 0,
+    suggested: null,
+    overlays: [],
   };
   let nextId = 1;
   const adapter = {
@@ -35,6 +41,7 @@ function fakeAdapter() {
     addCharacter: (e) => { const c = { id: `c${nextId++}`, name: e.name ?? `角色 ${nextId - 1}`, enabled: true, prompt: e.prompt, negative_prompt: e.negative_prompt ?? '', center: e.center ?? null }; state.characters.push(c); return { ...c }; },
     updateCharacter: (id, patch) => { const c = state.characters.find((x) => x.id === id); if (!c) return null; Object.assign(c, patch); return { ...c }; },
     removeCharacter: (id) => { const i = state.characters.findIndex((x) => x.id === id); if (i < 0) return false; state.characters.splice(i, 1); return true; },
+    replaceCharacters: (chars) => { state.characters = chars.map((c) => ({ ...c })); },
     maxCharacters: () => 2,
     generate: async () => { state.generateCalls += 1; return { ok: true, message: 'ok', seed: 7, width: 832, height: 1216 }; },
     images: () => state.images,
@@ -56,6 +63,8 @@ const makeDeps = (allowed = ['prompt', 'negative_prompt', 'model', 'resolution',
     upscaleV5: async () => ({ image: btoa('png'), width: 1664, height: 2432 }),
     downscaleImage: async () => ({ base64: 'QUJD', mimeType: 'image/png', width: 700, height: 1024 }),
     postJson: async (path, body) => ({ results: [{ name: `${path}:${body.query ?? body.tags?.join('+')}`, count: 5, zh: '译' }] }),
+    suggestTags: async (query, opts) => { state.suggested = { query, ...opts }; return { items: query === 'none' ? [] : [{ tag: `${query}_tag`, count: 3, confidence: 0.5, translation: '译' }, { tag: `${query}_2`, count: null, confidence: null, category: '1' }, { tag: `${query}_3`, category: 'meta' }] }; },
+    renderOverlay: async (blob, spec, maxEdge) => { state.overlays.push({ spec, maxEdge }); return { base64: 'T1ZM', mimeType: 'image/jpeg', width: 1024, height: 1024 }; },
     promptLibrary: { list: async () => library.map((e) => ({ ...e })), save: async (e) => { const i = library.findIndex((x) => x.id === e.id); if (i >= 0) library[i] = e; else library.push(e); }, remove: async (id) => { const i = library.findIndex((x) => x.id === id); if (i >= 0) library.splice(i, 1); } },
     skills: [{ id: 'nai5-prompting', name: 'NAI V5 提示词方法层', description: 'd', systemPrompt: 'BODY' }, { id: 'nai5-prompting/通用写法', name: 'V5 通用写法(参考)', description: 'd2', systemPrompt: 'REF' }, { id: 'other', name: 'x', description: 'x', systemPrompt: 'x' }],
     enabledSkillIds: () => ['nai5-prompting'],
@@ -64,11 +73,11 @@ const makeDeps = (allowed = ['prompt', 'negative_prompt', 'model', 'resolution',
 };
 const run = (registry, name, args = {}) => registry.get(name).execute('call', args, { sendEpoch: 1, lockedFields: new Set() });
 
-await check('工具表: 一期 18 个工具都注册了,名字与他的一致', () => {
+await check('工具表: 一期 19 个工具都注册了,名字与他的一致', () => {
   const { registry } = makeDeps();
   assert.deepEqual(registry.names.sort(), [
     'add_character_prompt', 'add_prompt_library_entry', 'ask_user', 'danbooru_related_tags', 'danbooru_search_tags', 'delete_prompt_library_entry',
-    'get_studio_parameters', 'list_character_prompts', 'load_skill', 'novelai_account_info', 'novelai_generate', 'novelai_upscale',
+    'get_studio_parameters', 'list_character_prompts', 'load_skill', 'novelai_account_info', 'novelai_generate', 'novelai_suggest_tags', 'novelai_upscale',
     'remove_character_prompt', 'search_prompt_library', 'update_character_prompt', 'update_prompt_library_entry', 'update_studio_parameters', 'view_canvas_image',
   ]);
   for (const tool of registry.getAll()) assert.ok(['R', 'W', 'D', 'P', 'A'].includes(tool.permissionClass), tool.name);
@@ -137,11 +146,75 @@ await check('生成/放大/账号: generate 走适配器;放大按索引取图�
   assert.match(acct.content, /Anlas 余额:15/); assert.match(acct.content, /已耗尽/);
 });
 
-await check('看图: 默认压到 1024 并带图回给模型;索引越界报错', async () => {
-  const { registry } = makeDeps();
+await check('view_canvas_image: 无角色的图退回原图并说明;越界报错', async () => {
+  const { registry, state } = makeDeps();
   const r = await run(registry, 'view_canvas_image');
-  assert.equal(r.imageBase64, 'QUJD'); assert.match(r.content, /已压缩到 700x1024/);
+  assert.equal(r.imageBase64, 'QUJD');
+  assert.match(r.content, /没有启用的角色提示词,已返回原图/);
+  assert.match(r.content, /已压缩到 700x1024/);
+  assert.equal(state.overlays.length, 0);
   assert.equal((await run(registry, 'view_canvas_image', { index: 9 })).isError, true);
+});
+
+await check('覆盖层: 只取启用角色;V4 吸附格心叠网格,V5 连续坐标叠十字;粉/蓝/紫配色与标签回退', () => {
+  const chars = [
+    { id: 'a', name: '', enabled: true, prompt: '1girl, red hair', negative_prompt: '', center: { x: 0.3, y: 0.55 } },
+    { id: 'b', name: '角色 2', enabled: true, prompt: '1boy, glasses', negative_prompt: '', center: null },
+    { id: 'c', name: 'Cat', enabled: false, prompt: 'cat', negative_prompt: '', center: null },
+    { id: 'd', name: 'Robo', enabled: true, prompt: 'robot', negative_prompt: '', center: { x: 0.95, y: 0.1 } },
+  ];
+  const v4 = buildOverlaySpec(chars, false);
+  assert.equal(v4.guide, 'grid5');
+  assert.equal(v4.anchors.length, 3, '禁用的角色不画');
+  assert.deepEqual(v4.anchors.map((a) => a.index), [1, 2, 3]);
+  assert.deepEqual(v4.anchors[0], { index: 1, x: 0.3, y: 0.5, color: '#EC4899', label: '1girl' }, 'V4 吸附到 5x5 格心,粉色,名字空回退到首个标签');
+  assert.equal(v4.anchors[1].color, '#3B82F6'); assert.equal(v4.anchors[1].label, '1boy', '占位名「角色 N」也回退');
+  assert.equal(v4.anchors[2].color, '#8B5CF6'); assert.equal(v4.anchors[2].label, 'Robo');
+  assert.deepEqual([v4.anchors[2].x, v4.anchors[2].y], [0.9, 0.1]);
+  const v5 = buildOverlaySpec(chars, true);
+  assert.equal(v5.guide, 'crosshair');
+  assert.deepEqual([v5.anchors[0].x, v5.anchors[0].y], [0.3, 0.55], 'V5 保留连续坐标');
+  assert.equal(buildOverlaySpec([chars[2]], true), null, '没有启用角色返回 null');
+  assert.deepEqual(anchorDisplayFor({ name: ' Alice ', prompt: 'female, x' }), { color: '#EC4899', label: 'Alice' });
+  assert.equal(freePositioningForModel('nai-diffusion-5-curated'), true);
+  assert.equal(freePositioningForModel('nai-diffusion-4-5-full'), false);
+  assert.equal(freePositioningForModel(undefined), false);
+});
+
+await check('view_canvas_image: 有角色默认叠覆盖层并压到 1024;full_resolution 不缩;with_overlay=false 走原图', async () => {
+  const { registry, state } = makeDeps();
+  const r = await run(registry, 'view_canvas_image', { index: 1 });
+  assert.equal(r.imageBase64, 'T1ZM');
+  assert.equal(state.overlays.length, 1);
+  assert.equal(state.overlays[0].maxEdge, 1024);
+  assert.equal(state.overlays[0].spec.guide, 'grid5');
+  assert.equal(state.overlays[0].spec.anchors.length, 1, '禁用角色不画');
+  assert.match(r.content, /已叠加角色位置覆盖层/);
+  assert.match(r.content, /自定义定位/);
+  assert.match(r.content, /绘图模型: nai-diffusion-4-5-full/);
+  assert.match(r.content, /网格模式/);
+  await run(registry, 'view_canvas_image', { index: 1, full_resolution: true });
+  assert.equal(state.overlays[1].maxEdge, null);
+  const raw = await run(registry, 'view_canvas_image', { index: 1, with_overlay: false });
+  assert.equal(raw.imageBase64, 'QUJD');
+  assert.equal(state.overlays.length, 2);
+  assert.doesNotMatch(raw.content, /覆盖层/);
+});
+
+await check('tag 联想: query 必填;默认 official 且带当前模型;limit 夹在 1..50;逐行列用量/匹配度/翻译;空结果如实说', async () => {
+  const { registry, state } = makeDeps();
+  assert.equal((await run(registry, 'novelai_suggest_tags', {})).isError, true);
+  const r = await run(registry, 'novelai_suggest_tags', { query: 'silver', limit: 500 });
+  assert.deepEqual(state.suggested, { query: 'silver', source: 'official', limit: 50, model: 'nai-diffusion-5-full' });
+  assert.match(r.content, /来源 official/);
+  assert.match(r.content, /- silver_tag \(用量: 3\) \(匹配度: 50.0%\) — 译/);
+  assert.match(r.content, /- silver_2 \[画师\]/, '数字类别翻成中文');
+  assert.match(r.content, /- silver_3 \[meta\]/, '非数字类别原样显示');
+  await run(registry, 'novelai_suggest_tags', { query: 'x', source: 'dictionary' });
+  assert.equal(state.suggested.source, 'dictionary');
+  assert.equal(state.suggested.model, undefined, '非官方来源不传模型');
+  assert.equal(state.suggested.limit, 10);
+  assert.match((await run(registry, 'novelai_suggest_tags', { query: 'none' })).content, /未找到/);
 });
 
 await check('ask_user: 参数规则照他的(1–4 题、2–4 项、label 必填);回答按题拼回', async () => {

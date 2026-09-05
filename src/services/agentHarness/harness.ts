@@ -167,13 +167,13 @@ export class AgentHarness {
   }
 
   /** 发送用户消息并驱动整个循环;事件流给 UI。 */
-  async *send(userText: string, options: { temperature?: number; images?: AgentMessageImage[] } = {}): AsyncGenerator<HarnessEvent> {
+  async *send(userText: string, options: { temperature?: number; images?: AgentMessageImage[]; id?: string } = {}): AsyncGenerator<HarnessEvent> {
     const images = options.images ?? [];
     if (!userText.trim() && images.length === 0) return;
     this.sendEpoch += 1;
 
     this._messages.push(createMessage({
-      id: `user_${this.now()}`,
+      id: options.id ?? `user_${this.now()}`,
       role: 'user',
       content: userText.trim(),
       images,
@@ -531,6 +531,15 @@ export class AgentHarness {
     const keepCount = idx + 1;
     this._messages.splice(keepCount);
     if (keepCount <= this.contextStartIndex) this.resetCompaction();
+    return true;
+  }
+
+  /** 回到某条消息**之前**:该消息连同其后全部截掉(面板把它放回输入框让用户改)。 */
+  rewindBeforeMessage(messageId: string): boolean {
+    const idx = this._messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return false;
+    this._messages.splice(idx);
+    if (idx <= this.contextStartIndex) this.resetCompaction();
     return true;
   }
 

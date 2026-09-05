@@ -377,4 +377,18 @@ await check('压缩: 摘要失败不改上下文;强制压缩保留最后一个 
   assert.equal(h2.messages.length, 1);
 });
 
+await check('回溯: send 可指定用户消息 id;rewindBeforeMessage 连同该消息一起截掉,回到压缩窗口之前则重置压缩', async () => {
+  const p = scriptedProvider([text('one'), text('two')]);
+  const h = harnessWith(p);
+  for await (const _ of h.send('first', { id: 'u_custom_1' })) { /* drain */ }
+  for await (const _ of h.send('second', { id: 'u_custom_2' })) { /* drain */ }
+  assert.deepEqual(h.messages.map((m) => m.id).filter((id) => id.startsWith('u_')), ['u_custom_1', 'u_custom_2']);
+  assert.equal(h.messages.length, 4);
+  assert.equal(h.rewindBeforeMessage('nope'), false);
+  assert.equal(h.rewindBeforeMessage('u_custom_2'), true);
+  assert.deepEqual(h.messages.map((m) => m.content), ['first', 'one'], '目标消息本身也不留');
+  assert.equal(h.rewindBeforeMessage('u_custom_1'), true);
+  assert.equal(h.messages.length, 0);
+});
+
 console.log(`\n${checks} 项 agent harness 校验全部通过。`);

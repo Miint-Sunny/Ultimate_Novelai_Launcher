@@ -1,7 +1,13 @@
-/** novelai_generate / novelai_upscale / novelai_account_info。P 类的估价给闸看。 */
+/** novelai_generate / novelai_upscale / novelai_account_info / novelai_suggest_tags。P 类的估价给闸看。 */
 
 import { toolError, type AgentTool } from '../toolRegistry';
-import { blobToBase64, type ToolDeps } from './deps';
+import { blobToBase64, type TagSuggestSource, type ToolDeps } from './deps';
+
+const TAG_SOURCES: readonly TagSuggestSource[] = ['official', 'danbooru', 'dictionary'];
+
+/** Danbooru 的数字类别 → 中文;来源给的是别的字符串就原样显示。 */
+const TAG_CATEGORY_LABEL: Record<string, string> = { '0': '一般', '1': '画师', '3': '作品', '4': '角色', '5': '元信息' };
+const categoryLabel = (raw: string): string => TAG_CATEGORY_LABEL[raw] ?? raw;
 
 export function createNovelaiTools(deps: ToolDeps): AgentTool[] {
   const generate: AgentTool = {
@@ -80,7 +86,46 @@ export function createNovelaiTools(deps: ToolDeps): AgentTool[] {
     },
   };
 
-  return [generate, upscale, account];
+  const suggest: AgentTool = {
+    name: 'novelai_suggest_tags',
+    label: 'NovelAI 标签联想',
+    description: '查询 Danbooru 标签联想补全与使用频次。source=official 走 NovelAI 官方联想(按工作台当前模型),danbooru 走 Danbooru 站内补全,dictionary 走离线词典(带中文翻译与别名)。不确定一个标签是否存在、拼法是否规范时先查这个。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '要查询的标签前缀或关键词(例如 silver hair, cat ears)' },
+        source: { type: 'string', enum: [...TAG_SOURCES], description: '联想来源,默认 official' },
+        limit: { type: 'integer', description: '返回条数,1–50,默认 10' },
+      },
+      required: ['query'],
+    },
+    permissionClass: 'R',
+    execute: async (toolCallId, args) => {
+      const query = typeof args.query === 'string' ? args.query.trim() : '';
+      if (!query) return toolError(toolCallId, suggest.name, '查询词不能为空。');
+      const source = TAG_SOURCES.includes(args.source as TagSuggestSource) ? (args.source as TagSuggestSource) : 'official';
+      const rawLimit = typeof args.limit === 'number' && Number.isFinite(args.limit) ? Math.round(args.limit) : 10;
+      const limit = Math.min(50, Math.max(1, rawLimit));
+      try {
+        const result = await deps.suggestTags(query, { source, limit, model: source === 'official' ? deps.adapter.getParams().model : undefined });
+        if (result.items.length === 0) return { toolCallId, toolName: suggest.name, content: `未找到与 "${query}" 相关的标签(来源 ${source})。` };
+        const lines = [`找到以下标签建议(来源 ${source}):`];
+        for (const item of result.items.slice(0, limit)) {
+          const parts = [`- ${item.tag}`];
+          if (typeof item.count === 'number') parts.push(`(用量: ${item.count})`);
+          if (typeof item.confidence === 'number') parts.push(`(匹配度: ${(item.confidence * 100).toFixed(1)}%)`);
+          if (item.translation) parts.push(`— ${item.translation}`);
+          if (item.category) parts.push(`[${categoryLabel(item.category)}]`);
+          lines.push(parts.join(' '));
+        }
+        return { toolCallId, toolName: suggest.name, content: lines.join('\n') };
+      } catch (error) {
+        return toolError(toolCallId, suggest.name, `标签查询失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+  };
+
+  return [generate, upscale, account, suggest];
 }
 
 function pickImage(deps: ToolDeps, args: Record<string, unknown>) {

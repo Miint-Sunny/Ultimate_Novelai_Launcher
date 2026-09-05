@@ -44,6 +44,11 @@ export interface WorkbenchImage {
   height: number;
   seed: number;
   blob: () => Promise<Blob>;
+  /** 出这张图时的角色槽位(含坐标),给 view_canvas_image 叠覆盖层;历史里没记就缺省。 */
+  characters?: WorkbenchCharacter[];
+  /** 出这张图用的官方模型 id。 */
+  model?: string;
+  createdAt?: number;
 }
 
 export interface GenerateOutcome {
@@ -79,6 +84,8 @@ export interface WorkbenchAdapter {
   addCharacter(entry: { name?: string; prompt: string; negative_prompt?: string; center?: { x: number; y: number } | null }): WorkbenchCharacter;
   updateCharacter(id: string, patch: Partial<Omit<WorkbenchCharacter, 'id'>>): WorkbenchCharacter | null;
   removeCharacter(id: string): boolean;
+  /** 整体替换角色槽位(回溯还原用);id 原样保留。 */
+  replaceCharacters(characters: WorkbenchCharacter[]): void;
   maxCharacters(): number;
 
   /** 按当前工作台参数生成,等到出图或失败才返回。 */

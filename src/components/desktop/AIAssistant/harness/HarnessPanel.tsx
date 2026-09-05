@@ -1,9 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { Lock, RotateCcw, Trash2 } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { History, Lock, RotateCcw, Trash2 } from 'lucide-react';
 import type { PermissionMode } from '../../../../services/agentHarness/types';
 import { InputBar } from '../InputBar';
 import { C } from '../tokens';
 import { HarnessThread, chipButton, useStickToBottom } from './HarnessThread';
+import { RewindSheet } from './RewindSheet';
+import { extractCheckpoints } from './transcript';
 import { useAgentHarness } from './useAgentHarness';
 
 /**
@@ -33,7 +35,9 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
   const [input, setInput] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [locksOpen, setLocksOpen] = useState(false);
+  const [rewindOpen, setRewindOpen] = useState(false);
   const [inputBarOffset, setInputBarOffset] = useState(64);
+  const checkpoints = useMemo(() => extractCheckpoints(h.items), [h.items]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -68,6 +72,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         {h.mode === 'yolo' && <span style={{ fontSize: 10, fontWeight: 700, color: '#f5c451' }}>YOLO</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <button className="aa-btn" title={h.lockedFields.size ? `已锁定 ${h.lockedFields.size} 项` : '锁定字段'} onClick={() => setLocksOpen((v) => !v)} style={iconBtn(h.lockedFields.size > 0)}><Lock size={13} /></button>
+          <button className="aa-btn" title="回溯到某一轮" disabled={h.busy || checkpoints.length === 0} onClick={() => setRewindOpen((v) => !v)} style={{ ...iconBtn(rewindOpen), opacity: h.busy || checkpoints.length === 0 ? 0.45 : 1 }}><History size={13} /></button>
           <button className="aa-btn" title="清空对话" onClick={h.clear} style={iconBtn(false)}><Trash2 size={13} /></button>
           <button className="aa-btn" title="切回旧版规划式助手" onClick={onSwitchToLegacy} style={iconBtn(false)}><RotateCcw size={13} /></button>
         </div>
@@ -85,13 +90,23 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
           {h.unavailableReason ?? '正在读取 sidecar 设置…'}
         </div>
       )}
+      {rewindOpen ? (
+        <RewindSheet checkpoints={checkpoints} busy={h.busy} onBack={() => setRewindOpen(false)} onConfirm={(id) => {
+          const text = h.rewindTo(id);
+          if (text === null) return;
+          setInput(text);
+          setRewindOpen(false);
+          window.setTimeout(() => inputRef.current?.focus(), 0);
+        }} />
+      ) : (
       <HarnessThread ref={bodyRef} items={h.items} busy={h.busy} bottomInset={inputBarOffset} onAnswer={h.answerQuestion} onDecide={h.decidePermission} onSuggest={(t) => send(t)} />
+      )}
       <input type="file" accept="image/png,image/jpeg,image/webp" ref={fileRef} style={{ display: 'none' }} onChange={(e) => {
         const file = e.target.files?.[0];
         if (file) { const reader = new FileReader(); reader.onload = (ev) => setImage((ev.target?.result as string) ?? null); reader.readAsDataURL(file); }
         if (fileRef.current) fileRef.current.value = '';
       }} />
-      <InputBar
+      {!rewindOpen && <InputBar
         value={input}
         onChange={setInput}
         onSend={() => send()}
@@ -103,7 +118,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         hasMessages={h.items.length > 0}
         onClearChat={h.clear}
         onHeightChange={setInputBarOffset}
-      />
+      />}
     </div>
   );
 };

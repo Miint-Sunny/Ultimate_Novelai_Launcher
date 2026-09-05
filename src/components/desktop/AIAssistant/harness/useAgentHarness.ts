@@ -12,7 +12,7 @@ import { DEFAULT_PERMISSION_LIMITS } from '../../../../services/agentHarness/per
 import { createSidecarLlmProvider, type LlmProvider } from '../../../../services/agentHarness/provider';
 import { BUILTIN_SKILLS, formatSkillsForSystemPrompt } from '../../../../services/agentHarness/skills';
 import { V5_ARCHITECT_PRESET } from '../../../../services/agentHarness/presets';
-import { createWorkbenchToolRegistry, type PromptLibraryEntry } from '../../../../services/agentHarness/tools/index';
+import { createWorkbenchToolRegistry, type PromptLibraryEntry, type TagSuggestItem } from '../../../../services/agentHarness/tools/index';
 import type { HarnessEvent, PermissionDecision, PermissionMode } from '../../../../services/agentHarness/types';
 import type { AgentQuestion, WorkbenchAdapter } from '../../../../services/agentHarness/workbench';
 import { calculateCostFromUI } from '../../../../services/costCalculator';
@@ -21,7 +21,8 @@ import { getAppSettings, saveAppSettings, APP_SETTINGS_CHANGED_EVENT } from '../
 import { v5UpscaleCost, v5UpscaleTargetSize } from '../../../../services/naiV5Upscale';
 import { getCachedIsOpus, isOpusUsageExhausted } from '../../../../services/novelai';
 import { MODEL_MAP } from '../../../generation/modelResolutionOptions';
-import { deserializeTranscript, serializeTranscript, type TranscriptItem } from './transcript';
+import { renderCharacterOverlay } from './overlayRenderer';
+import { deserializeTranscript, serializeTranscript, transcriptToMessages, type TranscriptItem } from './transcript';
 
 const TRANSCRIPT_KEY = 'desktop_agent_harness_transcript';
 const LOCKED_FIELDS_KEY = 'desktop_agent_locked_fields';
@@ -72,6 +73,8 @@ export interface AgentHarnessController {
   answerQuestion: (itemId: string, answers: string[] | null) => void;
   decidePermission: (itemId: string, decision: PermissionDecision) => void;
   clear: () => void;
+  /** 回到某条用户消息之前;返回那条消息的文本(放回输入框),忙碌或找不到时返回 null。 */
+  rewindTo: (userItemId: string) => string | null;
 }
 
 export function useAgentHarness(): AgentHarnessController {
@@ -89,6 +92,7 @@ export function useAgentHarness(): AgentHarnessController {
   const askResolvers = useRef(new Map<string, (answers: string[] | null) => void>());
   const modeRef = useRef(mode); modeRef.current = mode;
   const lockedRef = useRef(lockedFields); lockedRef.current = lockedFields;
+  const itemsRef = useRef(items); itemsRef.current = items;
 
   useEffect(() => {
     try { localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(serializeTranscript(items))); } catch { /* 存不下就算了 */ }
@@ -175,6 +179,8 @@ export function useAgentHarness(): AgentHarnessController {
       upscaleV5: (image) => sidecarV1Api.upscaleV5({ image, model: 'nai-diffusion-5-curated', declared_blur_sigma: 0 }),
       downscaleImage,
       postJson: (path, body) => appBackendApi.postJson(path, body),
+      suggestTags: (query, opts) => localSidecarApi.getJson<{ items: TagSuggestItem[] }>('/api/v1/tags/suggest', { source: opts.source, q: query, limit: opts.limit, model: opts.model }),
+      renderOverlay: renderCharacterOverlay,
       promptLibrary: {
         list: async () => (await getPromptChunks()).map((c): PromptLibraryEntry => ({ id: c.id, title: c.label, prompt: c.expansion, category: c.category ?? '其他', createdAt: c.createdAt })),
         save: async (e) => { await savePromptChunk({ id: e.id, label: e.title, expansion: e.prompt, category: e.category, createdAt: e.createdAt }); },
@@ -196,6 +202,8 @@ export function useAgentHarness(): AgentHarnessController {
       lockedFields: () => lockedRef.current,
       systemPromptSuffix: () => formatSkillsForSystemPrompt(BUILTIN_SKILLS.filter((s) => preset.enabledSkillIds.some((id) => s.id === id || s.id.startsWith(`${id}/`)))),
     });
+    // 面板条目是落盘的,harness 的消息历史不是:刷新后从条目重建,模型才记得前文。
+    harnessRef.current.restoreMessages(transcriptToMessages(itemsRef.current));
     return harnessRef.current;
   }, [askUser, handlersRef, llm]);
 
@@ -205,7 +213,10 @@ export function useAgentHarness(): AgentHarnessController {
     const trimmed = text.trim();
     if (!trimmed && !imageDataUrl) return;
     setBusy(true);
-    setItems((prev) => [...prev, { kind: 'user', id: nextId('u'), text: trimmed, imageDataUrl: imageDataUrl ?? undefined, at: Date.now() }]);
+    const harnessId = nextId('user');
+    const bridge = handlersRef.current?.workbench;
+    const checkpoint = bridge ? { params: bridge.getParams(), characters: bridge.listCharacters() } : undefined;
+    setItems((prev) => [...prev, { kind: 'user', id: nextId('u'), text: trimmed, imageDataUrl: imageDataUrl ?? undefined, at: Date.now(), harnessId, checkpoint }]);
     const images = imageDataUrl
       ? [{ base64: imageDataUrl.slice(imageDataUrl.indexOf(',') + 1), mimeType: imageDataUrl.slice(5, imageDataUrl.indexOf(';')) || 'image/png' }]
       : [];
@@ -268,19 +279,41 @@ export function useAgentHarness(): AgentHarnessController {
         }
       };
       try {
-        for await (const event of harness.send(trimmed, { images })) apply(event);
+        for await (const event of harness.send(trimmed, { images, id: harnessId })) apply(event);
       } catch (error) {
         setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: 'error', text: `循环异常:${error instanceof Error ? error.message : String(error)}`, at: Date.now() }]);
       } finally {
         setBusy(false);
       }
     })();
-  }, [busy, ensureHarness, patchItem]);
+  }, [busy, ensureHarness, handlersRef, patchItem]);
 
   const clear = useCallback(() => {
     harnessRef.current?.clearMessages();
     setItems([]);
   }, []);
+
+  const rewindTo = useCallback((userItemId: string): string | null => {
+    if (busy) return null;
+    const current = itemsRef.current;
+    const idx = current.findIndex((i) => i.id === userItemId && i.kind === 'user');
+    if (idx < 0) return null;
+    const item = current[idx];
+    if (item.kind !== 'user') return null;
+    const bridge = handlersRef.current?.workbench;
+    if (item.checkpoint && bridge) {
+      // 只写回真正变过的字段:整份写回会把「预设比例」翻成「自定义」这类无谓的抖动。
+      const current = bridge.getParams() as unknown as Record<string, unknown>;
+      const patch = Object.fromEntries(Object.entries(item.checkpoint.params).filter(([key, value]) => JSON.stringify(current[key]) !== JSON.stringify(value)));
+      if (Object.keys(patch).length > 0) bridge.applyParams(patch);
+      if (JSON.stringify(bridge.listCharacters()) !== JSON.stringify(item.checkpoint.characters)) bridge.replaceCharacters(item.checkpoint.characters);
+    }
+    const kept = current.slice(0, idx);
+    const harness = harnessRef.current;
+    if (harness && !(item.harnessId && harness.rewindBeforeMessage(item.harnessId))) harness.setMessages(transcriptToMessages(kept));
+    setItems(kept);
+    return item.text;
+  }, [busy, handlersRef]);
 
   const unavailableReason = useMemo(() => {
     if (!handlersReady || !handlersRef.current?.workbench) return '工作台还没有挂载。';
@@ -304,5 +337,6 @@ export function useAgentHarness(): AgentHarnessController {
     answerQuestion,
     decidePermission,
     clear,
+    rewindTo,
   };
 }
