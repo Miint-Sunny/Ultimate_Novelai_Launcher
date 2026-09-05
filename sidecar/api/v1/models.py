@@ -564,3 +564,30 @@ class AgentChatRequest(StrictModel):
         data = self.model_dump(mode="json", exclude_none=True)
         data.pop("slot", None)
         return data
+
+
+# ---------------------------------------------------------------------------
+# Tags: three coexisting suggestion sources
+# ---------------------------------------------------------------------------
+
+TagSuggestSourceValue = Literal["official", "danbooru", "dictionary"]
+
+
+class TagSuggestItem(StrictModel):
+    """One suggestion; fields a source cannot provide stay ``null``."""
+
+    tag: str = Field(min_length=1)
+    count: int | None = Field(default=None, ge=0)
+    confidence: float | None = None
+    category: str | None = None
+    translation: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    matched_alias: str | None = None
+    group: str | None = None
+    subgroup: str | None = None
+
+
+class TagSuggestResponse(StrictModel):
+    source: TagSuggestSourceValue
+    query: str
+    items: list[TagSuggestItem] = Field(default_factory=list)

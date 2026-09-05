@@ -16,6 +16,7 @@ from sidecar.services.backup import BackupService
 from sidecar.services.generation import GenerationJobCoordinator, NovelAIGenerationExecutor
 from sidecar.services.jobs import JobService
 from sidecar.services.library import LibraryService
+from sidecar.services.tag_suggest import TagDictionaryService
 from sidecar.tags import close_tag_clients
 
 
@@ -59,6 +60,10 @@ def build_runtime(
     )
     library = LibraryService(database, assets)
     clients = HttpClientPool()
+    tag_dictionary = TagDictionaryService(
+        settings.data_dir / "data" / "tag_dictionary.csv",
+        clients,
+    )
     agent = DesktopAgentAdapter(settings_store, clients, library)
     persistent_jobs = JobService(
         database,
@@ -102,6 +107,7 @@ def build_runtime(
     runtime.tasks = tasks
     runtime.agent = agent
     runtime.http = clients
+    runtime.tag_dictionary = tag_dictionary
     runtime.process_control = process_control
     runtime.capability_provider = lambda: {
         "generation_model_configured": settings_store.current.nai_configured,

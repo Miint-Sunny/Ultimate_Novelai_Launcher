@@ -33,6 +33,7 @@ from .serialization import event_response as event_response
 from .serialization import job_response
 from .settings import create_settings_router
 from .storage import create_storage_router
+from .tags import create_tags_router
 from .upscale import create_upscale_router
 
 _PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -287,4 +288,5 @@ def create_v1_router(runtime: AppRuntime | None = None) -> APIRouter:
     router.include_router(create_backup_router(runtime))
     router.include_router(create_upscale_router(runtime))
     router.include_router(create_agent_router(runtime))
+    router.include_router(create_tags_router(runtime))
     return router

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -35,6 +36,17 @@ USER_AGENT = (
 # derived from settings.nai_base_url so a proxy configured for /ai/* only (which does
 # not have to serve /user/*) keeps working the way it does today.
 SUBSCRIPTION_URL = "https://image.novelai.net/user/subscription"
+
+# NovelAI answers a burst with HTTP 429 before doing any billable work. The
+# reference clients wait 2.5 s and resend the *identical* request exactly once;
+# a second 429 is final. This never switches the wire format: that would be a
+# different request NovelAI could bill on its own.
+RATE_LIMIT_STATUS = 429
+RATE_LIMIT_BACKOFF_SECONDS = 2.5
+
+
+async def _rate_limit_sleep(seconds: float) -> None:
+    await asyncio.sleep(seconds)
 
 
 class NovelAIError(Exception):
@@ -443,63 +455,87 @@ async def _generate_via_stream(
 
     frames_seen = 0
     last_image: bytes | None = None
+    rate_limit_retried = False
     try:
-        async with _streaming_runtime_request(
-            http=http,
-            client=client,
-            policy=policy,
-            method="POST",
-            url=url,
-            headers=headers,
-            content=body,
-            timeout=httpx.Timeout(20.0, read=180.0),
-        ) as response:
-            if response.status_code != 200:
-                body_text = (await response.aread())[:500].decode("utf-8", errors="replace")
-                raise NovelAIStreamError(
-                    f"NovelAI stream request failed with HTTP {response.status_code} {body_text}",
-                    status_code=response.status_code,
-                    response_body=body_text,
-                    retry_safe=True,
-                )
-            async for message in _iter_stream_messages(response.aiter_bytes()):
-                frames_seen += 1
-                # Business errors ride inside an HTTP 200 stream. They must
-                # surface as a distinct failure (server/app.py learned the hard
-                # way that a bare ``except`` around the frame loop swallows
-                # them) and must never trigger the JSON+ZIP retry: a received
-                # frame means NovelAI engaged, so a retry could double-charge.
-                if "code" in message and message.get("code") != 200:
-                    error_code = message.get("code")
-                    error_message = message.get("message", "未知错误")
+        while True:
+            retry_rate_limit = False
+            async with _streaming_runtime_request(
+                http=http,
+                client=client,
+                policy=policy,
+                method="POST",
+                url=url,
+                headers=headers,
+                content=body,
+                timeout=httpx.Timeout(20.0, read=180.0),
+            ) as response:
+                if response.status_code == RATE_LIMIT_STATUS and not rate_limit_retried:
+                    # Nothing billable happened yet: resend the identical stream
+                    # request once after the backoff (connection closed first).
+                    await response.aread()
+                    rate_limit_retried = True
+                    retry_rate_limit = True
+                elif response.status_code != 200:
+                    body_text = (await response.aread())[:500].decode("utf-8", errors="replace")
                     raise NovelAIStreamError(
-                        f"NovelAI stream returned business error {error_code}: {error_message}",
-                        status_code=(
-                            error_code
-                            if isinstance(error_code, int) and 100 <= error_code <= 599
-                            else 0
-                        ),
-                        response_body=str(error_message),
-                        retry_safe=False,
+                        "NovelAI stream request failed with HTTP "
+                        f"{response.status_code} {body_text}",
+                        status_code=response.status_code,
+                        response_body=body_text,
+                        retry_safe=True,
                     )
-                image_data = message.get("image")
-                if not (isinstance(image_data, bytes) and image_data):
-                    continue
-                last_image = image_data
-                if on_progress is not None:
-                    step_ix = message.get("step_ix")
-                    if isinstance(step_ix, int) and total_steps:
-                        # Frames are 0-based; the UI-visible fraction is
-                        # advisory only, clamped so a misbehaving upstream
-                        # cannot push it out of [0, 1].
-                        await on_progress(min(1.0, (step_ix + 1) / total_steps))
-                    elif not isinstance(step_ix, int):
-                        await on_progress(1.0)
+                else:
+                    async for message in _iter_stream_messages(response.aiter_bytes()):
+                        frames_seen += 1
+                        # Business errors ride inside an HTTP 200 stream. They must
+                        # surface as a distinct failure (server/app.py learned the
+                        # hard way that a bare ``except`` around the frame loop
+                        # swallows them) and must never trigger the JSON+ZIP retry:
+                        # a received frame means NovelAI engaged, so a retry could
+                        # double-charge.
+                        if "code" in message and message.get("code") != 200:
+                            error_code = message.get("code")
+                            error_message = message.get("message", "未知错误")
+                            raise NovelAIStreamError(
+                                "NovelAI stream returned business error "
+                                f"{error_code}: {error_message}",
+                                status_code=(
+                                    error_code
+                                    if isinstance(error_code, int) and 100 <= error_code <= 599
+                                    else 0
+                                ),
+                                response_body=str(error_message),
+                                retry_safe=False,
+                            )
+                        image_data = message.get("image")
+                        if not (isinstance(image_data, bytes) and image_data):
+                            continue
+                        last_image = image_data
+                        if on_progress is not None:
+                            step_ix = message.get("step_ix")
+                            if isinstance(step_ix, int) and total_steps:
+                                # Frames are 0-based; the UI-visible fraction is
+                                # advisory only, clamped so a misbehaving upstream
+                                # cannot push it out of [0, 1].
+                                await on_progress(min(1.0, (step_ix + 1) / total_steps))
+                            elif not isinstance(step_ix, int):
+                                await on_progress(1.0)
+            if retry_rate_limit:
+                logger.warning(
+                    "NovelAI rate limited the stream request; "
+                    "retrying the same request once after %.1fs",
+                    RATE_LIMIT_BACKOFF_SECONDS,
+                )
+                await _rate_limit_sleep(RATE_LIMIT_BACKOFF_SECONDS)
+                continue
+            break
     except NovelAIStreamError as exc:
         # Uniform retry rule: only a failure with zero decoded frames may fall
         # back. One completed frame means NovelAI engaged with the request, so
-        # a JSON+ZIP retry could double-charge the account.
-        exc.retry_safe = frames_seen == 0
+        # a JSON+ZIP retry could double-charge the account. A rate limit that
+        # survived its one same-format retry is final as well: switching
+        # transport would only be a third request into the same limiter.
+        exc.retry_safe = frames_seen == 0 and exc.status_code != RATE_LIMIT_STATUS
         raise
     except httpx.TimeoutException as exc:
         raise NovelAIStreamError(
@@ -731,17 +767,30 @@ async def upscale_image_v5(
         "Referer": "https://novelai.net",
     }
     url = urljoin(base_url.rstrip("/") + "/", "ai/upscale")
-    response = await _request_with_runtime_client(
-        http=http,
-        client=client,
-        outbound_policy=outbound_policy,
-        method="POST",
-        url=url,
-        headers=headers,
-        content=body,
-        timeout=httpx.Timeout(30.0, read=300.0),
-        long_running=True,
-    )
+
+    async def send() -> httpx.Response:
+        return await _request_with_runtime_client(
+            http=http,
+            client=client,
+            outbound_policy=outbound_policy,
+            method="POST",
+            url=url,
+            headers=headers,
+            content=body,
+            timeout=httpx.Timeout(30.0, read=300.0),
+            long_running=True,
+        )
+
+    response = await send()
+    if response.status_code == RATE_LIMIT_STATUS:
+        # Same multipart request again after the backoff; the legacy schema is
+        # a different request and stays off the table for a rate limit.
+        logger.warning(
+            "NovelAI rate limited the V5 upscale; retrying the same request once after %.1fs",
+            RATE_LIMIT_BACKOFF_SECONDS,
+        )
+        await _rate_limit_sleep(RATE_LIMIT_BACKOFF_SECONDS)
+        response = await send()
 
     if response.status_code in _V5_UPSCALE_LEGACY_FALLBACK_STATUSES:
         logger.warning(
@@ -791,8 +840,7 @@ async def _upscale_image_v5_legacy_fallback(
     dimensions = png_dimensions(raw_image)
     if dimensions is None:
         raise NovelAIError(
-            "V5 upscale legacy fallback requires a PNG source image "
-            "(could not read dimensions)",
+            "V5 upscale legacy fallback requires a PNG source image (could not read dimensions)",
         )
     width, height = dimensions
     return await upscale_image(
@@ -912,17 +960,30 @@ async def _post_nai_json(
     }
     timeout = httpx.Timeout(20.0, read=read_timeout)
     base_url = settings.nai_base_url.rstrip("/") + "/"
-    response = await _request_with_runtime_client(
-        http=http,
-        client=client,
-        outbound_policy=outbound_policy,
-        method="POST",
-        url=urljoin(base_url, path.lstrip("/")),
-        headers=headers,
-        json=payload,
-        timeout=timeout,
-        long_running=True,
-    )
+    url = urljoin(base_url, path.lstrip("/"))
+
+    async def send() -> httpx.Response:
+        return await _request_with_runtime_client(
+            http=http,
+            client=client,
+            outbound_policy=outbound_policy,
+            method="POST",
+            url=url,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+            long_running=True,
+        )
+
+    response = await send()
+    if response.status_code == RATE_LIMIT_STATUS:
+        logger.warning(
+            "NovelAI rate limited %s; retrying the same request once after %.1fs",
+            path,
+            RATE_LIMIT_BACKOFF_SECONDS,
+        )
+        await _rate_limit_sleep(RATE_LIMIT_BACKOFF_SECONDS)
+        response = await send()
 
     if response.status_code not in {200, 201}:
         message = f"NovelAI request failed with HTTP {response.status_code}"

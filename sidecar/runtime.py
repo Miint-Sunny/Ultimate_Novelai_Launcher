@@ -74,6 +74,8 @@ class AppRuntime:
     # test runtimes can mount without one; v1 provider routes (upscale, ...)
     # resolve it through the runtime instead of the compat-only components bag.
     http: Any = None
+    # Offline tag dictionary (TagDictionaryService); loaded lazily on first use.
+    tag_dictionary: Any = None
     mutations: MutationGate = field(default_factory=MutationGate)
     process_control: Any = None
     capability_provider: Callable[[], dict[str, Any]] | None = None
