@@ -150,7 +150,7 @@
       },
       "AgentChatRequest": {
         "additionalProperties": false,
-        "description": "One harness turn: OpenAI-shaped messages and tools; the model is the slot's.",
+        "description": "One harness turn: OpenAI-shaped messages and tools; the model is the host's.",
         "properties": {
           "extra_body": {
             "additionalProperties": {
