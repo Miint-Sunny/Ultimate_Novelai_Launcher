@@ -31,6 +31,12 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
       const enabled = (image.characters ?? []).filter((c) => c.enabled);
       const free = freePositioningForModel(image.model);
 
+      let blob: Blob;
+      try {
+        blob = await image.blob();
+      } catch (error) {
+        return toolError(toolCallId, view.name, `读不到这张图片的数据(历史坞里的文件可能已失效):${error instanceof Error ? error.message : String(error)}`);
+      }
       let encoded: { base64: string; mimeType: string; width: number; height: number } | null = null;
       let overlayApplied = false;
       let note: string | null = null;
@@ -40,14 +46,20 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
         const spec = buildOverlaySpec(enabled, free);
         if (spec) {
           try {
-            encoded = await deps.renderOverlay!(await image.blob(), spec, maxEdge);
+            encoded = await deps.renderOverlay!(blob, spec, maxEdge);
             overlayApplied = true;
           } catch {
             note = '覆盖层渲染失败,已回退返回原图。';
           }
         }
       }
-      if (!encoded) encoded = await deps.downscaleImage(await image.blob(), maxEdge);
+      if (!encoded) {
+        try {
+          encoded = await deps.downscaleImage(blob, maxEdge);
+        } catch (error) {
+          return toolError(toolCallId, view.name, `这张图片解码失败(历史坞里的文件可能已失效):${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
 
       const position = index === 0 ? '最新生成' : `从新到旧第 ${index + 1} 张`;
       const lines = [

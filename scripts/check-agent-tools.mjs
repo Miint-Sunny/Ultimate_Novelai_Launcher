@@ -156,6 +156,21 @@ await check('view_canvas_image: 无角色的图退回原图并说明;越界报�
   assert.equal((await run(registry, 'view_canvas_image', { index: 9 })).isError, true);
 });
 
+await check('角色坐标: position_x/position_y 是契约,center:{x,y} 也认;update 只传一个轴时另一轴沿用', async () => {
+  const { registry, state } = makeDeps();
+  const a = await run(registry, 'add_character_prompt', { prompt: '1girl', center: { x: 0.2, y: 0.9 } });
+  assert.match(a.content, /定位 \(0.2, 0.9\)/);
+  const b = await run(registry, 'add_character_prompt', { prompt: '1boy', position_x: 0.7, position_y: 0.1 });
+  assert.match(b.content, /定位 \(0.7, 0.1\)/);
+  const id = state.characters[0].id;
+  await run(registry, 'update_character_prompt', { id, position_y: 0.4 });
+  assert.deepEqual(state.characters[0].center, { x: 0.2, y: 0.4 });
+  await run(registry, 'update_character_prompt', { id, center: { x: 0.55, y: 0.45 } });
+  assert.deepEqual(state.characters[0].center, { x: 0.55, y: 0.45 });
+  await run(registry, 'update_character_prompt', { id, use_auto_position: true });
+  assert.equal(state.characters[0].center, null);
+});
+
 await check('覆盖层: 只取启用角色;V4 吸附格心叠网格,V5 连续坐标叠十字;粉/蓝/紫配色与标签回退', () => {
   const chars = [
     { id: 'a', name: '', enabled: true, prompt: '1girl, red hair', negative_prompt: '', center: { x: 0.3, y: 0.55 } },

@@ -11,6 +11,13 @@ function describeCharacter(c: WorkbenchCharacter, index: number): string {
   return `${index + 1}. id=${c.id} 名称=${c.name || '(未命名)'} ${c.enabled ? '启用' : '停用'} 定位=${pos}\n   正向: ${c.prompt || '(空)'}\n   负向: ${c.negative_prompt || '(无)'}`;
 }
 
+/** 读坐标参数:契约是 position_x / position_y;模型照着 list 的回显传 center: {x, y} 也认。 */
+function readPosition(args: Record<string, unknown>): { x: number | null; y: number | null } {
+  const center = args.center && typeof args.center === 'object' ? (args.center as Record<string, unknown>) : null;
+  const pick = (direct: unknown, nested: unknown) => (typeof direct === 'number' ? direct : typeof nested === 'number' ? nested : null);
+  return { x: pick(args.position_x, center?.x), y: pick(args.position_y, center?.y) };
+}
+
 export function createCharacterTools(deps: ToolDeps): AgentTool[] {
   const list: AgentTool = {
     name: 'list_character_prompts',
@@ -49,8 +56,7 @@ export function createCharacterTools(deps: ToolDeps): AgentTool[] {
       if (!prompt) return toolError(toolCallId, add.name, '参数不合法:prompt 必填。');
       const chars = deps.adapter.listCharacters();
       if (chars.length >= deps.adapter.maxCharacters()) return toolError(toolCallId, add.name, `角色数量已达上限 ${deps.adapter.maxCharacters()} 个。`);
-      const x = typeof args.position_x === 'number' ? args.position_x : null;
-      const y = typeof args.position_y === 'number' ? args.position_y : null;
+      const { x, y } = readPosition(args);
       const center = x !== null && y !== null ? { x: clamp01(x), y: clamp01(y) } : null;
       const created = deps.adapter.addCharacter({
         name: typeof args.name === 'string' ? args.name : undefined,
@@ -92,12 +98,13 @@ export function createCharacterTools(deps: ToolDeps): AgentTool[] {
       if (typeof args.prompt === 'string') patch.prompt = args.prompt;
       if (typeof args.negative_prompt === 'string') patch.negative_prompt = args.negative_prompt;
       if (typeof args.enabled === 'boolean') patch.enabled = args.enabled;
+      const pos = readPosition(args);
       if (args.use_auto_position === true) patch.center = null;
-      else if (typeof args.position_x === 'number' || typeof args.position_y === 'number') {
+      else if (pos.x !== null || pos.y !== null) {
         const base = existing.center ?? { x: 0.5, y: 0.5 };
         patch.center = {
-          x: clamp01(typeof args.position_x === 'number' ? args.position_x : base.x),
-          y: clamp01(typeof args.position_y === 'number' ? args.position_y : base.y),
+          x: clamp01(pos.x ?? base.x),
+          y: clamp01(pos.y ?? base.y),
         };
       }
       if (Object.keys(patch).length === 0) return toolError(toolCallId, update.name, '没有传入任何要修改的字段。');

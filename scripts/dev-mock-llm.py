@@ -6,6 +6,7 @@ test conversations can be run without restarting.
   user text contains "步数"   -> get_studio_parameters, then update_studio_parameters, then answer
   user text contains "问我"   -> ask_user (single choice), then answer echoing the reply
   user text contains "回忆"   -> answer with how many user messages the request carried (history check)
+  user text contains "加角色" -> add_character_prompt with a fixed centre, then answer
   user text contains "看图"   -> view_canvas_image index 0, then answer echoing the tool text
   user text contains "联想"   -> novelai_suggest_tags (dictionary), then answer
   tool result for get_...     -> update_studio_parameters
@@ -94,6 +95,8 @@ def pick(req):
             return answer(f"收到,你选的是:{result[:80]}")
         if name == "view_canvas_image":
             return answer(f"看到了。工具说:{result[:160]}")
+        if name == "add_character_prompt":
+            return answer(f"角色加好了:{result[:100]}")
         return answer(f"工具 {name} 返回了:{result[:120]}")
     user_text = text_of(last)
     if "问我" in user_text:
@@ -104,6 +107,8 @@ def pick(req):
     if "回忆" in user_text:
         users = [text_of(m) for m in messages if m.get("role") == "user"]
         return answer(f"这轮请求里有 {len(users)} 条用户消息,第一条是「{users[0][:30]}」。", thought="数一下上下文。")
+    if "加角色" in user_text:
+        return tool_call("add_character_prompt", {"name": "Alice", "prompt": "1girl, red hair, smile", "position_x": 0.3, "position_y": 0.5}, "call_addchar", thought="加一个带坐标的角色。")
     if "看图" in user_text:
         return tool_call("view_canvas_image", {"index": 0}, "call_view", thought="先看一眼最新那张。")
     if "联想" in user_text:
