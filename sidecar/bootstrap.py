@@ -267,8 +267,12 @@ async def serve(settings: Settings | None = None) -> None:
         port = resolved.port
         from .server import create_app
 
+        # The settings are explicit (socket-bound port, process identity) but the
+        # store must keep reloading from the environment and the OS credential
+        # store: POST/DELETE /auth/token and /auth/llm-key call reload() to see
+        # the keychain, and without a loader that was a no-op until a restart.
         config = uvicorn.Config(
-            create_app(resolved),
+            create_app(resolved, reload_from_environment=True),
             host=resolved.host,
             port=port,
             log_level="info",
