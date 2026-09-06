@@ -29,12 +29,30 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    reload_from_environment: bool | None = None,
+) -> FastAPI:
+    """Compose the sidecar application.
+
+    ``reload_from_environment`` decides whether ``SettingsStore.reload`` re-reads
+    the environment, the local settings file and the OS credential store; the
+    credential routes depend on it to observe a key they just wrote.  It defaults
+    to ``settings is None``: a process that loaded its own settings from the
+    environment keeps reloading from there, while tests that pass synthetic
+    settings keep them frozen.  Bootstrap passes explicit, socket-bound settings
+    **and** ``True`` so the running desktop sidecar picks up a stored credential
+    without a restart.
+    """
+
     process_control.reset()
     initial_settings = settings or load_settings()
+    if reload_from_environment is None:
+        reload_from_environment = settings is None
     components = build_runtime(
         initial_settings,
-        reload_from_environment=settings is None,
+        reload_from_environment=reload_from_environment,
     )
 
     @asynccontextmanager

@@ -74,6 +74,10 @@ class SettingsStore:
             # address, otherwise request-local Agent tools call the wrong endpoint.
             host=previous.host,
             port=previous.port,
+            # The data directory is process identity too: the directory lock, the
+            # database, the asset root and the backups were all opened from it at
+            # startup, so a reload must never move a running process elsewhere.
+            data_dir=previous.data_dir,
             instance_id=previous.instance_id or loaded.instance_id,
             protocol_version=previous.protocol_version,
             sidecar_auth_token=previous.sidecar_auth_token or loaded.sidecar_auth_token,
@@ -104,6 +108,4 @@ class SettingsStore:
             if scope == "trusted-lan":
                 canonical = normalize_trusted_networks(list(networks), canonical=True)
                 if not canonical:
-                    raise ValueError(
-                        f"{networks_key} is required for trusted-lan scope"
-                    )
+                    raise ValueError(f"{networks_key} is required for trusted-lan scope")
