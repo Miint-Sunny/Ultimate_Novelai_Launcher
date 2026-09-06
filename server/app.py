@@ -1130,6 +1130,58 @@ _V5_COST_MULTIPLIER = 1.5
 _MAX_ANLAS_PER_IMAGE = 140
 
 
+_DEFAULT_CHARACTER_CENTER = (0.5, 0.5)
+
+
+def _client_use_coords(params: dict) -> Optional[bool]:
+    """客户端自己给的 use_coords(顶层或 v4_prompt 里),没给返回 None。"""
+    top = params.get("use_coords")
+    if isinstance(top, bool):
+        return top
+    v4_prompt = params.get("v4_prompt")
+    nested = v4_prompt.get("use_coords") if isinstance(v4_prompt, dict) else None
+    return nested if isinstance(nested, bool) else None
+
+
+def _is_custom_center(center: Any) -> bool:
+    """中心点不是默认的画面正中才算「摆过」。"""
+    if not isinstance(center, dict):
+        return False
+    try:
+        point = (float(center.get("x", 0.5)), float(center.get("y", 0.5)))
+    except (TypeError, ValueError):
+        return False
+    return point != _DEFAULT_CHARACTER_CENTER
+
+
+def _client_center(center: Any) -> Optional[dict]:
+    """客户端给的连续坐标(0–1)原样接过来,只做钳位;形状不对当作没给。"""
+    if not isinstance(center, dict) or "x" not in center or "y" not in center:
+        return None
+    try:
+        x, y = float(center["x"]), float(center["y"])
+    except (TypeError, ValueError):
+        return None
+    return {"x": min(max(x, 0.0), 1.0), "y": min(max(y, 0.0), 1.0)}
+
+
+def _resolve_use_coords(params: dict, char_captions: list) -> bool:
+    """官方模型里 use_coords 是整张图一个的全局二选一(AI's Choice / Custom),默认 false。
+
+    优先照客户端给的值传;客户端没给时按角色推导:任一角色的 centers 里有非默认
+    中心点才 true。坐标本身的取值与顺序是客户端的事,这里不动。
+    """
+    explicit = _client_use_coords(params)
+    if explicit is not None:
+        return explicit
+    for caption in char_captions or []:
+        if not isinstance(caption, dict):
+            continue
+        if any(_is_custom_center(center) for center in caption.get("centers") or []):
+            return True
+    return False
+
+
 async def generate_novelai_image_stream(
     params: dict,
     progress_callback: Callable = None,
@@ -1187,7 +1239,9 @@ async def generate_novelai_image_stream(
                         "char_caption": cp.get("uc", ""),
                         "centers": [center]
                     })
-    
+    # 全图一个开关:照客户端传,没传按角色坐标推导(见 _resolve_use_coords)
+    use_coords = _resolve_use_coords(params, char_captions)
+
     url = 'https://image.novelai.net/ai/generate-image-stream'
     headers = {
         'accept': '*/*',
@@ -1246,7 +1300,7 @@ async def generate_novelai_image_stream(
             "skip_cfg_above_sigma": skip_cfg_above_sigma,
             "legacy": False,
             "add_original_image": True,
-            "use_coords": True,
+            "use_coords": use_coords,
             "legacy_uc": False,
             "normalize_reference_strength_multiple": normalize_reference_strength_multiple,
             "v4_prompt": {
@@ -1254,7 +1308,7 @@ async def generate_novelai_image_stream(
                     "base_caption": input_text1,
                     "char_captions": char_captions
                 },
-                "use_coords": True,
+                "use_coords": use_coords,
                 "use_order": True
             },
             "v4_negative_prompt": {
@@ -5024,11 +5078,23 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
                 "y": (row - 0.5) / 5
             }
     
+    # use_coords 是全图一个的开关:客户端给了(useCoords / use_coords)照传;
+    # 没给时,只要有任一角色带显式坐标(新的 center 或旧的 A1–E5 网格)就 true,
+    # 全员「自动」时 false——自动布局的兜底坐标只是占位,不代表用户摆过。
+    client_use_coords = web_params.get("useCoords")
+    if not isinstance(client_use_coords, bool):
+        client_use_coords = web_params.get("use_coords")
+    has_custom_position = False
     for idx, cp in enumerate(character_prompts):
         if cp.get("enabled") and cp.get("positive"):
             position = cp.get("position", "")
-            if position and position in position_to_center:
+            explicit_center = _client_center(cp.get("center"))
+            if explicit_center is not None:
+                center = explicit_center
+                has_custom_position = True
+            elif position and position in position_to_center:
                 center = position_to_center[position]
+                has_custom_position = True
             else:
                 auto_positions = [
                     {"x": 0.3, "y": 0.5}, {"x": 0.7, "y": 0.5},
@@ -5036,7 +5102,7 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
                     {"x": 0.3, "y": 0.3}, {"x": 0.7, "y": 0.7},
                 ]
                 center = auto_positions[idx % len(auto_positions)]
-            
+
             stream_character_prompts.append({
                 "prompt": cp.get("positive", ""),
                 "uc": cp.get("negative", ""),
@@ -5062,6 +5128,9 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
         "uc_preset": uc_preset_value,
         "normalize_reference_strength_multiple": normalize_vibe_strength,
         "character_prompts": stream_character_prompts,
+        "use_coords": (
+            client_use_coords if isinstance(client_use_coords, bool) else has_custom_position
+        ),
     }
 
     if is_v5:
