@@ -38,6 +38,7 @@
     "check:prompt-chunks": "node --experimental-strip-types scripts/check-prompt-chunks.mjs",
     "check:agent-harness": "node --experimental-strip-types scripts/check-agent-harness.mjs",
     "check:agent-tools": "node --experimental-strip-types scripts/check-agent-tools.mjs",
+    "check:agent-sessions": "node --experimental-strip-types scripts/check-agent-sessions.mjs",
     "check:text-render": "node --experimental-strip-types scripts/check-text-render.mjs"
   },
   "devDependencies": {

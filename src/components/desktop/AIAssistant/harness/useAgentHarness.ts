@@ -26,10 +26,12 @@ import { v5UpscaleCost, v5UpscaleTargetSize } from '../../../../services/naiV5Up
 import { getCachedIsOpus, isOpusUsageExhausted } from '../../../../services/novelai';
 import { MODEL_MAP } from '../../../generation/modelResolutionOptions';
 import { renderCharacterOverlay } from './overlayRenderer';
+import { archiveCurrentTranscript, discardCurrentTranscript, loadCurrentTranscript, saveCurrentTranscript, setHarnessBusy, subscribeTranscriptReplaced } from './harnessSessionStore';
 import { loadPresetLibrary, savePresetLibrary } from './presetStorage';
-import { deserializeTranscript, serializeTranscript, transcriptToMessages, type TranscriptItem } from './transcript';
+import { sessionUsageByModel, type SessionModelUsage } from './sessionArchive';
+import { transcriptToMessages, type TranscriptItem } from './transcript';
+import { appendUsage } from './usageLedgerStore';
 
-const TRANSCRIPT_KEY = 'desktop_agent_harness_transcript';
 const LOCKED_FIELDS_KEY = 'desktop_agent_locked_fields';
 
 let seq = 0;
@@ -77,7 +79,12 @@ export interface AgentHarnessController {
   send: (text: string, imageDataUrl?: string | null) => void;
   answerQuestion: (itemId: string, answers: string[] | null) => void;
   decidePermission: (itemId: string, decision: PermissionDecision) => void;
+  /** 清空当前对话,不归档(输入栏的垃圾桶)。 */
   clear: () => void;
+  /** 把当前对话存进会话历史并开新对话;空对话返回 false。 */
+  newSession: () => boolean;
+  /** 本会话按模型聚合的用量(账单页「本会话」一栏)。 */
+  sessionUsage: SessionModelUsage[];
   /** 回到某条用户消息之前;返回那条消息的文本(放回输入框),忙碌或找不到时返回 null。 */
   rewindTo: (userItemId: string) => string | null;
   presetLibrary: PresetLibrary;
@@ -91,14 +98,13 @@ export interface AgentHarnessController {
 
 export function useAgentHarness(): AgentHarnessController {
   const { handlersRef, handlersReady, aiModel } = useAgentDock();
-  const [items, setItems] = useState<TranscriptItem[]>(() => {
-    try { return deserializeTranscript(JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || '[]')); } catch { return []; }
-  });
+  const [items, setItems] = useState<TranscriptItem[]>(loadCurrentTranscript);
   const [busy, setBusy] = useState(false);
   const [mode, setModeState] = useState<PermissionMode>(() => getAppSettings().agentPermissionMode);
   const [lockedFields, setLockedFields] = useState<Set<string>>(readLockedFields);
   /** cloud = serverMode 'custom':打宿主同形端点,鉴权是 Bot 会话,模型是助手头部选的 key。 */
   const [llm, setLlm] = useState<{ configured: boolean; baseUrl: string; model: string; provider: string; cloud: boolean } | null>(null);
+  const llmRef = useRef(llm); llmRef.current = llm;
   const [presetLibrary, setPresetLibrary] = useState<PresetLibrary>(loadPresetLibrary);
   const libraryRef = useRef(presetLibrary); libraryRef.current = presetLibrary;
   const toolCatalog = useMemo(() => listWorkbenchTools(), []);
@@ -110,9 +116,16 @@ export function useAgentHarness(): AgentHarnessController {
   const lockedRef = useRef(lockedFields); lockedRef.current = lockedFields;
   const itemsRef = useRef(items); itemsRef.current = items;
 
-  useEffect(() => {
-    try { localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(serializeTranscript(items))); } catch { /* 存不下就算了 */ }
-  }, [items]);
+  useEffect(() => { saveCurrentTranscript(items); }, [items]);
+  useEffect(() => { setHarnessBusy(busy); }, [busy]);
+
+  // 归档 / 丢弃 / 从会话历史打开一条,都是存储层整份换掉当前对话,这里只管重读;
+  // harness 的消息历史跟着作废,下次发送从新条目回填。
+  useEffect(() => subscribeTranscriptReplaced(() => {
+    harnessRef.current = null;
+    askResolvers.current.clear();
+    setItems(loadCurrentTranscript());
+  }), []);
 
   // 模型槽位跟着 sidecar 设置走;云模式改看 Bot 授权与头部选的模型。设置或登录变了重读。
   useEffect(() => {
@@ -278,9 +291,13 @@ export function useAgentHarness(): AgentHarnessController {
           case 'content_delta':
             if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, content: i.content + event.delta } : i));
             break;
-          case 'usage':
+          case 'usage': {
             if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, usage: event.usage } : i));
+            // 账本按响应记,重试出来的空响应也算一次请求 —— 那也是花掉的 token。
+            const slot = llmRef.current;
+            appendUsage({ key: nextId('usage'), provider: slot?.cloud ? 'cloud' : slot?.provider || 'sidecar', model: slot?.model || 'unknown', usage: event.usage });
             break;
+          }
           case 'tool_call': {
             if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false } : i));
             const rowId = nextId('tc');
@@ -308,9 +325,12 @@ export function useAgentHarness(): AgentHarnessController {
           case 'degraded':
             setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: 'warn', text: `主模型槽位失败,本轮已切到备用槽位(${event.slot})。`, at: Date.now() }]);
             break;
-          case 'turn_end':
-            if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false, model: event.finalMessage.model } : i));
+          case 'turn_end': {
+            // sidecar 槽位不回报模型名(provider.modelId 为空)时,记槽位设置里的那个,本会话统计才有名字。
+            const model = event.finalMessage.model || llmRef.current?.model || undefined;
+            if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false, model } : i));
             break;
+          }
           case 'error': {
             if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false } : i));
             const text = event.error.startsWith('http_402')
@@ -333,10 +353,10 @@ export function useAgentHarness(): AgentHarnessController {
     })();
   }, [busy, ensureHarness, handlersRef, patchItem]);
 
-  const clear = useCallback(() => {
-    harnessRef.current?.clearMessages();
-    setItems([]);
-  }, []);
+  // 两者都经存储层,状态更新由上面的 subscribeTranscriptReplaced 回调完成。
+  const clear = useCallback(() => { discardCurrentTranscript(); }, []);
+  const newSession = useCallback(() => archiveCurrentTranscript(), []);
+  const sessionUsage = useMemo(() => sessionUsageByModel(items), [items]);
 
   const updatePresetLibrary = useCallback((next: PresetLibrary) => {
     setPresetLibrary(next);
@@ -392,6 +412,8 @@ export function useAgentHarness(): AgentHarnessController {
     answerQuestion,
     decidePermission,
     clear,
+    newSession,
+    sessionUsage,
     rewindTo,
     presetLibrary,
     updatePresetLibrary,

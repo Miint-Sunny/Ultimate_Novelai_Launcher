@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, Info, Wrench } from 'lucide-react';
-import type { PermissionDecision } from '../../../../services/agentHarness/types';
+import type { PermissionDecision, TokenUsage } from '../../../../services/agentHarness/types';
+import { formatTokens } from '../../../../services/agentHarness/usageLedger';
 import type { AgentQuestion } from '../../../../services/agentHarness/workbench';
 import { C } from '../tokens';
 import type { TranscriptItem } from './transcript';
@@ -41,7 +42,7 @@ export const HarnessThread = React.forwardRef<HTMLDivElement, Props>(({ items, b
         {items.map((item) => {
           switch (item.kind) {
             case 'user': return <UserMsg key={item.id} text={item.text} image={item.imageDataUrl} />;
-            case 'assistant': return <AssistantMsg key={item.id} content={item.content} thoughts={item.thoughts} streaming={item.streaming} model={item.model} />;
+            case 'assistant': return <AssistantMsg key={item.id} content={item.content} thoughts={item.thoughts} streaming={item.streaming} model={item.model} usage={item.usage} />;
             case 'tool_call': return <ToolRow key={item.id} item={item} />;
             case 'notice': return <Notice key={item.id} level={item.level} text={item.text} />;
             case 'permission': return <PermissionCard key={item.id} item={item} onDecide={(d) => onDecide(item.id, d)} />;
@@ -87,8 +88,12 @@ function UserMsg({ text, image }: { text: string; image?: string }) {
   );
 }
 
-function AssistantMsg({ content, thoughts, streaming, model }: { content: string; thoughts: string; streaming: boolean; model?: string }) {
+function AssistantMsg({ content, thoughts, streaming, model, usage }: { content: string; thoughts: string; streaming: boolean; model?: string; usage?: TokenUsage }) {
   const [open, setOpen] = useState(false);
+  // 页脚:模型 · ↑输入 ↓输出 · 缓存读;账单页里是同一份数字的聚合。
+  const footer = !streaming && (model || usage)
+    ? [model, usage ? `↑${formatTokens(usage.input)} ↓${formatTokens(usage.output)}${usage.cacheRead > 0 ? ` · 缓存 ${formatTokens(usage.cacheRead)}` : ''}` : null].filter(Boolean).join(' · ')
+    : '';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 2 }}>
       {thoughts && (
@@ -105,7 +110,7 @@ function AssistantMsg({ content, thoughts, streaming, model }: { content: string
           {content}{streaming && <span style={{ display: 'inline-block', width: 6, height: 13, marginLeft: 2, verticalAlign: '-2px', background: C.accent, opacity: 0.7, borderRadius: 1 }} />}
         </div>
       )}
-      {model && !streaming && <div style={{ fontSize: 10, color: INK_FAINT }}>{model}</div>}
+      {footer && <div style={{ fontSize: 10, color: INK_FAINT }}>{footer}</div>}
     </div>
   );
 }
