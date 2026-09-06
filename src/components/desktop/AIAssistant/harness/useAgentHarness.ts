@@ -373,7 +373,8 @@ export function useAgentHarness(): AgentHarnessController {
     if (!llm) return null;
     if (llm.cloud) return llm.configured ? null : '云模式下要先在设置里完成 Bot 授权登录,助手才能连到宿主。';
     if (!llm.configured) return '本地 sidecar 还没有配置 LLM 槽位(设置 → 辅助功能)。';
-    if (llm.provider && llm.provider !== 'openai') return `当前槽位是 ${llm.provider},流式 Agent 只支持 OpenAI 兼容地址。`;
+    // anthropic / gemini 原生槽位由 sidecar 翻成 OpenAI chunk(契约 §2.6),客户端不再按协议名拦;
+    // 真不认识的协议由端点回 503 llm_stream_provider_unsupported,走错误通知。
     return null;
   }, [handlersReady, handlersRef, llm]);
 
