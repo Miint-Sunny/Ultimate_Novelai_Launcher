@@ -4,6 +4,10 @@
  */
 
 import pako from 'pako';
+import { WATERMARK_LIMITS, applyVisibleWatermark, embedBlindWatermark, hasBlindWatermark, hasVisibleWatermark, isWatermarkActive } from '../services/watermark/index.ts';
+import type { RawRgbaImage, WatermarkConfig } from '../services/watermark/index.ts';
+import { loadWatermarkImage, rgbaToBlob } from '../services/watermark/browser.ts';
+import { resolveWatermarkExportSettings } from '../services/watermark/settings.ts';
 
 // LSB 隐写数据提取器
 class LSBExtractor {
@@ -1092,7 +1096,31 @@ export async function writeCustomMetadataToImage(
 
   // 获取图片数据
   const imageData = ctx.getImageData(0, 0, img.width, img.height);
+  writeCustomMetadataIntoImageData(imageData, customPrompt);
 
+  // 将修改后的数据写回 canvas
+  ctx.putImageData(imageData, 0, 0);
+
+  // 导出为 Blob
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create blob'));
+        }
+      },
+      'image/png'
+    );
+  });
+}
+
+/**
+ * 把自定义 NAI 元数据以 LSB 隐写写进一块 ImageData(先清掉旧的 alpha 最低位)。
+ * 只动 alpha 通道;水印管道里可见水印合成之后、盲水印之前调它。
+ */
+export function writeCustomMetadataIntoImageData(imageData: ImageData, customPrompt: string): void {
   // 先清除所有 alpha 通道（设为 255），彻底移除旧的 LSB 隐写数据（包括 vibe 图片数据）
   const pixelData = imageData.data;
   for (let i = 3; i < pixelData.length; i += 4) {
@@ -1103,8 +1131,8 @@ export async function writeCustomMetadataToImage(
   const comment = {
     prompt: customPrompt,
     steps: 28,
-    height: img.height,
-    width: img.width,
+    height: imageData.height,
+    width: imageData.width,
     scale: 5.0,
     uncond_scale: 0.0,
     cfg_rescale: 0.0,
@@ -1183,23 +1211,6 @@ export async function writeCustomMetadataToImage(
 
   // 写入压缩数据
   writer.writeBytes(compressed);
-
-  // 将修改后的数据写回 canvas
-  ctx.putImageData(imageData, 0, 0);
-
-  // 导出为 Blob
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error('Failed to create blob'));
-        }
-      },
-      'image/png'
-    );
-  });
 }
 
 // ============ 保存格式 / 压缩率 公共工具 ============
@@ -1211,6 +1222,17 @@ export interface ProcessImageForSaveOptions {
   customPrompt?: string;
   format?: SaveFormat;        // 默认 png
   quality?: number;           // jpg 压缩质量 0~1，默认 0.92
+  /**
+   * 导出水印。省略 = 读设置里的 `watermark`;传 null = 这次强制不加(复制原图之类)。
+   * 任一种水印生效时保存 / 复制都会重新编码,PNG + original 也不例外。
+   */
+  watermark?: WatermarkConfig | null;
+}
+
+/** 这次导出会不会经过水印管道(调用方用它决定还能不能走 PNG 直链)。 */
+export function isWatermarkExportActive(options?: Pick<ProcessImageForSaveOptions, 'watermark'>): boolean {
+  const config = options?.watermark === undefined ? resolveWatermarkExportSettings() : options.watermark;
+  return Boolean(config && isWatermarkActive(config));
 }
 
 async function loadImageElement(imageUrl: string): Promise<HTMLImageElement> {
@@ -1265,6 +1287,11 @@ export async function processImageForSave(
 ): Promise<Blob> {
   const { mode, customPrompt = '', format = 'png', quality = 0.92 } = options;
 
+  const watermark = options.watermark === undefined ? resolveWatermarkExportSettings() : options.watermark;
+  if (watermark && isWatermarkActive(watermark)) {
+    return processImageWithWatermark(imageUrl, { mode, customPrompt, format, quality }, watermark);
+  }
+
   if (format === 'jpg') {
     return reEncodeImage(imageUrl, 'jpg', quality);
   }
@@ -1293,6 +1320,59 @@ export async function processImageForSave(
 }
 
 /**
+ * 水印导出管道(照 Novelai-harness 的顺序):可见水印 → 元数据处理 → 盲水印 → 编码。
+ *
+ * - 可见水印只改 RGB,底图 alpha ≥ 254 的像素保持原值,original 模式下原图的 LSB 隐写
+ *   元数据不会被抹掉;
+ * - clean / custom 只在 PNG 下有意义(jpg 没有 alpha 可写);
+ * - 盲水印永远最后嵌,而且只动 RGB,不会碰刚写好的 alpha 最低位。
+ * logo 解码失败、容量不足等情况都退化为「这一步跳过」,导出本身不失败。
+ */
+async function processImageWithWatermark(
+  imageUrl: string,
+  options: { mode: ProcessImageForSaveOptions['mode']; customPrompt: string; format: SaveFormat; quality: number },
+  config: WatermarkConfig,
+): Promise<Blob> {
+  const img = await loadImageElement(imageUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let image: RawRgbaImage = { rgba: imageData.data, width: imageData.width, height: imageData.height };
+
+  if (hasVisibleWatermark(config) && config.imageDataUrl) {
+    try {
+      const logo = await loadWatermarkImage(config.imageDataUrl);
+      image = applyVisibleWatermark(image, logo, config).image;
+    } catch (error) {
+      console.warn('可见水印跳过:logo 解码失败', error);
+    }
+  }
+
+  if (options.format === 'png') {
+    if (options.mode === 'clean') {
+      const data = image.rgba;
+      for (let i = 3; i < data.length; i += 4) data[i] = 255;
+    } else if (options.mode === 'custom') {
+      const carrier = new ImageData(new Uint8ClampedArray(image.rgba), image.width, image.height);
+      writeCustomMetadataIntoImageData(carrier, options.customPrompt);
+      image = { rgba: carrier.data, width: image.width, height: image.height };
+    }
+  }
+
+  if (hasBlindWatermark(config)) {
+    // jpg 是有损的:平坦区按用户强度嵌进去的差值会被量化抹平,在真浏览器里实测
+    // 0.92 质量下只有最高强度扛得住,所以 jpg 一律用 5(png 照用户设的)。
+    const strength = options.format === 'jpg' ? WATERMARK_LIMITS.blindStrength.max : config.blindStrength;
+    embedBlindWatermark(image, config.blindText.trim(), strength);
+  }
+
+  return rgbaToBlob(image, options.format, options.quality);
+}
+
+/**
  * 估算图片在指定保存配置下的体积。
  *
  * 走真实保存路径取 blob.size，估算 = 实际：
@@ -1304,7 +1384,7 @@ export async function estimateSavedSize(
   options: ProcessImageForSaveOptions,
 ): Promise<number> {
   const format = options.format ?? 'png';
-  if (format === 'png' && options.mode === 'original') {
+  if (format === 'png' && options.mode === 'original' && !isWatermarkExportActive(options)) {
     const response = await fetch(imageUrl);
     const blob = await response.blob();
     return blob.size;

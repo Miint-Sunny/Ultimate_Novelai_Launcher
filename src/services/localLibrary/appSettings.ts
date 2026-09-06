@@ -1,3 +1,5 @@
+import { DEFAULT_WATERMARK_CONFIG, normalizeWatermarkConfig, type WatermarkConfig } from '../watermark/types.ts';
+
 const APP_SETTINGS_KEY = 'novelai_app_settings';
 export const APP_SETTINGS_CHANGED_EVENT = 'app-settings-changed';
 
@@ -75,6 +77,11 @@ export interface AppSettings {
   agentAnlasBudget: number;
   /** 单条用户消息内的生成次数上限。 */
   agentMaxGenerations: number;
+  /**
+   * 导出水印(可见 logo + DCT 盲水印),照 Novelai-harness 的导出管道:保存 / 复制 / 打包时
+   * 在 `processImageForSave` 里应用。默认全关;logo 存 data URL。
+   */
+  watermark: WatermarkConfig;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -106,6 +113,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enterBehavior: 'default',
   sidecarUrl: '',
   weightPresets: [-1, 0.5, 0.8, 1.5, 2.0],
+  watermark: DEFAULT_WATERMARK_CONFIG,
 };
 
 const sanitizeAppSettings = (settings: AppSettings): AppSettings => ({
@@ -147,5 +155,7 @@ export const getAppSettings = (): AppSettings => {
   }
 
   settings.autocompleteSources = DEFAULT_AUTOCOMPLETE_SOURCES;
+  // 旧设置没有这一键,或者存了半截:一律整理成合法配置,坏值回默认而不是让导出炸掉
+  settings.watermark = normalizeWatermarkConfig(settings.watermark);
   return settings;
 };
