@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Palette, Bot, Check, Key, Type, Keyboard, HardDrive } from 'lucide-react';
+import { X, Palette, Bot, Check, Key, Type, Keyboard, HardDrive, Stamp } from 'lucide-react';
 import {
   getAppSettings,
   saveAppSettings,
@@ -18,8 +18,9 @@ import { AutocompleteSettingsSection } from './settings/AutocompleteSettingsSect
 import { ShortcutSettingsSection } from './settings/ShortcutSettingsSection';
 import { LoginSettingsSection } from './settings/LoginSettingsSection';
 import { BackupSettingsSection } from './settings/BackupSettingsSection';
+import { WatermarkSettingsSection } from './settings/WatermarkSettingsSection';
 
-type SettingsTab = 'theme' | 'ai' | 'login' | 'autocomplete' | 'shortcut' | 'backup';
+type SettingsTab = 'theme' | 'ai' | 'login' | 'autocomplete' | 'shortcut' | 'watermark' | 'backup';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ const TABS = [
   { id: 'ai' as const, name: '辅助功能', icon: Bot },
   { id: 'autocomplete' as const, name: '补全设置', icon: Type },
   { id: 'shortcut' as const, name: '快捷键', icon: Keyboard },
+  { id: 'watermark' as const, name: '水印导出', icon: Stamp },
   { id: 'login' as const, name: '登录模式', icon: Key },
   { id: 'backup' as const, name: '数据备份', icon: HardDrive },
 ];
@@ -237,6 +239,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               {activeTab === 'shortcut' && <Keyboard className="w-4 h-4" />}
               {activeTab === 'login' && <Key className="w-4 h-4" />}
               {activeTab === 'backup' && <HardDrive className="w-4 h-4" />}
+              {activeTab === 'watermark' && <Stamp className="w-4 h-4" />}
               {TABS.find((t) => t.id === activeTab)?.name}
             </h3>
             <button
@@ -294,6 +297,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 tokenError={tokenError}
                 setTokenError={setTokenError}
                 handleSaveToken={handleSaveToken}
+              />
+            )}
+            {activeTab === 'watermark' && (
+              <WatermarkSettingsSection
+                settings={settings}
+                updateSettingsImmediate={updateSettingsImmediate}
+                onClose={onClose}
               />
             )}
             {activeTab === 'backup' && (

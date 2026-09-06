@@ -4,7 +4,7 @@ import { Download, ChevronUp, ChevronDown, Trash2, X, Copy, FileDigit, Maximize2
 import { useGeneration } from '../contexts/GenerationContext';
 import { legacyCellToCenter } from '../services/characterPosition';
 import { useDragDrop } from '../contexts/DragDropContext';
-import { processImageForSave, getSaveExt, type SaveFormat } from '../utils/imageMetadata';
+import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
 import { generateImageFileName } from '../utils/fileSystem';
 import JSZip from 'jszip';
 
@@ -110,7 +110,7 @@ export const HistoryDock: React.FC = () => {
 
     try {
       // PNG + original：直链下载，免去解码
-      if (saveFormat === 'png' && saveMode === 'original') {
+      if (saveFormat === 'png' && saveMode === 'original' && !isWatermarkExportActive()) {
         const link = document.createElement('a');
         link.href = item.imageUrl;
         link.download = fileName;
@@ -154,7 +154,7 @@ export const HistoryDock: React.FC = () => {
         const fileName = generateImageFileName(`${upscaleSuffix}${modeSuffix}`, item.timestamp, ext);
 
         try {
-          if (saveFormat === 'png' && saveMode === 'original') {
+          if (saveFormat === 'png' && saveMode === 'original' && !isWatermarkExportActive()) {
             const link = document.createElement('a');
             link.href = item.imageUrl;
             link.download = fileName;
@@ -334,8 +334,10 @@ export const HistoryDock: React.FC = () => {
     const item = history.find(h => h.id === itemId);
     if (!item) return;
     try {
-      const response = await fetch(item.imageUrl);
-      const blob = await response.blob();
+      // 水印生效时复制也要经过管道,否则剪贴板里是没水印的原图。
+      const blob = isWatermarkExportActive()
+        ? await processImageForSave(item.imageUrl, { mode: 'original', format: 'png' })
+        : await (await fetch(item.imageUrl)).blob();
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
     } catch (error) {
       console.error('复制失败:', error);

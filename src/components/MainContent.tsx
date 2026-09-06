@@ -8,7 +8,9 @@ import { InpaintOverlay, type ExpandPayload } from './InpaintOverlay';
 import { WorkshopInputBar } from './workshop/WorkshopInputBar';
 import { alignSendRect, type CropRect } from '../utils/maskCrop';
 import { UpscaleModal } from './UpscaleModal';
-import { processImageForSave, getSaveExt, type SaveFormat } from '../utils/imageMetadata';
+import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
+import { WatermarkPlacementOverlay } from './watermark/WatermarkPlacementOverlay';
+import { publishCanvasImage, useWatermarkOverlayMode } from './watermark/overlayMode';
 import { generateImageFileName } from '../utils/fileSystem';
 
 const STORAGE_KEY_SAVE_MODE = 'nai_default_save_mode';
@@ -91,6 +93,8 @@ export const MainContent: React.FC = () => {
   const dragStart = useRef({ x: 0, y: 0 });
   const lastPosition = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const watermarkOverlayOn = useWatermarkOverlayMode();
   const isDragRef = useRef(false);
 
   // 当有新错误时重置显示状态
@@ -184,6 +188,8 @@ export const MainContent: React.FC = () => {
   const displayUrl = (isGenerating || isQueuing)
     ? (viewingHistory ? imageUrl : previewUrl)
     : imageUrl;
+  // 设置页的「在当前图上选一次」和画板水印定位都看这张图。
+  useEffect(() => { publishCanvasImage(imageUrl); }, [imageUrl]);
 
   // 复制到剪贴板（使用默认设置）
   const handleCopyToClipboard = async () => {
@@ -241,8 +247,8 @@ export const MainContent: React.FC = () => {
     }
 
     try {
-      // PNG + original 可以走 <a download> 直链，避免重新加载
-      if (options.format === 'png' && options.mode === 'original') {
+      // PNG + original 可以走 <a download> 直链，避免重新加载;水印生效时不行,得进管道重新编码
+      if (options.format === 'png' && options.mode === 'original' && !isWatermarkExportActive()) {
         const link = document.createElement('a');
         link.href = imageUrl;
         link.download = generateImageFileName(suffix, currentTimestamp, ext);
@@ -547,6 +553,7 @@ export const MainContent: React.FC = () => {
             onMouseLeave={handleMouseUp}
           >
             <img
+              ref={imageRef}
               src={displayUrl}
               alt={isGenerating ? 'Preview' : 'Generated'}
               className={`shadow-2xl ${isGenerating ? 'opacity-90' : ''}`}
@@ -563,6 +570,9 @@ export const MainContent: React.FC = () => {
               }}
               onClick={handleImageClick}
             />
+            {watermarkOverlayOn && imageUrl && !isGenerating && (
+              <WatermarkPlacementOverlay imageRef={imageRef} imageUrl={imageUrl} />
+            )}
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500 flex-col gap-2">

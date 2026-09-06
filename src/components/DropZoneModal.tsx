@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BlindWatermarkRow } from './watermark/BlindWatermarkRow';
 import {
   Image as ImageIcon,
   Palette,
@@ -546,6 +547,9 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* 盲水印提取 */}
+            {fileDataUrl && <BlindWatermarkRow url={fileDataUrl} />}
 
             {/* 参数标签 */}
             <div className="flex flex-wrap gap-1.5 mt-2">
