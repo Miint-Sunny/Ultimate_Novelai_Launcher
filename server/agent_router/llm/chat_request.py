@@ -60,6 +60,15 @@ def enforce_text_budget(
     return total
 
 
+def split_data_url(value: str) -> tuple[str, str]:
+    """``data:<mime>;base64,<payload>`` -> (mime, compact base64 payload)."""
+
+    match = _DATA_URL.match(value.strip())
+    if match is None:
+        raise ValueError("image_url.url must be a base64 data: URL")
+    return match.group("mime").lower(), "".join(match.group("data").split())
+
+
 def decoded_data_url_size(value: str, *, maximum: int = AGENT_CHAT_MAX_IMAGE_BYTES) -> int:
     """Validate one ``data:`` image URL and return its decoded size.
 
@@ -68,11 +77,7 @@ def decoded_data_url_size(value: str, *, maximum: int = AGENT_CHAT_MAX_IMAGE_BYT
     corrupt image is rejected here rather than by the upstream model.
     """
 
-    text = value.strip()
-    match = _DATA_URL.match(text)
-    if match is None:
-        raise ValueError("image_url.url must be a base64 data: URL")
-    compact = "".join(match.group("data").split())
+    _, compact = split_data_url(value)
     if not compact:
         raise ValueError("base64 payload is empty")
     estimated = (len(compact) * 3) // 4
@@ -245,4 +250,5 @@ __all__ = [
     "AgentChatToolFunction",
     "decoded_data_url_size",
     "enforce_text_budget",
+    "split_data_url",
 ]

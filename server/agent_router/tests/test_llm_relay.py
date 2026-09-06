@@ -40,10 +40,17 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "proxy": "",
         "protocol": "anthropic",
     },
+    "mystery-model": {
+        "base_url": "https://mystery.test",
+        "api_key": SECRET,
+        "proxy": "",
+        "protocol": "mystery",
+    },
 }
 CHOICES: dict[str, dict[str, Any]] = {
     "fake": {"label": "Fake Model", "model": "fake-model", "aliases": ["fk"]},
     "native": {"label": "Native", "model": "claude-native", "aliases": []},
+    "mystery": {"label": "Mystery", "model": "mystery-model", "aliases": []},
 }
 CHUNK = {
     "id": "chunk-1",
@@ -202,18 +209,18 @@ async def test_choice_aliases_resolve_and_unknown_model_is_422(
     assert problem["context"] == {"model": "nope"}
 
 
-async def test_native_protocol_choice_is_unsupported(
+async def test_unknown_protocol_choice_is_unsupported(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seen = _install_upstream(monkeypatch, lambda _r: _stream_response(CHUNK))
 
-    response = await _post(app, _request_body(model="native"))
+    response = await _post(app, _request_body(model="mystery"))
 
     assert response.status_code == 503
     problem = response.json()
     assert problem["code"] == "llm_stream_provider_unsupported"
     assert problem["retryable"] is False
-    assert problem["context"] == {"provider": "anthropic", "model": "native"}
+    assert problem["context"] == {"provider": "mystery", "model": "mystery"}
     assert seen == []
 
 

@@ -26,7 +26,7 @@ import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -100,6 +100,32 @@ class LlmStreamUnreachableError(LlmStreamError):
     retryable = True
 
 
+class NativeStreamError(LlmStreamError):
+    """A native provider reported an error inside its stream (translation stops)."""
+
+    code = "llm_upstream_error"
+
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message, retryable=retryable)
+
+
+class StreamTranslator(Protocol):
+    """Turns a native provider stream into OpenAI ``chat.completion.chunk`` objects.
+
+    ``feed`` receives one SSE ``data`` payload (event names are not needed: the
+    payloads carry their own ``type``); ``feed_json`` receives a whole JSON body
+    when a gateway ignored ``stream``; ``finish`` runs once at the end and emits
+    the finish/usage chunks.  Raising :class:`NativeStreamError` ends the relay
+    with an ``error`` event.
+    """
+
+    def feed(self, data: str) -> list[dict[str, Any]]: ...
+
+    def feed_json(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]: ...
+
+    def finish(self) -> list[dict[str, Any]]: ...
+
+
 @dataclass(frozen=True)
 class LlmStreamInfo:
     """What the client is told about the target that answers this turn."""
@@ -108,6 +134,16 @@ class LlmStreamInfo:
     model: str
     provider: str
     failed_over: bool
+
+
+@dataclass(frozen=True)
+class UpstreamRequest:
+    """One provider request as a host should send it, plus how to read the answer."""
+
+    url: str
+    headers: dict[str, str]
+    body: dict[str, Any]
+    translator: StreamTranslator | None = None
 
 
 def build_chat_body(
@@ -206,10 +242,13 @@ class LlmStreamSession:
         info: LlmStreamInfo,
         response: httpx.Response,
         stack: AsyncExitStack,
+        *,
+        translator: StreamTranslator | None = None,
     ) -> None:
         self.info = info
         self._response = response
         self._stack = stack
+        self._translator = translator
         self._closed = False
 
     async def __aenter__(self) -> LlmStreamSession:
@@ -235,6 +274,11 @@ class LlmStreamSession:
 
         if self.info.failed_over:
             yield format_sse("degraded", {"reason": "llm_backup", "slot": self.info.slot})
+
+        if self._translator is not None:
+            async for chunk in self._iter_translated(self._translator):
+                yield chunk
+            return
 
         content_type = self._response.headers.get("content-type", "").lower()
         if "application/json" in content_type:
@@ -282,6 +326,91 @@ class LlmStreamSession:
         if not saw_done:
             yield "\ndata: [DONE]\n\n"
 
+    async def _iter_translated(self, translator: StreamTranslator) -> AsyncIterator[str]:
+        """Parse the provider's own SSE (or JSON) and emit OpenAI chunks instead."""
+
+        content_type = self._response.headers.get("content-type", "").lower()
+        if "application/json" in content_type:
+            try:
+                raw = await self._response.aread()
+                payload = json.loads(raw.decode("utf-8", errors="replace"))
+            except (httpx.HTTPError, ValueError) as exc:
+                yield self._interrupted(f"LLM response was not readable: {type(exc).__name__}")
+                return
+            if not isinstance(payload, Mapping):
+                yield self._interrupted("LLM response was not an object", retryable=False)
+                return
+            try:
+                chunks = translator.feed_json(payload) + translator.finish()
+            except NativeStreamError as exc:
+                yield self._upstream_error(exc)
+                return
+            for chunk in chunks:
+                yield format_sse(None, chunk)
+            yield "data: [DONE]\n\n"
+            return
+
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        buffer = ""
+        data_lines: list[str] = []
+        try:
+            async for raw in self._response.aiter_bytes():
+                buffer += decoder.decode(raw)
+                buffer = buffer.replace("\r\n", "\n").replace("\r", "\n")
+                while True:
+                    newline = buffer.find("\n")
+                    if newline < 0:
+                        break
+                    line = buffer[:newline]
+                    buffer = buffer[newline + 1 :]
+                    for chunk in _feed_sse_line(translator, line, data_lines):
+                        yield format_sse(None, chunk)
+            buffer += decoder.decode(b"", final=True)
+            for line in (buffer, ""):
+                for chunk in _feed_sse_line(translator, line, data_lines):
+                    yield format_sse(None, chunk)
+            for chunk in translator.finish():
+                yield format_sse(None, chunk)
+        except NativeStreamError as exc:
+            yield self._upstream_error(exc)
+            return
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "LLM stream interrupted slot=%s error_type=%s",
+                self.info.slot,
+                type(exc).__name__,
+            )
+            yield self._interrupted(f"LLM stream interrupted: {type(exc).__name__}")
+            return
+        yield "data: [DONE]\n\n"
+
+    def _interrupted(self, message: str, *, retryable: bool = True) -> str:
+        return format_sse(
+            "error",
+            {
+                "code": "llm_stream_interrupted",
+                "message": message,
+                "retryable": retryable,
+                "slot": self.info.slot,
+            },
+        )
+
+    def _upstream_error(self, exc: NativeStreamError) -> str:
+        logger.warning(
+            "LLM stream reported an error slot=%s retryable=%s",
+            self.info.slot,
+            exc.retryable,
+        )
+        return format_sse(
+            "error",
+            {
+                "code": exc.code,
+                "message": exc.message,
+                "retryable": exc.retryable,
+                "slot": self.info.slot,
+            },
+        )
+
     async def _relay_json_body(self) -> AsyncIterator[str]:
         try:
             raw = await self._response.aread()
@@ -312,11 +441,29 @@ class LlmStreamSession:
         yield "data: [DONE]\n\n"
 
 
+def _feed_sse_line(
+    translator: StreamTranslator, line: str, data_lines: list[str]
+) -> list[dict[str, Any]]:
+    """Accumulate one SSE line; a blank line dispatches the buffered ``data`` payload."""
+
+    if line == "":
+        if not data_lines:
+            return []
+        payload = "\n".join(data_lines)
+        data_lines.clear()
+        return translator.feed(payload)
+    if line.startswith("data:"):
+        data_lines.append(line[5:].removeprefix(" "))
+    # Comments, ``event:``, ``id:`` and ``retry:`` lines carry nothing we need.
+    return []
+
+
 async def connect_stream(
     opener: StreamOpener,
     body: Mapping[str, Any],
     *,
     info: LlmStreamInfo,
+    translator: StreamTranslator | None = None,
 ) -> LlmStreamSession:
     """Open one stream on a target, retrying once without the optional keys on 400.
 
@@ -343,7 +490,7 @@ async def connect_stream(
             raise
 
         if 200 <= response.status_code < 300:
-            return LlmStreamSession(info, response, stack)
+            return LlmStreamSession(info, response, stack, translator=translator)
 
         excerpt = await read_excerpt(response)
         await stack.aclose()
@@ -458,12 +605,15 @@ __all__ = [
     "LlmStreamUnreachableError",
     "LlmStreamUnsupportedError",
     "LlmStreamUpstreamError",
+    "NativeStreamError",
     "RESERVED_BODY_KEYS",
     "RelayChannel",
     "STREAM_ACCEPT",
     "STREAM_TIMEOUT",
     "StreamOpener",
+    "StreamTranslator",
     "TRANSIENT_STATUSES",
+    "UpstreamRequest",
     "build_chat_body",
     "completion_to_chunk",
     "connect_stream",

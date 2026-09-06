@@ -6,7 +6,8 @@ the configured slot.  The relay itself (body shape, SSE repairs, compatibility
 retry, producer/consumer hand-off) is the shared
 :mod:`server.agent_router.llm.stream`; this module adds what only the sidecar
 knows: the primary/backup slots, the SSRF outbound policy and the guarded
-client pool.
+client pool.  Anthropic and Gemini slots are translated to the OpenAI chunk
+dialect by :mod:`server.agent_router.llm.stream_native`.
 
 Failover semantics mirror :func:`sidecar.llm.client.llm_chat_text`: the backup
 slot is tried only when the primary fails **before any byte was relayed**.  Once
@@ -40,6 +41,7 @@ from server.agent_router.llm.stream import (
     run_relay,
 )
 from server.agent_router.llm.stream import build_chat_body as _build_shared_chat_body
+from server.agent_router.llm.stream_native import build_upstream_request
 
 from ..config import LlmSlot, Settings
 from ..infrastructure import HttpClientPool
@@ -88,9 +90,6 @@ async def open_llm_stream(
     last_error: LlmStreamError | None = None
     for index, (llm_slot, network_scope, trusted_networks) in candidates:
         label = SLOT_LABELS[index] if index < len(SLOT_LABELS) else f"slot{index}"
-        if llm_slot.provider != "openai":
-            last_error = LlmStreamUnsupportedError(llm_slot.provider)
-            continue
         policy = (
             policy_factory(network_scope)
             if policy_factory is not None
@@ -130,20 +129,22 @@ async def _connect(
     *,
     failed_over: bool,
 ) -> LlmStreamSession:
-    url = f"{llm_slot.base_url.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {llm_slot.api_key}",
-        "Content-Type": "application/json",
-        "Accept": STREAM_ACCEPT,
-    }
+    # Raises LlmStreamUnsupportedError for a protocol neither relayed nor translated.
+    upstream = build_upstream_request(
+        llm_slot.provider,
+        model=llm_slot.model,
+        base_url=llm_slot.base_url,
+        api_key=llm_slot.api_key,
+        fields=fields,
+    )
 
     def opener(body: dict[str, Any]) -> Any:
         return http.streaming_request(
             policy,
             "POST",
-            url,
+            upstream.url,
             long_running=True,
-            headers=headers,
+            headers=upstream.headers,
             json=body,
             timeout=STREAM_TIMEOUT,
         )
@@ -154,7 +155,7 @@ async def _connect(
         provider=llm_slot.provider,
         failed_over=failed_over,
     )
-    return await connect_stream(opener, build_chat_body(llm_slot, fields), info=info)
+    return await connect_stream(opener, upstream.body, info=info, translator=upstream.translator)
 
 
 __all__ = [
