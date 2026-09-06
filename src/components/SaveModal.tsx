@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, FileX, FileEdit, Download, Check, FileImage, FileType2 } from 'lucide-react';
 import { estimateSavedSize, type SaveFormat } from '../utils/imageMetadata';
+import { hasBlindWatermark, hasVisibleWatermark } from '../services/watermark/index.ts';
+import { resolveWatermarkExportSettings } from '../services/watermark/settings.ts';
 
 interface SaveModalProps {
   isOpen: boolean;
@@ -99,6 +101,12 @@ export const SaveModal: React.FC<SaveModalProps> = ({
 
   if (!isOpen) return null;
 
+  const watermark = resolveWatermarkExportSettings();
+  const watermarkParts = [
+    hasVisibleWatermark(watermark) ? '可见水印' : null,
+    hasBlindWatermark(watermark) ? '盲水印' : null,
+  ].filter((part): part is string => part !== null);
+
   const ext = format === 'jpg' ? 'jpg' : 'png';
   const fileNameSample = `novelai_YYYYMMDD_HHmmss.${ext}`;
   const metaDisabled = format === 'jpg';
@@ -161,6 +169,14 @@ export const SaveModal: React.FC<SaveModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* 水印状态(在设置 → 导出水印里改) */}
+          {watermarkParts.length > 0 && (
+            <div className="px-5 py-2 border-b border-gray-700/50 text-[11px] text-gray-400">
+              导出时会加上 <span className="text-nai-accent">{watermarkParts.join(' + ')}</span>
+              ;原图模式也会重新编码(元数据保留)。在「设置 → 水印导出」里修改。
+            </div>
+          )}
 
           {/* 格式 + 压缩率 */}
           <div className="px-5 py-3 border-b border-gray-700/50">

@@ -408,6 +408,8 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
               {!isVibeFile && (
                 <div className="mb-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
                   <div className="text-xs text-gray-400 mb-2">未检测到元数据</div>
+                  {/* 清理过元数据的导出图正是要查盲水印的对象 */}
+                  {fileDataUrl && <div className="mb-3"><BlindWatermarkRow url={fileDataUrl} /></div>}
                   <button
                     onClick={handleAnalyzeWithTagger}
                     disabled={isAnalyzing}

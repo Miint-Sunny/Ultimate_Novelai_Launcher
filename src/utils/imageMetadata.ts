@@ -1229,9 +1229,12 @@ export interface ProcessImageForSaveOptions {
   watermark?: WatermarkConfig | null;
 }
 
-/** 这次导出会不会经过水印管道(调用方用它决定还能不能走 PNG 直链)。 */
-export function isWatermarkExportActive(options?: Pick<ProcessImageForSaveOptions, 'watermark'>): boolean {
-  const config = options?.watermark === undefined ? resolveWatermarkExportSettings() : options.watermark;
+/**
+ * 这次导出会不会经过水印管道(调用方用它决定还能不能走 PNG 直链)。
+ * `override` 与 `ProcessImageForSaveOptions.watermark` 同义:省略 = 读设置,null = 强制不加。
+ */
+export function isWatermarkExportActive(override?: WatermarkConfig | null): boolean {
+  const config = override === undefined ? resolveWatermarkExportSettings() : override;
   return Boolean(config && isWatermarkActive(config));
 }
 
@@ -1384,7 +1387,7 @@ export async function estimateSavedSize(
   options: ProcessImageForSaveOptions,
 ): Promise<number> {
   const format = options.format ?? 'png';
-  if (format === 'png' && options.mode === 'original' && !isWatermarkExportActive(options)) {
+  if (format === 'png' && options.mode === 'original' && !isWatermarkExportActive(options.watermark)) {
     const response = await fetch(imageUrl);
     const blob = await response.blob();
     return blob.size;

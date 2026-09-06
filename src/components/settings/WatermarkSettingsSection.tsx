@@ -167,7 +167,9 @@ export const WatermarkSettingsSection: React.FC<Props> = ({ settings, updateSett
               className="flex-1 px-2.5 py-1.5 rounded bg-black/30 border border-gray-700 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-nai-accent" />
           </div>
           <Slider label="强度" value={wm.blindStrength} min={WATERMARK_LIMITS.blindStrength.min} max={WATERMARK_LIMITS.blindStrength.max} step={1} display={String(wm.blindStrength)} onChange={(v) => update({ blindStrength: v })} />
-          <p className="text-[11px] text-gray-500">越高越抗压缩,画质扰动略增;jpg 导出时一律按 5 嵌。</p>
+          <p className="text-[11px] text-gray-500">
+            载荷 {new TextEncoder().encode(wm.blindText).length} / {WATERMARK_LIMITS.blindTextBytes} 字节 · 越高越抗压缩,画质扰动略增;jpg 导出时一律按 5 嵌。
+          </p>
         </div>
       </div>
     </div>
