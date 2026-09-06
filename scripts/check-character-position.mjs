@@ -159,4 +159,32 @@ check('拥挤: 刚好等于阈值不报(边界是开区间,免得默认布局擦
   );
 });
 
+check('官方出生序: 先中排由内向外,再按到中心距离;C4 因浮点比较排在 C2 前(照官方,不「修」)', () => {
+  assert.deepEqual(M.SPAWN_CENTERS.slice(0, 5), [{ x: 0.5, y: 0.5 }, { x: 0.3, y: 0.5 }, { x: 0.7, y: 0.5 }, { x: 0.1, y: 0.5 }, { x: 0.9, y: 0.5 }]);
+  assert.deepEqual(M.SPAWN_CENTERS[5], { x: 0.5, y: 0.7 });
+  assert.deepEqual(M.SPAWN_CENTERS[6], { x: 0.5, y: 0.3 });
+  assert.equal(M.SPAWN_CENTERS.length, 25);
+  assert.equal(new Set(M.SPAWN_CENTERS.map((c) => `${c.x},${c.y}`)).size, 25, '25 格各出现一次');
+});
+
+check('出生位置: 跳过已占(V5 按距离 <0.1;网格模型量化同格);全占回正中;摆过的原样保留、逐个补', () => {
+  assert.deepEqual(M.nextSpawnCenter([], true), { x: 0.5, y: 0.5 }, '第一个落 C3,不是 B3');
+  assert.deepEqual(M.nextSpawnCenter([{ x: 0.52, y: 0.48 }], true), { x: 0.3, y: 0.5 });
+  assert.deepEqual(M.nextSpawnCenter([{ x: 0.45, y: 0.55 }], false), { x: 0.3, y: 0.5 }, '网格模型:量化后同格即占');
+  assert.deepEqual(M.nextSpawnCenter([{ x: 0.45, y: 0.55 }], true), { x: 0.3, y: 0.5 }, '自由定位:0.07 在 0.1 内,算占');
+  assert.deepEqual(M.nextSpawnCenter([{ x: 0.38, y: 0.5 }], true), { x: 0.5, y: 0.5 }, '自由定位:离 C3 0.12,不算占');
+  assert.deepEqual(M.nextSpawnCenter(M.SPAWN_CENTERS, true), { x: 0.5, y: 0.5 });
+  const centers = M.assignSpawnCenters([{ center: { x: 0.9, y: 0.1 } }, { center: null }, { position: 'B3' }, { position: '0.2,0.2' }, {}], true);
+  assert.deepEqual(centers, [{ x: 0.9, y: 0.1 }, { x: 0.5, y: 0.5 }, { x: 0.3, y: 0.5 }, { x: 0.2, y: 0.2 }, { x: 0.7, y: 0.5 }]);
+});
+
+check('量化: floor 分桶到格心;自由坐标串照实解析并算「摆过」', () => {
+  assert.deepEqual(M.quantizeCenterToGrid({ x: 0.2, y: 0.19 }), { x: 0.3, y: 0.1 });
+  assert.deepEqual(M.quantizeCenterToGrid({ x: 1, y: 0 }), { x: 0.9, y: 0.1 });
+  assert.deepEqual(M.parseFreeformPosition('0.42, 0.67'), { x: 0.42, y: 0.67 });
+  assert.equal(M.parseFreeformPosition('B3'), null);
+  assert.equal(M.hasManualPosition({ position: '0.1,0.2' }), true);
+  assert.deepEqual(M.placedCenter({ position: 'A1' }), { x: 0.1, y: 0.1 });
+});
+
 console.log(`\n${checks} 项角色定位校验全部通过。`);

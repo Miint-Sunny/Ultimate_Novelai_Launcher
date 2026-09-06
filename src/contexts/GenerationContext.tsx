@@ -30,6 +30,8 @@ export interface HistoryItemMetadata {
     /** 画布上的连续坐标(0–1);从历史重出图要靠它才不会掉回自动。 */
     center?: { x: number; y: number } | null;
   }>;
+  /** 出图时位置区块的全局开关(v4_prompt.use_coords);老记录没有。 */
+  useCoords?: boolean;
 }
 
 export interface HistoryItem {
@@ -230,6 +232,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
             qualityToggle: params.qualityToggle,
             varietyPlus: params.varietyPlus,
             characterPrompts: params.characterPrompts,
+            useCoords: params.useCoords,
           },
           // 检测是否为局部重绘
           isInpainted: !!params.inpaint,

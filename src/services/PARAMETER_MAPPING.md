@@ -110,10 +110,10 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.legacy` | `false` | 旧版模式 | 固定值 |
 | `parameters.add_original_image` | `true` | 添加原图 | 固定值 |
 | `parameters.legacy_v3_extend` | `false` | V3 扩展 | 固定值 |
-| `parameters.use_coords` | `shouldUseCoords(activeCharacters)` | 使用坐标 | 有任一角色被**手动摆过**才为 true；全员「自动」时为 false，把构图交回模型 |
+| `parameters.use_coords` | `params.useCoords ?? shouldUseCoords(activeCharacters)` | 使用坐标 | 官方位置区块的**全局**二选一（AI's Choice / Custom），默认 false、坐标照发。桌面端把开关如实传；没传的调用方退回「有人手动摆过才开」的推断 |
 | `parameters.normalize_reference_strength_multiple` | `true` | 归一化参考强度 | 固定值 |
 | `parameters.inpaintImg2ImgStrength` | `1` | 修复强度 | 需要 Inpaint 功能 |
-| `parameters.v4_prompt.use_coords` | `shouldUseCoords(activeCharacters)` | 使用坐标 | 同上，与顶层保持一致 |
+| `parameters.v4_prompt.use_coords` | 同上 | 使用坐标 | 同上，与顶层保持一致 |
 | `parameters.v4_prompt.use_order` | `true` | 使用顺序 | 固定值 |
 | `parameters.v4_negative_prompt.legacy_uc` | `false` | 旧版 UC | 固定值 |
 | `parameters.legacy_uc` | `false` | 旧版 UC | 固定值 |

@@ -383,7 +383,8 @@ export const HistoryDock: React.FC = () => {
             // 这里原来对所有摆过位置的角色一律给 {0,0},阅读顺序算出来是退化的。
             center: cp.center ?? legacyCellToCenter(cp.position) ?? undefined,
           })),
-          useCoords: (m.characterPrompts ?? []).some(
+          // 新记录带着出图时的开关;老记录退回「有人摆过就算开」的推断。
+          useCoords: m.useCoords ?? (m.characterPrompts ?? []).some(
             (cp) => cp.center != null || legacyCellToCenter(cp.position) !== null,
           ),
         };

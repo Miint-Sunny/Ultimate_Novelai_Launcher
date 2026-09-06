@@ -15,6 +15,7 @@ import {
   resolveCharacterCenters,
   shouldUseCoords,
   type CharacterCenter,
+  quantizeCenterToGrid,
 } from './characterPosition';
 
 export interface AnlasInfo {
@@ -211,6 +212,11 @@ export interface GenerateImageParams {
   transparentBackground?: boolean;
   normalizeVibeStrength?: boolean;
   characterPrompts: CharacterPrompt[];
+  /**
+   * 官方位置区块上的全局二选一(AI's Choice / Custom = `v4_prompt.use_coords`)。
+   * 桌面端如实传;没传(移动端)时退回「有人摆过就开」的推断。
+   */
+  useCoords?: boolean;
   preciseReferences?: PreciseReferenceItem[];  // Precise Reference 参数（多图）
   crReference?: CRReference;  // 旧版 CR 参数（向后兼容）
   vibeReferences?: VibeReference[];  // Vibe参数
@@ -444,12 +450,19 @@ export function buildRequestPayload(params: GenerateImageParams) {
   const negativeCharCaptions: Array<{ char_caption: string; centers: Array<{ x: number; y: number }> }> = [];
   const characterPromptsForApi: Array<{ prompt: string; uc: string; center: { x: number; y: number }; enabled: boolean }> = [];
 
-  const activeCharacters = params.characterPrompts.filter((cp) => cp.enabled && cp.positive.trim());
-  const characterCenters = resolveCharacterCenters(activeCharacters);
-  // 全员都留在「自动」时坐标模式要**关掉**——官方的 use_coords:false 才是把构图
-  // 交回给模型。这里原来恒为 true,于是「自动」实际上被悄悄钉死在一张兜底坐标表
-  // 上:界面说交给 AI,发出去的却是写死的点位。
-  const useCoords = shouldUseCoords(activeCharacters);
+  // 同框上限按模型走(V4 系 6,V5 32):界面只在「添加」处拦,切模型不会自动收口,
+  // 所以发送层也截一刀,超出的尾巴不进载荷。
+  const activeCharacters = params.characterPrompts
+    .filter((cp) => cp.enabled && cp.positive.trim())
+    .slice(0, modelCapabilities(baseModel).maxCharacters);
+  // 官方对不支持自由定位的模型(V4 / V4.5)在发送前把坐标吸到 5×5 格心,存着的坐标不改。
+  const freeformPositioning = modelCapabilities(baseModel).freeformCharacterPosition;
+  const characterCenters = resolveCharacterCenters(activeCharacters)
+    .map((center) => (freeformPositioning ? center : quantizeCenterToGrid(center)));
+  // use_coords 是位置区块上的**全局**二选一(AI's Choice / Custom),官方默认 false,
+  // 坐标照发、模型不理会。桌面端把开关如实传过来;没传的调用方(移动端)退回老推断:
+  // 有人手动摆过才开,全员自动时交回给模型。
+  const useCoords = params.useCoords ?? shouldUseCoords(activeCharacters);
 
   activeCharacters.forEach((cp, index) => {
     const center = characterCenters[index];

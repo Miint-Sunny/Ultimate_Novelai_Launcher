@@ -96,10 +96,23 @@ export interface PositionedCharacter {
   position?: string;
 }
 
+/** 自由坐标串 `"0.42,0.67"`(Plana 与早先的元数据导入写进 `position` 的格式)。 */
+export function parseFreeformPosition(pos: string | undefined | null): CharacterCenter | null {
+  if (!pos) return null;
+  const match = /^\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*$/.exec(pos);
+  if (!match) return null;
+  return clampCenter({ x: Number(match[1]), y: Number(match[2]) });
+}
+
+/** 角色自己带的位置:`center` → A1–E5 → 自由坐标串;都没有 → null。 */
+export function placedCenter(character: PositionedCharacter): CharacterCenter | null {
+  if (character.center) return clampCenter(character.center);
+  return legacyCellToCenter(character.position) ?? parseFreeformPosition(character.position);
+}
+
 /** 这个角色是不是被**手动**摆过。空字符串是「自动」,不是「摆在 0,0」。 */
 export function hasManualPosition(character: PositionedCharacter): boolean {
-  if (character.center) return true;
-  return legacyCellToCenter(character.position) !== null;
+  return placedCenter(character) !== null;
 }
 
 /**
@@ -123,11 +136,97 @@ export function resolveCharacterCenters(
   characters: readonly PositionedCharacter[],
 ): CharacterCenter[] {
   const fallback = defaultCentersForCount(characters.length);
-  return characters.map((character, index) => {
-    if (character.center) return clampCenter(character.center);
-    const legacy = legacyCellToCenter(character.position);
-    if (legacy) return legacy;
-    return fallback[index] ?? { ...NEUTRAL_CENTER };
+  return characters.map((character, index) => placedCenter(character) ?? fallback[index] ?? { ...NEUTRAL_CENTER });
+}
+
+// ---------------------------------------------------------------------------
+// 官方的定位模型(照 Plana v1.0.9 对齐官方 bundle 的那次移植)
+//
+// 官方**没有「每角色 AUTO」**:角色建出来那一刻就有具体坐标(从下面这张候选序里挑第
+// 一个空位),之后不再变;「要不要按坐标出图」是位置区块上的全局二选一(AI's Choice /
+// Custom = v4_prompt.use_coords),默认 false。上面按下标从 defaultCentersForCount 现算
+// 的兜底只留给还没迁移的老数据:它的下标是发送时的活跃下标,删掉前面一个角色,后面
+// 「自动」的角色会跟着挪窝 —— 用户什么都没动,出图却变了。
+// ---------------------------------------------------------------------------
+
+/** 5×5 每一格的格心(官方 bundle 里那张 `[.1,.3,.5,.7,.9]`),列行同表。 */
+export const GRID_CENTERS: readonly number[] = [0.1, 0.3, 0.5, 0.7, 0.9];
+
+/** 一个轴上的坐标 → 格子下标 0..4。官方是 **floor 分桶**(`[0,0.2)→0`),逐字照抄。 */
+export function gridIndexOf(value: number): number {
+  return Math.min(4, Math.max(0, Math.floor(5 * value)));
+}
+
+/**
+ * 连续坐标 → 5×5 格心。官方在**发送前**对不支持自由定位的模型(V4 / V4.5)套这一层,
+ * 存着的坐标一个字节都不改,所以「V5 摆好 → 切 V4.5 → 切回 V5」精确坐标不丢。
+ */
+export function quantizeCenterToGrid(center: CharacterCenter): CharacterCenter {
+  const c = clampCenter(center);
+  return { x: GRID_CENTERS[gridIndexOf(c.x)], y: GRID_CENTERS[gridIndexOf(c.y)] };
+}
+
+/**
+ * 官方给**新角色**挑初始位置的候选序(bundle 里那张 `lc` 表):先中间那一横排、由内
+ * 向外(正中 → 两侧);再把其余四行按「到画面中心的距离」铺开,同距的按「离中线的
+ * 高度差 → x → y」定序。第一个角色落 C3。
+ *
+ * 排序故意用浮点原样比:0.7-0.5 = 0.19999999999999996 < 0.2,所以 C4 排在 C2 前面。
+ * 按「整齐」的直觉改反而会和官方错开,校验脚本里钉住了。
+ */
+export const SPAWN_CENTERS: readonly CharacterCenter[] = (() => {
+  const middle = [0.5, 0.3, 0.7, 0.1, 0.9].map((x) => ({ x, y: 0.5 }));
+  const rest: CharacterCenter[] = [];
+  for (const y of [0.1, 0.3, 0.7, 0.9]) for (const x of GRID_CENTERS) rest.push({ x, y });
+  const dist = (p: CharacterCenter) => { const dx = p.x - 0.5; const dy = p.y - 0.5; return dx * dx + dy * dy; };
+  rest.sort((a, b) => {
+    const c = dist(a) - dist(b);
+    if (c !== 0) return c;
+    const h = Math.abs(a.y - 0.5) - Math.abs(b.y - 0.5);
+    if (h !== 0) return h;
+    const x = a.x - b.x;
+    return x !== 0 ? x : a.y - b.y;
+  });
+  return [...middle, ...rest];
+})();
+
+/**
+ * 候选格心算不算已被占:V5(自由坐标)按欧氏距离 < 0.1;其余模型量化后同格即算占用
+ * —— 与官方 `$n()` 的判据一致。
+ */
+export function isSpawnTaken(candidate: CharacterCenter, taken: readonly CharacterCenter[], freeform: boolean): boolean {
+  return taken.some((t) => {
+    if (freeform) {
+      const dx = t.x - candidate.x;
+      const dy = t.y - candidate.y;
+      return dx * dx + dy * dy < 0.01;
+    }
+    const q = quantizeCenterToGrid(t);
+    return Math.abs(q.x - candidate.x) < 1e-9 && Math.abs(q.y - candidate.y) < 1e-9;
+  });
+}
+
+/** 给新角色挑初始位置:候选序里第一个没被占的格心;25 格全满则回落正中(同官方)。 */
+export function nextSpawnCenter(taken: readonly CharacterCenter[], freeform: boolean): CharacterCenter {
+  return SPAWN_CENTERS.find((c) => !isSpawnTaken(c, taken, freeform)) ?? { ...NEUTRAL_CENTER };
+}
+
+/**
+ * 给还没有位置的角色按官方候选序补出生位置,摆过的原样保留;逐个补,每补一个都算进
+ * 「已占用」。返回每个角色最终的中心,顺序与输入一致。
+ */
+export function assignSpawnCenters(characters: readonly PositionedCharacter[], freeform: boolean): CharacterCenter[] {
+  const taken: CharacterCenter[] = [];
+  for (const character of characters) {
+    const placed = placedCenter(character);
+    if (placed) taken.push(placed);
+  }
+  return characters.map((character) => {
+    const placed = placedCenter(character);
+    if (placed) return placed;
+    const next = nextSpawnCenter(taken, freeform);
+    taken.push(next);
+    return next;
   });
 }
 

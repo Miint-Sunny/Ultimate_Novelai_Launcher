@@ -27,6 +27,8 @@ interface UseMetadataImportHandlerParams {
   setNegativePrompt: React.Dispatch<React.SetStateAction<string>>;
   setCharacterPrompts: React.Dispatch<React.SetStateAction<CharacterPrompt[]>>;
   setIsCharacterSectionOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** 原图的 use_coords 一起还原;老元数据没有就不动。 */
+  setUseCoords?: (useCoords: boolean) => void;
   setLocalFiles: React.Dispatch<React.SetStateAction<VibeFile[]>>;
   setActiveVibes: React.Dispatch<React.SetStateAction<ActiveVibe[]>>;
   setSeed: (seed: string) => void;
@@ -51,6 +53,7 @@ export function useMetadataImportHandler({
   setNegativePrompt,
   setCharacterPrompts,
   setIsCharacterSectionOpen,
+  setUseCoords,
   setLocalFiles,
   setActiveVibes,
   setSeed,
@@ -100,7 +103,9 @@ export function useMetadataImportHandler({
         negative: char.uc || '',
         activeTab: 'prompt' as const,
         enabled: true,
-        position: char.center ? `${char.center.x},${char.center.y}` : '',
+        position: '',
+        // 坐标照实收成 center;没坐标的角色由桌面壳按官方候选序补出生位置。
+        center: char.center ? { x: char.center.x, y: char.center.y } : null,
         name: `角色 ${index + 1}`,
       }));
 
@@ -114,6 +119,7 @@ export function useMetadataImportHandler({
         });
       }
       setIsCharacterSectionOpen(true);
+      if (metadata.useCoords !== undefined) setUseCoords?.(metadata.useCoords);
     }
 
     if (options.vibes && metadata.vibes && metadata.vibes.length > 0) {

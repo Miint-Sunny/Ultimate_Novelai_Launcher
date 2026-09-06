@@ -9,7 +9,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { sidecarApi } from '../../api/sidecar';
 import { getCachedIsOpus, isOpusUsageExhausted } from '../../services/novelai';
-import { legacyCellToCenter } from '../../services/characterPosition';
+import { legacyCellToCenter, nextSpawnCenter, placedCenter, type CharacterCenter } from '../../services/characterPosition';
 import { promptPresetsForModel } from '../../services/promptPresetCatalog';
 import { isV5Model, MODEL_MAP, MODELS, maxCharactersForModel, type ModelOption } from '../generation/modelResolutionOptions';
 import type { HistoryItem } from '../../contexts/GenerationContext';
@@ -31,6 +31,10 @@ export interface WorkbenchState {
   promptPresets: PromptPreset[];
   seed: string;
   characterPrompts: CharacterPrompt[];
+  /** 官方位置区块的全局开关;`character_ai_position` = !useCoords。 */
+  useCoords: boolean;
+  /** 当前模型是否自由定位(出生位置的占位判据用)。 */
+  freeform: boolean;
   generationHistory: HistoryItem[];
   isGenerating: boolean;
   setPositivePrompt: Dispatch<SetStateAction<string>>;
@@ -49,6 +53,7 @@ export interface WorkbenchState {
   setActivePresetId: (id: string) => void;
   setSeed: (seed: string) => void;
   setCharacterPrompts: Dispatch<SetStateAction<CharacterPrompt[]>>;
+  setUseCoords: (useCoords: boolean) => void;
   handleGenerate: () => void;
   addUpscaledImage: (imageUrl: string, width: number, height: number, originalSeed: number, scale: number) => void;
 }
@@ -79,6 +84,10 @@ function presetIdForQuality(name: string, presets: PromptPreset[], isV5: boolean
 function uiModelIdFor(backendId: string): string | null {
   const hit = Object.entries(MODEL_MAP).find(([, id]) => id === backendId);
   return hit ? hit[0] : null;
+}
+
+function takenCenters(characters: readonly CharacterPrompt[]): CharacterCenter[] {
+  return characters.map(placedCenter).filter((c): c is CharacterCenter => c !== null);
 }
 
 function toWorkbenchCharacter(c: CharacterPrompt): WorkbenchCharacter {
@@ -117,7 +126,7 @@ export function createWorkbenchBridge(
         noise_schedule: s.noiseSchedule,
         quality_preset: qualityPresetName(s.activePresetId),
         seed: s.seed,
-        character_ai_position: s.characterPrompts.every((c) => !c.center && !legacyCellToCenter(c.position)),
+        character_ai_position: !s.useCoords,
       };
     },
     applyParams: (patch) => {
@@ -146,10 +155,8 @@ export function createWorkbenchBridge(
         s.setActivePresetId(presetIdForQuality(patch.quality_preset, s.promptPresets, isV5Model(modelId), s.activePresetId));
       }
       if (patch.seed !== undefined) s.setSeed(patch.seed);
-      if (patch.character_ai_position === true) {
-        // 交给模型排版 = 所有角色回到自动(与画布上的「自动」同一含义)。
-        s.setCharacterPrompts((prev) => prev.map((c) => ({ ...c, center: null, position: '' })));
-      }
+      // 官方的全局开关:交给模型排版不清坐标,坐标留着,切回来还在。
+      if (patch.character_ai_position !== undefined) s.setUseCoords(!patch.character_ai_position);
     },
     availableModels: () => MODELS.map((m) => ({ id: MODEL_MAP[m.id] ?? m.id, label: m.name })),
     availableQualityPresets: () => ['Standard', 'Heavy', 'Light', 'Off'].map((id) => ({ id, label: id })),
@@ -164,7 +171,8 @@ export function createWorkbenchBridge(
         activeTab: 'prompt',
         enabled: true,
         position: '',
-        center: entry.center ?? null,
+        // 没给坐标就照官方候选序挑一个空位:角色建出来就有坐标,不存在「自动」档。
+        center: entry.center ?? nextSpawnCenter(takenCenters(s.characterPrompts), s.freeform),
         name: entry.name?.trim() || undefined,
       };
       s.setCharacterPrompts((prev) => [...prev, created]);
@@ -180,7 +188,10 @@ export function createWorkbenchBridge(
         ...(patch.prompt !== undefined ? { positive: patch.prompt } : {}),
         ...(patch.negative_prompt !== undefined ? { negative: patch.negative_prompt } : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-        ...(patch.center !== undefined ? { center: patch.center, position: '' } : {}),
+        // 工具传 null(use_auto_position)= 重新挑一个空位,而不是留空。
+        ...(patch.center !== undefined
+          ? { center: patch.center ?? nextSpawnCenter(takenCenters(s.characterPrompts.filter((c) => c.id !== id)), s.freeform), position: '' }
+          : {}),
       };
       s.setCharacterPrompts((prev) => prev.map((c) => (c.id === id ? next : c)));
       return toWorkbenchCharacter(next);
@@ -221,6 +232,7 @@ export function createWorkbenchBridge(
       seed: item.seed,
       blob: () => fetch(item.imageUrl).then((r) => r.blob()),
       createdAt: item.timestamp,
+      useCoords: item.metadata?.useCoords,
       model: item.metadata?.model ? (MODEL_MAP[item.metadata.model] ?? item.metadata.model) : undefined,
       characters: item.metadata?.characterPrompts?.map((c, i): WorkbenchCharacter => ({
         id: `hist_${i}`, name: '', enabled: c.enabled, prompt: c.positive, negative_prompt: c.negative,

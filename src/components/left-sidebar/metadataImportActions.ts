@@ -29,6 +29,8 @@ export interface MetadataImportPayload {
   noiseSchedule?: string;
   cfgRescale?: string | number;
   characterPrompts?: Array<{ prompt: string; uc?: string; center?: { x: number; y: number } }>;
+  /** 原图的 v4_prompt.use_coords;老元数据没有。 */
+  useCoords?: boolean;
   vibes?: MetadataVibeInput[];
 }
 

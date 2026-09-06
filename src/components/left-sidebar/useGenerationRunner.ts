@@ -39,6 +39,7 @@ interface UseGenerationRunnerParams {
   transparentBackground?: boolean;
   normalizeVibeStrength: boolean;
   characterPrompts: CharacterPrompt[];
+  useCoords?: boolean;
   activePreciseRefs: ActivePreciseRef[];
   activeVibes: ActiveVibe[];
   setActiveVibes: React.Dispatch<React.SetStateAction<ActiveVibe[]>>;
@@ -171,6 +172,7 @@ function sharedBaseInput(
     transparentBackground: params.transparentBackground,
     normalizeVibeStrength: params.normalizeVibeStrength,
     characterPrompts: params.characterPrompts,
+    useCoords: params.useCoords,
     activePreciseRefs: params.activePreciseRefs,
     activeVibes: params.activeVibes,
     vibeEncodingCache: params.vibeEncodingCache,

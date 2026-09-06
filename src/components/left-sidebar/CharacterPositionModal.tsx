@@ -6,7 +6,6 @@ import {
   centerToLegacyCell,
   clampCenter,
   crowdedCharacterIndices,
-  legacyCellToCenter,
   resolveCharacterCenters,
   snapCenterToGrid,
   type CharacterCenter,
@@ -23,8 +22,10 @@ interface CharacterPositionModalProps {
    * 放开了发出去也不是用户看到的那张。
    */
   freeform?: boolean;
+  /** 官方位置区块的全局二选一:false = AI's Choice,true = Custom(use_coords)。 */
+  useCoords: boolean;
+  onSetUseCoords: (useCoords: boolean) => void;
   onClose: () => void;
-  /** `null` = 回到自动(交给模型决定),见 services/characterPosition。 */
   onUpdateCenter: (id: string, center: CharacterCenter | null) => void;
 }
 
@@ -37,6 +38,8 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
   characterPrompts,
   aspectRatio = 832 / 1216,
   freeform = true,
+  useCoords,
+  onSetUseCoords,
   onClose,
   onUpdateCenter,
 }) => {
@@ -51,21 +54,29 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
   const centers = useMemo(() => resolveCharacterCenters(characterPrompts), [characterPrompts]);
   const crowded = useMemo(() => new Set(crowdedCharacterIndices(centers)), [centers]);
 
-  const isAuto =
-    !activeCharacter?.center && legacyCellToCenter(activeCharacter?.position) === null;
+  // 官方没有「每角色 AUTO」:角色都有坐标,只有全局的 AI 排版 / 用我摆的。
+  const aiChoice = !useCoords;
   const activeCenter = centers[activeIndex] ?? { x: 0.5, y: 0.5 };
+
+  /** 摆位自动切回「用我摆的」——摆了却不生效,没人会想要。 */
+  const place = useCallback(
+    (center: CharacterCenter) => {
+      onUpdateCenter(editingPositionId, freeform ? center : snapCenterToGrid(center));
+      if (!useCoords) onSetUseCoords(true);
+    },
+    [editingPositionId, freeform, onSetUseCoords, onUpdateCenter, useCoords],
+  );
 
   const placeFromPointer = useCallback(
     (clientX: number, clientY: number) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect || rect.width === 0 || rect.height === 0) return;
-      const center = clampCenter({
+      place(clampCenter({
         x: (clientX - rect.left) / rect.width,
         y: (clientY - rect.top) / rect.height,
-      });
-      onUpdateCenter(editingPositionId, freeform ? center : snapCenterToGrid(center));
+      }));
     },
-    [editingPositionId, freeform, onUpdateCenter],
+    [place],
   );
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -79,8 +90,7 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
     const move = delta[event.key];
     if (!move) return;
     event.preventDefault();
-    const next = clampCenter({ x: activeCenter.x + move[0], y: activeCenter.y + move[1] });
-    onUpdateCenter(editingPositionId, freeform ? next : snapCenterToGrid(next));
+    place(clampCenter({ x: activeCenter.x + move[0], y: activeCenter.y + move[1] }));
   };
 
   return (
@@ -170,9 +180,9 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
             );
           })}
 
-          {isAuto && (
+          {aiChoice && (
             <div className="absolute inset-x-0 bottom-0 py-1 text-center text-[10px] text-gray-400 bg-black/50 pointer-events-none">
-              自动 · 点位仅为预览,实际构图交给模型
+              AI 排版 · 点位仅为预览,实际构图交给模型;拖动即切到「用我摆的」
             </div>
           )}
         </div>
@@ -181,9 +191,7 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
         <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
           <span>上 = 远(缩小)</span>
           <span className="font-mono text-gray-400">
-            {isAuto
-              ? 'AUTO'
-              : `${Math.round(activeCenter.x * 100)} · ${Math.round(activeCenter.y * 100)} (${centerToLegacyCell(activeCenter)})`}
+            {`${Math.round(activeCenter.x * 100)} · ${Math.round(activeCenter.y * 100)} (${centerToLegacyCell(activeCenter)})`}
           </span>
           <span>下 = 近(占画幅大)</span>
         </div>
@@ -197,15 +205,16 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
 
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button
-            onClick={() => onUpdateCenter(editingPositionId, null)}
+            onClick={() => onSetUseCoords(!useCoords)}
             className={`py-2 rounded text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
-              isAuto
+              aiChoice
                 ? 'bg-nai-accent text-black border-nai-accent'
                 : 'bg-black/20 text-gray-400 border-gray-700 hover:text-white hover:border-gray-500'
             }`}
+            title={aiChoice ? '当前交给模型构图(use_coords false);点击改为按坐标出图' : '当前按坐标出图;点击交给模型构图(全体角色)'}
           >
             <Sparkles className="w-3 h-3" />
-            自动
+            {aiChoice ? 'AI 排版中' : '交给 AI 排版'}
           </button>
           <button
             onClick={() => onUpdateCenter(editingPositionId, snapCenterToGrid(activeCenter))}

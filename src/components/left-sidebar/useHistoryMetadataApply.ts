@@ -38,6 +38,8 @@ interface UseHistoryMetadataApplyParams {
   setIsCustomRes: Dispatch<SetStateAction<boolean>>;
   setCharacterPrompts: Dispatch<SetStateAction<CharacterPrompt[]>>;
   setIsCharacterSectionOpen: Dispatch<SetStateAction<boolean>>;
+  /** 出图时的 use_coords 一起还原;老记录没有就不动。 */
+  setUseCoords?: (useCoords: boolean) => void;
 }
 
 function applyResolution(
@@ -91,6 +93,7 @@ function buildCharacterPrompts(metadata: HistoryItemMetadata): CharacterPrompt[]
     activeTab: 'prompt',
     enabled: character.enabled,
     position: character.position || '',
+    center: character.center ?? null,
     name: `角色 ${index + 1}`,
   }));
 }
@@ -117,6 +120,7 @@ export function useHistoryMetadataApply({
   setIsCustomRes,
   setCharacterPrompts,
   setIsCharacterSectionOpen,
+  setUseCoords,
 }: UseHistoryMetadataApplyParams) {
   const handleApplyHistoryMetadata = useCallback<ApplyMetadataHandler>((metadata, seed, width, height) => {
     setPositivePrompt(metadata.positivePrompt);
@@ -147,6 +151,7 @@ export function useHistoryMetadataApply({
     });
 
     const characterPrompts = buildCharacterPrompts(metadata);
+    if (metadata.useCoords !== undefined) setUseCoords?.(metadata.useCoords);
     setCharacterPrompts(characterPrompts);
     if (characterPrompts.length > 0) {
       setIsCharacterSectionOpen(true);

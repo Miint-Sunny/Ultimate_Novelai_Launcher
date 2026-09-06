@@ -308,6 +308,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const {
     characterPrompts,
     setCharacterPrompts,
+    useCoords,
+    setUseCoords,
     isCharacterSectionOpen,
     setIsCharacterSectionOpen,
     isClearConfirming,
@@ -318,7 +320,25 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     removeCharacterPrompt,
     updateCharacterPrompt,
     moveCharacterPrompt,
-  } = useCharacterPrompts(maxCharactersForModel(selectedModel.id));
+  } = useCharacterPrompts(maxCharactersForModel(selectedModel.id), modelCapabilities(selectedModel.id).freeformCharacterPosition);
+
+  // 切模型时把超出上限的启用角色**就地停用**(不删):V5 攒了 8 个切回 4.5,第 7 个往后
+  // 照样发出去而界面只写「超限」是不行的;切回 V5 勾一下就回来。照 Plana 的处置。
+  useEffect(() => {
+    const cap = maxCharactersForModel(selectedModel.id);
+    setCharacterPrompts((prev) => {
+      let kept = 0;
+      let changed = false;
+      const next = prev.map((c) => {
+        if (!c.enabled) return c;
+        kept += 1;
+        if (kept <= cap) return c;
+        changed = true;
+        return { ...c, enabled: false };
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedModel.id, setCharacterPrompts]);
 
   const {
     promptPresets,
@@ -595,6 +615,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   };
 
   const handleMetadataImportCallback = useMetadataImportHandler({
+    setUseCoords,
     resolutionSourceRef,
     reportResolutionNormalization,
     setSelectedModel,
@@ -792,6 +813,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     transparentBackground,
     normalizeVibeStrength,
     characterPrompts,
+    useCoords,
     activePreciseRefs: crManager.activePreciseRefs,
     activeVibes,
     setActiveVibes,
@@ -829,8 +851,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   workbenchRef.current = {
     positivePrompt, negativePrompt, selectedModel, customWidth, customHeight, steps, scale, sampler, scaleRescale, noiseSchedule,
     activePresetId, promptPresets, seed, characterPrompts, generationHistory, isGenerating,
+    useCoords, freeform: modelCapabilities(selectedModel.id).freeformCharacterPosition,
     setPositivePrompt, setNegativePrompt, setSelectedModel, setCustomWidth, setCustomHeight, setCustomWidthInput, setCustomHeightInput,
-    setIsCustomRes, setSteps, setScale, setSampler, setScaleRescale, setNoiseSchedule, setActivePresetId, setSeed, setCharacterPrompts,
+    setIsCustomRes, setSteps, setScale, setSampler, setScaleRescale, setNoiseSchedule, setActivePresetId, setSeed, setCharacterPrompts, setUseCoords,
     handleGenerate, addUpscaledImage,
   };
   const pendingGenerateRef = useRef<{ resolve: (outcome: GenerateOutcome) => void; historyHead: string | null; timer: number } | null>(null);
@@ -940,6 +963,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   }, [handleImg2ImgDropCallback, handleVibeDropCallback, handleCRDropCallback, handleMetadataImportCallback]);
 
   useHistoryMetadataApply({
+    setUseCoords,
     onRegisterApplyMetadata,
     resolutionSourceRef,
     reportResolutionNormalization,
@@ -1043,6 +1067,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
           <CharacterPromptsSection
             characterPrompts={characterPrompts}
+            useCoords={useCoords}
+            onSetUseCoords={setUseCoords}
             maxCharacters={maxCharactersForModel(selectedModel.id)}
             isCharacterSectionOpen={isCharacterSectionOpen}
             setIsCharacterSectionOpen={setIsCharacterSectionOpen}
@@ -1251,6 +1277,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         <CharacterPositionModal
           editingPositionId={editingPositionId}
           characterPrompts={characterPrompts}
+          useCoords={useCoords}
+          onSetUseCoords={setUseCoords}
           aspectRatio={customWidth / customHeight}
           freeform={modelCapabilities(selectedModel.id).freeformCharacterPosition}
           onClose={() => setEditingPositionId(null)}

@@ -69,7 +69,7 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
       if (image.seed >= 0) lines.push(`• 随机种子: ${image.seed}`);
       lines.push(`• 图片尺寸: ${image.width}x${image.height}`);
       lines.push(`• 绘图模型: ${image.model ?? '未知'}`);
-      if (enabled.length > 0) lines.push(`• 位置模式: ${enabled.some((c) => c.center) ? '自定义定位 (use_coords)' : 'AI 自动布局'}`);
+      if (enabled.length > 0) lines.push(`• 位置模式: ${(image.useCoords ?? enabled.some((c) => c.center)) ? '自定义定位 (use_coords)' : 'AI 自动布局'}`);
       if (overlayApplied) {
         lines.push(`• 启用角色: ${enabled.length} 个,锚点编号对应启用顺序`);
         lines.push('• 锚点配色: 粉色=女性角色, 蓝色=男性角色, 紫色=其他;标签为角色名或首个标签');

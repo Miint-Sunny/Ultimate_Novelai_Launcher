@@ -103,6 +103,8 @@ export interface BaseGenerationParamsInput {
   normalizeVibeStrength: boolean;
   resolutionSource: string;
   characterPrompts: CharacterPromptContent[];
+  /** 全局「按坐标出图」开关;不传则由发包层按老口径推断(移动端目前就不传)。 */
+  useCoords?: boolean;
   activePreciseRefs: ActivePreciseRef[];
   activeVibes: ActiveVibe[];
   vibeEncodingCache: Map<string, string>;
@@ -173,6 +175,8 @@ export async function buildBaseGenerationParams(input: BaseGenerationParamsInput
     normalizeVibeStrength: input.normalizeVibeStrength,
     resolutionSource: input.resolutionSource,
     characterPrompts: prepareCharacterPrompts(expanded.characterPrompts),
+    // 只在调用方明确给了才带上:没给时载荷要和之前逐字节一致。
+    ...(input.useCoords !== undefined ? { useCoords: input.useCoords } : {}),
     preciseReferences,
     vibeReferences,
   };

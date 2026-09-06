@@ -6,12 +6,15 @@ import { countTokens } from '../../services/tokenizer';
 import { usePromptChunkLibrary } from '../../hooks/usePromptChunkLibrary';
 import { expandPromptChunksForSend } from '../../services/promptChunkMacros';
 import type { CharacterPrompt } from './types';
-import { legacyCellToCenter } from '../../services/characterPosition';
+import { placedCenter } from '../../services/characterPosition';
 
 type CharacterPromptField = 'positive' | 'negative' | 'activeTab' | 'enabled' | 'position' | 'center';
 
 interface CharacterPromptsSectionProps {
   characterPrompts: CharacterPrompt[];
+  /** 官方位置区块的全局二选一:false = AI's Choice(坐标照发但模型不理会),true = Custom。 */
+  useCoords: boolean;
+  onSetUseCoords: (useCoords: boolean) => void;
   /** 当前模型的同框角色上限(V4 系 6,V5 为 32)。 */
   maxCharacters: number;
   isCharacterSectionOpen: boolean;
@@ -36,6 +39,8 @@ interface CharacterPromptsSectionProps {
 
 export function CharacterPromptsSection({
   characterPrompts,
+  useCoords,
+  onSetUseCoords,
   maxCharacters,
   isCharacterSectionOpen,
   setIsCharacterSectionOpen,
@@ -68,6 +73,29 @@ export function CharacterPromptsSection({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {characterPrompts.length > 0 && (
+            <div
+              role="radiogroup"
+              className="flex items-center p-0.5 mr-1 rounded-full border border-gray-700 bg-black/20"
+              onClick={(event) => event.stopPropagation()}
+              title="官方位置区块的全局开关:AI 排版 = 坐标照发但交给模型构图(use_coords false);用我摆的 = 按每个角色的坐标出图"
+            >
+              {[{ value: false, label: 'AI 排版' }, { value: true, label: '用我摆的' }].map((option) => {
+                const on = useCoords === option.value;
+                return (
+                  <button
+                    key={option.label}
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => onSetUseCoords(option.value)}
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {characterPrompts.length > 0 && (
             <button
               className="flex items-center gap-1 px-1.5 py-1 rounded text-xs font-bold border transition-all duration-200 bg-red-500/20 text-red-400 border-red-500/50 hover:bg-red-500/30 hover:text-red-300"
@@ -186,7 +214,7 @@ export function CharacterPromptsSection({
                       type={char.activeTab === 'prompt' ? 'prompt' : 'undesired'}
                       onContentHeightChange={(height) => handleCharContentHeightChange(char.id, height)}
                     />
-                    <PositionButton char={char} onEdit={setEditingPositionId} />
+                    <PositionButton char={char} dimmed={!useCoords} onEdit={setEditingPositionId} />
                     <TokenCount value={char.activeTab === 'prompt' ? char.positive : char.negative} />
                   </div>
                 ) : (
@@ -200,7 +228,7 @@ export function CharacterPromptsSection({
                       placeholder={char.activeTab === 'prompt' ? '在此输入角色提示词...' : '在此输入角色排除内容...'}
                       onContentHeightChange={(height) => handleCharContentHeightChange(char.id, height)}
                     />
-                    <PositionButton char={char} onEdit={setEditingPositionId} />
+                    <PositionButton char={char} dimmed={!useCoords} onEdit={setEditingPositionId} />
                     <TokenCount value={char.activeTab === 'prompt' ? char.positive : char.negative} emphasisOnHover />
                   </div>
                 )}
@@ -219,24 +247,24 @@ export function CharacterPromptsSection({
 }
 
 /**
- * 按钮上只写「摆过没有」和落点的百分比。
+ * 按钮上写落点的百分比。每个角色一建出来就有坐标(官方出生序),所以不再有 AUTO;
  * 不写最近的格子名——两个不同的点会显示成同一个 `C3`,那比不写更糟。
  */
 function positionLabel(char: CharacterPrompt): string {
-  const center = char.center ?? legacyCellToCenter(char.position);
-  if (!center) return 'AUTO';
+  const center = placedCenter(char);
+  if (!center) return '…';
   return `${Math.round(center.x * 100)}·${Math.round(center.y * 100)}`;
 }
 
-function PositionButton({ char, onEdit }: { char: CharacterPrompt; onEdit: (id: string) => void }) {
+function PositionButton({ char, dimmed, onEdit }: { char: CharacterPrompt; dimmed: boolean; onEdit: (id: string) => void }) {
   return (
     <button
       onClick={(event) => {
         event.stopPropagation();
         onEdit(char.id);
       }}
-      className="absolute bottom-1 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono border bg-black/15 border-gray-600/30 text-gray-500 hover:bg-black/40 hover:text-white hover:border-gray-500 transition-colors"
-      title="设置位置"
+      className={`absolute bottom-1 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono border bg-black/15 border-gray-600/30 text-gray-500 hover:bg-black/40 hover:text-white hover:border-gray-500 transition-colors ${dimmed ? 'opacity-50' : ''}`}
+      title={dimmed ? '当前是 AI 排版,坐标不生效;点开摆位会自动切到「用我摆的」' : '设置位置'}
     >
       <MapPin className="w-3.5 h-3.5" />
       {positionLabel(char)}

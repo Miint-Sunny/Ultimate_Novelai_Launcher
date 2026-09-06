@@ -49,6 +49,8 @@ export interface WorkbenchImage {
   /** 出这张图用的官方模型 id。 */
   model?: string;
   createdAt?: number;
+  /** 出图时位置区块的全局开关(use_coords);历史里没记就缺省。 */
+  useCoords?: boolean;
 }
 
 export interface GenerateOutcome {
