@@ -829,6 +829,9 @@ async function generateImageViaBotMode(
     varietyPlus: params.varietyPlus,
     normalizeVibeStrength: params.normalizeVibeStrength,
     characterPrompts: params.characterPrompts,
+    // 宿主(黑板 #12 之后)照传客户端的 use_coords;不传它会按角色坐标推断,这里把
+    // 与直连路径同一口径的值显式带上,三边(直连 / bot / 官方)才对得齐。
+    useCoords: params.useCoords ?? shouldUseCoords(params.characterPrompts.filter((cp) => cp.enabled && cp.positive.trim())),
     vibeReferences: params.vibeReferences,
     preciseReferences: params.preciseReferences,  // 新格式 Precise Reference
     crReference: params.crReference,  // 旧格式，向后兼容
