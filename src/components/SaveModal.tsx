@@ -170,7 +170,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
             </div>
           </div>
 
-          {/* 水印状态(在设置 → 导出水印里改) */}
+          {/* 水印状态(在设置 → 水印导出里改) */}
           {watermarkParts.length > 0 && (
             <div className="px-5 py-2 border-b border-gray-700/50 text-[11px] text-gray-400">
               导出时会加上 <span className="text-nai-accent">{watermarkParts.join(' + ')}</span>
