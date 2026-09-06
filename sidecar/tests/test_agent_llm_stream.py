@@ -432,8 +432,10 @@ class OpenLlmStreamTests(unittest.IsolatedAsyncioTestCase):
 
         pool = _pool(handler)
         try:
+            # anthropic / gemini slots are translated now; only a protocol the
+            # relay does not know skips to the backup (or fails without one).
             session = await open_llm_stream(
-                settings=_settings(llm_provider="anthropic"),
+                settings=_settings(llm_provider="mystery"),
                 fields=_fields(),
                 http=pool,
                 policy_factory=_policy,
@@ -443,7 +445,7 @@ class OpenLlmStreamTests(unittest.IsolatedAsyncioTestCase):
             await _collect(session)
             with self.assertRaises(LlmStreamUnsupportedError):
                 await open_llm_stream(
-                    settings=_settings(llm_provider="gemini", llm_backup_api_key=""),
+                    settings=_settings(llm_provider="mystery", llm_backup_api_key=""),
                     fields=_fields(),
                     http=pool,
                     policy_factory=_policy,
@@ -639,7 +641,7 @@ class AgentChatRouteTests(unittest.TestCase):
 
         with TestClient(self._app(self._runtime(pool, llm_api_key=""))) as client:  # type: ignore[misc]
             unconfigured = self._post(client, body)
-        with TestClient(self._app(self._runtime(pool, llm_provider="anthropic"))) as client:  # type: ignore[misc]
+        with TestClient(self._app(self._runtime(pool, llm_provider="mystery"))) as client:  # type: ignore[misc]
             unsupported = self._post(client, body)
 
         self.assertEqual(unconfigured.status_code, 503)

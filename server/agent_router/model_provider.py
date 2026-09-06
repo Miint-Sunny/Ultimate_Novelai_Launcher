@@ -510,6 +510,8 @@ class LlmStreamTarget:
     supports_vision: bool
     extra_body: dict
     model_settings: dict
+    # Gemini only: the deployment's safetySettings (None = the relay's own default).
+    safety_settings: list[dict[str, str]] | None = None
 
 
 def _fold_choice_token(value: object) -> str:
@@ -561,6 +563,13 @@ def get_stream_target(model_key: str = "") -> LlmStreamTarget:
     protocol = str(meta.get("protocol") or default_protocol)
     extra_body = meta.get("extra_body")
     model_settings = meta.get("model_settings")
+    safety_settings: list[dict[str, str]] | None = None
+    if protocol == "gemini":
+        safety_settings = (
+            _google_safety_settings_for_model(key)
+            if _should_disable_google_safety_filters()
+            else []
+        )
     return LlmStreamTarget(
         key=key,
         model_name=str(meta.get("model_name") or registry_key),
@@ -572,4 +581,5 @@ def get_stream_target(model_key: str = "") -> LlmStreamTarget:
         supports_vision=bool(meta.get("supports_vision", True)),
         extra_body=dict(extra_body) if isinstance(extra_body, dict) else {},
         model_settings=dict(model_settings) if isinstance(model_settings, dict) else {},
+        safety_settings=safety_settings,
     )

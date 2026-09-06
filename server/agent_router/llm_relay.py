@@ -6,6 +6,7 @@ follows from the deployment model and is written down in contract §2.5:
 
 * the model is one of the deployment's ``MODEL_CHOICES`` (optional ``model``
   choice key; empty means ``ACTIVE_MODEL``) and there is no backup slot;
+  ``anthropic`` / ``gemini`` choices are translated to the OpenAI chunk dialect;
 * failures before the first byte are flat JSON problems (``code`` / ``detail`` /
   ``retryable`` / ``context``) rather than the sidecar's Problem Details layer;
 * the paid gate is the existing Agent one (live image quota, Bot service or
@@ -31,7 +32,6 @@ from pydantic import Field
 from .access import AgentAccess
 from .llm.chat_request import AgentChatRequest
 from .llm.stream import (
-    STREAM_ACCEPT,
     STREAM_TIMEOUT,
     LlmStreamError,
     LlmStreamInfo,
@@ -39,11 +39,11 @@ from .llm.stream import (
     LlmStreamUnsupportedError,
     LlmStreamUpstreamError,
     RelayChannel,
-    build_chat_body,
     connect_stream,
     drain_relay,
     run_relay,
 )
+from .llm.stream_native import build_upstream_request
 from .model_provider import LlmStreamTarget, get_stream_target
 
 logger = logging.getLogger("agent_router.llm_relay")
@@ -180,13 +180,8 @@ def _fields_for_target(req: HostAgentChatRequest, target: LlmStreamTarget) -> di
 
 def open_target_stream(
     target: LlmStreamTarget,
-    body: Mapping[str, Any],
+    fields: Mapping[str, Any],
 ) -> Callable[[], Awaitable[LlmStreamSession]]:
-    client = get_stream_client(target)
-    url = f"{target.base_url.rstrip('/')}/chat/completions"
-    headers = {"Content-Type": "application/json", "Accept": STREAM_ACCEPT}
-    if target.api_key:
-        headers["Authorization"] = f"Bearer {target.api_key}"
     info = LlmStreamInfo(
         slot=target.key,
         model=target.model_name,
@@ -194,11 +189,31 @@ def open_target_stream(
         failed_over=False,
     )
 
-    def opener(attempt: dict[str, Any]) -> Any:
-        return client.stream("POST", url, headers=headers, json=attempt, timeout=STREAM_TIMEOUT)
-
     async def open_session() -> LlmStreamSession:
-        return await connect_stream(opener, body, info=info)
+        # Raises LlmStreamUnsupportedError (mapped to 503) for an unknown protocol.
+        upstream = build_upstream_request(
+            target.protocol,
+            model=target.model_name,
+            base_url=target.base_url,
+            api_key=target.api_key,
+            fields=fields,
+            host_extra_body=target.extra_body,
+            safety_settings=target.safety_settings,
+        )
+        client = get_stream_client(target)
+
+        def opener(attempt: dict[str, Any]) -> Any:
+            return client.stream(
+                "POST",
+                upstream.url,
+                headers=upstream.headers,
+                json=attempt,
+                timeout=STREAM_TIMEOUT,
+            )
+
+        return await connect_stream(
+            opener, upstream.body, info=info, translator=upstream.translator
+        )
 
     return open_session
 
@@ -218,7 +233,9 @@ async def _guarded_relay(
 
 def map_open_error(exc: BaseException, *, model_key: str) -> JSONResponse:
     if isinstance(exc, LlmStreamUnsupportedError):
-        return problem(503, exc.code, str(exc), context={"provider": exc.provider})
+        return problem(
+            503, exc.code, str(exc), context={"provider": exc.provider, "model": model_key}
+        )
     if isinstance(exc, LlmStreamUpstreamError):
         return problem(
             503,
@@ -251,14 +268,6 @@ async def stream_llm_chat(req: HostAgentChatRequest, access: AgentAccess) -> Res
         return problem(422, "unknown_model", str(exc), context={"model": req.model})
     except ValueError as exc:
         return problem(503, "llm_not_configured", str(exc))
-    if target.protocol != "openai":
-        return problem(
-            503,
-            "llm_stream_provider_unsupported",
-            "streaming chat is only available on OpenAI-compatible models "
-            f"(got {target.protocol!r})",
-            context={"provider": target.protocol, "model": target.key},
-        )
 
     owner = owner_key(access)
     if not _acquire_stream(owner):
@@ -270,14 +279,9 @@ async def stream_llm_chat(req: HostAgentChatRequest, access: AgentAccess) -> Res
             headers={"Retry-After": "2"},
         )
 
-    body = build_chat_body(
-        target.model_name,
-        _fields_for_target(req, target),
-        host_extra_body=target.extra_body,
-    )
     channel = RelayChannel()
     producer = asyncio.create_task(
-        _guarded_relay(open_target_stream(target, body), channel, owner),
+        _guarded_relay(open_target_stream(target, _fields_for_target(req, target)), channel, owner),
         name=f"agent-llm-chat-{target.key}",
     )
     try:
