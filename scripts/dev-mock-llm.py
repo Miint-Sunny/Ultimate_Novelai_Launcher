@@ -14,6 +14,7 @@ test conversations can be run without restarting.
   user text contains "放大"   -> novelai_upscale index 0, then answer
   user text contains "账号"   -> novelai_account_info, then answer
   user text contains "慢"     -> a deliberately slow streamed answer (~12 s) for abort tests
+  user text contains "笔记"   -> context_memory add_note, then list, then answer (context memory check)
   tool result for get_...     -> update_studio_parameters
   tool result for update_...  -> final answer
   anything else               -> plain streamed answer (with a short reasoning delta)
@@ -112,6 +113,10 @@ def pick(req):
             return answer(f"放大结果:{result[:120]}")
         if name == "novelai_account_info":
             return answer(f"账号情况:{result[:200]}")
+        if name == "context_memory":
+            if result.startswith("已保存笔记"):
+                return tool_call("context_memory", {"action": "list"}, "call_memlist", thought="再列一遍确认。")
+            return answer(f"记忆工具说:{result[:220]}")
         if name == "ask_user":
             return answer(f"收到,你选的是:{result[:80]}")
         if name == "view_canvas_image":
@@ -142,6 +147,8 @@ def pick(req):
         return tool_call("novelai_account_info", {}, "call_account", thought="先看看余额。")
     if "出图" in user_text:
         return tool_call("novelai_generate", {}, "call_gen", thought="按当前参数直接出图。")
+    if "笔记" in user_text:
+        return tool_call("context_memory", {"action": "add_note", "texts": ["用户偏好雨夜街头题材", "步数固定 22"]}, "call_memadd", thought="把结论记成笔记。")
     if "慢" in user_text:
         # 慢慢流 ~12 秒,给 Esc / 停止按钮留出中断的窗口。
         return answer("这是一段故意放慢的回复," + "慢慢地一个字一个字往外吐," * 6 + "用来测试中断。", thought="慢速流。", delay=0.3)

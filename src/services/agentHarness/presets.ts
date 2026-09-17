@@ -18,6 +18,7 @@ export const PHASE_ONE_TOOLS = [
   'view_canvas_image', 'ask_user', 'load_skill',
   'danbooru_search_tags', 'danbooru_related_tags',
   'search_prompt_library', 'add_prompt_library_entry', 'update_prompt_library_entry', 'delete_prompt_library_entry',
+  'context_memory',
 ] as const;
 
 export const V5_ARCHITECT_PRESET: AgentPreset = {

@@ -140,6 +140,8 @@ export interface AgentMessage {
   id: string;
   role: AgentRole;
   content: string;
+  /** 助手回复的稳定编号(仅 role === 'assistant'):请求侧前缀 `[回复 #N]`,context_memory 按它读取 / 释放。 */
+  replyNumber?: number;
   /** 思考过程(reasoning / thinking)。 */
   thoughts: string;
   toolCalls?: ToolCall[];

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getAppSettings, saveAppSettings } from '../../../../services/localLibrary/appSettings';
+import { formatTokens } from '../../../../services/agentHarness/usageLedger';
 import { History, Lock, MessageSquarePlus, Receipt, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import type { PermissionMode } from '../../../../services/agentHarness/types';
 import { InputBar } from '../InputBar';
@@ -105,6 +106,17 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
             <LimitField label="单条消息 Anlas 预算" title="0 = 只放行免费的生成;要扣点的生成在任何模式下都先问" value={limits.budget} max={10000} onChange={(v) => saveLimit({ budget: v })} />
             <LimitField label="单条消息生成上限" title="一条用户消息内最多出几张图(放行模式也算)" value={limits.maxGen} min={1} max={20} onChange={(v) => saveLimit({ maxGen: v })} />
           </div>
+        </div>
+      )}
+      {h.contextUsage && h.items.length > 0 && sheet === 'none' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px 2px', fontSize: 10.5, color: h.contextUsage.error ? C.err : 'var(--nai-agent-ink-faint)' }}
+          title={h.contextUsage.error ?? '当前请求上下文的估算用量;过了七成会在后台先压缩,到顶才等它'}>
+          <span>上下文 ~{formatTokens(h.contextUsage.tokens)} / {formatTokens(h.contextUsage.window)}</span>
+          {h.contextUsage.noteCount > 0 && <span>· 笔记 {h.contextUsage.noteCount}</span>}
+          {h.contextUsage.compacting && <span>· 压缩中…</span>}
+          {h.contextUsage.error && <span>· {h.contextUsage.error}</span>}
+          <button onClick={h.compactNow} disabled={h.busy || h.contextUsage.compacting} title="手动压缩:保留最后一轮,之前的压成摘要"
+            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textDecoration: 'underline', opacity: h.busy || h.contextUsage.compacting ? 0.45 : 1 }}>压缩</button>
         </div>
       )}
       {!h.available && (

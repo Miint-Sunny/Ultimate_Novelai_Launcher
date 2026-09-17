@@ -11,3 +11,7 @@ export * from './skillCatalog';
 export * from './presetLibrary';
 export * from './usageLedger';
 export * from './presetTransfer';
+export * from './contextMemory';
+export * from './replyMarker';
+export { estimateTextTokens } from './harness';
+export { createContextMemoryTool, CONTEXT_MEMORY_TOOL_INFO, CONTEXT_MEMORY_TOOL_NAME } from './tools/contextMemoryTool';

@@ -16,6 +16,7 @@ import {
 import { deserializeTranscript, serializeTranscript, type TranscriptItem } from './transcript';
 
 const TRANSCRIPT_KEY = 'desktop_agent_harness_transcript';
+const CONTEXT_KEY = 'desktop_agent_harness_context';
 const SESSIONS_KEY = 'desktop_agent_harness_sessions';
 
 export interface HarnessSessionsSnapshot {
@@ -27,6 +28,8 @@ export interface HarnessSessionsSnapshot {
 }
 
 let currentItems: TranscriptItem[] | null = null;
+/** harness 的上下文状态(摘要、切点、编号、笔记),与当前对话一起换。 */
+let currentContext: unknown = undefined;
 let sessions: HarnessSession[] | null = null;
 let busy = false;
 let snapshot: HarnessSessionsSnapshot | null = null;
@@ -43,6 +46,26 @@ function emit(replaced: boolean) {
 function writeTranscript(items: TranscriptItem[]) {
   currentItems = items;
   try { localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(serializeTranscript(items))); } catch { /* 存不下就算了 */ }
+}
+
+function writeContext(state: unknown) {
+  currentContext = state;
+  try {
+    if (state === undefined || state === null) localStorage.removeItem(CONTEXT_KEY);
+    else localStorage.setItem(CONTEXT_KEY, JSON.stringify(state));
+  } catch { /* 存不下就算了 */ }
+}
+
+export function loadCurrentContext(): unknown {
+  if (currentContext === undefined) {
+    try { currentContext = JSON.parse(localStorage.getItem(CONTEXT_KEY) || 'null'); } catch { currentContext = null; }
+  }
+  return currentContext;
+}
+
+/** harness 每次 onContextChanged 都调;不发通知,面板自己刷新指示器。 */
+export function saveCurrentContext(state: unknown): void {
+  writeContext(state);
 }
 
 /** 归档列表整份写回;超配额就从最旧的开始丢,直到写得下。 */
@@ -92,8 +115,9 @@ export function archiveCurrentTranscript(): boolean {
   if (busy) return false;
   const session = buildHarnessSession(loadCurrentTranscript());
   if (!session) return false;
-  writeSessions(prependSession(listHarnessSessions(), session));
+  writeSessions(prependSession(listHarnessSessions(), { ...session, context: loadCurrentContext() ?? undefined }));
   writeTranscript([]);
+  writeContext(null);
   emit(true);
   return true;
 }
@@ -102,6 +126,7 @@ export function archiveCurrentTranscript(): boolean {
 export function discardCurrentTranscript(): boolean {
   if (busy) return false;
   writeTranscript([]);
+  writeContext(null);
   emit(true);
   return true;
 }
@@ -120,9 +145,10 @@ export function restoreHarnessSession(id: string): boolean {
   if (!target) return false;
   let list = listHarnessSessions().filter((s) => s.id !== id);
   const outgoing = buildHarnessSession(loadCurrentTranscript());
-  if (outgoing) list = prependSession(list, outgoing);
+  if (outgoing) list = prependSession(list, { ...outgoing, context: loadCurrentContext() ?? undefined });
   writeSessions(list);
   writeTranscript(sessionItems(target));
+  writeContext(target.context ?? null);
   emit(true);
   return true;
 }

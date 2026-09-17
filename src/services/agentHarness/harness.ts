@@ -13,11 +13,14 @@
 
 import { checkPermission, DEFAULT_PERMISSION_LIMITS, denialToolText, MessageBudget, type PermissionLimits } from './permissionGate';
 import type { LlmProvider } from './provider';
-import { toolError, type AgentTool, type ToolContext, type ToolRegistry } from './toolRegistry';
+import { ContextMemory, type ContextUsage } from './contextMemory';
+import { ReplyMarkerStreamFilter, stripReplyMarkers } from './replyMarker';
+import { toolError, toolToOpenAiFunction, type AgentTool, type ToolContext, type ToolRegistry } from './toolRegistry';
 import {
   createMessage,
   hasVisionImages,
   usageTotal,
+  usageTotalInput,
   withVisionImagesCollapsed,
   type AgentMessage,
   type AgentMessageImage,
@@ -57,6 +60,18 @@ export interface HarnessOptions {
   contextWindowTokens?: number;
   compactionReserveTokens?: number;
   compactionKeepRecentTokens?: number;
+  /** 上下文过了硬阈值七成就在后台先压,主请求不等它(他 0.5.0 的 64b728e)。 */
+  backgroundCompactionEnabled?: boolean;
+  /** 压缩模型的窗口;摘要请求按它分批,小窗口模型也能压大上下文。 */
+  compactionModelWindowTokens?: number;
+  /** 单次摘要请求的总时限。 */
+  compactionTimeoutMs?: number;
+  /** 专门做摘要的 provider;缺省用主 provider。 */
+  compactionProvider?: LlmProvider | null;
+  /** 上下文用量 / 笔记 / 压缩状态变了(UI 刷新指示器、落盘上下文状态)。 */
+  onContextChanged?: () => void;
+  /** 摘要请求的用量单独回报(不混进对话账目)。 */
+  onCompactionUsage?: (usage: TokenUsage, model: string) => void;
   /** 权限模式与硬上限,由 UI 层按设置传入;可在两次 send 之间改。 */
   permissionMode?: () => PermissionMode;
   permissionLimits?: () => PermissionLimits;
@@ -126,6 +141,14 @@ export class AgentHarness {
   contextWindowTokens: number;
   compactionReserveTokens: number;
   compactionKeepRecentTokens: number;
+  backgroundCompactionEnabled: boolean;
+  compactionModelWindowTokens: number;
+  compactionTimeoutMs: number;
+  compactionProvider: LlmProvider | null;
+  onContextChanged: (() => void) | null;
+  onCompactionUsage: ((usage: TokenUsage, model: string) => void) | null;
+  /** 会话笔记与请求侧遗忘状态。 */
+  readonly memory = new ContextMemory();
 
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
@@ -141,6 +164,15 @@ export class AgentHarness {
   private activeRun: HarnessRun | null = null;
   private compactionSummary: string | null = null;
   private contextStartIndex = 0;
+  private compactionError: string | null = null;
+  private pendingCompaction: Promise<CompactionEvent | null> | null = null;
+  private compactionRun: HarnessRun | null = null;
+  private contextRevision = 0;
+  private lastBackgroundSize = -1;
+  /** 回复编号序列;每条 assistant 消息领一个稳定编号。 */
+  private replySequence = 0;
+  /** 只有压缩 / 遗忘之后发出的请求用量,才可作为当前上下文估算的锚点。 */
+  private usageFloor = 0;
 
   constructor(options: HarnessOptions) {
     this.tools = options.tools;
@@ -157,6 +189,12 @@ export class AgentHarness {
     this.contextWindowTokens = options.contextWindowTokens ?? 128_000;
     this.compactionReserveTokens = options.compactionReserveTokens ?? 16_384;
     this.compactionKeepRecentTokens = options.compactionKeepRecentTokens ?? 20_000;
+    this.backgroundCompactionEnabled = options.backgroundCompactionEnabled ?? true;
+    this.compactionModelWindowTokens = options.compactionModelWindowTokens ?? 128_000;
+    this.compactionTimeoutMs = options.compactionTimeoutMs ?? 120_000;
+    this.compactionProvider = options.compactionProvider ?? null;
+    this.onContextChanged = options.onContextChanged ?? null;
+    this.onCompactionUsage = options.onCompactionUsage ?? null;
     this.permissionMode = options.permissionMode ?? (() => 'auto');
     this.permissionLimits = options.permissionLimits ?? (() => DEFAULT_PERMISSION_LIMITS);
     this.opusExhausted = options.opusExhausted ?? (() => false);
@@ -241,14 +279,23 @@ export class AgentHarness {
     let wrapUpMode = false;
 
     for (;;) {
+      // 提前后台压缩;临近硬阈值才等待,避免超窗盲发。
       if (this.compactionEnabled && this.contextWindowTokens > 0) {
-        const window = this.contextWindowTokens - this.compactionReserveTokens;
-        if (this.estimateContextTokens(systemPrompt) > window) {
+        const used = this.estimateContextTokens(systemPrompt);
+        if (used > this.hardContextLimit) {
           const evt = await run.wait(this.compactContext());
           if (run.isCancelled) { yield { type: 'aborted' }; return; }
           if (evt) yield evt;
+          if (this.estimateContextTokens(systemPrompt) > this.hardContextLimit) {
+            yield { type: 'error', error: '上下文超过安全窗口,压缩未能释放足够空间。请释放旧回复、手动压缩或切换更大窗口模型。', transient: false };
+            return;
+          }
+        } else if (this.backgroundCompactionEnabled && used > this.hardContextLimit * 0.7 && this.lastBackgroundSize !== this._messages.length) {
+          this.lastBackgroundSize = this._messages.length;
+          void this.compactContext();
         }
       }
+      this.onContextChanged?.();
 
       const toolsForTurn = wrapUpMode ? [] : activeTools;
       let assistantMsg: AgentMessage | null = null;
@@ -266,6 +313,9 @@ export class AgentHarness {
         let errorMessage: string | null = null;
         let errorTransient = false;
         const toolCalls: ToolCall[] = [];
+        // 模型偶尔回显我们注入的 [回复 #N];流式期间就地剥掉,UI 与历史都不留残渣。
+        const contentFilter = new ReplyMarkerStreamFilter();
+        const thoughtFilter = new ReplyMarkerStreamFilter();
 
         const stream = this.provider.streamChat({
           messages: this.buildRequestMessages(systemPrompt),
@@ -275,22 +325,28 @@ export class AgentHarness {
           signal: run.controller.signal,
         });
         for await (const event of stream) {
-          if (event.type === 'thought_delta') { thoughts += event.delta; yield event; }
-          else if (event.type === 'content_delta') { content += event.delta; yield event; }
+          if (event.type === 'thought_delta') { const d = thoughtFilter.add(event.delta); if (d) { thoughts += d; yield { type: 'thought_delta', delta: d }; } }
+          else if (event.type === 'content_delta') { const d = contentFilter.add(event.delta); if (d) { content += d; yield { type: 'content_delta', delta: d }; } }
           else if (event.type === 'tool_call') { toolCalls.push(event.toolCall); yield event; }
           else if (event.type === 'usage') { usage = event.usage; yield event; }
           else if (event.type === 'degraded') { yield event; }
           else if (event.type === 'error') { errorMessage = event.error; errorTransient = event.transient; }
         }
+        {
+          const t = thoughtFilter.flush(); if (t) { thoughts += t; yield { type: 'thought_delta', delta: t }; }
+          const c = contentFilter.flush(); if (c) { content += c; yield { type: 'content_delta', delta: c }; }
+        }
 
         if (run.isCancelled) {
           // 已经流出来的内容留在历史里:模型下次看到的就是用户看到的;半截工具调用不留。
           if (content || thoughts) {
+            this.replySequence += 1;
             this._messages.push(createMessage({
-              id: assistantMsgId, role: 'assistant', content, thoughts, usage,
+              id: assistantMsgId, role: 'assistant', replyNumber: this.replySequence, content: stripReplyMarkers(content), thoughts, usage,
               provider: this.providerLabel, model: this.provider.modelId || undefined, imageEpoch: this.sendEpoch, createdAt: this.now(),
             }));
           }
+          this.onContextChanged?.();
           yield { type: 'aborted' };
           return;
         }
@@ -319,10 +375,12 @@ export class AgentHarness {
           break;
         }
 
+        this.replySequence += 1;
         assistantMsg = createMessage({
           id: assistantMsgId,
           role: 'assistant',
-          content,
+          replyNumber: this.replySequence,
+          content: stripReplyMarkers(content),
           thoughts,
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           usage,
@@ -341,6 +399,7 @@ export class AgentHarness {
 
       const calls = assistantMsg.toolCalls ?? [];
       if (calls.length === 0 || wrapUpMode) {
+        this.onContextChanged?.();
         yield { type: 'turn_end', finalMessage: assistantMsg };
         return;
       }
@@ -450,15 +509,28 @@ export class AgentHarness {
         content: `以下是本次对话更早内容的压缩摘要 (原始消息已从上下文省略,用户界面仍保留完整历史)。请基于摘要继续当前任务:\n\n${this.compactionSummary}`,
       }));
     }
+    const notes = this.memory.prompt;
+    if (notes) result.push(createMessage({ id: 'context_notes', role: 'user', content: notes }));
+    const forgottenToolIds = new Set<string>();
     for (let i = this.contextStartIndex; i < this._messages.length; i += 1) {
-      const m = this._messages[i];
+      let m = this._messages[i];
+      if (m.role === 'tool' && m.toolCallId && forgottenToolIds.has(m.toolCallId)) continue;
+      if (m.replyNumber !== undefined && this.memory.forgottenReplies.has(m.replyNumber)) {
+        for (const c of m.toolCalls ?? []) forgottenToolIds.add(c.id);
+        result.push(createMessage({ id: m.id, role: 'assistant', content: `[回复 #${m.replyNumber} 已释放;可用 context_memory read_reply 读取原文]`, createdAt: m.createdAt }));
+        continue;
+      }
+      if (m.replyNumber !== undefined) {
+        // 每次从原文现拼一层标记,避免历史正文里的回显叠成 [回复 #N] 链。
+        m = { ...m, content: `[回复 #${m.replyNumber}]\n${stripReplyMarkers(m.content)}` };
+      }
       result.push(m.imageEpoch === this.sendEpoch || !hasVisionImages(m) ? m : withVisionImagesCollapsed(m, COLLAPSED_IMAGE_PLACEHOLDER));
     }
     return result;
   }
 
   // ---------------------------------------------------------------------------
-  // 上下文压缩
+  // 上下文估算与记忆
   // ---------------------------------------------------------------------------
 
   private estimateMessageTokens(m: AgentMessage): number {
@@ -468,24 +540,132 @@ export class AgentHarness {
       if (m.role === 'tool') chars += ESTIMATED_IMAGE_TOKENS * 4;
     }
     for (const tc of m.toolCalls ?? []) chars += tc.name.length + JSON.stringify(tc.arguments).length;
-    return Math.ceil(chars / 4);
+    // 正文按非 ASCII 一字一 token 重估,中文不能按 chars/4 严重低估。
+    return Math.ceil(chars / 4) + estimateTextTokens(m.content) - Math.ceil(m.content.length / 4);
   }
 
+  /**
+   * 估算当前请求上下文的 token 总量:优先用压缩 / 遗忘之后最后一条带用量的 assistant 消息的
+   * total(含全部输入)加其后消息的估算;没有可用锚点时按整份请求(含工具 schema)估。
+   */
   estimateContextTokens(systemPrompt?: string): number {
-    let total = systemPrompt ? Math.floor(systemPrompt.length / 4) + 2048 : 0;
-    if (this.compactionSummary !== null) total += Math.floor(this.compactionSummary.length / 4) + 64;
-    let usageTokens = 0;
-    let trailing = 0;
-    for (let i = this._messages.length - 1; i >= this.contextStartIndex; i -= 1) {
+    for (let i = this._messages.length - 1; i >= this.usageFloor && i >= this.contextStartIndex; i -= 1) {
       const m = this._messages[i];
-      if (m.role === 'assistant' && m.usage && usageTotal(m.usage) > 0) {
-        usageTokens = usageTotal(m.usage);
-        break;
+      if (m.usage && usageTotalInput(m.usage) > 0) {
+        let sum = usageTotal(m.usage);
+        for (let j = i + 1; j < this._messages.length; j += 1) sum += this.estimateMessageTokens(this._messages[j]);
+        return sum;
       }
-      trailing += this.estimateMessageTokens(m);
     }
-    return total + trailing + usageTokens;
+    const prompt = systemPrompt ?? this.buildSystemPrompt();
+    let total = 0;
+    for (const t of this.activeTools()) total += estimateTextTokens(JSON.stringify(toolToOpenAiFunction(t)));
+    for (const m of this.buildRequestMessages(prompt)) total += this.estimateMessageTokens(m) + 8;
+    return total;
   }
+
+  /** 硬阈值 = 窗口减去预留(预留至少 1、至多窗口的四分之一)。 */
+  get hardContextLimit(): number {
+    if (this.contextWindowTokens <= 0) return 1;
+    const reserve = Math.min(Math.max(1, this.compactionReserveTokens), Math.max(1, Math.floor(this.contextWindowTokens / 4)));
+    return this.contextWindowTokens - reserve;
+  }
+
+  /** 当前请求上下文快照(含估算成分),不是会话累计账单。 */
+  get contextUsage(): ContextUsage {
+    return {
+      tokens: this.estimateContextTokens(),
+      window: this.contextWindowTokens,
+      compacting: this.pendingCompaction !== null,
+      noteCount: this.memory.notes.size,
+      error: this.compactionError,
+    };
+  }
+
+  /** 释放不了的原因;能释放时返回 null。 */
+  private releaseBlocker(number: number): string | null {
+    const index = this._messages.findIndex((m) => m.replyNumber === number);
+    if (index < 0 || index < this.contextStartIndex) return '不存在或已进入摘要,不能单独释放';
+    let lastUser = -1;
+    for (let i = this._messages.length - 1; i >= 0; i -= 1) if (this._messages[i].role === 'user') { lastUser = i; break; }
+    if (index >= lastUser) return '属于当前用户轮次,不能释放';
+    return null;
+  }
+
+  /** 批量释放旧回复的请求上下文(原始历史保留):逐项处理,单项失败不影响其余,只通知一次。 */
+  forgetReplies(numbers: Iterable<number>): string {
+    const ids = [...new Set(numbers)].sort((a, b) => a - b);
+    if (ids.length === 0) throw new Error('需要至少一个回复编号');
+    const released: number[] = [];
+    const blocked: string[] = [];
+    for (const number of ids) {
+      const blocker = this.releaseBlocker(number);
+      if (blocker !== null) { blocked.push(`#${number} (${blocker})`); continue; }
+      this.memory.forgetReply(number);
+      released.push(number);
+    }
+    if (released.length === 0) throw new Error(`没有可释放的回复:${blocked.join('、')}`);
+    this.memoryChanged();
+    let text = `已释放回复 ${released.map((n) => `#${n}`).join('、')} 及其工具结果;`;
+    if (blocked.length > 0) text += `未释放 ${blocked.join('、')};`;
+    return `${text}原始历史保留。`;
+  }
+
+  /** 笔记或遗忘状态变了:进行中的后台压缩作废,用量锚点后移。 */
+  memoryChanged(): void {
+    this.invalidateCompaction();
+    this.usageFloor = this._messages.length + (this.activeRun ? 1 : 0);
+    this.onContextChanged?.();
+  }
+
+  private invalidateCompaction(): void {
+    this.contextRevision += 1;
+    this.compactionRun?.cancel();
+    this.compactionRun = null;
+    this.pendingCompaction = null;
+    this.lastBackgroundSize = -1;
+  }
+
+  /** 可落盘的上下文状态(摘要、切点、编号序列、笔记),与消息 id 序列绑定。 */
+  exportContextState(): Record<string, unknown> {
+    return {
+      messageIds: this._messages.map((m) => m.id),
+      summary: this.compactionSummary,
+      start: this.contextStartIndex,
+      replySequence: this.replySequence,
+      memory: this.memory.toJson(),
+    };
+  }
+
+  /** 消息 id 序列对得上才恢复(前缀匹配即可);对不上就当没有。 */
+  restoreContextState(state: unknown): boolean {
+    if (!state || typeof state !== 'object') return false;
+    const j = state as Record<string, unknown>;
+    const ids = j.messageIds;
+    if (!Array.isArray(ids) || ids.length > this._messages.length) return false;
+    for (let i = 0; i < ids.length; i += 1) if (ids[i] !== this._messages[i].id) return false;
+    this.invalidateCompaction();
+    if (j.memory && typeof j.memory === 'object') this.memory.restore(j.memory);
+    if (typeof j.start === 'number' && Number.isInteger(j.start) && j.start >= 0 && j.start <= ids.length && typeof j.summary === 'string' && j.summary) {
+      this.contextStartIndex = j.start;
+      this.compactionSummary = j.summary;
+    }
+    if (typeof j.replySequence === 'number' && j.replySequence > this.replySequence) this.replySequence = j.replySequence;
+    this.usageFloor = this._messages.length;
+    this.onContextChanged?.();
+    return true;
+  }
+
+  dispose(): void {
+    this.abort();
+    this.invalidateCompaction();
+    this.onContextChanged = null;
+    this.onCompactionUsage = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 上下文压缩(参考 pi compaction;单飞后台压缩:快照计算,版本校验后原子提交)
+  // ---------------------------------------------------------------------------
 
   /** 有效切点只能是 user / assistant,绝不在 tool 结果上切。 */
   private findCutIndex(force: boolean): number {
@@ -523,7 +703,7 @@ export class AgentHarness {
         if (hasVisionImages(m)) lines.push(`  (本条消息带有 ${m.images.length} 张图片附件,图片内容略)`);
       } else if (m.role === 'assistant') {
         if (m.content || m.toolCalls) {
-          lines.push(`[助手]: ${m.content}`);
+          lines.push(`[助手 #${m.replyNumber ?? m.id}]: ${stripReplyMarkers(m.content)}`);
           for (const tc of m.toolCalls ?? []) lines.push(`  [助手调用了工具 ${tc.name}: ${JSON.stringify(tc.arguments)}]`);
         }
       } else if (m.role === 'tool') {
@@ -535,8 +715,10 @@ export class AgentHarness {
     return text;
   }
 
-  private async generateSummary(toSummarize: readonly AgentMessage[], previousSummary: string | null): Promise<string | null> {
-    if (!this.provider) return null;
+  /** 失败、超时、被取消或空摘要都返回 null,此时放弃压缩(绝不破坏现有上下文)。 */
+  private async generateSummary(toSummarize: readonly AgentMessage[], previousSummary: string | null, run?: HarnessRun): Promise<string | null> {
+    const p = this.compactionProvider ?? this.provider;
+    if (!p) return null;
     let request = `<conversation>\n${this.serializeForSummary(toSummarize)}</conversation>\n\n`;
     if (previousSummary !== null) {
       request += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
@@ -544,35 +726,103 @@ export class AgentHarness {
     }
     request += SUMMARIZATION_PROMPT;
     let summary = '';
-    for await (const event of this.provider.streamChat({
-      messages: [
-        createMessage({ id: 'summarization_system', role: 'system', content: SUMMARIZATION_SYSTEM_PROMPT }),
-        createMessage({ id: 'summarization_request', role: 'user', content: request }),
-      ],
-      tools: [],
-      temperature: 0.3,
-    })) {
-      if (event.type === 'content_delta') summary += event.delta;
-      else if (event.type === 'error') return null;
-    }
+    const consume = (async (): Promise<'done' | 'error' | 'cancelled'> => {
+      for await (const event of p.streamChat({
+        messages: [
+          createMessage({ id: 'summarization_system', role: 'system', content: SUMMARIZATION_SYSTEM_PROMPT }),
+          createMessage({ id: 'summarization_request', role: 'user', content: request }),
+        ],
+        tools: [],
+        temperature: 0.3,
+        signal: run?.controller.signal,
+      })) {
+        if (run?.isCancelled) return 'cancelled';
+        if (event.type === 'content_delta') summary += event.delta;
+        else if (event.type === 'usage') { if (!run?.isCancelled) this.onCompactionUsage?.(event.usage, p.modelId); }
+        else if (event.type === 'error') return 'error';
+      }
+      return 'done';
+    })();
+    // 时限用真实计时器(不走可注入的 sleep,测试里的假 sleep 会让它立刻超时);unref 免得挂住进程。
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const deadline = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), this.compactionTimeoutMs);
+      (timer as unknown as { unref?: () => void }).unref?.();
+    });
+    const outcome = await Promise.race([consume, deadline]);
+    if (timer !== null) clearTimeout(timer);
+    if (outcome !== 'done') return null;
     const trimmed = summary.trim();
     return trimmed || null;
   }
 
-  /** 压缩失败或没东西可压时返回 null,绝不破坏现有上下文。 */
-  async compactContext(force = false): Promise<Extract<HarnessEvent, { type: 'compaction' }> | null> {
-    if (!force && !this.compactionEnabled) return null;
-    if (!this.provider) return null;
+  /** 单飞:进行中的压缩直接复用;版本变了(回溯 / 换会话 / 记忆变动)晚到的结果不提交。 */
+  compactContext(force = false): Promise<CompactionEvent | null> {
+    if (this.pendingCompaction) return this.pendingCompaction;
+    const run = new HarnessRun();
+    this.compactionRun = run;
+    const revision = this.contextRevision;
+    const pending = this.compactSnapshot(force, run).finally(() => {
+      if (revision === this.contextRevision) {
+        this.pendingCompaction = null;
+        this.compactionRun = null;
+        this.onContextChanged?.();
+      }
+    });
+    this.pendingCompaction = pending;
+    this.onContextChanged?.();
+    return pending;
+  }
+
+  private async compactSnapshot(force: boolean, run: HarnessRun): Promise<CompactionEvent | null> {
+    if ((!force && !this.compactionEnabled) || !this.provider) return null;
     const cut = this.findCutIndex(force);
     if (cut <= this.contextStartIndex) return null;
-    const toSummarize = this._messages.slice(this.contextStartIndex, cut);
-    if (toSummarize.length === 0) return null;
+    const revision = this.contextRevision;
     const tokensBefore = this.estimateContextTokens();
-    const summary = await this.generateSummary(toSummarize, this.compactionSummary);
-    if (summary === null) return null;
-    this.compactionSummary = summary;
-    this.contextStartIndex = cut;
-    return { type: 'compaction', summary, tokensBefore, tokensAfter: this.estimateContextTokens() };
+    // 用请求替身做快照,已释放的回复不会在摘要里复活。
+    const ids = new Set(this._messages.slice(this.contextStartIndex, cut).map((m) => m.id));
+    const snapshot = this.buildRequestMessages('').filter((m) => ids.has(m.id));
+    if (snapshot.length === 0) return null;
+    this.compactionError = null;
+    try {
+      // 小窗口压缩模型分批迭代;保守字符预算确保中文也不会超窗。
+      const budget = Math.floor(this.compactionModelWindowTokens * 0.45) - 2048;
+      if (budget < 256) throw new Error('压缩模型上下文窗口过小');
+      const chunkSize = Math.min(50_000, Math.max(256, budget));
+      const batches: AgentMessage[][] = [];
+      let batch: AgentMessage[] = [];
+      let used = 0;
+      for (const m of snapshot) {
+        const text = this.serializeForSummary([m]);
+        for (let start = 0; start < text.length; start += chunkSize) {
+          const chunk = createMessage({ id: m.id, role: 'user', content: text.slice(start, start + chunkSize) });
+          const cost = estimateTextTokens(chunk.content) + 16;
+          if (used + cost > budget && batch.length > 0) { batches.push(batch); batch = []; used = 0; }
+          batch.push(chunk);
+          used += cost;
+        }
+      }
+      if (batch.length > 0) batches.push(batch);
+      let summary = this.compactionSummary;
+      for (const part of batches) {
+        summary = await this.generateSummary(part, summary, run);
+        if (run.isCancelled || revision !== this.contextRevision) return null;
+        if (summary === null) throw new Error('压缩模型未返回摘要');
+        if (estimateTextTokens(summary) > Math.floor(this.compactionModelWindowTokens / 4)) throw new Error('压缩摘要过长,已保留原始上下文');
+      }
+      if (summary === null || run.isCancelled || revision !== this.contextRevision) return null;
+      const originalTokens = snapshot.reduce((n, m) => n + this.estimateMessageTokens(m), 0) + estimateTextTokens(this.compactionSummary ?? '');
+      if (estimateTextTokens(summary) >= originalTokens) throw new Error('摘要未缩短上下文');
+      this.compactionSummary = summary;
+      this.contextStartIndex = cut;
+      // 当前主请求可能仍用着旧快照,连同它下一条响应的用量一起作废。
+      this.usageFloor = this._messages.length + (this.activeRun ? 1 : 0);
+      return { type: 'compaction', summary, tokensBefore, tokensAfter: this.estimateContextTokens() };
+    } catch (error) {
+      if (!run.isCancelled && revision === this.contextRevision) this.compactionError = `压缩失败:${error instanceof Error ? error.message : String(error)}`;
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -580,26 +830,27 @@ export class AgentHarness {
   // ---------------------------------------------------------------------------
 
   addInfoMessage(text: string): void {
-    this._messages.push(createMessage({ id: `info_${this.now()}`, role: 'assistant', content: text, imageEpoch: this.sendEpoch, createdAt: this.now() }));
+    this.replySequence += 1;
+    this._messages.push(createMessage({ id: `info_${this.now()}`, role: 'assistant', replyNumber: this.replySequence, content: text, imageEpoch: this.sendEpoch, createdAt: this.now() }));
   }
 
   /** 恢复的历史消息 imageEpoch 恒为 0,旧图不会再灌给模型。 */
   restoreMessages(messages: readonly AgentMessage[]): void {
     this._messages.push(...messages.map((m) => ({ ...m, imageEpoch: 0 })));
     this.resetCompaction();
+    this.restoreReplyNumbers();
   }
 
   setMessages(messages: readonly AgentMessage[]): void {
     this._messages.splice(0, this._messages.length, ...messages);
     this.resetCompaction();
+    this.restoreReplyNumbers();
   }
 
   rewindToMessage(messageId: string): boolean {
     const idx = this._messages.findIndex((m) => m.id === messageId);
     if (idx < 0) return false;
-    const keepCount = idx + 1;
-    this._messages.splice(keepCount);
-    if (keepCount <= this.contextStartIndex) this.resetCompaction();
+    this.truncate(idx + 1);
     return true;
   }
 
@@ -607,18 +858,58 @@ export class AgentHarness {
   rewindBeforeMessage(messageId: string): boolean {
     const idx = this._messages.findIndex((m) => m.id === messageId);
     if (idx < 0) return false;
-    this._messages.splice(idx);
-    if (idx <= this.contextStartIndex) this.resetCompaction();
+    this.truncate(idx);
     return true;
+  }
+
+  /** 回溯:进行中的后台压缩作废;回溯点落在压缩窗口之外时压缩状态已无意义,重置为完整上下文;编号序列不回退。 */
+  private truncate(keepCount: number): void {
+    this.invalidateCompaction();
+    const sequence = this.replySequence;
+    this._messages.splice(keepCount);
+    if (keepCount <= this.contextStartIndex) this.resetCompaction();
+    this.replySequence = sequence;
+    this.usageFloor = this._messages.length;
+    this.onContextChanged?.();
   }
 
   clearMessages(): void {
     this._messages.splice(0);
     this.resetCompaction();
+    this.onContextChanged?.();
+  }
+
+  /** 恢复 / 替换历史后给 assistant 消息补编号,并把正文里的回显标记洗掉。 */
+  private restoreReplyNumbers(): void {
+    this.replySequence = 0;
+    for (let i = 0; i < this._messages.length; i += 1) {
+      const m = this._messages[i];
+      if (m.role !== 'assistant') continue;
+      const n = m.replyNumber ?? this.replySequence + 1;
+      if (n > this.replySequence) this.replySequence = n;
+      this._messages[i] = { ...m, replyNumber: n, content: stripReplyMarkers(m.content) };
+    }
   }
 
   private resetCompaction(): void {
+    this.invalidateCompaction();
+    this.memory.clear();
+    this.replySequence = 0;
+    this.usageFloor = this._messages.length;
+    this.compactionError = null;
     this.compactionSummary = null;
     this.contextStartIndex = 0;
   }
+}
+
+type CompactionEvent = Extract<HarnessEvent, { type: 'compaction' }>;
+
+/** 非 ASCII 保守按一字符一 token 估计,避免中文 chars/4 严重低估。 */
+export function estimateTextTokens(text: string): number {
+  let ascii = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.charCodeAt(0) < 128) ascii += 1; else other += 1;
+  }
+  return Math.ceil(ascii / 4) + other;
 }

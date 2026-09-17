@@ -12,7 +12,15 @@ export interface PresetLibrary {
   presets: AgentPreset[];
   activeId: string;
   userSkills: Skill[];
+  /**
+   * 上次落盘时的工具目录。新版本加了工具(比如 context_memory)时,存档里的预设不可能是
+   * 「用户特意关掉的」,读档时补进每个预设;用户之后关掉的不会再补回来。
+   */
+  knownTools: string[];
 }
+
+/** 这个字段出现之前的目录:没有它的旧存档按这份判断哪些工具是后来才加的。 */
+const LEGACY_KNOWN_TOOLS: readonly string[] = PHASE_ONE_TOOLS.filter((t) => t !== 'context_memory');
 
 const BUILTIN_IDS = new Set(BUILTIN_PRESETS.map((p) => p.id));
 
@@ -21,7 +29,7 @@ export function isBuiltinPreset(id: string): boolean {
 }
 
 export function defaultPresetLibrary(): PresetLibrary {
-  return { presets: BUILTIN_PRESETS.map(clonePreset), activeId: BUILTIN_PRESETS[0].id, userSkills: [] };
+  return { presets: BUILTIN_PRESETS.map(clonePreset), activeId: BUILTIN_PRESETS[0].id, userSkills: [], knownTools: [...PHASE_ONE_TOOLS] };
 }
 
 function clonePreset(p: AgentPreset): AgentPreset {
@@ -211,5 +219,11 @@ export function sanitizePresetLibrary(raw: unknown): PresetLibrary {
     userSkills.push(s);
   }
   const activeId = typeof r.activeId === 'string' && presets.some((p) => p.id === r.activeId) ? r.activeId : presets[0].id;
-  return { presets, activeId, userSkills };
+  const known = Array.isArray(r.knownTools) ? r.knownTools.filter((t): t is string => typeof t === 'string') : [...LEGACY_KNOWN_TOOLS];
+  const fresh = PHASE_ONE_TOOLS.filter((t) => !known.includes(t));
+  const migrated = fresh.length === 0 ? presets : presets.map((p) => {
+    const missing = fresh.filter((t) => !p.enabledToolNames.includes(t));
+    return missing.length === 0 ? p : { ...p, enabledToolNames: [...p.enabledToolNames, ...missing] };
+  });
+  return { presets: migrated, activeId, userSkills, knownTools: [...PHASE_ONE_TOOLS] };
 }

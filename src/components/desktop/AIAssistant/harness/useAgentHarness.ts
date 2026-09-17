@@ -15,7 +15,8 @@ import { AI_MODEL_CHOICES } from '../../../../services/agentService';
 import { botService } from '../../../../services/botService';
 import { BUILTIN_SKILLS, formatSkillsForSystemPrompt } from '../../../../services/agentHarness/skills';
 import { allSkills, resolveActivePreset, type PresetLibrary } from '../../../../services/agentHarness/presetLibrary';
-import { createWorkbenchToolRegistry, listWorkbenchTools, type PromptLibraryEntry, type TagSuggestItem, type WorkbenchToolInfo } from '../../../../services/agentHarness/tools/index';
+import { createContextMemoryTool, createWorkbenchToolRegistry, listWorkbenchTools, type PromptLibraryEntry, type TagSuggestItem, type WorkbenchToolInfo } from '../../../../services/agentHarness/tools/index';
+import type { ContextUsage } from '../../../../services/agentHarness/contextMemory';
 import type { HarnessEvent, PermissionDecision, PermissionMode } from '../../../../services/agentHarness/types';
 import type { Skill } from '../../../../services/agentHarness/skillCatalog';
 import type { AgentQuestion, WorkbenchAdapter } from '../../../../services/agentHarness/workbench';
@@ -26,7 +27,7 @@ import { v5UpscaleCost, v5UpscaleTargetSize } from '../../../../services/naiV5Up
 import { getCachedIsOpus, isOpusUsageExhausted } from '../../../../services/novelai';
 import { MODEL_MAP } from '../../../generation/modelResolutionOptions';
 import { renderCharacterOverlay } from './overlayRenderer';
-import { archiveCurrentTranscript, discardCurrentTranscript, loadCurrentTranscript, saveCurrentTranscript, setHarnessBusy, subscribeTranscriptReplaced } from './harnessSessionStore';
+import { archiveCurrentTranscript, discardCurrentTranscript, loadCurrentContext, loadCurrentTranscript, saveCurrentContext, saveCurrentTranscript, setHarnessBusy, subscribeTranscriptReplaced } from './harnessSessionStore';
 import { loadPresetLibrary, savePresetLibrary } from './presetStorage';
 import { sessionUsageByModel, type SessionModelUsage } from './sessionArchive';
 import { transcriptToMessages, type TranscriptItem } from './transcript';
@@ -87,6 +88,10 @@ export interface AgentHarnessController {
   newSession: () => boolean;
   /** 本会话按模型聚合的用量(账单页「本会话」一栏)。 */
   sessionUsage: SessionModelUsage[];
+  /** 当前请求上下文快照(估算);还没建 harness 时为 null。 */
+  contextUsage: ContextUsage | null;
+  /** 手动压缩(/compact):保留最后一个用户轮次,之前的压成摘要。 */
+  compactNow: () => void;
   /** 回到某条用户消息之前;返回那条消息的文本(放回输入框),忙碌或找不到时返回 null。 */
   rewindTo: (userItemId: string) => string | null;
   presetLibrary: PresetLibrary;
@@ -108,6 +113,7 @@ export function useAgentHarness(): AgentHarnessController {
   const [llm, setLlm] = useState<{ configured: boolean; baseUrl: string; model: string; provider: string; cloud: boolean } | null>(null);
   const llmRef = useRef(llm); llmRef.current = llm;
   const [presetLibrary, setPresetLibrary] = useState<PresetLibrary>(loadPresetLibrary);
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const libraryRef = useRef(presetLibrary); libraryRef.current = presetLibrary;
   const toolCatalog = useMemo(() => listWorkbenchTools(), []);
 
@@ -124,8 +130,10 @@ export function useAgentHarness(): AgentHarnessController {
   // 归档 / 丢弃 / 从会话历史打开一条,都是存储层整份换掉当前对话,这里只管重读;
   // harness 的消息历史跟着作废,下次发送从新条目回填。
   useEffect(() => subscribeTranscriptReplaced(() => {
+    harnessRef.current?.dispose();
     harnessRef.current = null;
     askResolvers.current.clear();
+    setContextUsage(null);
     setItems(loadCurrentTranscript());
   }), []);
 
@@ -152,6 +160,7 @@ export function useAgentHarness(): AgentHarnessController {
   // 端点、鉴权或模型变了,provider 和持有它的 harness 都要重建;历史从条目回填。
   useEffect(() => {
     providerRef.current = null;
+    harnessRef.current?.dispose();
     harnessRef.current = null;
   }, [llm]);
 
@@ -255,9 +264,20 @@ export function useAgentHarness(): AgentHarnessController {
       opusExhausted: () => isOpusUsageExhausted(),
       lockedFields: () => lockedRef.current,
       systemPromptSuffix: () => formatSkillsForSystemPrompt(skills.filter((s) => preset.enabledSkillIds.some((id) => s.id === id || s.id.startsWith(`${id}/`)))),
+      // 上下文状态(摘要 / 切点 / 笔记)随对话落盘,刷新后和消息一起回来;指示器跟着刷新。
+      onContextChanged: () => {
+        const h = harnessRef.current;
+        if (!h) return;
+        saveCurrentContext(h.exportContextState());
+        setContextUsage(h.contextUsage);
+      },
     });
+    // 记忆工具挂在 harness 上而不是工作台上:建好 harness 才能注册。
+    registry.register(createContextMemoryTool(() => harnessRef.current));
     // 面板条目是落盘的,harness 的消息历史不是:刷新后从条目重建,模型才记得前文。
     harnessRef.current.restoreMessages(transcriptToMessages(itemsRef.current));
+    harnessRef.current.restoreContextState(loadCurrentContext());
+    setContextUsage(harnessRef.current.contextUsage);
     return harnessRef.current;
   }, [askUser, handlersRef, llm]);
 
@@ -366,6 +386,15 @@ export function useAgentHarness(): AgentHarnessController {
 
   const cancel = useCallback(() => { harnessRef.current?.abort(); }, []);
 
+  const compactNow = useCallback(() => {
+    const harness = ensureHarness();
+    if (!harness || harness.isRunning) return;
+    void harness.compactContext(true).then((evt) => {
+      const text = evt ? `已手动压缩:约 ${evt.tokensBefore} → ${evt.tokensAfter} token,更早的内容换成了摘要。` : (harness.contextUsage.error ?? '没有可压缩的内容(至少要有一轮完整对话)。');
+      setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: evt ? 'info' : 'warn', text, at: Date.now() }]);
+    });
+  }, [ensureHarness]);
+
   // 两者都经存储层,状态更新由上面的 subscribeTranscriptReplaced 回调完成。
   const clear = useCallback(() => { discardCurrentTranscript(); }, []);
   const newSession = useCallback(() => archiveCurrentTranscript(), []);
@@ -428,6 +457,8 @@ export function useAgentHarness(): AgentHarnessController {
     clear,
     newSession,
     sessionUsage,
+    contextUsage,
+    compactNow,
     rewindTo,
     presetLibrary,
     updatePresetLibrary,

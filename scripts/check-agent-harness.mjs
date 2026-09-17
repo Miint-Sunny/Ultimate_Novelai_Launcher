@@ -18,6 +18,7 @@ const {
   ToolRegistry, AgentHarness, DEFAULT_PERMISSION_LIMITS, denialToolText, lockedFieldsToolText,
   messageToOpenAi, createMessage, withVisionImagesCollapsed,
   encodePreset, decodePresets, PresetImportError,
+  stripReplyMarkers, ReplyMarkerStreamFilter, ContextMemory, createContextMemoryTool, estimateTextTokens,
 } = H;
 
 let checks = 0;
@@ -398,7 +399,8 @@ await check('权限: 确认超时按拒绝', async () => {
 
 await check('压缩: 超窗时用当前模型生成摘要,之后的请求带摘要且从切点开始;切点绝不落在工具结果上', async () => {
   const p = scriptedProvider([]);
-  const h = harnessWith(p, { contextWindowTokens: 1, compactionReserveTokens: 0, compactionKeepRecentTokens: 1 });
+  // 窗口 500 / 预留 50:压缩前 ~520 token 过硬阈值,压掉 u1..t1 后 ~300 落回窗口内。
+  const h = harnessWith(p, { contextWindowTokens: 500, compactionReserveTokens: 50, compactionKeepRecentTokens: 1, backgroundCompactionEnabled: false });
   h.setMessages([
     createMessage({ id: 'u1', role: 'user', content: 'x'.repeat(400) }),
     createMessage({ id: 'a1', role: 'assistant', content: 'call', toolCalls: [{ id: 'c', name: 'get_studio_parameters', arguments: {} }] }),
@@ -493,17 +495,18 @@ await check('预设库: 内置永远在;新建/复制/删除/切换;内置不可
   assert.deepEqual(without.presets[0].enabledSkillIds, ['nai5-prompting'], '删技能时从预设名单摘掉');
   const sanitized = L.sanitizePresetLibrary({ presets: [{ id: 'u1', name: 'u', enabledToolNames: ['x', 3], allowedModifiableParams: ['steps', 'nope'] }], activeId: 'ghost', userSkills: [{ id: 's', systemPrompt: 'p' }, { bad: true }] });
   assert.equal(sanitized.presets[0].id, builtinId, '内置预设补回最前');
-  assert.deepEqual(sanitized.presets[1].enabledToolNames, ['x']);
+  assert.deepEqual(sanitized.presets[1].enabledToolNames, ['x', 'context_memory'], '没记过目录的存档补上后来加的工具');
   assert.deepEqual(sanitized.presets[1].allowedModifiableParams, ['steps'], '未知参数键丢弃');
   assert.equal(sanitized.activeId, builtinId, '悬空 activeId 退回第一个');
   assert.equal(sanitized.userSkills.length, 1);
   assert.equal(L.sanitizePresetLibrary('garbage').presets.length, 1);
 });
 
-await check('工具目录: listWorkbenchTools 不需要真依赖,列出 19 个带标签与权限类的工具', async () => {
+await check('工具目录: listWorkbenchTools 不需要真依赖,列出 20 个带标签与权限类的工具(含挂在 harness 上的 context_memory)', async () => {
   const { listWorkbenchTools } = await import('../src/services/agentHarness/tools/index.ts');
   const tools = listWorkbenchTools();
-  assert.equal(tools.length, 19);
+  assert.equal(tools.length, 20);
+  assert.ok(tools.some((t) => t.name === 'context_memory'));
   assert.ok(tools.every((t) => t.label && ['R', 'W', 'D', 'P', 'A'].includes(t.permissionClass)));
 });
 
@@ -612,6 +615,192 @@ await check('预设进出: encode/decode 往返;权限字段缺失、未知工�
   expectCode(JSON.stringify({ ...parsed, enabledToolNames: ['secret_tool'] }), 'unknown_tool', 'secret_tool');
   expectCode(JSON.stringify({ ...parsed, allowedModifiableParams: ['anlas'] }), 'unknown_parameter', 'anlas');
   expectCode(JSON.stringify({ ...parsed, name: '  ' }), 'invalid_field', 'name');
+});
+
+// ---- 7. 回复编号与上下文记忆(他 0.5.0 的 64b728e / a2ab68c / 015f09b) ----
+
+await check('回复标记: 正文任意位置的变体都全量剥离(加粗 / 全角 / 缺括号 / 残渣),成对的 [3] 不受影响', () => {
+  assert.equal(stripReplyMarkers('[回复 #7] 你好'), '你好');
+  assert.equal(stripReplyMarkers('**[回复 #7]**\n正文'), '正文');
+  assert.equal(stripReplyMarkers('前面 ［回复＃12］ 后面'), '前面后面');
+  assert.equal(stripReplyMarkers('[回复 #7 缺右括号'), '缺右括号');
+  assert.equal(stripReplyMarkers(']\n正文'), '正文');
+  assert.equal(stripReplyMarkers('参考 [3] 与 [4] 都保留'), '参考 [3] 与 [4] 都保留');
+  assert.equal(stripReplyMarkers('无标记'), '无标记');
+});
+
+await check('回复标记: 流式过滤任意分块都不漏标记、不留孤立括号,输出与全量剥离一致;半个标记扣住等下一块', () => {
+  const samples = ['[回复 #12] 你好,世界', '正文 **[回复 #3]** 中间 [回复 #4] 结尾', '开头[回复 #7', '参考 [3] 保留'];
+  for (const text of samples) {
+    for (const size of [1, 2, 3, 5, 7, 64]) {
+      const f = new ReplyMarkerStreamFilter();
+      let out = '';
+      for (let i = 0; i < text.length; i += size) out += f.add(text.slice(i, i + size));
+      out += f.flush();
+      // 他的口径:不漏标记、不留孤立括号;加粗标记被逐字切碎时残留的 `**` 是无害正文,允许。
+      const norm = (t) => t.replace(/\*\*/g, '').replace(/\s+/g, '');
+      assert.equal(norm(out), norm(stripReplyMarkers(text)), `${JSON.stringify(text)} 按 ${size} 分块`);
+      assert.ok(!/回复\s*[#＃]/.test(out), '不能漏标记');
+      const opens = (out.match(/[\[［]/g) || []).length; const closes = (out.match(/[\]］]/g) || []).length;
+      assert.equal(opens, closes, '不能留孤立括号');
+    }
+  }
+  const f = new ReplyMarkerStreamFilter();
+  assert.equal(f.add('[回复'), '', '半个标记先扣住');
+  assert.equal(f.add(' #2]好'), '好');
+});
+
+await check('回复编号: 每条 assistant 领稳定编号;请求侧只带一层 [回复 #N];模型回显的标记入库前剥掉;恢复旧会话补编号并洗正文', async () => {
+  const p = scriptedProvider([text('[回复 #1] 第一条'), text('第二条 [回复 #2]')]);
+  const h = harnessWith(p);
+  await collect(h.send('a'));
+  await collect(h.send('b'));
+  const replies = h.messages.filter((m) => m.role === 'assistant');
+  assert.deepEqual(replies.map((m) => [m.replyNumber, m.content]), [[1, '第一条'], [2, '第二条']]);
+  const req = p.calls[1].messages;
+  const sent = req.find((m) => m.role === 'assistant');
+  assert.equal(sent.content, '[回复 #1]\n第一条');
+  assert.equal((sent.content.match(/回复 #/g) || []).length, 1, '请求侧只叠一层');
+  const restored = harnessWith(scriptedProvider([]));
+  restored.restoreMessages([
+    createMessage({ id: 'u', role: 'user', content: 'x' }),
+    createMessage({ id: 'a', role: 'assistant', content: '[回复 #5] 旧正文 [回复 #5]' }),
+    createMessage({ id: 'u2', role: 'user', content: 'y' }),
+    createMessage({ id: 'b', role: 'assistant', content: '新的' }),
+  ]);
+  assert.deepEqual(restored.messages.filter((m) => m.role === 'assistant').map((m) => [m.replyNumber, m.content]), [[1, '旧正文'], [2, '新的']]);
+});
+
+await check('上下文记忆: 笔记以 context_notes 注入;释放的回复在请求里换成占位、其工具结果一起省略;当前轮不能释放;read_reply 读原文', async () => {
+  const registry = new ToolRegistry();
+  registry.register({ ...sampleTool, execute: async (id) => ({ toolCallId: id, content: 'params: steps=28' }) });
+  const preset = { ...PRESET, enabledToolNames: ['get_studio_parameters', 'context_memory'] };
+  const p = scriptedProvider([
+    [...callTool('get_studio_parameters', {}, 'c1')], text('参数看过了'),   // 回复 #1(带工具)+ #2
+    [...callTool('context_memory', { action: 'add_note', texts: ['用户偏好雨夜题材', '步数固定 22'] }, 'c2')], text('记好了'),
+    [...callTool('context_memory', { action: 'forget_reply', ids: [1, 5] }, 'c3')], text('释放了'),
+    [...callTool('context_memory', { action: 'read_reply', id: 1 }, 'c4')], text('读到了'),
+  ]);
+  const h = new AgentHarness({ tools: registry, provider: p, preset, sleep: fastSleep, backgroundCompactionEnabled: false });
+  registry.register(createContextMemoryTool(() => h));
+  await collect(h.send('看参数'));
+  const noted = await collect(h.send('记笔记'));
+  const noteResult = noted.find((e) => e.type === 'tool_result').result;
+  assert.match(noteResult.content, /已保存笔记 #1、#2/);
+  assert.equal(h.contextUsage.noteCount, 2);
+  const withNotes = h.buildRequestMessages('S');
+  const notes = withNotes.find((m) => m.id === 'context_notes');
+  assert.ok(notes && notes.content.includes('[笔记 #1] 用户偏好雨夜题材'), '笔记进请求');
+  const forgot = await collect(h.send('释放'));
+  const forgetResult = forgot.find((e) => e.type === 'tool_result').result;
+  assert.match(forgetResult.content, /已释放回复 #1 及其工具结果/);
+  assert.match(forgetResult.content, /未释放 #5/);
+  const req = h.buildRequestMessages('S');
+  const placeholder = req.find((m) => m.role === 'assistant' && m.content.includes('已释放'));
+  assert.ok(placeholder, '被释放的回复换成占位');
+  assert.ok(!req.some((m) => m.role === 'tool' && m.toolCallId === 'c1'), '释放回复的工具结果不再发');
+  assert.ok(!placeholder.toolCalls, '占位不带 tool_calls');
+  // 当前轮的回复(最后一条 user 之后)不能释放
+  assert.throws(() => h.forgetReplies([h.messages.at(-1).replyNumber]), /属于当前用户轮次/);
+  const read = await collect(h.send('读原文'));
+  const readResult = read.find((e) => e.type === 'tool_result').result;
+  assert.match(readResult.content, /回复 #1 原文:/);
+  assert.match(readResult.content, /params: steps=28/, '原文带工具结果');
+  // 状态导出 / 恢复:消息 id 对得上才恢复
+  const state = h.exportContextState();
+  const h2 = new AgentHarness({ tools: registry, provider: p, preset, sleep: fastSleep });
+  h2.restoreMessages(h.messages);
+  assert.equal(h2.contextUsage.noteCount, 0);
+  assert.equal(h2.restoreContextState(state), true);
+  assert.equal(h2.contextUsage.noteCount, 2);
+  assert.ok(h2.memory.forgottenReplies.has(1));
+  const h3 = new AgentHarness({ tools: registry, provider: p, preset, sleep: fastSleep });
+  h3.restoreMessages([createMessage({ id: 'other', role: 'user', content: 'x' })]);
+  assert.equal(h3.restoreContextState(state), false, '消息序列对不上就不恢复');
+});
+
+await check('后台压缩: 过硬阈值七成时后台单飞压缩,主请求不等它;完成后上下文带摘要;到硬阈值压不下去则报错不发超窗请求', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const p = { calls: [], modelId: 'm', async *streamChat(opts) {
+    this.calls.push(opts);
+    if (opts.tools.length === 0) { await gate; yield { type: 'content_delta', delta: '## 目标\n摘要' }; return; }
+    yield { type: 'content_delta', delta: 'ok' };
+  } };
+  const h = harnessWith(p, { contextWindowTokens: 600, compactionReserveTokens: 50, compactionKeepRecentTokens: 1 });
+  h.setMessages([
+    createMessage({ id: 'u1', role: 'user', content: 'x'.repeat(600) }),
+    createMessage({ id: 'a1', role: 'assistant', content: 'y'.repeat(400) }),
+  ]);
+  const events = await collect(h.send('next'));
+  assert.equal(events.at(-1).type, 'turn_end', '主请求不等后台压缩');
+  assert.equal(h.contextUsage.compacting, true);
+  const first = h.compactContext();
+  assert.equal(h.compactContext(), first, '单飞:进行中的压缩直接复用');
+  release();
+  await first;
+  assert.equal(h.isCompacted, true);
+  assert.equal(h.contextUsage.compacting, false);
+  assert.equal(h.buildRequestMessages('S')[1].id, 'compaction_summary');
+  // 硬阈值:压缩释放不出空间就不发主请求
+  const tiny = harnessWith({ modelId: 'm', async *streamChat() { yield { type: 'content_delta', delta: '摘要' }; } }, { contextWindowTokens: 40, compactionReserveTokens: 10 });
+  tiny.setMessages([createMessage({ id: 'u1', role: 'user', content: 'x'.repeat(2000) })]);
+  const blocked = await collect(tiny.send('next'));
+  assert.equal(blocked.at(-1).type, 'error');
+  assert.match(blocked.at(-1).error, /上下文超过安全窗口/);
+});
+
+await check('后台压缩: 回溯 / 换会话 / 记笔记会作废进行中的压缩,晚到的结果不提交;压缩失败留原文并记错误', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const slow = { modelId: 'm', async *streamChat() { await gate; yield { type: 'content_delta', delta: '## 目标\n摘要' }; } };
+  const h = harnessWith(slow, { compactionKeepRecentTokens: 1 });
+  h.setMessages([createMessage({ id: 'u1', role: 'user', content: 'a'.repeat(400) }), createMessage({ id: 'a1', role: 'assistant', content: 'b' }), createMessage({ id: 'u2', role: 'user', content: 'c' })]);
+  const pending = h.compactContext(true);
+  assert.equal(h.contextUsage.compacting, true);
+  h.rewindToMessage('a1');
+  release();
+  assert.equal(await pending, null, '回溯后晚到的摘要不提交');
+  assert.equal(h.isCompacted, false);
+  assert.equal(h.contextUsage.compacting, false);
+  const failing = { modelId: 'f', async *streamChat() { yield { type: 'error', error: 'boom', transient: false }; } };
+  const h2 = harnessWith(failing, { compactionKeepRecentTokens: 1 });
+  h2.setMessages([createMessage({ id: 'u1', role: 'user', content: 'a'.repeat(400) }), createMessage({ id: 'a1', role: 'assistant', content: 'b' }), createMessage({ id: 'u2', role: 'user', content: 'c' })]);
+  assert.equal(await h2.compactContext(true), null);
+  assert.match(h2.contextUsage.error, /压缩失败/);
+  assert.equal(h2.messages.length, 3, '原文保留');
+});
+
+await check('上下文估算: 中文不按 chars/4 低估;有用量锚点时用 total 加其后估算,记忆变动后锚点作废', () => {
+  assert.equal(estimateTextTokens('abcd'), 1);
+  assert.equal(estimateTextTokens('中文四个字'), 5);
+  const h = harnessWith(scriptedProvider([]), { backgroundCompactionEnabled: false });
+  h.setMessages([
+    createMessage({ id: 'u1', role: 'user', content: 'x'.repeat(4000) }),
+    createMessage({ id: 'a1', role: 'assistant', content: 'ok', usage: { input: 900, output: 100, cacheRead: 0, cacheWrite: 0 } }),
+    createMessage({ id: 'u2', role: 'user', content: 'y'.repeat(40) }),
+  ]);
+  // setMessages 把锚点设到末尾,历史用量不算数;先按整份请求估。
+  const full = h.estimateContextTokens('S');
+  assert.ok(full >= 1000, `整份估算 ${full}`);
+  const mem = new ContextMemory();
+  assert.equal(mem.addNote('a'), 1);
+  assert.throws(() => mem.addNote(''), /1～2000/);
+  mem.forgetReply(3);
+  const back = new ContextMemory();
+  back.restore(mem.toJson());
+  assert.deepEqual([...back.notes.entries()], [[1, 'a']]);
+  assert.ok(back.forgottenReplies.has(3));
+});
+
+await check('预设库读档: 新版本加的工具补进旧存档的每个预设;记过目录之后用户关掉的不再补回', () => {
+  const { sanitizePresetLibrary, PHASE_ONE_TOOLS } = H;
+  const old = { presets: [{ id: 'v5-architect-preset', name: 'x', systemPrompt: 's', enabledToolNames: ['get_studio_parameters'], allowedModifiableParams: ['prompt'], enabledSkillIds: [] }], activeId: 'v5-architect-preset', userSkills: [] };
+  const lib = sanitizePresetLibrary(old);
+  assert.deepEqual(lib.presets[0].enabledToolNames, ['get_studio_parameters', 'context_memory'], '没有 knownTools 的旧存档补上 context_memory');
+  assert.deepEqual(lib.knownTools, [...PHASE_ONE_TOOLS]);
+  const optedOut = sanitizePresetLibrary({ ...old, knownTools: [...PHASE_ONE_TOOLS] });
+  assert.deepEqual(optedOut.presets[0].enabledToolNames, ['get_studio_parameters'], '目录记过了就是用户自己关的');
 });
 
 console.log(`\n${checks} 项 agent harness 校验全部通过。`);

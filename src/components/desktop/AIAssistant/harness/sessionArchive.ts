@@ -30,6 +30,8 @@ export interface HarnessSession extends HarnessSessionSummary {
   at: number;
   /** serializeTranscript 的产物。 */
   items: unknown[];
+  /** harness.exportContextState() 的产物(摘要、切点、笔记);旧存档没有。 */
+  context?: unknown;
 }
 
 /** 本会话按模型聚合的用量(账单页「本会话」一栏)。 */
@@ -136,6 +138,7 @@ export function sanitizeHarnessSessions(raw: unknown): HarnessSession[] {
       id: s.id,
       at: s.at,
       items: s.items,
+      context: s.context && typeof s.context === 'object' ? s.context : undefined,
     });
     if (out.length >= MAX_HARNESS_SESSIONS) break;
   }

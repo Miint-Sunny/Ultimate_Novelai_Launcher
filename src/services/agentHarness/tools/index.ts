@@ -1,3 +1,4 @@
+import { CONTEXT_MEMORY_TOOL_INFO } from './contextMemoryTool';
 import { ToolRegistry, type AgentTool } from '../toolRegistry';
 import { createAskUserTool } from './askUserTool';
 import { createCanvasTools } from './canvasTools';
@@ -26,7 +27,11 @@ export function listWorkbenchTools(): WorkbenchToolInfo[] {
   const fail = (): never => { throw new Error('工具目录只用于展示,不能执行'); };
   const stub = new Proxy({}, { get: () => fail }) as unknown as ToolDeps;
   const deps: ToolDeps = { ...stub, adapter: stub.adapter, skills: [], enabledSkillIds: () => [] };
-  return createWorkbenchToolRegistry(deps).getAll().map((t) => ({ name: t.name, label: t.label, permissionClass: t.permissionClass, description: t.description }));
+  return [
+    ...createWorkbenchToolRegistry(deps).getAll().map((t) => ({ name: t.name, label: t.label, permissionClass: t.permissionClass, description: t.description })),
+    // 上下文记忆工具挂在 harness 上而不是工作台上,目录里也要有它,预设才能开关。
+    CONTEXT_MEMORY_TOOL_INFO,
+  ];
 }
 
 /** 一期全部工具,注册进一个 registry。白名单过滤在 harness 里按预设做。 */
@@ -44,3 +49,5 @@ export function createWorkbenchToolRegistry(deps: ToolDeps): ToolRegistry {
   ]);
   return registry;
 }
+
+export { createContextMemoryTool, CONTEXT_MEMORY_TOOL_INFO, CONTEXT_MEMORY_TOOL_NAME } from './contextMemoryTool';
