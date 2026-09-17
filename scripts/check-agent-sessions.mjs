@@ -23,7 +23,8 @@ const check = async (name, fn) => {
   catch (error) { console.error(`not ok ${checks} - ${name}`); throw error; }
 };
 
-const usage = (input, output, cacheRead = 0, cacheWrite = 0) => ({ input, output, cacheRead, cacheWrite });
+// Pi 口径:input 是未命中缓存的输入;cacheReadReported 缺省按「有缓存读数就算报告了」。
+const usage = (input, output, cacheRead = 0, cacheWrite = 0) => ({ input, output, cacheRead, cacheWrite, cacheReadReported: cacheRead > 0 });
 // 固定「现在」:2026-09-07 10:00 本地时间。
 const NOW = new Date(2026, 8, 7, 10, 0, 0).getTime();
 const day = (y, m, d) => new Date(y, m - 1, d, 12, 0, 0).getTime();
@@ -63,15 +64,20 @@ await check('账本: 聚合按周期过滤、按 provider/model 合并、按合�
   assert.equal(today.models[0].name, 'openai/gpt');
   const week = aggregateLedger(ledger, 'last7d', NOW);
   assert.equal(week.requests, 2);
-  assert.deepEqual(week.usage, usage(110, 55, 40));
+  // b 没报告缓存读数 → 合计的 cacheReadReported 为 false(混合统计不冒充命中率)。
+  assert.deepEqual(week.usage, { ...usage(110, 55, 40), cacheReadReported: false });
+  assert.equal(cacheHitRate(week.usage), null);
   const month = aggregateLedger(ledger, 'last30d', NOW);
   assert.equal(month.requests, 4);
   assert.deepEqual(month.models.map((m) => m.name), ['anthropic/claude', 'openai/gpt']);
   assert.equal(month.models[1].requests, 3);
   const all = aggregateLedger(ledger, 'all', NOW);
   assert.equal(all.requests, 5);
-  assert.equal(cacheHitRate(today.usage), 0.4);
+  // 命中率 = 缓存读 / 总输入(未命中 100 + 缓存 40)。
+  assert.equal(cacheHitRate(today.usage), 40 / 140);
   assert.equal(cacheHitRate(usage(0, 5)), null);
+  assert.equal(cacheHitRate({ input: 10, output: 1, cacheRead: 0, cacheWrite: 0, cacheReadReported: false }), null, '没报告缓存的请求不冒充 0%');
+  assert.equal(cacheHitRate({ input: 10, output: 1, cacheRead: 0, cacheWrite: 0, cacheReadReported: true }), 0, '报告了 0 命中就是 0%');
 });
 
 await check('账本: formatTokens 与他的一致 —— 999 / 1.0K / 12.3K / 1.2M / 1.5B', () => {
@@ -101,6 +107,12 @@ await check('账本: 超过上限丢最早的;sanitize 扔掉坏条目与重复 
   assert.equal(clean.entries[1].provider, 'unknown');
   assert.equal(clean.entries[1].model, 'unknown');
   assert.deepEqual(sanitizeUsageLedger('nope'), EMPTY_LEDGER);
+  // 旧账本(version 1)的 input 含缓存:读回来减掉;新账本(version 2)原样。
+  const migrated = sanitizeUsageLedger({ version: 1, entries: [{ key: 'old', at: NOW, provider: 'p', model: 'm', usage: { input: 100, output: 5, cacheRead: 40, cacheWrite: 0 } }] });
+  assert.deepEqual(migrated.entries[0].usage, { input: 60, output: 5, cacheRead: 40, cacheWrite: 0, cacheReadReported: true });
+  const kept = sanitizeUsageLedger({ version: 2, entries: [{ key: 'new', at: NOW, provider: 'p', model: 'm', usage: { input: 60, output: 5, cacheRead: 40, cacheWrite: 0, cacheReadReported: true } }] });
+  assert.equal(kept.entries[0].usage.input, 60);
+  assert.equal(migrated.version, 2);
 });
 
 // ---- 2. 归档 ----
@@ -128,7 +140,8 @@ await check('归档: 摘要 —— 标题取首条用户消息 30 字压成一�
   assert.equal(s.startedAt, NOW);
   assert.equal(s.turns, 2);
   assert.equal(s.toolCalls, 1);
-  assert.deepEqual(s.usage, usage(300, 60, 30));
+  // 第二条回复没报告缓存读数,合计不冒充命中率。
+  assert.deepEqual(s.usage, { ...usage(300, 60, 30), cacheReadReported: false });
   assert.equal(s.model, 'claude');
   assert.equal(s.err, true);
   assert.equal(summarizeTranscript([{ kind: 'user', id: 'u', text: '', imageDataUrl: 'data:', at: NOW }]).title, '(图片)');

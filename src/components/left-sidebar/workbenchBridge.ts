@@ -11,6 +11,7 @@ import { sidecarApi } from '../../api/sidecar';
 import { getCachedIsOpus, isOpusUsageExhausted } from '../../services/novelai';
 import { legacyCellToCenter, nextSpawnCenter, placedCenter, type CharacterCenter } from '../../services/characterPosition';
 import { promptPresetsForModel } from '../../services/promptPresetCatalog';
+import { buildPromptPair } from '../generation/generationPrompts';
 import { isV5Model, MODEL_MAP, MODELS, maxCharactersForModel, type ModelOption } from '../generation/modelResolutionOptions';
 import type { HistoryItem } from '../../contexts/GenerationContext';
 import type { GenerateOutcome, StudioParams, WorkbenchAdapter, WorkbenchCharacter } from '../../services/agentHarness/workbench';
@@ -157,6 +158,13 @@ export function createWorkbenchBridge(
       if (patch.seed !== undefined) s.setSeed(patch.seed);
       // 官方的全局开关:交给模型排版不清坐标,坐标留着,切回来还在。
       if (patch.character_ai_position !== undefined) s.setUseCoords(!patch.character_ai_position);
+    },
+    // 与桌面生成链路同一个拼接函数:质量尾按模型取、UC 前缀按预设行取,模型看到的就是要发出去的。
+    effectivePrompts: () => {
+      const s = state();
+      const preset = s.promptPresets.find((p) => p.id === s.activePresetId) ?? null;
+      const pair = buildPromptPair({ positivePrompt: s.positivePrompt, negativePrompt: s.negativePrompt, activePreset: preset, model: s.selectedModel.id });
+      return { backend: 'NovelAI', prompt: pair.positive, negativePrompt: pair.negative, presetLabel: preset ? `${preset.name} (${preset.id})` : 'none' };
     },
     availableModels: () => MODELS.map((m) => ({ id: MODEL_MAP[m.id] ?? m.id, label: m.name })),
     availableQualityPresets: () => ['Standard', 'Heavy', 'Light', 'Off'].map((id) => ({ id, label: id })),

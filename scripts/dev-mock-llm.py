@@ -121,7 +121,9 @@ def pick(req):
         return tool_call("ask_user", {"questions": [{"question": "想要哪种画风?", "options": ["水彩", "赛璐璐", "厚涂"]}]},
                          "call_ask", thought="先确认画风偏好。")
     if "步数" in user_text:
-        return tool_call("get_studio_parameters", {"keys": ["steps", "resolution"]}, "call_read")
+        # 「全部」时读整份报表(含最终提示词与角色详情),否则只读两个键。
+        keys = ["all"] if "全部" in user_text else ["steps", "resolution"]
+        return tool_call("get_studio_parameters", {"keys": keys}, "call_read")
     if "回忆" in user_text:
         users = [text_of(m) for m in messages if m.get("role") == "user"]
         return answer(f"这轮请求里有 {len(users)} 条用户消息,第一条是「{users[0][:30]}」。", thought="数一下上下文。")

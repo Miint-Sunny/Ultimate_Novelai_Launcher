@@ -4,7 +4,8 @@
  */
 
 import { toolError, type AgentTool } from '../toolRegistry';
-import type { StudioParams } from '../workbench';
+import type { StudioEffectivePrompts, StudioParams, WorkbenchCharacter } from '../workbench';
+import { describeCharacter } from './characterTools';
 import type { ToolDeps } from './deps';
 
 export const RESOLUTION_PRESETS: Record<string, { width: number; height: number }> = {
@@ -20,19 +21,28 @@ export const STUDIO_MODEL_IDS = [
   'nai-diffusion-5-full', 'nai-diffusion-5-curated', 'nai-diffusion-4-5-full', 'nai-diffusion-4-5-curated', 'nai-diffusion-4-full', 'nai-diffusion-3',
 ] as const;
 
-export const QUALITY_PRESET_VALUES = ['Standard', 'Heavy', 'Light', 'Off'] as const;
+/** Heavy 是 4.5 系真实存在的档;None 与 Off 同义(关掉质量尾),照他 0.5.0 的 schema。 */
+export const QUALITY_PRESET_VALUES = ['Standard', 'Heavy', 'Light', 'None', 'Off'] as const;
 
-const GET_KEYS = ['prompt', 'negative_prompt', 'model', 'resolution', 'width', 'height', 'steps', 'scale', 'cfg_rescale', 'sampler', 'noise_schedule', 'quality_preset', 'seed', 'opus_free_status', 'all'];
+const GET_KEYS = ['prompt', 'negative_prompt', 'effective_prompt', 'effective_negative_prompt', 'generation_backend', 'model', 'resolution', 'width', 'height', 'steps', 'scale', 'cfg_rescale', 'sampler', 'noise_schedule', 'quality_preset', 'quality_toggle', 'uc_preset', 'character_ai_position', 'seed', 'opus_free_status', 'all'];
 
 const align64 = (value: number) => Math.min(2048, Math.max(64, Math.floor(value / 64) * 64));
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-function describeParams(p: StudioParams, keys: string[], opusFree: string): string {
+/**
+ * 参数回读。原始串与最终串分开报(质量尾 / UC 前缀是工作台自动拼的,模型得知道实际发出去的是什么);
+ * 全量查询时附上角色槽位详情,与他 0.5.0 的 buildStudioParamsReport 一致。纯函数,给校验脚本钉。
+ */
+export function describeParams(p: StudioParams, keys: string[], opusFree: string, effective?: StudioEffectivePrompts, characters?: readonly WorkbenchCharacter[]): string {
   const all = keys.length === 0 || keys.includes('all');
   const want = (k: string) => all || keys.includes(k);
   const lines: string[] = [];
-  if (want('prompt')) lines.push(`prompt: ${p.prompt || '(空)'}`);
-  if (want('negative_prompt')) lines.push(`negative_prompt: ${p.negative_prompt || '(空)'}`);
+  const eff = effective ?? { backend: 'NovelAI', prompt: p.prompt, negativePrompt: p.negative_prompt, presetLabel: p.quality_preset };
+  if (want('prompt')) lines.push(`prompt(原始正向): ${p.prompt || '(空)'}`);
+  if (want('effective_prompt')) lines.push(`effective_prompt(最终正向,含质量尾): ${eff.prompt || '(空)'}`);
+  if (want('negative_prompt')) lines.push(`negative_prompt(原始负向): ${p.negative_prompt || '(空)'}`);
+  if (want('effective_negative_prompt')) lines.push(`effective_negative_prompt(最终负向,含 UC 前缀): ${eff.negativePrompt || '(空)'}`);
+  if (want('generation_backend')) lines.push(`generation_backend: ${eff.backend}`);
   if (want('model')) lines.push(`model: ${p.model}`);
   if (want('resolution') || want('width') || want('height')) lines.push(`resolution: ${p.width}x${p.height}`);
   if (want('steps')) lines.push(`steps: ${p.steps}`);
@@ -41,9 +51,15 @@ function describeParams(p: StudioParams, keys: string[], opusFree: string): stri
   if (want('sampler')) lines.push(`sampler: ${p.sampler}`);
   if (want('noise_schedule')) lines.push(`noise_schedule: ${p.noise_schedule}`);
   if (want('quality_preset')) lines.push(`quality_preset: ${p.quality_preset}`);
+  if (want('quality_toggle')) lines.push(`quality_toggle: ${p.quality_preset !== 'Off'}(${p.quality_preset === 'Off' ? '不追加质量尾' : '自动追加质量尾'})`);
+  if (want('uc_preset')) lines.push(`uc_preset: ${eff.presetLabel}(与质量档同一预设行,负向前缀随它)`);
   if (want('seed')) lines.push(`seed: ${p.seed || '随机'}`);
   if (want('opus_free_status')) lines.push(`opus_free_status: ${opusFree}`);
-  if (all) lines.push(`character_ai_position: ${p.character_ai_position ? 'AI 自动排版' : '自定义坐标'}`);
+  if (want('character_ai_position')) lines.push(`character_ai_position: ${p.character_ai_position}(${p.character_ai_position ? 'AI 自动排版' : '自定义坐标'})`);
+  if (all && characters) {
+    lines.push('');
+    lines.push(characters.length === 0 ? '角色提示词:无(单角色场景主提示词即可)' : `角色提示词详情:\n${characters.map(describeCharacter).join('\n')}`);
+  }
   return lines.join('\n');
 }
 
@@ -65,6 +81,14 @@ export function normalizeStudioUpdate(
   };
   const str = (v: unknown) => (typeof v === 'string' ? v : null);
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+  // 模型 ID 的白名单在执行器里也强制,且在动任何字段之前就失败:无效模型混着合法字段时不能部分写入。
+  if ('model' in args && allowed.has('model')) {
+    const v = str(args.model);
+    if (v === null || !(STUDIO_MODEL_IDS as readonly string[]).includes(v)) {
+      return { patch: {}, applied: [], rejected: [`model: 未知模型 ID ${String(args.model)}。支持的 ID:${STUDIO_MODEL_IDS.join(', ')};本次未应用任何字段`] };
+    }
+  }
 
   if ('prompt' in args && guard('prompt')) {
     const v = str(args.prompt); if (v === null) rejected.push('prompt: 需要字符串'); else { patch.prompt = v; applied.push('提示词已更新'); }
@@ -107,7 +131,7 @@ export function normalizeStudioUpdate(
   if ('quality_preset' in args && guard('quality_preset')) {
     const v = str(args.quality_preset);
     if (v === null || !(QUALITY_PRESET_VALUES as readonly string[]).includes(v)) rejected.push(`quality_preset: 只接受 ${QUALITY_PRESET_VALUES.join(' / ')}`);
-    else { patch.quality_preset = v; applied.push(`质量档 → ${v}`); }
+    else { patch.quality_preset = v === 'None' ? 'Off' : v; applied.push(`质量档 → ${patch.quality_preset}`); }
   }
   if ('seed' in args) {
     const v = args.seed;
@@ -161,7 +185,7 @@ export function createStudioTools(deps: ToolDeps): AgentTool[] {
       if (unknown.length > 0) return toolError(toolCallId, get.name, `未匹配到指定的参数名称: ${unknown.join(', ')}。支持的键名: ${GET_KEYS.join(', ')}。`);
       const cost = deps.estimateGenerationCost();
       const opusFree = cost.free ? '当前参数在 Opus 免费区间内' : `当前参数不免费,预计 ${cost.anlas} Anlas${cost.note ? `(${cost.note})` : ''}`;
-      return { toolCallId, toolName: get.name, content: describeParams(deps.adapter.getParams(), keys, opusFree) };
+      return { toolCallId, toolName: get.name, content: describeParams(deps.adapter.getParams(), keys, opusFree, deps.adapter.effectivePrompts?.(), deps.adapter.listCharacters()) };
     },
   };
 
@@ -187,7 +211,7 @@ export function createStudioTools(deps: ToolDeps): AgentTool[] {
         cfg_rescale: { type: 'number', description: 'CFG Rescale 抗过曝修正 (0.0~1.0)' },
         sampler: { type: 'string', enum: ['k_euler', 'k_euler_ancestral', 'k_dpmpp_2m', 'k_dpmpp_sde'], description: '采样算法' },
         noise_schedule: { type: 'string', enum: ['karras', 'exponential', 'polyexponential', 'native'], description: '噪声调度算法' },
-        quality_preset: { type: 'string', enum: [...QUALITY_PRESET_VALUES], description: '质量标签档位' },
+        quality_preset: { type: 'string', enum: [...QUALITY_PRESET_VALUES], description: '质量标签预设:Standard / Light 追加对应质量尾(4.5 系另有 Heavy),None 或 Off 关闭追加' },
         character_ai_position: { type: 'boolean', description: '角色定位模式:true = AI 自动排版,false = 使用各角色的自定义坐标' },
         seed: { type: ['integer', 'string', 'null'], description: '种子;空 / null / "random" 表示随机' },
       },

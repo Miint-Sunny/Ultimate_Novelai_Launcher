@@ -8,6 +8,7 @@ import skillMd from '../../../server/agent_router/resources/skills/nai5-promptin
 import writingMd from '../../../server/agent_router/resources/skills/nai5-prompting/references/通用写法.md?raw';
 import ideationMd from '../../../server/agent_router/resources/skills/nai5-prompting/references/通用构思.md?raw';
 import { stripFrontmatter, type Skill } from './skillCatalog';
+import { HARNESS_BUILTIN_SKILLS } from './skillsHarness';
 
 export type { Skill } from './skillCatalog';
 export { findSkill, formatSkillsForSystemPrompt } from './skillCatalog';
@@ -31,4 +32,6 @@ export const BUILTIN_SKILLS: readonly Skill[] = [
     description: '方法层的构思流程:编剧 / 监督 / 原画 / 摄影四个岗位怎么把模糊需求变成画面。用户只给了方向时加载。',
     systemPrompt: ideationMd.replace(/\r\n/g, '\n').trim(),
   },
+  // 他的两个内置技能也进目录(逐字),预设里想用哪套就启用哪套。
+  ...HARNESS_BUILTIN_SKILLS,
 ];

@@ -7,7 +7,9 @@
  * 条目封顶 MAX_LEDGER_ENTRIES,超了丢最早的,localStorage 里不至于无限长。
  */
 
-import { addUsage, EMPTY_USAGE, usageTotal, type TokenUsage } from './types';
+import { addUsage, EMPTY_USAGE, usageFromJson, usageFromLegacyAppJson, usageTotal, type TokenUsage } from './types';
+
+export { cacheHitRate } from './types';
 
 export type BillPeriod = 'today' | 'last7d' | 'last30d' | 'all';
 
@@ -24,7 +26,8 @@ export interface UsageLedgerEntry {
 }
 
 export interface UsageLedger {
-  version: 1;
+  /** 1 = 旧口径(input 含缓存),读时迁移;2 = Pi 口径(input 排除缓存)。 */
+  version: 2;
   entries: UsageLedgerEntry[];
 }
 
@@ -45,7 +48,7 @@ export interface BillSummary {
 
 export const MAX_LEDGER_ENTRIES = 5000;
 
-export const EMPTY_LEDGER: UsageLedger = { version: 1, entries: [] };
+export const EMPTY_LEDGER: UsageLedger = { version: 2, entries: [] };
 
 const two = (n: number) => String(n).padStart(2, '0');
 
@@ -82,7 +85,7 @@ export function recordUsage(
     usage: { ...entry.usage },
   };
   const entries = [...ledger.entries, next];
-  return { version: 1, entries: entries.length > MAX_LEDGER_ENTRIES ? entries.slice(entries.length - MAX_LEDGER_ENTRIES) : entries };
+  return { version: 2, entries: entries.length > MAX_LEDGER_ENTRIES ? entries.slice(entries.length - MAX_LEDGER_ENTRIES) : entries };
 }
 
 export function aggregateLedger(ledger: UsageLedger, period: BillPeriod, now: number | Date = Date.now()): BillSummary {
@@ -106,11 +109,6 @@ export function aggregateLedger(ledger: UsageLedger, period: BillPeriod, now: nu
   return { period, requests, usage: total, models };
 }
 
-/** 缓存命中率 = 缓存读 / 总输入;没有输入时为 null。口径与 pi 的 footer CH 标记一致。 */
-export function cacheHitRate(u: TokenUsage): number | null {
-  return u.input > 0 ? u.cacheRead / u.input : null;
-}
-
 /** 1.2K / 3.4M / 1.2B,与他的 formatTokens 一致(1000 显示 1.0K)。 */
 export function formatTokens(value: number): string {
   const absolute = Math.abs(value);
@@ -126,11 +124,12 @@ function isUsage(v: unknown): v is TokenUsage {
   return ['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof u[k] === 'number' && Number.isFinite(u[k]));
 }
 
-/** 读回来的东西不可信:缺字段、类型错、重复 key 的条目一律丢掉。 */
+/** 读回来的东西不可信:缺字段、类型错、重复 key 的条目一律丢掉;version 1 的旧账本按旧口径迁移(input 减掉缓存)。 */
 export function sanitizeUsageLedger(raw: unknown): UsageLedger {
   if (!raw || typeof raw !== 'object') return EMPTY_LEDGER;
   const list = (raw as { entries?: unknown }).entries;
   if (!Array.isArray(list)) return EMPTY_LEDGER;
+  const legacy = (raw as { version?: unknown }).version !== 2;
   const seen = new Set<string>();
   const entries: UsageLedgerEntry[] = [];
   for (const item of list) {
@@ -145,8 +144,8 @@ export function sanitizeUsageLedger(raw: unknown): UsageLedger {
       at: e.at,
       provider: typeof e.provider === 'string' && e.provider ? e.provider : 'unknown',
       model: typeof e.model === 'string' && e.model ? e.model : 'unknown',
-      usage: { input: e.usage.input, output: e.usage.output, cacheRead: e.usage.cacheRead, cacheWrite: e.usage.cacheWrite },
+      usage: legacy ? usageFromLegacyAppJson(e.usage) : usageFromJson(e.usage),
     });
   }
-  return { version: 1, entries: entries.length > MAX_LEDGER_ENTRIES ? entries.slice(entries.length - MAX_LEDGER_ENTRIES) : entries };
+  return { version: 2, entries: entries.length > MAX_LEDGER_ENTRIES ? entries.slice(entries.length - MAX_LEDGER_ENTRIES) : entries };
 }

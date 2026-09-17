@@ -1,5 +1,5 @@
 import type { AgentQuestion, StudioParams, WorkbenchCharacter } from '../../../../services/agentHarness/workbench';
-import { createMessage, type AgentMessage, type PermissionRequest, type PermissionDecision, type ToolCall, type ToolResult, type TokenUsage } from '../../../../services/agentHarness/types';
+import { createMessage, usageFromLegacyAppJson, usageToJson, type AgentMessage, type PermissionRequest, type PermissionDecision, type ToolCall, type ToolResult, type TokenUsage } from '../../../../services/agentHarness/types';
 
 /** 发这条用户消息之前工作台的样子;回溯时整套还原。 */
 export interface WorkbenchCheckpoint {
@@ -25,6 +25,8 @@ export function serializeTranscript(items: readonly TranscriptItem[]): unknown[]
       return { ...rest, request: { id: request.id, toolCallId: request.toolCallId, toolName: request.toolName, toolLabel: request.toolLabel, permissionClass: request.permissionClass, args: request.args, summary: request.summary, cost: request.cost } };
     }
     if (item.kind === 'tool_call' && item.result?.imageBase64) return { ...item, result: { ...item.result, imageBase64: undefined } };
+    // 用量带口径标记落盘(input 已排除缓存),读回来不会再减一次。
+    if (item.kind === 'assistant' && item.usage) return { ...item, usage: usageToJson(item.usage) };
     return item;
   });
 }
@@ -101,7 +103,7 @@ export function deserializeTranscript(raw: unknown): TranscriptItem[] {
     if (seen.has(it.id)) it = { ...it, id: `${it.id}_${out.length}` };
     seen.add(it.id);
     if (it.kind === 'permission') out.push({ ...it, request: { ...it.request, respond: () => {} } });
-    else if (it.kind === 'assistant') out.push({ ...it, streaming: false });
+    else if (it.kind === 'assistant') out.push({ ...it, streaming: false, usage: it.usage ? usageFromLegacyAppJson(it.usage) : undefined });
     else out.push(it);
   }
   return out;

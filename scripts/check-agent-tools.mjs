@@ -95,10 +95,17 @@ await check('参数校验: 模型枚举、分辨率预设、质量档;不在预�
   const cur = makeDeps().state.params;
   const ok = normalizeStudioUpdate({ model: 'nai-diffusion-4-5-full', resolution_preset: 'landscape', quality_preset: 'Light', seed: 123 }, cur, new Set(['model', 'resolution', 'quality_preset']));
   assert.deepEqual(ok.patch, { model: 'nai-diffusion-4-5-full', width: 1216, height: 832, quality_preset: 'Light', seed: '123' });
-  const bad = normalizeStudioUpdate({ model: 'sdxl', resolution_preset: 'huge', quality_preset: 'Ultra', prompt: 'x' }, cur, new Set(['model', 'resolution', 'quality_preset']));
+  // 无效模型在动任何字段之前就整体失败(他 fork 的 pr-studio-state):合法字段也不部分写入。
+  const badModel = normalizeStudioUpdate({ model: 'sdxl', steps: 20 }, cur, new Set(['model', 'steps']));
+  assert.deepEqual(badModel.patch, {});
+  assert.equal(badModel.rejected.length, 1);
+  assert.match(badModel.rejected[0], /未知模型 ID sdxl.*未应用任何字段/);
+  const bad = normalizeStudioUpdate({ resolution_preset: 'huge', quality_preset: 'Ultra', prompt: 'x' }, cur, new Set(['model', 'resolution', 'quality_preset']));
   assert.deepEqual(bad.patch, {});
-  assert.equal(bad.rejected.length, 4);
+  assert.equal(bad.rejected.length, 3);
   assert.match(bad.rejected.find((r) => r.startsWith('prompt')), /不允许修改/);
+  // None 与 Off 同义。
+  assert.deepEqual(normalizeStudioUpdate({ quality_preset: 'None' }, cur, new Set(['quality_preset'])).patch, { quality_preset: 'Off' });
   assert.deepEqual(Object.keys(RESOLUTION_PRESETS), ['portrait', 'landscape', 'square', 'wallpaper', 'portrait_large', 'landscape_large']);
 });
 

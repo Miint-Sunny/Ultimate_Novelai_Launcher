@@ -28,6 +28,15 @@ export interface StudioParams {
   character_ai_position: boolean;
 }
 
+/** 生图后端最终消费的提示词快照。 */
+export interface StudioEffectivePrompts {
+  backend: string;
+  prompt: string;
+  negativePrompt: string;
+  /** 当前质量 / UC 预设行的名字(工作台里一行同时管质量尾与 UC 前缀)。 */
+  presetLabel: string;
+}
+
 export interface WorkbenchCharacter {
   id: string;
   name: string;
@@ -81,6 +90,11 @@ export interface WorkbenchAdapter {
   /** 可选的模型与预设词表,给工具做校验与回显。 */
   availableModels(): { id: string; label: string }[];
   availableQualityPresets(): { id: string; label: string }[];
+  /**
+   * 当前后端实际会发出的正负提示词(质量尾 / UC 前缀已按当前预设行拼好)与预设名。
+   * 工作台没实现时工具只回显原始串。(他 fork 的 pr-studio-state:模型得知道自动追加了什么。)
+   */
+  effectivePrompts?(): StudioEffectivePrompts;
 
   listCharacters(): WorkbenchCharacter[];
   addCharacter(entry: { name?: string; prompt: string; negative_prompt?: string; center?: { x: number; y: number } | null }): WorkbenchCharacter;

@@ -6,9 +6,11 @@ import type { ToolDeps } from './deps';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-function describeCharacter(c: WorkbenchCharacter, index: number): string {
+export function describeCharacter(c: WorkbenchCharacter, index: number): string {
   const pos = c.center ? `(${c.center.x.toFixed(2)}, ${c.center.y.toFixed(2)})` : '自动';
-  return `${index + 1}. id=${c.id} 名称=${c.name || '(未命名)'} ${c.enabled ? '启用' : '停用'} 定位=${pos}\n   正向: ${c.prompt || '(空)'}\n   负向: ${c.negative_prompt || '(无)'}`;
+  // 坐标原值单独一行:模型回填 update 时要的是没四舍五入的 position_x / position_y。
+  const raw = c.center ? `position_x: ${c.center.x} | position_y: ${c.center.y}` : '(未手动定位)';
+  return `${index + 1}. id=${c.id} 名称=${c.name || '(未命名)'} ${c.enabled ? '启用' : '停用'} 定位=${pos}\n   坐标原值: ${raw}\n   正向: ${c.prompt || '(空)'}\n   负向: ${c.negative_prompt || '(无)'}`;
 }
 
 /** 读坐标参数:契约是 position_x / position_y;模型照着 list 的回显传 center: {x, y} 也认。 */

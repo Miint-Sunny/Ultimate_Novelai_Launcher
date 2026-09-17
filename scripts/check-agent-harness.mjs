@@ -68,9 +68,34 @@ await check('流解析: tool_calls 按 index 跨 chunk 累积,流结束后按 in
     { id: 'call_a', name: 'get_studio_parameters', arguments: {} },
     { id: 'call_b', name: 'novelai_generate', arguments: { a: 1 } },
   ]);
+  // Pi 口径:prompt_tokens 含缓存,input 只算未命中的 6;cached_tokens 报告了就算报告了。
   const usage = events.find((e) => e.type === 'usage').usage;
-  assert.deepEqual(usage, { input: 10, output: 5, cacheRead: 4, cacheWrite: 0 });
+  assert.deepEqual(usage, { input: 6, output: 5, cacheRead: 4, cacheWrite: 0, cacheReadReported: true });
   assert.ok(!events.some((e) => e.type === 'content_delta'), '[DONE] 之后的内容不能再出来');
+});
+
+await check('流解析: usage 逐 chunk 覆盖(last-wins),整条流只发一次;choice.usage 只在顶层没给时用;中断也发', async () => {
+  const events = await collect(parseOpenAiStream(linesFromText(sse(
+    { id: 'c', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: 'a' }, finish_reason: null, usage: { prompt_tokens: 3, completion_tokens: 1 } }], usage: { prompt_tokens: 100, completion_tokens: 1 } },
+    { id: 'c', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: 'b' }, finish_reason: null }], usage: { prompt_tokens: 100, completion_tokens: 2 } },
+    { id: 'c', object: 'chat.completion.chunk', choices: [], usage: { prompt_tokens: 100, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 40 } } },
+    'data: [DONE]',
+  ))));
+  const usages = events.filter((e) => e.type === 'usage');
+  assert.equal(usages.length, 1, '一条流只记一次账');
+  assert.deepEqual(usages[0].usage, { input: 60, output: 3, cacheRead: 40, cacheWrite: 0, cacheReadReported: true });
+  assert.equal(events.findIndex((e) => e.type === 'usage') > events.findIndex((e) => e.type === 'content_delta'), true, 'usage 在内容之后、流尾发出');
+  const moonshot = await collect(parseOpenAiStream(linesFromText(sse(
+    { id: 'c', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: 'x' }, finish_reason: 'stop', usage: { prompt_tokens: 7, completion_tokens: 2 } }] },
+    'data: [DONE]',
+  ))));
+  assert.deepEqual(moonshot.find((e) => e.type === 'usage').usage, { input: 7, output: 2, cacheRead: 0, cacheWrite: 0, cacheReadReported: false });
+  const broken = await collect(parseOpenAiStream(linesFromText(sse(
+    { id: 'c', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: 'x' }, finish_reason: null }], usage: { prompt_tokens: 9, completion_tokens: 1 } },
+    `event: error\ndata: ${JSON.stringify({ message: 'upstream reset', retryable: true })}`,
+  ))));
+  assert.equal(broken.filter((e) => e.type === 'usage').length, 1, '中断前已花掉的 token 仍入账');
+  assert.equal(broken.at(-1).type, 'error');
 });
 
 await check('流解析: 参数不是合法 JSON 时给空对象,让工具自己报参数错', async () => {
@@ -122,15 +147,36 @@ const sampleTool = { name: 'get_studio_parameters', label: '读参数', descript
 await check('请求体: 没有 model 字段;工具带 tool_choice;思考开关进 extra_body;缓存键截到 64', () => {
   const body = buildAgentChatBody(
     { messages: [createMessage({ id: 'u', role: 'user', content: 'hi' })], tools: [sampleTool], promptCacheKey: 'k'.repeat(80) },
-    { fetchImpl: async () => new Response(''), llmBaseUrl: 'https://api.deepseek.com/v1', reasoning: true, thinkingEffort: 'high' },
+    { fetchImpl: async () => new Response(''), llmBaseUrl: 'https://api.openai.com/v1', reasoning: true, thinkingEffort: 'high' },
   );
   assert.ok(!('model' in body));
   assert.equal(body.tool_choice, 'auto');
   assert.equal(body.tools[0].function.name, 'get_studio_parameters');
-  assert.deepEqual(body.extra_body, { thinking: { type: 'enabled' } });
   assert.equal(body.reasoning_effort, 'high');
   assert.equal(body.prompt_cache_key.length, 64);
   assert.equal(clampPromptCacheKey(undefined), undefined);
+});
+
+await check('请求体(DeepSeek 官方主机): 带工具时省略 tool_choice,历史 assistant 的思考以 reasoning_content 回传;空思考不补字段;网关转发的 deepseek 不算', () => {
+  const history = [
+    createMessage({ id: 'u', role: 'user', content: 'hi' }),
+    createMessage({ id: 'a1', role: 'assistant', content: '', thoughts: '先看参数', toolCalls: [{ id: 'c1', name: 'get_studio_parameters', arguments: {} }] }),
+    createMessage({ id: 't1', role: 'tool', content: 'steps: 28', toolCallId: 'c1', toolName: 'get_studio_parameters' }),
+    createMessage({ id: 'a2', role: 'assistant', content: '好了', thoughts: '' }),
+  ];
+  const ds = buildAgentChatBody({ messages: history, tools: [sampleTool] }, { fetchImpl: async () => new Response(''), llmBaseUrl: 'https://api.deepseek.com/v1', reasoning: true, thinkingEffort: 'high' });
+  assert.ok(!('tool_choice' in ds), 'DeepSeek 带工具时不发 tool_choice');
+  assert.deepEqual(ds.extra_body, { thinking: { type: 'enabled' } });
+  assert.equal(ds.messages[1].reasoning_content, '先看参数');
+  assert.ok(!('reasoning_content' in ds.messages[3]), '空思考不臆造');
+  assert.ok(!('reasoning_content' in ds.messages[0]));
+  const noTools = buildAgentChatBody({ messages: history, tools: [] }, { fetchImpl: async () => new Response(''), llmBaseUrl: 'https://api.deepseek.com/v1' });
+  assert.ok(!('reasoning_content' in noTools.messages[1]), '没有工具时保持标准形状');
+  const gateway = buildAgentChatBody({ messages: history, tools: [sampleTool] }, { fetchImpl: async () => new Response(''), llmBaseUrl: 'https://my-newapi.example.com/deepseek.com/v1' });
+  assert.equal(gateway.tool_choice, 'auto', '只认 api.deepseek.com 这个主机');
+  assert.ok(!('reasoning_content' in gateway.messages[1]));
+  assert.equal(resolveThinkingFormat('https://api.deepseek.com/v1'), 'deepseek');
+  assert.equal(resolveThinkingFormat('https://gateway.example.com/deepseek.com/v1'), 'openai');
 });
 
 await check('消息编码: 工具结果带图升级成多模态块;用户图片同理;折叠替身去图加占位', () => {

@@ -10,7 +10,7 @@
  * 加上 sidecar 自己的两种事件(契约 §2.2):`event: degraded`、`event: error`。
  */
 
-import { usageFromJson, usageTotal, type HarnessEvent, type ToolCall } from './types';
+import { usageFromOpenAiJson, usageTotal, type HarnessEvent, type TokenUsage, type ToolCall } from './types';
 
 const OPEN_THINK = '<think>';
 const CLOSE_THINK = '</think>';
@@ -64,6 +64,12 @@ export async function* parseOpenAiStream(lines: AsyncIterable<string>): AsyncGen
   let pendingTag = '';
   let pendingEvent: string | null = null;
   let sawAnything = false;
+  // 流式 usage 快照:newapi 系网关会在每个 chunk 回传全量累计 usage,逐 chunk 上报会按 chunk 数重复记账;
+  // 对齐 pi 的 parseChunkUsage:逐 chunk 覆盖(last-wins),整条流(含中断)只发一次 usage。
+  let latestUsage: TokenUsage | null = null;
+  const flushUsage = function* (): Generator<HarnessEvent> {
+    if (latestUsage) { yield { type: 'usage', usage: latestUsage }; latestUsage = null; }
+  };
 
   const flushPending = function* (): Generator<HarnessEvent> {
     if (pendingTag) {
@@ -85,6 +91,7 @@ export async function* parseOpenAiStream(lines: AsyncIterable<string>): AsyncGen
         let payload: Record<string, unknown> = {};
         try { payload = JSON.parse(data); } catch { /* 按瞬态处理 */ }
         yield* flushPending();
+        yield* flushUsage();
         yield {
           type: 'error',
           error: typeof payload.message === 'string' ? payload.message : 'LLM 流中断',
@@ -112,13 +119,18 @@ export async function* parseOpenAiStream(lines: AsyncIterable<string>): AsyncGen
 
       const usage = json.usage;
       if (usage && typeof usage === 'object') {
-        const parsed = usageFromJson(usage);
-        if (usageTotal(parsed) > 0) yield { type: 'usage', usage: parsed };
+        const parsed = usageFromOpenAiJson(usage);
+        if (usageTotal(parsed) > 0) latestUsage = parsed;
       }
 
       const choices = json.choices;
       if (!Array.isArray(choices) || choices.length === 0) continue;
       const first = choices[0] as Record<string, unknown>;
+      // Moonshot 风格把 usage 挂在 choice 上;顶层优先,只在顶层没给时看它。
+      if (!(usage && typeof usage === 'object') && first.usage && typeof first.usage === 'object') {
+        const parsed = usageFromOpenAiJson(first.usage);
+        if (usageTotal(parsed) > 0) latestUsage = parsed;
+      }
       const delta = first.delta;
       if (!delta || typeof delta !== 'object') continue;
       const d = delta as Record<string, unknown>;
@@ -181,11 +193,14 @@ export async function* parseOpenAiStream(lines: AsyncIterable<string>): AsyncGen
     }
   } catch (error) {
     yield* flushPending();
+    // 中断也要把已经花掉的 token 记上。
+    yield* flushUsage();
     yield { type: 'error', error: `解析流式数据异常: ${error instanceof Error ? error.message : String(error)}`, transient: true };
     return;
   }
 
   yield* flushPending();
+  yield* flushUsage();
   void sawAnything;
 
   for (const [, raw] of [...accumulator.entries()].sort((a, b) => a[0] - b[0])) {

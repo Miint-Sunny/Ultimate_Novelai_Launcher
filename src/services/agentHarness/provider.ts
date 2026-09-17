@@ -52,17 +52,29 @@ export function clampPromptCacheKey(key: string | null | undefined): string | un
   return chars.length <= 64 ? key : chars.slice(0, 64).join('');
 }
 
+/**
+ * DeepSeek 的工具请求要求把历史 assistant 的思考(reasoning_content)完整回传;其他兼容端点保持标准
+ * OpenAI 消息形状。空思考不补字段,不臆造模型没返回的内容。(他 fork 的 pr-deepseek-protocol)
+ */
+export function serializeAgentMessage(message: AgentMessage, replayDeepSeekReasoning: boolean): Record<string, unknown> {
+  const json = messageToOpenAi(message);
+  if (replayDeepSeekReasoning && message.role === 'assistant' && message.thoughts) json.reasoning_content = message.thoughts;
+  return json;
+}
+
 export function buildAgentChatBody(options: StreamChatOptions, provider: SidecarLlmProviderOptions): Record<string, unknown> {
   const format = resolveThinkingFormat(provider.llmBaseUrl, provider.thinkingFormat);
   const thinking = thinkingParams(format, provider.reasoning ?? false, provider.thinkingEffort);
+  const replayDeepSeekReasoning = options.tools.length > 0 && format === 'deepseek';
   const body: Record<string, unknown> = {
-    messages: options.messages.map(messageToOpenAi),
+    messages: options.messages.map((m) => serializeAgentMessage(m, replayDeepSeekReasoning)),
     temperature: options.temperature ?? 0.7,
     extra_body: thinking.extraBody,
   };
   if (options.tools.length > 0) {
     body.tools = options.tools.map(toolToOpenAiFunction);
-    body.tool_choice = 'auto';
+    // DeepSeek 带工具时默认就是 auto;省略它兼容不同版本的思考模式。
+    if (format !== 'deepseek') body.tool_choice = 'auto';
   }
   if (thinking.reasoningEffort) body.reasoning_effort = thinking.reasoningEffort;
   if (provider.maxTokens) body.max_tokens = provider.maxTokens;

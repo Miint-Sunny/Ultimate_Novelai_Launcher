@@ -6,17 +6,37 @@
  * 以及 `DegradedEvent`(sidecar 切到备用槽位时的提示,契约 §2.2)。
  */
 
+/**
+ * Token 用量,Pi 口径(与他 0.5.0 的 types.dart 一致):`input` 只算未命中缓存的输入,
+ * 缓存读写单独计数;`cacheReadReported` 记这条统计有没有报告过缓存读数,缺失时命中率不冒充 0%。
+ * 旧落盘数据的 input 含缓存,读回来走 usageFromLegacyAppJson 惰性迁移。
+ */
 export interface TokenUsage {
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheReadReported?: boolean;
 }
 
-export const EMPTY_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+export const EMPTY_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheReadReported: false };
+
+export function usageTotalInput(u: TokenUsage): number {
+  return u.input + u.cacheRead + u.cacheWrite;
+}
 
 export function usageTotal(u: TokenUsage): number {
-  return u.input + u.output + u.cacheRead + u.cacheWrite;
+  return usageTotalInput(u) + u.output;
+}
+
+export function usageCacheReported(u: TokenUsage): boolean {
+  return u.cacheReadReported ?? u.cacheRead > 0;
+}
+
+/** 缓存命中率 = 缓存读 / 总输入;没报告缓存或没有输入时为 null(pi footer 的 CH 口径)。 */
+export function cacheHitRate(u: TokenUsage): number | null {
+  const total = usageTotalInput(u);
+  return usageCacheReported(u) && total > 0 ? u.cacheRead / total : null;
 }
 
 export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
@@ -25,22 +45,59 @@ export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
     output: a.output + b.output,
     cacheRead: a.cacheRead + b.cacheRead,
     cacheWrite: a.cacheWrite + b.cacheWrite,
+    cacheReadReported: (usageTotalInput(a) === 0 || usageCacheReported(a)) && (usageTotalInput(b) === 0 || usageCacheReported(b)),
   };
 }
 
-/** OpenAI usage 块 → TokenUsage。同时认 pi 的字段名和 OpenAI 的字段名,与他的 fromJson 一致。 */
+const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.trunc(v) : 0);
+
+/**
+ * OpenAI usage 块 → TokenUsage。prompt_tokens 含缓存,减掉缓存读写才是 Pi 的 input;
+ * 缓存读别名按 pi 的优先级短路(prompt_tokens_details.cached_tokens → prompt_cache_hit_tokens → cached_tokens),
+ * 报告了 0 也算报告了。
+ */
+export function usageFromOpenAiJson(json: unknown): TokenUsage {
+  if (!json || typeof json !== 'object') return { ...EMPTY_USAGE };
+  const j = json as Record<string, unknown>;
+  const details = j.prompt_tokens_details && typeof j.prompt_tokens_details === 'object' ? (j.prompt_tokens_details as Record<string, unknown>) : null;
+  const rawRead = [details?.cached_tokens, j.prompt_cache_hit_tokens, j.cached_tokens].find((v) => typeof v === 'number' && Number.isFinite(v));
+  const read = count(rawRead);
+  const write = count(details?.cache_write_tokens);
+  const prompt = count(j.prompt_tokens);
+  return {
+    input: Math.max(0, Math.min(prompt, prompt - read - write)),
+    output: count(j.completion_tokens),
+    cacheRead: read,
+    cacheWrite: write,
+    cacheReadReported: typeof rawRead === 'number' && rawRead >= 0,
+  };
+}
+
+/** 已归一化的 Pi 形状(input 已排除缓存);带 prompt_tokens 的按 OpenAI 块解析。 */
 export function usageFromJson(json: unknown): TokenUsage {
   if (!json || typeof json !== 'object') return { ...EMPTY_USAGE };
   const j = json as Record<string, unknown>;
-  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : 0);
-  const details = j.prompt_tokens_details;
-  const cached = details && typeof details === 'object' ? (details as Record<string, unknown>).cached_tokens : undefined;
+  if ('prompt_tokens' in j) return usageFromOpenAiJson(j);
+  const read = count(j.cacheRead);
   return {
-    input: n(j.input) + n(j.prompt_tokens),
-    output: n(j.output) + n(j.completion_tokens),
-    cacheRead: n(j.cacheRead) + n(j.prompt_cache_hit_tokens) + n(cached),
-    cacheWrite: n(j.cacheWrite),
+    input: count(j.input),
+    output: count(j.output),
+    cacheRead: read,
+    cacheWrite: count(j.cacheWrite),
+    cacheReadReported: typeof j.cacheReadReported === 'boolean' ? j.cacheReadReported : read > 0,
   };
+}
+
+/** 本应用的旧落盘数据(条目 / 账本):旧 input 含缓存;带 inputAccounting: 'exclusive' 的已是新口径,不再减。 */
+export function usageFromLegacyAppJson(json: unknown): TokenUsage {
+  const usage = usageFromJson(json);
+  if (!json || typeof json !== 'object' || (json as Record<string, unknown>).inputAccounting === 'exclusive') return usage;
+  return { ...usage, input: Math.max(0, Math.min(usage.input, usage.input - usage.cacheRead - usage.cacheWrite)) };
+}
+
+/** 落盘形状:带口径标记,读回来不会再减一次缓存。 */
+export function usageToJson(u: TokenUsage): Record<string, unknown> {
+  return { input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, cacheReadReported: usageCacheReported(u), inputAccounting: 'exclusive' };
 }
 
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool';

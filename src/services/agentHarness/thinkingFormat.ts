@@ -14,8 +14,11 @@ export function resolveThinkingFormat(baseUrl: string, configured?: string | nul
   const explicit = configured?.trim();
   if (explicit && explicit !== 'auto') return explicit as ThinkingFormat;
   const url = baseUrl.toLowerCase();
+  // 只认官方主机:经 newapi 之类网关转发的 DeepSeek 模型走标准 OpenAI 形状(他 fork 的 pr-deepseek-protocol)。
+  let host = '';
+  try { host = new URL(baseUrl.trim()).host.toLowerCase(); } catch { /* 不是完整 URL 就按子串规则 */ }
   if (url.includes('openrouter.ai')) return 'openrouter';
-  if (url.includes('deepseek.com')) return 'deepseek';
+  if (host === 'api.deepseek.com') return 'deepseek';
   if (url.includes('dashscope') || url.includes('aliyuncs')) return 'qwen';
   if (url.includes('z.ai') || url.includes('zhipu') || url.includes('bigmodel')) return 'zai';
   if (url.includes('together.ai')) return 'together';
