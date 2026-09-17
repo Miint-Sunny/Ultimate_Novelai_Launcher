@@ -15,6 +15,10 @@ test conversations can be run without restarting.
   user text contains "账号"   -> novelai_account_info, then answer
   user text contains "慢"     -> a deliberately slow streamed answer (~12 s) for abort tests
   user text contains "笔记"   -> context_memory add_note, then list, then answer (context memory check)
+  user text contains "批量词库" -> add_prompt_library_entry entries[2] -> update updates[3] (one ghost id)
+                                 -> delete ids[] (incl. ghost) -> answer (prompt library batch check)
+  user text contains "读技能"   -> load_skill(mock-pack, list_resources) -> load_skill(path = first resource)
+                                 -> answer (skill package resource check; needs a user skill with id mock-pack)
   tool result for get_...     -> update_studio_parameters
   tool result for update_...  -> final answer
   anything else               -> plain streamed answer (with a short reasoning delta)
@@ -123,6 +127,25 @@ def pick(req):
             return answer(f"看到了。工具说:{result[:160]}")
         if name == "add_character_prompt":
             return answer(f"角色加好了:{result[:100]}")
+        if name == "add_prompt_library_entry":
+            ids = re.findall(r"id=([\w-]+)", result)
+            if len(ids) >= 2:
+                return tool_call("update_prompt_library_entry",
+                                 {"updates": [{"id": ids[0], "prompt": "silver hair, long hair, from below"}, {"id": ids[1], "category": "风格"}, {"id": "ghost", "prompt": "x"}]},
+                                 "call_libupd", thought="两条一起改,顺手试一个不存在的 id。")
+            return answer(f"词库说:{result[:160]}")
+        if name == "update_prompt_library_entry":
+            ids = re.findall(r"id=([\w-]+)", result)
+            return tool_call("delete_prompt_library_entry", {"ids": ids + ["ghost"]}, "call_libdel", thought="改完一起删掉,不留测试痕迹。")
+        if name == "delete_prompt_library_entry":
+            return answer(f"批量流程跑完:{result[:200]}")
+        if name == "load_skill":
+            if result.startswith("技能包资源("):
+                # 清单里第一个文件读一段;没有资源就直接汇报。
+                paths = [l for l in result.split("\n")[1:] if l and not l.startswith("更多资源") and not l.startswith("使用 load_skill")]
+                if paths:
+                    return tool_call("load_skill", {"skill_name": "mock-pack", "path": paths[0], "limit": 80}, "call_skillread", thought="读第一个资源的开头。")
+            return answer(f"技能工具说:{result[:220]}")
         return answer(f"工具 {name} 返回了:{result[:120]}")
     user_text = text_of(last)
     if "问我" in user_text:
@@ -149,6 +172,13 @@ def pick(req):
         return tool_call("novelai_generate", {}, "call_gen", thought="按当前参数直接出图。")
     if "笔记" in user_text:
         return tool_call("context_memory", {"action": "add_note", "texts": ["用户偏好雨夜街头题材", "步数固定 22"]}, "call_memadd", thought="把结论记成笔记。")
+    if "读技能" in user_text:
+        return tool_call("load_skill", {"skill_name": "mock-pack", "list_resources": True}, "call_skilllist", thought="先列技能包里有什么。")
+    if "批量词库" in user_text:
+        return tool_call("add_prompt_library_entry",
+                         {"entries": [{"title": "mock 银发", "prompt": "silver hair, long hair", "category": "角色"},
+                                      {"title": "mock 雨夜", "prompt": "rainy street at night, neon lights", "category": "环境", "tags": ["scene"]}]},
+                         "call_libadd", thought="两条一起入库。")
     if "慢" in user_text:
         # 慢慢流 ~12 秒,给 Esc / 停止按钮留出中断的窗口。
         return answer("这是一段故意放慢的回复," + "慢慢地一个字一个字往外吐," * 6 + "用来测试中断。", thought="慢速流。", delay=0.3)

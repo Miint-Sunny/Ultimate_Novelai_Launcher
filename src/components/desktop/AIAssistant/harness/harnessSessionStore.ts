@@ -132,10 +132,19 @@ export function discardCurrentTranscript(): boolean {
 }
 
 export function removeHarnessSession(id: string): void {
+  removeHarnessSessions([id]);
+}
+
+/** 批量删除只写一次盘、只通知一次;不认识的 id 忽略,一个都没删到就不通知。 */
+export function removeHarnessSessions(ids: Iterable<string>): number {
+  const targets = new Set(ids);
   const list = listHarnessSessions();
-  if (!list.some((s) => s.id === id)) return;
-  writeSessions(list.filter((s) => s.id !== id));
+  const kept = list.filter((s) => !targets.has(s.id));
+  const removed = list.length - kept.length;
+  if (removed === 0) return 0;
+  writeSessions(kept);
   emit(false);
+  return removed;
 }
 
 /** 打开一条归档:当前对话(如有内容)先归档,再把那条灌成当前对话。 */

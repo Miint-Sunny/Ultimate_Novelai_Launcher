@@ -4,7 +4,7 @@ import { useAgentDock } from '../../../contexts/AgentDockContext';
 import { formatTokens } from '../../../services/agentHarness/usageLedger';
 import { usageTotal } from '../../../services/agentHarness/types';
 import { setAssistantUi } from './harness/assistantUi';
-import { discardCurrentTranscript, removeHarnessSession, restoreHarnessSession, useHarnessSessions } from './harness/harnessSessionStore';
+import { discardCurrentTranscript, removeHarnessSession, removeHarnessSessions, restoreHarnessSession, useHarnessSessions } from './harness/harnessSessionStore';
 import { HistoryView, type HistoryEntry } from './HistoryView';
 import { buildSessionFromLogs } from './useSessions';
 import { fmtDateShort } from './tokens';
@@ -98,7 +98,19 @@ export const SessionsPanel: React.FC = () => {
     [removeSession],
   );
 
-  return <HistoryView entries={entries} onResume={handleResume} onDelete={handleDelete} />;
+  /** 批量管理里一起删:harness 归档只写一次盘;当前会话(两种形态)按「清空」处理;旧版归档逐条摘。 */
+  const handleDeleteMany = useCallback(
+    (picked: HistoryEntry[]) => {
+      const harnessIds = picked.filter((e) => e.kind === 'harness' && !e.current).map((e) => String(e.id));
+      if (harnessIds.length) removeHarnessSessions(harnessIds);
+      if (picked.some((e) => e.kind === 'harness' && e.current)) discardCurrentTranscript();
+      if (picked.some((e) => e.kind === 'legacy' && e.current)) agentService.clearLogs();
+      for (const e of picked) if (e.kind === 'legacy' && !e.current) removeSession(Number(e.id));
+    },
+    [removeSession],
+  );
+
+  return <HistoryView entries={entries} onResume={handleResume} onDelete={handleDelete} onDeleteMany={handleDeleteMany} />;
 };
 
 function harnessChips(toolCalls: number, tokens: number): string[] {

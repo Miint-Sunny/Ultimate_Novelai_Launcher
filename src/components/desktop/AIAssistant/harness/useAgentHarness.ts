@@ -29,6 +29,7 @@ import { MODEL_MAP } from '../../../generation/modelResolutionOptions';
 import { renderCharacterOverlay } from './overlayRenderer';
 import { archiveCurrentTranscript, discardCurrentTranscript, loadCurrentContext, loadCurrentTranscript, saveCurrentContext, saveCurrentTranscript, setHarnessBusy, subscribeTranscriptReplaced } from './harnessSessionStore';
 import { loadPresetLibrary, savePresetLibrary } from './presetStorage';
+import { readSkillPackageFile } from './skillPackageStore';
 import { sessionUsageByModel, type SessionModelUsage } from './sessionArchive';
 import { transcriptToMessages, type TranscriptItem } from './transcript';
 import { appendUsage } from './usageLedgerStore';
@@ -251,6 +252,11 @@ export function useAgentHarness(): AgentHarnessController {
       },
       skills,
       enabledSkillIds: () => preset.enabledSkillIds,
+      // 技能包资源在托管 IndexedDB 里;load_skill 先按清单授权,这里只按包键 + 路径取字节。
+      readSkillResource: (skill, path) => {
+        if (!skill.packageId) return Promise.reject(new Error('该技能没有配套资源。'));
+        return readSkillPackageFile(skill.packageId, path);
+      },
     });
     harnessRef.current = new AgentHarness({
       tools: registry,

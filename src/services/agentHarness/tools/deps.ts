@@ -42,6 +42,13 @@ export interface ToolDeps {
   };
   skills: readonly Skill[];
   enabledSkillIds: () => readonly string[];
+  /**
+   * 读技能包里的一个资源(路径已经过 load_skill 的清单授权)。没接就只能读指令;
+   * 由面板注入(资源在浏览器的 IndexedDB 里),核心与校验脚本不依赖它。
+   */
+  readSkillResource?: (skill: Skill, path: string) => Promise<Uint8Array>;
+  /** 当前模型能不能看图;没接按能看处理(与 view_canvas_image 口径一致)。 */
+  isModelMultimodal?: () => boolean;
 }
 
 /** 词库条目:映射到我们的 Prompt Chunks(label = title,expansion = prompt,category = 文件夹)。 */

@@ -263,6 +263,60 @@ await check('技能: 只认预设开放的技能(含其子节);目录格式照�
   assert.match(formatSkillsForSystemPrompt(deps.skills.slice(0, 1)), /<available_skills>\n  <skill>\n    <name>nai5-prompting<\/name>/);
 });
 
+await check('技能包: skill_names 批量;清单分页;按清单授权读文件(字符分页 / 批量 / 图片单读 / 二进制拒绝);参数越界报错', async () => {
+  const { registry, deps } = makeDeps();
+  const texts = { 'references/guide.md': '0123456789', 'scripts/run.py': 'print(1)', 'img/a.png': 'PNG', 'bin/x.dat': 'a b' };
+  deps.skills = [...deps.skills, { id: 'pack', name: 'Pack', description: 'd', systemPrompt: 'PACK', packageId: 'pkg_abc', resourcePaths: Object.keys(texts).sort() }];
+  deps.enabledSkillIds = () => ['nai5-prompting', 'pack'];
+  const reads = [];
+  deps.readSkillResource = async (skill, path) => { reads.push(`${skill.id}:${path}`); return new TextEncoder().encode(texts[path]); };
+
+  const both = await run(registry, 'load_skill', { skill_names: ['nai5-prompting', 'pack', 'nope'] });
+  assert.equal(both.isError, undefined);
+  assert.match(both.content, /<skill name="nai5-prompting">[\s\S]*<skill name="pack">\n### 【Pack】[\s\S]*PACK\n技能包资源\(4 个/);
+  assert.match(both.content, /未找到技能 "nope"。当前可用技能列表: nai5-prompting, nai5-prompting\/通用写法, pack/);
+  const plain = await run(registry, 'load_skill', { skill_name: 'nai5-prompting' });
+  assert.doesNotMatch(plain.content, /技能包资源/, '没有资源的技能不带清单');
+
+  const list = await run(registry, 'load_skill', { skill_name: 'pack', list_resources: true, limit: 2 });
+  assert.equal(list.content.split('\n').slice(1, 3).join(','), 'bin/x.dat,img/a.png');
+  assert.match(list.content, /更多资源:load_skill\(skill_name: "pack", list_resources: true, offset: 2\)/);
+  assert.match(list.content, /脚本仅可读取,不会执行/);
+  const page2 = await run(registry, 'load_skill', { skill_name: 'pack', list_resources: true, offset: 2 });
+  assert.doesNotMatch(page2.content, /更多资源/);
+
+  const slice = await run(registry, 'load_skill', { skill_name: 'pack', path: 'references/guide.md', offset: 2, limit: 3 });
+  assert.equal(slice.isError, undefined);
+  assert.match(slice.content, /--- pack\/references\/guide.md\(参考数据,字符 2–5 \/ 10\)---\n234\n后续内容请用 offset: 5 继续读取。/);
+  assert.deepEqual(reads, ['pack:references/guide.md']);
+  const batch = await run(registry, 'load_skill', { skill_name: 'pack', paths: ['references/guide.md', 'scripts/run.py', 'nope.md'] });
+  assert.equal(batch.isError, undefined, '有一个读到就不算错');
+  assert.match(batch.content, /print\(1\)/); assert.match(batch.content, /nope.md:读取失败\(该路径不属于已授权的技能包。\)/);
+  assert.ok(!reads.includes('pack:nope.md'), '清单外的路径根本不进回调');
+  assert.equal((await run(registry, 'load_skill', { skill_name: 'pack', path: 'nope.md' })).isError, true);
+  const binary = await run(registry, 'load_skill', { skill_name: 'pack', path: 'bin/x.dat' });
+  assert.equal(binary.isError, true); assert.match(binary.content, /二进制资源已保留/);
+  const entry = await run(registry, 'load_skill', { skill_name: 'pack', path: 'SKILL.md' });
+  assert.match(entry.content, /name: pack/); assert.match(entry.content, /label: Pack/);
+
+  const image = await run(registry, 'load_skill', { skill_name: 'pack', path: 'img/a.png' });
+  assert.equal(image.isError, undefined); assert.equal(image.imageBase64, 'QUJD'); assert.match(image.content, /技能包图片:pack\/img\/a.png/);
+  const mixed = await run(registry, 'load_skill', { skill_name: 'pack', paths: ['img/a.png', 'references/guide.md'] });
+  assert.equal(mixed.isError, undefined); assert.match(mixed.content, /img\/a.png:读取失败\(图片需单独读取一个路径。\)/);
+  deps.isModelMultimodal = () => false;
+  assert.match((await run(registry, 'load_skill', { skill_name: 'pack', path: 'img/a.png' })).content, /不具备图像理解能力/);
+  delete deps.isModelMultimodal;
+
+  for (const bad of [
+    { skill_names: ['pack', 'nai5-prompting'], path: 'x' }, { skill_name: 'pack', path: '' }, { skill_name: 'pack', paths: [] }, { skill_name: 'pack', list_resources: 'yes' },
+    { skill_name: 'pack', path: 'x', offset: -1 }, { skill_name: 'pack', path: 'x', limit: 99999 }, { skill_name: 'pack', paths: Array(9).fill('x') }, { skill_name: 'pack', paths: [1] },
+    { skill_name: 'other', list_resources: true },
+  ]) assert.equal((await run(registry, 'load_skill', bad)).isError, true, JSON.stringify(bad));
+  delete deps.readSkillResource;
+  const noReader = await run(registry, 'load_skill', { skill_name: 'pack', path: 'references/guide.md' });
+  assert.equal(noReader.isError, true); assert.match(noReader.content, /未配置技能资源读取/);
+});
+
 await check('Danbooru: 两个工具打我们自己的路由并格式化结果', async () => {
   const { registry } = makeDeps();
   const s = await run(registry, 'danbooru_search_tags', { query: 'maid', limit: 500 });
@@ -286,6 +340,42 @@ await check('词库: 映射到片段库;标题带 ! 拒绝;同名拒绝;不支�
   assert.equal(library[0].prompt, 'blue eyes,');
   const del = await run(registry, 'delete_prompt_library_entry', { id });
   assert.equal(del.isError, undefined); assert.equal(library.length, 0);
+});
+
+await check('词库批量: entries 先整体校验再落盘;updates 逐条应用并报未生效;ids 与 id 并集删;search 分页', async () => {
+  library.length = 0;
+  const { registry } = makeDeps();
+  assert.match((await run(registry, 'add_prompt_library_entry', { entries: [] })).content, /非空对象数组/);
+  const half = await run(registry, 'add_prompt_library_entry', { entries: [{ title: 'A', prompt: 'a' }, { title: 'B', prompt: '' }] });
+  assert.equal(half.isError, true); assert.equal(library.length, 0, '有一条缺 prompt 就一条都不加');
+  const twice = await run(registry, 'add_prompt_library_entry', { entries: [{ title: 'A', prompt: 'a' }, { title: 'A', prompt: 'b' }] });
+  assert.match(twice.content, /出现了两次/); assert.equal(library.length, 0);
+  const ok = await run(registry, 'add_prompt_library_entry', { entries: [{ title: 'A', prompt: 'a', category: '风格' }, { title: 'B', prompt: 'b', tags: ['t'] }] });
+  assert.equal(ok.isError, undefined); assert.match(ok.content, /已新增 2 个词库条目/); assert.match(ok.content, /不支持 tags/);
+  assert.deepEqual(library.map((e) => [e.title, e.category]), [['A', '风格'], ['B', '其他']]);
+  assert.notEqual(library[0].id, library[1].id);
+  const [a, b] = library.map((e) => e.id);
+  assert.equal((await run(registry, 'add_prompt_library_entry', { entries: [{ title: 'C', prompt: 'c' }, { title: 'A', prompt: 'dup' }] })).isError, true, '与已有条目重名整批拒绝');
+  assert.equal(library.length, 2);
+  const upd = await run(registry, 'update_prompt_library_entry', { updates: [{ id: a, prompt: 'a2' }, { id: 'ghost', prompt: 'x' }, { id: b, title: 'A' }, { prompt: 'no id' }] });
+  assert.equal(upd.isError, undefined);
+  assert.match(upd.content, /已修改 1 个词库条目/); assert.match(upd.content, /找不到 id=ghost/); assert.match(upd.content, /改名失败/); assert.match(upd.content, /缺少条目 id/);
+  assert.equal(library[0].prompt, 'a2'); assert.equal(library[1].title, 'B');
+  const none = await run(registry, 'update_prompt_library_entry', { updates: [{ id: 'ghost' }] });
+  assert.equal(none.isError, true); assert.match(none.content, /未修改任何条目/);
+  assert.equal((await run(registry, 'update_prompt_library_entry', { updates: 'nope' })).isError, true);
+  assert.equal((await run(registry, 'update_prompt_library_entry', { prompt: 'x' })).isError, true, '单条没 id 还是报错');
+  const del = await run(registry, 'delete_prompt_library_entry', { id: a, ids: [b, 'ghost', a] });
+  assert.equal(del.isError, undefined); assert.match(del.content, /已删除 2 个词库条目/); assert.match(del.content, /未找到:ghost/);
+  assert.equal(library.length, 0);
+  assert.equal((await run(registry, 'delete_prompt_library_entry', { ids: [] })).isError, true);
+  assert.equal((await run(registry, 'delete_prompt_library_entry', { ids: ['ghost'] })).isError, true, '一个都没找到才报错');
+  for (let i = 0; i < 25; i += 1) await run(registry, 'add_prompt_library_entry', { title: `T${i}`, prompt: `p${i}` });
+  const page1 = await run(registry, 'search_prompt_library', {});
+  assert.match(page1.content, /^25 条\(本页第 1–20 条\):/); assert.match(page1.content, /下一页 offset: 20/);
+  const page2 = await run(registry, 'search_prompt_library', { offset: 20, limit: 99 });
+  assert.match(page2.content, /本页第 21–25 条/); assert.doesNotMatch(page2.content, /下一页/);
+  assert.equal(page2.content.split('\n').filter((l) => l.startsWith('- id=')).length, 5);
 });
 
 await check('角色批量: characters 数组一次全加,名额不够整体拒绝;updates 逐条应用并报未生效;ids 批量删', async () => {

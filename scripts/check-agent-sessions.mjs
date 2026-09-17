@@ -194,4 +194,20 @@ await check('归档: 本会话按模型聚合用量,按合计降序,没有 usage
   assert.deepEqual(rows[1].usage, usage(100, 20, 30));
 });
 
+await check('存储层批量删除: 一次写盘一次通知,不认识的 id 忽略,一个都没删到不通知', async () => {
+  const S = await import('../src/components/desktop/AIAssistant/harness/harnessSessionStore.ts');
+  const seed = ['a', 'b', 'c'].map((id, i) => buildHarnessSession(transcript, NOW + i, id));
+  localStorage.setItem('desktop_agent_harness_sessions', JSON.stringify(seed));
+  assert.deepEqual(S.listHarnessSessions().map((s) => s.id), ['a', 'b', 'c']);
+  // useSyncExternalStore 不能在 node 里跑,直接用模块暴露的读法验证快照变化
+  const before = S.listHarnessSessions();
+  assert.equal(S.removeHarnessSessions(['ghost']), 0);
+  assert.equal(S.listHarnessSessions(), before, '没删到就不换引用');
+  assert.equal(S.removeHarnessSessions(['a', 'c', 'ghost', 'a']), 2);
+  assert.deepEqual(S.listHarnessSessions().map((s) => s.id), ['b']);
+  assert.deepEqual(JSON.parse(localStorage.getItem('desktop_agent_harness_sessions')).map((s) => s.id), ['b'], '落盘同步');
+  S.removeHarnessSession('b');
+  assert.deepEqual(S.listHarnessSessions(), []);
+});
+
 console.log(`\n${checks} 项 agent 会话 / 账本校验全部通过。`);

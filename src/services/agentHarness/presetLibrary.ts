@@ -6,7 +6,8 @@
 
 import type { AgentPreset } from './harness';
 import { BUILTIN_PRESETS, PARAM_KEYS, PHASE_ONE_TOOLS } from './presets';
-import { stripFrontmatter, type Skill } from './skillCatalog';
+import type { Skill } from './skillCatalog';
+import { PACKAGE_ID_PATTERN, parseSkillMd, sanitizeResourcePaths, skillToSkillMd } from './skillPackage';
 
 export interface PresetLibrary {
   presets: AgentPreset[];
@@ -125,29 +126,19 @@ export function normalizeSkillId(raw: string): string {
   return cleaned || `skill-${Date.now().toString(36)}`;
 }
 
-/** 读 frontmatter 里的 name / description(只认这两个单行键),正文去掉 frontmatter。 */
+/**
+ * 单个 SKILL.md 文本 → 技能(标准 YAML 头,照他的 fromSkillMd;没头的纯文本按旧格式兼容)。
+ * 单文件导入不走标准 id 校验,但 id 按我们的规则收窄一下(空格 → 连字符),免得目录里出现带空格的标识。
+ */
 export function parseSkillMarkdown(text: string, fallbackId: string): Skill {
-  const normalized = text.replace(/\r\n/g, '\n');
-  let name = '';
-  let description = '';
-  if (normalized.startsWith('---')) {
-    const end = normalized.indexOf('\n---', 3);
-    const head = end < 0 ? '' : normalized.slice(3, end);
-    for (const line of head.split('\n')) {
-      const m = /^\s*(name|description)\s*:\s*(.*)$/i.exec(line);
-      if (!m) continue;
-      const value = m[2].trim().replace(/^["']|["']$/g, '');
-      if (m[1].toLowerCase() === 'name') name = value; else description = value;
-    }
-  }
-  const body = stripFrontmatter(normalized);
-  const id = normalizeSkillId(name || fallbackId);
-  return { id, name: name || fallbackId.replace(/\.md$/, ''), description, systemPrompt: body };
+  const base = fallbackId.replace(/\.md$/, '');
+  const parsed = parseSkillMd(text, { defaultId: normalizeSkillId(base), defaultName: base });
+  return { ...parsed, id: normalizeSkillId(parsed.id) };
 }
 
+/** 导出标准 SKILL.md(`name` 是标识,显示名不同才带 `label`,扩展字段原样带回)。 */
 export function skillToMarkdown(skill: Skill): string {
-  const quote = (v: string) => JSON.stringify(v);
-  return `---\nname: ${quote(skill.name)}\ndescription: ${quote(skill.description)}\n---\n\n${skill.systemPrompt.trim()}\n`;
+  return skillToSkillMd(skill);
 }
 
 export function upsertUserSkill(lib: PresetLibrary, skill: Skill): PresetLibrary {
@@ -194,7 +185,18 @@ function sanitizeSkill(raw: unknown): Skill | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || !r.id.trim() || typeof r.systemPrompt !== 'string') return null;
-  return { id: r.id, name: typeof r.name === 'string' && r.name.trim() ? r.name : r.id, description: typeof r.description === 'string' ? r.description : '', systemPrompt: r.systemPrompt };
+  const skill: Skill = { id: r.id, name: typeof r.name === 'string' && r.name.trim() ? r.name : r.id, description: typeof r.description === 'string' ? r.description : '', systemPrompt: r.systemPrompt };
+  if (r.disableModelInvocation === true) skill.disableModelInvocation = true;
+  // 技能包字段:托管键必须是我们自己生成的形状,清单逐条过路径校验;包键丢了资源也跟着作废。
+  if (typeof r.packageId === 'string' && PACKAGE_ID_PATTERN.test(r.packageId)) {
+    skill.packageId = r.packageId;
+    const paths = sanitizeResourcePaths(r.resourcePaths);
+    if (paths.length) skill.resourcePaths = paths;
+  }
+  if (r.extraFrontmatter && typeof r.extraFrontmatter === 'object' && !Array.isArray(r.extraFrontmatter) && Object.keys(r.extraFrontmatter).length) {
+    skill.extraFrontmatter = { ...(r.extraFrontmatter as Record<string, unknown>) };
+  }
+  return skill;
 }
 
 export function sanitizePresetLibrary(raw: unknown): PresetLibrary {

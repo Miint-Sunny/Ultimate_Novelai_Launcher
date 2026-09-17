@@ -7,6 +7,15 @@ export interface Skill {
   systemPrompt: string;
   /** 假 = 出现在目录里,模型可以按需加载。 */
   disableModelInvocation?: boolean;
+  /**
+   * 技能包(照他的 ca4f2e7):配套资源存在应用托管的 IndexedDB 里,这里只记随机键,
+   * 不接受技能文档里的路径作为存储位置。
+   */
+  packageId?: string;
+  /** 包内 SKILL.md 之外的文件,相对技能根目录,已排序;load_skill 只认这份清单。 */
+  resourcePaths?: string[];
+  /** license / compatibility / metadata / allowed-tools 等扩展字段原样保留;allowed-tools 只是元数据,不授予权限。 */
+  extraFrontmatter?: Record<string, unknown>;
 }
 
 export function stripFrontmatter(text: string): string {

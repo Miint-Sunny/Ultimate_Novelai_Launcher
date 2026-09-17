@@ -98,7 +98,8 @@ lp=p['legacy_payload']; print(json.dumps({'input':lp['input'],'parameters':lp['p
   按最后一条用户消息选分支):`步数` 读参→改参、`问我` ask_user、`看图` view_canvas_image、
   `联想` suggest_tags、`加角色`、`出图` novelai_generate(走付费闸)、`放大` novelai_upscale、
   `账号` account_info、`把步数改成 N 然后出图` 三连、`回忆` 报上下文里有几条用户消息、`慢` 慢速流(测 Esc 中断)、
-  `笔记` context_memory 记两条再 list。
+  `笔记` context_memory 记两条再 list、`批量词库` 词库 entries[2] → updates[3](含一个不存在的 id)→ ids[] 一起删、
+  `读技能` load_skill 先列 `mock-pack` 的资源清单再读第一个文件(要先在预设面板装一个标识为 mock-pack 的技能包并启用)。
 - 把 sidecar 槽位指过去:`PATCH /api/v1/settings {llm_base_url:"http://127.0.0.1:38111/v1",
   llm_model:"mock-1", llm_network_scope:"loopback"}`,再 `POST /auth/llm-key {api_key:"假的", slot:"primary"}`。
   **完事必须 `DELETE /auth/llm-key?slot=primary` 并把槽位清空**,

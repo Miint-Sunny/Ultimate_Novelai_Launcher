@@ -11,6 +11,7 @@ export * from './skillCatalog';
 export * from './presetLibrary';
 export * from './usageLedger';
 export * from './presetTransfer';
+export * from './skillPackage';
 export * from './contextMemory';
 export * from './replyMarker';
 export { estimateTextTokens } from './harness';
