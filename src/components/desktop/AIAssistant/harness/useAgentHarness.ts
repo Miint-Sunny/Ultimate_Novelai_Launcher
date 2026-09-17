@@ -77,6 +77,8 @@ export interface AgentHarnessController {
   lockedFields: Set<string>;
   toggleLockedField: (field: string) => void;
   send: (text: string, imageDataUrl?: string | null) => void;
+  /** 中断当前回复(Esc / 停止按钮):已流出的内容保留,未完成的工具调用以占位结果收口。 */
+  cancel: () => void;
   answerQuestion: (itemId: string, answers: string[] | null) => void;
   decidePermission: (itemId: string, decision: PermissionDecision) => void;
   /** 清空当前对话,不归档(输入栏的垃圾桶)。 */
@@ -317,6 +319,15 @@ export function useAgentHarness(): AgentHarnessController {
             break;
           case 'permission_result':
             break;
+          case 'aborted': {
+            if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false } : i));
+            // 挂着的提问与确认卡片一并收口,别留一张永远等回答的卡。
+            for (const [askId, resolve] of askResolvers.current) { resolve(null); askResolvers.current.delete(askId); }
+            setItems((prev) => prev.map((i) => (i.kind === 'ask' && i.answers === undefined ? { ...i, answers: null }
+              : i.kind === 'permission' && !i.decision ? { ...i, decision: { kind: 'deny', reason: '已中断' } } : i)));
+            setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: 'info', text: '已中断本轮回复。', at: Date.now() }]);
+            break;
+          }
           case 'retry':
             setItems((prev) => [...prev, { kind: 'notice', id: nextId('n'), level: 'warn', text: `第 ${event.attempt}/${event.maxAttempts} 次重试(${Math.round(event.delayMs / 1000)}s 后):${event.reason}`, at: Date.now() }]);
             break;
@@ -352,6 +363,8 @@ export function useAgentHarness(): AgentHarnessController {
       }
     })();
   }, [busy, ensureHarness, handlersRef, patchItem]);
+
+  const cancel = useCallback(() => { harnessRef.current?.abort(); }, []);
 
   // 两者都经存储层,状态更新由上面的 subscribeTranscriptReplaced 回调完成。
   const clear = useCallback(() => { discardCurrentTranscript(); }, []);
@@ -409,6 +422,7 @@ export function useAgentHarness(): AgentHarnessController {
     lockedFields,
     toggleLockedField,
     send,
+    cancel,
     answerQuestion,
     decidePermission,
     clear,

@@ -17,6 +17,7 @@ const {
   buildAgentChatBody, createSidecarLlmProvider, clampPromptCacheKey,
   ToolRegistry, AgentHarness, DEFAULT_PERMISSION_LIMITS, denialToolText, lockedFieldsToolText,
   messageToOpenAi, createMessage, withVisionImagesCollapsed,
+  encodePreset, decodePresets, PresetImportError,
 } = H;
 
 let checks = 0;
@@ -504,6 +505,113 @@ await check('工具目录: listWorkbenchTools 不需要真依赖,列出 19 个�
   const tools = listWorkbenchTools();
   assert.equal(tools.length, 19);
   assert.ok(tools.every((t) => t.label && ['R', 'W', 'D', 'P', 'A'].includes(t.permissionClass)));
+});
+
+// ---- 5. 中断(他 0.5.0 的 ba2845f) ----
+
+await check('中断: 流式期间 abort → 不重试、已流出的内容留在历史、最后一个事件是 aborted、之后能再发', async () => {
+  const provider = {
+    calls: 0, modelId: 'fake',
+    async *streamChat(opts) {
+      this.calls += 1;
+      yield { type: 'content_delta', delta: 'par' };
+      // 卡在网络上,直到 signal 触发才以瞬态错误收场(真实 fetch 被 abort 就是这个形状;已中止的信号立刻抛)。
+      if (!opts.signal.aborted) await new Promise((resolve) => opts.signal.addEventListener('abort', resolve, { once: true }));
+      yield { type: 'error', error: 'aborted by client', transient: true };
+    },
+  };
+  const h = harnessWith(provider);
+  const events = [];
+  const gen = h.send('hi');
+  for await (const ev of gen) {
+    events.push(ev);
+    if (ev.type === 'content_delta') {
+      assert.equal(h.isRunning, true);
+      h.abort();
+    }
+  }
+  assert.equal(events.at(-1).type, 'aborted');
+  assert.ok(!events.some((e) => e.type === 'retry'), '中断不算瞬态错误,不能退避重试');
+  assert.equal(h.messages.at(-1).role, 'assistant');
+  assert.equal(h.messages.at(-1).content, 'par');
+  assert.equal(h.isRunning, false);
+  assert.equal(provider.calls, 1);
+  const again = await collect(harnessWith(scriptedProvider([text('ok')])).send('again'));
+  assert.equal(again.at(-1).type, 'turn_end');
+});
+
+await check('中断: 工具执行中 abort → 该调用以「用户已中断」收口、剩余调用不执行但都有占位结果、历史合法', async () => {
+  const registry = new ToolRegistry();
+  let started = 0;
+  registry.register({ name: 'slow', label: '慢', description: 'd', parameters: { type: 'object', properties: {} }, permissionClass: 'R',
+    execute: () => { started += 1; return new Promise(() => {}); } });
+  registry.register({ name: 'fast', label: '快', description: 'd', parameters: { type: 'object', properties: {} }, permissionClass: 'R',
+    execute: async (id) => { started += 1; return { toolCallId: id, content: 'fast done' }; } });
+  const preset = { ...PRESET, enabledToolNames: ['slow', 'fast'] };
+  const provider = scriptedProvider([[...callTool('slow', {}, 'c1'), ...callTool('fast', {}, 'c2')], text('never')]);
+  const h = new AgentHarness({ tools: registry, provider, preset, sleep: fastSleep });
+  const events = [];
+  for await (const ev of h.send('go')) {
+    events.push(ev);
+    if (ev.type === 'tool_call' && ev.toolCall.id === 'c2') setTimeout(() => h.abort(), 5);
+  }
+  const results = events.filter((e) => e.type === 'tool_result').map((e) => e.result);
+  assert.equal(results.length, 2, '两个调用都要有结果收口');
+  assert.match(results[0].content, /用户已中断/);
+  assert.equal(results[0].isError, true);
+  assert.match(results[1].content, /用户已中断/);
+  assert.equal(started, 1, '中断后剩下的调用不再执行');
+  assert.equal(events.at(-1).type, 'aborted');
+  assert.deepEqual(h.messages.slice(-2).map((m) => [m.role, m.toolCallId]), [['tool', 'c1'], ['tool', 'c2']]);
+  assert.equal(provider.calls.length, 1, '中断后不再请求模型');
+});
+
+await check('中断: 运行中再 send 直接报错不排队;等确认卡片时 abort 按拒绝收口', async () => {
+  const registry = new ToolRegistry();
+  registry.register({ name: 'paid', label: '付费', description: 'd', parameters: { type: 'object', properties: {} }, permissionClass: 'P', countsAsGeneration: true,
+    estimateCost: async () => ({ anlas: 5, free: false }), execute: async (id) => ({ toolCallId: id, content: 'paid done' }) });
+  const preset = { ...PRESET, enabledToolNames: ['paid'] };
+  const h = new AgentHarness({ tools: registry, provider: scriptedProvider([callTool('paid', {}, 'c1'), text('x')]), preset, sleep: fastSleep, permissionMode: () => 'manual' });
+  const events = [];
+  for await (const ev of h.send('go')) {
+    events.push(ev);
+    if (ev.type === 'permission_request') {
+      const dup = await collect(h.send('second'));
+      assert.match(dup[0].error, /已在运行/);
+      h.abort();
+    }
+  }
+  const decision = events.find((e) => e.type === 'permission_result').decision;
+  assert.equal(decision.kind, 'deny');
+  assert.match(decision.reason, /中断/);
+  assert.equal(events.at(-1).type, 'aborted');
+});
+
+// ---- 6. 预设导入导出(他 fork 的 pr-preset-transfer) ----
+
+await check('预设进出: encode/decode 往返;权限字段缺失、未知工具、未知参数键、坏 JSON 都拒收;id 撞了加后缀', () => {
+  const json = encodePreset(PRESET);
+  const parsed = JSON.parse(json);
+  assert.equal(parsed.isBuiltin, false);
+  assert.deepEqual(parsed.enabledToolNames, PRESET.enabledToolNames);
+  const tools = ['get_studio_parameters', 'update_studio_parameters', 'novelai_generate', 'delete_prompt_library_entry', 'ask_user'];
+  const [back] = decodePresets(json, { existingIds: [], availableToolNames: tools });
+  assert.deepEqual(back, { id: 'p', name: 'p', systemPrompt: 'SYS', enabledSkillIds: [], enabledToolNames: PRESET.enabledToolNames, allowedModifiableParams: ['prompt'] });
+  const [renamed] = decodePresets(json, { existingIds: ['p', 'p-2'], availableToolNames: tools });
+  assert.equal(renamed.id, 'p-3');
+  const many = decodePresets(`[${json}, ${json}]`, { existingIds: [], availableToolNames: tools });
+  assert.deepEqual(many.map((p) => p.id), ['p', 'p-2']);
+  const expectCode = (source, code, detail) => {
+    try { decodePresets(source, { existingIds: [], availableToolNames: tools }); assert.fail(`应当拒收 ${code}`); }
+    catch (error) { assert.ok(error instanceof PresetImportError, String(error)); assert.equal(error.code, code); if (detail) assert.equal(error.detail, detail); }
+  };
+  expectCode('{oops', 'invalid_json');
+  expectCode('[]', 'invalid_json');
+  const { enabledToolNames: _dropped, ...noTools } = parsed;
+  expectCode(JSON.stringify(noTools), 'invalid_field', 'enabledToolNames');
+  expectCode(JSON.stringify({ ...parsed, enabledToolNames: ['secret_tool'] }), 'unknown_tool', 'secret_tool');
+  expectCode(JSON.stringify({ ...parsed, allowedModifiableParams: ['anlas'] }), 'unknown_parameter', 'anlas');
+  expectCode(JSON.stringify({ ...parsed, name: '  ' }), 'invalid_field', 'name');
 });
 
 console.log(`\n${checks} 项 agent harness 校验全部通过。`);

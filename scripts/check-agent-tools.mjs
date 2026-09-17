@@ -126,7 +126,7 @@ await check('参数 diff 文案与 update 执行: 写进适配器并回显;全�
 await check('角色: 增改删走适配器;上限拒绝;坐标夹到 0..1;use_auto_position 清坐标', async () => {
   const { registry, state } = makeDeps();
   const a = await run(registry, 'add_character_prompt', { prompt: 'girl, red eyes', position_x: 1.7, position_y: -1 });
-  assert.match(a.content, /已添加角色 id=c1/);
+  assert.match(a.content, /• id=c1 /);
   assert.deepEqual(state.characters[0].center, { x: 1, y: 0 });
   await run(registry, 'add_character_prompt', { prompt: 'boy' });
   const full = await run(registry, 'add_character_prompt', { prompt: 'third' });
@@ -166,9 +166,9 @@ await check('view_canvas_image: 无角色的图退回原图并说明;越界报�
 await check('角色坐标: position_x/position_y 是契约,center:{x,y} 也认;update 只传一个轴时另一轴沿用', async () => {
   const { registry, state } = makeDeps();
   const a = await run(registry, 'add_character_prompt', { prompt: '1girl', center: { x: 0.2, y: 0.9 } });
-  assert.match(a.content, /定位 \(0.2, 0.9\)/);
+  assert.match(a.content, /定位=\(0.2, 0.9\)/);
   const b = await run(registry, 'add_character_prompt', { prompt: '1boy', position_x: 0.7, position_y: 0.1 });
-  assert.match(b.content, /定位 \(0.7, 0.1\)/);
+  assert.match(b.content, /定位=\(0.7, 0.1\)/);
   const id = state.characters[0].id;
   await run(registry, 'update_character_prompt', { id, position_y: 0.4 });
   assert.deepEqual(state.characters[0].center, { x: 0.2, y: 0.4 });
@@ -286,6 +286,31 @@ await check('词库: 映射到片段库;标题带 ! 拒绝;同名拒绝;不支�
   assert.equal(library[0].prompt, 'blue eyes,');
   const del = await run(registry, 'delete_prompt_library_entry', { id });
   assert.equal(del.isError, undefined); assert.equal(library.length, 0);
+});
+
+await check('角色批量: characters 数组一次全加,名额不够整体拒绝;updates 逐条应用并报未生效;ids 批量删', async () => {
+  const { registry, state } = makeDeps();
+  const bad = await run(registry, 'add_character_prompt', { characters: [] });
+  assert.equal(bad.isError, true); assert.match(bad.content, /非空对象数组/);
+  const empty = await run(registry, 'add_character_prompt', { characters: [{ prompt: 'a' }, { name: 'x' }] });
+  assert.equal(empty.isError, true); assert.equal(state.characters.length, 0, '有一条 prompt 为空就一个都不加');
+  const ok = await run(registry, 'add_character_prompt', { characters: [{ prompt: 'a', position_x: 0.2, position_y: 0.3 }, { prompt: 'b', name: 'Bee' }] });
+  assert.equal(ok.isError, undefined);
+  assert.match(ok.content, /已添加 2 个角色/);
+  assert.deepEqual(state.characters.map((c) => [c.prompt, c.name, c.center]), [['a', '角色 1', { x: 0.2, y: 0.3 }], ['b', 'Bee', null]]);
+  const full = await run(registry, 'add_character_prompt', { characters: [{ prompt: 'c' }] });
+  assert.equal(full.isError, true); assert.match(full.content, /上限/);
+  const u = await run(registry, 'update_character_prompt', { updates: [{ id: state.characters[0].id, enabled: false }, { id: 'nope', prompt: 'x' }, { id: state.characters[1].id }] });
+  assert.equal(u.isError, undefined);
+  assert.match(u.content, /已更新 1 个角色/); assert.match(u.content, /找不到 id=nope/); assert.match(u.content, /没有传入任何要修改的字段/);
+  assert.equal(state.characters[0].enabled, false);
+  const none = await run(registry, 'update_character_prompt', { updates: [{ id: 'nope' }] });
+  assert.equal(none.isError, true);
+  const r = await run(registry, 'remove_character_prompt', { ids: [state.characters[0].id, 'zzz'] });
+  assert.equal(r.isError, undefined); assert.match(r.content, /已删除 1 个角色/); assert.match(r.content, /找不到:id=zzz/);
+  assert.equal(state.characters.length, 1);
+  const rNone = await run(registry, 'remove_character_prompt', {});
+  assert.equal(rNone.isError, true);
 });
 
 console.log(`\n${checks} 项 agent 工具校验全部通过。`);

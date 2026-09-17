@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getAppSettings, saveAppSettings } from '../../../../services/localLibrary/appSettings';
 import { History, Lock, MessageSquarePlus, Receipt, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import type { PermissionMode } from '../../../../services/agentHarness/types';
@@ -58,6 +58,14 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
 
   const toggleSheet = (next: Sheet) => setSheet((cur) => (cur === next ? 'none' : next));
   const closeSheet = () => setSheet('none');
+
+  // Esc 立即中断(他 0.5.0 的 ba2845f):子页开着时 Esc 归子页,只在对话流上生效。
+  useEffect(() => {
+    if (!h.busy || sheet !== 'none') return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); h.cancel(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [h.busy, sheet, h.cancel]);
 
   const send = (text?: string) => {
     const value = (text ?? input).trim();
@@ -136,6 +144,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         hasMessages={h.items.length > 0}
         onClearChat={h.clear}
         onHeightChange={setInputBarOffset}
+        onStop={h.cancel}
       />}
     </div>
   );

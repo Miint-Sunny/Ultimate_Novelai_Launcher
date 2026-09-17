@@ -91,6 +91,28 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 
 let requestSeq = 0;
 
+/**
+ * 每次 send 独立的取消信号(照他 0.5.0 的 _HarnessRun):中断等待中的模型流、退避与工具结果;
+ * 已发出的外部副作用(比如已经提交的生成)不能撤回。
+ */
+class HarnessRun {
+  readonly controller = new AbortController();
+  private resolveCancelled!: () => void;
+  readonly cancelled = new Promise<void>((resolve) => { this.resolveCancelled = resolve; });
+  private done = false;
+  get isCancelled(): boolean { return this.done; }
+  cancel(): void {
+    if (this.done) return;
+    this.done = true;
+    this.resolveCancelled();
+    this.controller.abort();
+  }
+  /** 等一个 Promise;取消时提前返回 undefined,不等上游。 */
+  wait<T>(work: Promise<T>): Promise<T | undefined> {
+    return Promise.race([work, this.cancelled.then(() => undefined)]);
+  }
+}
+
 export class AgentHarness {
   readonly tools: ToolRegistry;
   provider: LlmProvider | null;
@@ -116,6 +138,7 @@ export class AgentHarness {
 
   private readonly _messages: AgentMessage[] = [];
   private sendEpoch = 0;
+  private activeRun: HarnessRun | null = null;
   private compactionSummary: string | null = null;
   private contextStartIndex = 0;
 
@@ -167,7 +190,31 @@ export class AgentHarness {
   }
 
   /** 发送用户消息并驱动整个循环;事件流给 UI。 */
+  /** 中断当前这一轮:等待中的模型流、退避与工具结果立刻收口;没有在跑就什么都不做。 */
+  abort(): void {
+    this.activeRun?.cancel();
+  }
+
+  get isRunning(): boolean {
+    return this.activeRun !== null;
+  }
+
   async *send(userText: string, options: { temperature?: number; images?: AgentMessageImage[]; id?: string } = {}): AsyncGenerator<HarnessEvent> {
+    if (this.activeRun) {
+      yield { type: 'error', error: 'Agent 已在运行,等它结束或先中断。', transient: false };
+      return;
+    }
+    const run = new HarnessRun();
+    this.activeRun = run;
+    try {
+      yield* this.sendWithRun(userText, options, run);
+    } finally {
+      run.cancel();
+      if (this.activeRun === run) this.activeRun = null;
+    }
+  }
+
+  private async *sendWithRun(userText: string, options: { temperature?: number; images?: AgentMessageImage[]; id?: string }, run: HarnessRun): AsyncGenerator<HarnessEvent> {
     const images = options.images ?? [];
     if (!userText.trim() && images.length === 0) return;
     this.sendEpoch += 1;
@@ -197,7 +244,8 @@ export class AgentHarness {
       if (this.compactionEnabled && this.contextWindowTokens > 0) {
         const window = this.contextWindowTokens - this.compactionReserveTokens;
         if (this.estimateContextTokens(systemPrompt) > window) {
-          const evt = await this.compactContext();
+          const evt = await run.wait(this.compactContext());
+          if (run.isCancelled) { yield { type: 'aborted' }; return; }
           if (evt) yield evt;
         }
       }
@@ -224,6 +272,7 @@ export class AgentHarness {
           tools: toolsForTurn,
           temperature: options.temperature ?? 0.7,
           promptCacheKey: this.sessionId,
+          signal: run.controller.signal,
         });
         for await (const event of stream) {
           if (event.type === 'thought_delta') { thoughts += event.delta; yield event; }
@@ -234,11 +283,24 @@ export class AgentHarness {
           else if (event.type === 'error') { errorMessage = event.error; errorTransient = event.transient; }
         }
 
+        if (run.isCancelled) {
+          // 已经流出来的内容留在历史里:模型下次看到的就是用户看到的;半截工具调用不留。
+          if (content || thoughts) {
+            this._messages.push(createMessage({
+              id: assistantMsgId, role: 'assistant', content, thoughts, usage,
+              provider: this.providerLabel, model: this.provider.modelId || undefined, imageEpoch: this.sendEpoch, createdAt: this.now(),
+            }));
+          }
+          yield { type: 'aborted' };
+          return;
+        }
+
         if (errorMessage !== null) {
           if (errorTransient && attempt < this.maxRetryAttempts) {
             const delayMs = this.retryBaseDelayMs * (1 << (attempt - 1));
             yield { type: 'retry', attempt: attempt + 1, maxAttempts: this.maxRetryAttempts, reason: errorMessage, delayMs };
-            await this.sleep(delayMs);
+            await run.wait(this.sleep(delayMs));
+            if (run.isCancelled) { yield { type: 'aborted' }; return; }
             continue;
           }
           giveUpReason = errorTransient ? `连续 ${this.maxRetryAttempts} 次请求失败: ${errorMessage}` : errorMessage;
@@ -249,7 +311,8 @@ export class AgentHarness {
           if (attempt < this.maxRetryAttempts) {
             const delayMs = this.retryBaseDelayMs * (1 << (attempt - 1));
             yield { type: 'retry', attempt: attempt + 1, maxAttempts: this.maxRetryAttempts, reason: '模型返回空响应', delayMs };
-            await this.sleep(delayMs);
+            await run.wait(this.sleep(delayMs));
+            if (run.isCancelled) { yield { type: 'aborted' }; return; }
             continue;
           }
           giveUpReason = `模型连续 ${this.maxRetryAttempts} 次返回空响应,请检查模型配置或稍后重试。`;
@@ -283,7 +346,10 @@ export class AgentHarness {
       }
 
       for (const call of calls) {
-        const result = yield* this.runTool(call, toolContext, budget);
+        // 中断后剩下的调用不再执行,但要用占位结果收口:OpenAI 要求每个 tool_call 都有回应。
+        const result = run.isCancelled
+          ? toolError(call.id, call.name, '用户已中断,工具调用未完成。')
+          : yield* this.runTool(call, toolContext, budget, run);
         yield { type: 'tool_result', result };
         this._messages.push(createMessage({
           id: `tool_${this.now()}_${call.id}`,
@@ -298,6 +364,8 @@ export class AgentHarness {
           createdAt: this.now(),
         }));
       }
+
+      if (run.isCancelled) { yield { type: 'aborted' }; return; }
 
       completedToolTurns += 1;
       if (completedToolTurns >= this.maxTurns) {
@@ -314,7 +382,7 @@ export class AgentHarness {
   }
 
   /** 过闸 → 执行。要问就发事件等 UI;拒绝/超时以工具结果回给模型。 */
-  private async *runTool(call: ToolCall, ctx: ToolContext, budget: MessageBudget): AsyncGenerator<HarnessEvent, ToolResult> {
+  private async *runTool(call: ToolCall, ctx: ToolContext, budget: MessageBudget, run: HarnessRun): AsyncGenerator<HarnessEvent, ToolResult> {
     const tool = this.tools.get(call.name);
     if (!tool) return toolError(call.id, call.name, `错误:未知工具 "${call.name}"`);
     if (!this.preset.enabledToolNames.includes(tool.name)) {
@@ -352,7 +420,7 @@ export class AgentHarness {
         },
       };
       const timeout = this.sleep(this.permissionTimeoutMs).then((): PermissionDecision => ({ kind: 'deny', reason: '确认超时' }));
-      const decision = await Promise.race([decided, timeout]);
+      const decision = (await run.wait(Promise.race([decided, timeout]))) ?? { kind: 'deny', reason: '用户已中断' };
       settled = true;
       yield { type: 'permission_result', requestId, toolName: tool.name, decision };
       if (decision.kind === 'deny') return toolError(call.id, call.name, denialToolText(tool.name, decision.reason));
@@ -361,7 +429,8 @@ export class AgentHarness {
 
     if (tool.countsAsGeneration) budget.generations += 1;
     try {
-      const result = await tool.execute(call.id, call.arguments, ctx);
+      const result = await run.wait(tool.execute(call.id, call.arguments, ctx));
+      if (result === undefined) return toolError(call.id, call.name, '用户已中断;已启动的外部操作可能仍在执行。');
       return { ...result, toolName: result.toolName ?? tool.name };
     } catch (error) {
       return toolError(call.id, call.name, `工具执行异常: ${error instanceof Error ? error.message : String(error)}`);

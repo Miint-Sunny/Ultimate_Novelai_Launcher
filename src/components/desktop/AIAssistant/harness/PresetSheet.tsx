@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Copy, Download, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Copy, Download, FileDown, FileUp, Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload } from 'lucide-react';
+import { decodePresets, encodePreset, PresetImportError } from '../../../../services/agentHarness/presetTransfer';
 import { PARAM_KEYS } from '../../../../services/agentHarness/presets';
 import {
   createPreset, duplicatePreset, inheritsFromParent, isBuiltinPreset, isSkillEnabled, normalizeSkillId, parseSkillMarkdown,
@@ -52,6 +53,28 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
   const builtin = isBuiltinPreset(active.id);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const presetFileRef = useRef<HTMLInputElement | null>(null);
+  const [transferNote, setTransferNote] = useState<{ level: 'info' | 'error'; text: string } | null>(null);
+
+  // 预设 JSON 进出(他 fork 的 pr-preset-transfer):导入的是可编辑草稿,权限字段缺了就拒收,不退回全开。
+  const importPresets = async (file: File) => {
+    try {
+      const imported = decodePresets(await file.text(), { existingIds: library.presets.map((p) => p.id), availableToolNames: tools.map((t) => t.name) });
+      let next = library;
+      for (const preset of imported) next = upsertPreset(next, preset);
+      onChange(setActivePreset(next, imported[0].id));
+      setTransferNote({ level: 'info', text: `已导入 ${imported.length} 个预设,当前切到「${imported[0].name}」;工具与参数权限按文件里写的来。` });
+    } catch (error) {
+      setTransferNote({ level: 'error', text: error instanceof PresetImportError ? error.message : `导入失败:${error instanceof Error ? error.message : String(error)}` });
+    }
+  };
+  const exportPreset = () => {
+    const blob = new Blob([encodePreset(active)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `agent-preset-${active.id}.json`; a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); if (editingSkill) setEditingSkill(null); else onBack(); } };
@@ -102,10 +125,20 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
               ))}
               <button title="新建预设" onClick={() => onChange(createPreset(library))} style={miniBtn}><Plus size={12} /></button>
               <button title="复制当前预设" onClick={() => onChange(duplicatePreset(library, active.id))} style={miniBtn}><Copy size={12} /></button>
+              <button title="导出当前预设为 JSON(可导入他的 Novelai-harness)" onClick={exportPreset} style={miniBtn}><FileDown size={12} /></button>
+              <button title="导入预设 JSON(单个或数组;权限字段必须写全)" onClick={() => presetFileRef.current?.click()} style={miniBtn}><FileUp size={12} /></button>
+              <input ref={presetFileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importPresets(file);
+                if (presetFileRef.current) presetFileRef.current.value = '';
+              }} />
               {builtin
                 ? <button title="恢复出厂内容" onClick={() => onChange(resetBuiltinPreset(library, active.id))} style={miniBtn}><RotateCcw size={12} /></button>
                 : <button title="删除当前预设" onClick={() => onChange(removePreset(library, active.id))} style={miniBtn}><Trash2 size={12} /></button>}
             </Row>
+            {transferNote && (
+              <div style={{ fontSize: 11, lineHeight: 1.5, color: transferNote.level === 'error' ? C.err : INK_MUTED, padding: '4px 0 0 56px' }}>{transferNote.text}</div>
+            )}
             <Row label="名称">
               <input value={active.name} onChange={(e) => update({ name: e.target.value })} style={inputStyle} />
             </Row>

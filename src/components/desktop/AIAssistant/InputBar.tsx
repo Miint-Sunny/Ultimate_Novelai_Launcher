@@ -17,6 +17,8 @@ interface Props {
   onClearChat: () => void;
   /** 把整个 InputBar 高度上报给父组件，用于 ChatBody 留出底部避让 */
   onHeightChange?: (h: number) => void;
+  /** 回复中的中断入口(有它时发送按钮在 sending 期间变成停止按钮)。 */
+  onStop?: () => void;
 }
 
 /**
@@ -39,6 +41,7 @@ export const InputBar: React.FC<Props> = ({
   hasMessages,
   onClearChat,
   onHeightChange,
+  onStop,
 }) => {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -232,6 +235,28 @@ export const InputBar: React.FC<Props> = ({
             </svg>
           </button>
         )}
+        {sending && onStop && (
+          <button
+            className="aa-btn-cell"
+            onClick={onStop}
+            title="中断本轮回复 (Esc)"
+            style={{
+              width: 30,
+              height: 30,
+              display: 'grid',
+              placeItems: 'center',
+              color: C.bgDeep,
+              background: C.accent,
+              border: 0,
+              borderRadius: 8,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <rect x="5" y="5" width="14" height="14" rx="2" />
+            </svg>
+          </button>
+        )}
+        {!(sending && onStop) && (
         <button
           className="aa-btn"
           onClick={onSend}
@@ -274,6 +299,7 @@ export const InputBar: React.FC<Props> = ({
             </svg>
           )}
         </button>
+        )}
       </div>
     </div>
   );

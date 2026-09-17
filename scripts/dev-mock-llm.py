@@ -13,13 +13,14 @@ test conversations can be run without restarting.
                                  ("改完出图" chains get -> update -> generate -> answer)
   user text contains "放大"   -> novelai_upscale index 0, then answer
   user text contains "账号"   -> novelai_account_info, then answer
+  user text contains "慢"     -> a deliberately slow streamed answer (~12 s) for abort tests
   tool result for get_...     -> update_studio_parameters
   tool result for update_...  -> final answer
   anything else               -> plain streamed answer (with a short reasoning delta)
 
 Never called by anything but the local sidecar's LLM slot.
 """
-import json, os, re
+import json, os, re, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("MOCK_LLM_PORT", "38111"))
@@ -42,11 +43,13 @@ def tool_call(name, args, cid, thought="先看看工作台现在的参数。"):
     yield chunk({}, finish="tool_calls")
 
 
-def answer(text, thought=None):
+def answer(text, thought=None, delay=0.0):
     yield chunk({"role": "assistant", "content": ""})
     if thought:
         yield chunk({"reasoning_content": thought})
     for i in range(0, len(text), 4):
+        if delay:
+            time.sleep(delay)
         yield chunk({"content": text[i:i + 4]})
     yield chunk({}, finish="stop")
 
@@ -139,6 +142,9 @@ def pick(req):
         return tool_call("novelai_account_info", {}, "call_account", thought="先看看余额。")
     if "出图" in user_text:
         return tool_call("novelai_generate", {}, "call_gen", thought="按当前参数直接出图。")
+    if "慢" in user_text:
+        # 慢慢流 ~12 秒,给 Esc / 停止按钮留出中断的窗口。
+        return answer("这是一段故意放慢的回复," + "慢慢地一个字一个字往外吐," * 6 + "用来测试中断。", thought="慢速流。", delay=0.3)
     return answer("(mock) 我在,说说你想怎么改。", thought="普通对话,不需要工具。")
 
 

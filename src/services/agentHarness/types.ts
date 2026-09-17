@@ -265,4 +265,6 @@ export type HarnessEvent =
   | { type: 'compaction'; summary: string; tokensBefore: number; tokensAfter: number }
   | { type: 'degraded'; slot: string; reason: string }
   | { type: 'permission_request'; request: PermissionRequest }
-  | { type: 'permission_result'; requestId: string; toolName: string; decision: PermissionDecision };
+  | { type: 'permission_result'; requestId: string; toolName: string; decision: PermissionDecision }
+  /** 用户中断(Esc / 停止按钮):本轮到此为止,已流出的内容保留,未完成的工具调用以占位结果收口。 */
+  | { type: 'aborted' };

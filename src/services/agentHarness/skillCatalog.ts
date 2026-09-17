@@ -32,7 +32,7 @@ export function formatSkillsForSystemPrompt(skills: readonly Skill[]): string {
   if (visible.length === 0) return '';
   const lines = [
     'The following skills provide specialized instructions for specific tasks.',
-    "Use the `load_skill` tool to load a skill's detailed instructions when the task matches its description.",
+    'Use `load_skill` for relevant instructions not already present in the current context. Reload after compaction if needed.',
     '',
     '<available_skills>',
   ];
