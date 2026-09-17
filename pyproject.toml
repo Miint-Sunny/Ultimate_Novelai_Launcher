@@ -40,7 +40,8 @@ package = false
 # 与 .github/workflows/ci.yml 里 setup-uv 的 version 一起改,两处必须相等:
 # 本地和 CI 用同一个 uv 解析同一份 uv.lock,才谈得上 --frozen 可复现。
 # 2026-09-04: 0.11.18 → 0.12.9(本机 Homebrew 已到 0.12.9,三个协作方都撞过这个钉子)。
-required-version = "==0.12.9"
+# 2026-09-17: 0.12.9 → 0.12.13(Homebrew 2026-09-10 升到 0.12.13,`npm run sidecar` 直接拒绝启动)。
+required-version = "==0.12.13"
 # Supply-chain cooling-off: a fresh resolve may not pick up distributions
 # published after this date, so a compromised release cannot land silently on a
 # `uv lock --upgrade`. Move the date forward deliberately when upgrading.

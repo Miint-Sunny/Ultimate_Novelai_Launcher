@@ -1,7 +1,10 @@
 """Tag autocomplete / verify / wiki / semantic-search / related endpoints.
 
 Ported from the legacy server/app.py so they run in the sidecar (local-only):
-- Danbooru calls use curl_cffi (Chrome TLS impersonation) to pass Cloudflare;
+- Danbooru calls use curl_cffi (Chrome TLS impersonation) to pass Cloudflare,
+  but identify themselves with an honest client User-Agent: since 2026-09
+  Danbooru's Cloudflare rules answer a browser UA without a browser session
+  with a 403 "Just a moment" challenge, while a plain API client UA passes;
   set DANBOORU_PROXY_URL if your network needs a proxy.
 - Semantic search / related use the DanbooruSearch HF Space over httpx.
 - Chinese wiki-summary and the related fallback use the sidecar's configured LLM
@@ -35,6 +38,12 @@ from .llm.client import chat_completion
 from .security import OutboundPolicy, OutboundPolicyError
 
 DANBOORU = "https://danbooru.donmai.us"
+# Danbooru's API etiquette wants a UA that names the client; it is also what keeps
+# Cloudflare from serving the JS challenge (an impersonated Chrome UA with no
+# browser session gets 403, this does not — verified 2026-09-17).
+DANBOORU_USER_AGENT = (
+    "UltimateNovelaiLauncher/0.1 (+https://github.com/Miint-Sunny/Ultimate_Novelai_launcher)"
+)
 DANBOORU_SEARCH_BASE = "https://sakizuki-danboorusearch.hf.space"
 
 WIKI_CACHE_TTL = 3600
@@ -110,6 +119,7 @@ def _get_danbooru_session(settings: Settings):
             _danbooru_session = _cffi_requests.Session(
                 impersonate="chrome",
                 proxies=proxies,
+                headers={"User-Agent": DANBOORU_USER_AGENT},
             )
             _danbooru_proxy_key = proxy_key
         return _danbooru_session

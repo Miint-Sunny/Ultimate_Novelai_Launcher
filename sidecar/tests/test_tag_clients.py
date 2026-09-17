@@ -70,6 +70,12 @@ def test_danbooru_session_tracks_live_proxy_settings_and_closes() -> None:
         with patch.object(tags._cffi_requests, "Session", side_effect=create_session):
             first = tags._get_danbooru_session(settings)
             assert tags._get_danbooru_session(settings) is first
+            # Cloudflare 对「浏览器 UA 但没有浏览器会话」的请求回 403 挑战页;
+            # 会话必须带诚实的客户端 UA,TLS 指纹照旧模拟 Chrome。
+            assert created[0].options["impersonate"] == "chrome"
+            assert created[0].options["headers"] == {
+                "User-Agent": tags.DANBOORU_USER_AGENT
+            }
 
             proxied = replace(settings, danbooru_proxy_url="http://127.0.0.1:7890")
             second = tags._get_danbooru_session(proxied)

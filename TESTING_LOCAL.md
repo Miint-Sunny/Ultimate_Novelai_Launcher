@@ -91,3 +91,17 @@ lp=p['legacy_payload']; print(json.dumps({'input':lp['input'],'parameters':lp['p
 
 - 没配 LLM 时,词条会一直显示「翻译中…」,控制台刷 `[Translate] API 调用失败`。
 - 助手面板显示「本地主模型未配置」,固定指令仍可用。
+
+## Agent harness 联调(无 NAI 订阅也能跑)
+
+- 假 LLM:`scripts/dev-mock-llm.py`(父目录 `.claude/launch.json` 里叫 `mock-llm`,38111,无状态,
+  按最后一条用户消息选分支):`步数` 读参→改参、`问我` ask_user、`看图` view_canvas_image、
+  `联想` suggest_tags、`加角色`、`出图` novelai_generate(走付费闸)、`放大` novelai_upscale、
+  `账号` account_info、`把步数改成 N 然后出图` 三连、`回忆` 报上下文里有几条用户消息。
+- 把 sidecar 槽位指过去:`PATCH /api/v1/settings {llm_base_url:"http://127.0.0.1:38111/v1",
+  llm_model:"mock-1", llm_network_scope:"loopback"}`,再 `POST /auth/llm-key {api_key:"假的", slot:"primary"}`。
+  **完事必须 `DELETE /auth/llm-key?slot=primary` 并把槽位清空**,
+  用 `security find-generic-password -s "Ultimate Novelai launcher" -a llm-api-key` 复核钥匙串干净。
+- 生图必须走 `dev-sidecar`(`MOCK_GENERATION=1`):mock 图是按请求尺寸的渐变 PNG,upscale / vibe 也 mock;
+  `/api/anlas` 仍是真接口(只读),所以付费闸会估出真实价钱,正好测钱包闸。
+  真正发出去的载荷看 `GET /api/v1/generation/jobs?limit=1` 的 `payload.legacy_payload`。

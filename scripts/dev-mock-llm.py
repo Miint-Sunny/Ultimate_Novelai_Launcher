@@ -9,6 +9,10 @@ test conversations can be run without restarting.
   user text contains "加角色" -> add_character_prompt with a fixed centre, then answer
   user text contains "看图"   -> view_canvas_image index 0, then answer echoing the tool text
   user text contains "联想"   -> novelai_suggest_tags (dictionary), then answer
+  user text contains "出图"   -> novelai_generate (P class: exercises the permission gate), then answer
+                                 ("改完出图" chains get -> update -> generate -> answer)
+  user text contains "放大"   -> novelai_upscale index 0, then answer
+  user text contains "账号"   -> novelai_account_info, then answer
   tool result for get_...     -> update_studio_parameters
   tool result for update_...  -> final answer
   anything else               -> plain streamed answer (with a short reasoning delta)
@@ -64,13 +68,17 @@ def tool_name_for(messages, tool_call_id):
     return ""
 
 
-def requested_steps(messages):
-    """Steps asked for in the last user message ("改成 24"), default 20."""
+def last_user_text(messages):
     for m in reversed(messages):
         if m.get("role") == "user":
-            found = re.search(r"(\d{1,3})", text_of(m))
-            return int(found.group(1)) if found else 20
-    return 20
+            return text_of(m)
+    return ""
+
+
+def requested_steps(messages):
+    """Steps asked for in the last user message ("改成 24"), default 20."""
+    found = re.search(r"(\d{1,3})", last_user_text(messages))
+    return int(found.group(1)) if found else 20
 
 
 def pick(req):
@@ -90,7 +98,17 @@ def pick(req):
         if name == "update_studio_parameters":
             if "拒绝" in result:
                 return answer("好的,这次不改了。需要的话告诉我要改成多少。")
+            if "出图" in last_user_text(messages):
+                return tool_call("novelai_generate", {}, "call_gen", thought="参数改好了,直接出图。")
             return answer("已按要求改好步数,提示词换成雨夜街头。要出图的话我可以调用 novelai_generate。")
+        if name == "novelai_generate":
+            if "拒绝" in result or "失败" in result:
+                return answer(f"这次没有出图:{result[:120]}")
+            return answer(f"出图完成。工具说:{result[:120]}")
+        if name == "novelai_upscale":
+            return answer(f"放大结果:{result[:120]}")
+        if name == "novelai_account_info":
+            return answer(f"账号情况:{result[:200]}")
         if name == "ask_user":
             return answer(f"收到,你选的是:{result[:80]}")
         if name == "view_canvas_image":
@@ -113,6 +131,12 @@ def pick(req):
         return tool_call("view_canvas_image", {"index": 0}, "call_view", thought="先看一眼最新那张。")
     if "联想" in user_text:
         return tool_call("novelai_suggest_tags", {"query": "silver hair", "source": "dictionary"}, "call_suggest", thought="查一下规范拼法。")
+    if "放大" in user_text:
+        return tool_call("novelai_upscale", {"index": 0}, "call_upscale", thought="把最新那张放大一档。")
+    if "账号" in user_text:
+        return tool_call("novelai_account_info", {}, "call_account", thought="先看看余额。")
+    if "出图" in user_text:
+        return tool_call("novelai_generate", {}, "call_gen", thought="按当前参数直接出图。")
     return answer("(mock) 我在,说说你想怎么改。", thought="普通对话,不需要工具。")
 
 
@@ -123,6 +147,17 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("content-length", "0"))
         req = json.loads(self.rfile.read(length) or b"{}")
+        if req.get("stream") is False:
+            # 非流式调用(标签翻译之类的旁路功能):回一个普通 completion,别拿 SSE 噎它。
+            body = json.dumps({"id": "mock", "object": "chat.completion", "created": 0, "model": "mock-1",
+                               "choices": [{"index": 0, "message": {"role": "assistant", "content": "(mock) 非流式请求"}, "finish_reason": "stop"}],
+                               "usage": {"prompt_tokens": 10, "completion_tokens": 5}}, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")

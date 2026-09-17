@@ -28,7 +28,8 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
       const full = args.full_resolution === true;
       const wantOverlay = args.with_overlay !== false;
       const maxEdge = full ? null : DEFAULT_MAX_EDGE;
-      const enabled = (image.characters ?? []).filter((c) => c.enabled);
+      // 与发给 NAI 的筛选口径一致(novelai.ts:启用且提示词非空);空提示词的槽位模型根本没见过,不该画锚点。
+      const enabled = (image.characters ?? []).filter((c) => c.enabled && c.prompt.trim());
       const free = freePositioningForModel(image.model);
 
       let blob: Blob;

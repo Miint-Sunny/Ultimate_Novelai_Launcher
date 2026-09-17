@@ -241,7 +241,6 @@ export function useAgentHarness(): AgentHarnessController {
       skills,
       enabledSkillIds: () => preset.enabledSkillIds,
     });
-    const settings = getAppSettings();
     harnessRef.current = new AgentHarness({
       tools: registry,
       provider: providerRef.current,
@@ -249,7 +248,8 @@ export function useAgentHarness(): AgentHarnessController {
       sessionId: `desk_${Date.now().toString(36)}`,
       providerLabel: llm.provider || 'sidecar',
       permissionMode: () => modeRef.current,
-      permissionLimits: () => ({ ...DEFAULT_PERMISSION_LIMITS, anlasBudget: settings.agentAnlasBudget, maxGenerationsPerMessage: settings.agentMaxGenerations }),
+      // 每次取闸门上限都现读设置:预算在设置页改了要立刻生效,不能等 harness 重建。
+      permissionLimits: () => { const s = getAppSettings(); return { ...DEFAULT_PERMISSION_LIMITS, anlasBudget: s.agentAnlasBudget, maxGenerationsPerMessage: s.agentMaxGenerations }; },
       opusExhausted: () => isOpusUsageExhausted(),
       lockedFields: () => lockedRef.current,
       systemPromptSuffix: () => formatSkillsForSystemPrompt(skills.filter((s) => preset.enabledSkillIds.some((id) => s.id === id || s.id.startsWith(`${id}/`)))),
@@ -282,7 +282,8 @@ export function useAgentHarness(): AgentHarnessController {
         switch (event.type) {
           case 'turn_start': {
             currentAssistant = nextId('a');
-            setItems((prev) => [...prev, { kind: 'assistant', id: currentAssistant!, content: '', thoughts: '', streaming: true, at: Date.now() }]);
+            // 先记槽位模型:发起工具调用的那些轮次没有 turn_end,不在这里记就永远是 unknown。
+            setItems((prev) => [...prev, { kind: 'assistant', id: currentAssistant!, content: '', thoughts: '', streaming: true, model: llmRef.current?.model || undefined, at: Date.now() }]);
             break;
           }
           case 'thought_delta':
@@ -327,8 +328,7 @@ export function useAgentHarness(): AgentHarnessController {
             break;
           case 'turn_end': {
             // sidecar 槽位不回报模型名(provider.modelId 为空)时,记槽位设置里的那个,本会话统计才有名字。
-            const model = event.finalMessage.model || llmRef.current?.model || undefined;
-            if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false, model } : i));
+            if (currentAssistant) patchItem(currentAssistant, (i) => (i.kind === 'assistant' ? { ...i, streaming: false, model: event.finalMessage.model || i.model } : i));
             break;
           }
           case 'error': {

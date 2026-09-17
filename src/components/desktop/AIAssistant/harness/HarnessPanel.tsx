@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { getAppSettings, saveAppSettings } from '../../../../services/localLibrary/appSettings';
 import { History, Lock, MessageSquarePlus, Receipt, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import type { PermissionMode } from '../../../../services/agentHarness/types';
 import { InputBar } from '../InputBar';
@@ -40,6 +41,13 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
   const [input, setInput] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [locksOpen, setLocksOpen] = useState(false);
+  // 硬上限(契约 §5.3):任何模式都不能绕过;改了直接落盘,闸门每次现读设置。
+  const [limits, setLimits] = useState(() => ({ budget: getAppSettings().agentAnlasBudget, maxGen: getAppSettings().agentMaxGenerations }));
+  const saveLimit = (patch: Partial<typeof limits>) => {
+    const next = { ...limits, ...patch };
+    setLimits(next);
+    saveAppSettings({ ...getAppSettings(), agentAnlasBudget: next.budget, agentMaxGenerations: next.maxGen });
+  };
   const [sheet, setSheet] = useState<Sheet>('none');
   const [inputBarOffset, setInputBarOffset] = useState(64);
   const checkpoints = useMemo(() => extractCheckpoints(h.items), [h.items]);
@@ -71,7 +79,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         <Segmented value={h.mode} options={MODES} onChange={h.setMode} ariaLabel="工作台权限模式" />
         {h.mode === 'yolo' && <span style={{ fontSize: 10, fontWeight: 700, color: '#f5c451' }}>YOLO</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          <button className="aa-btn" title={h.lockedFields.size ? `已锁定 ${h.lockedFields.size} 项` : '锁定字段'} onClick={() => setLocksOpen((v) => !v)} style={iconBtn(h.lockedFields.size > 0)}><Lock size={13} /></button>
+          <button className="aa-btn" title={h.lockedFields.size ? `锁定字段与硬上限(已锁定 ${h.lockedFields.size} 项)` : '锁定字段与硬上限'} onClick={() => setLocksOpen((v) => !v)} style={iconBtn(h.lockedFields.size > 0 || locksOpen)}><Lock size={13} /></button>
           <button className="aa-btn" title="回溯到某一轮" disabled={rewindDisabled} onClick={() => toggleSheet('rewind')} style={{ ...iconBtn(sheet === 'rewind'), opacity: rewindDisabled ? 0.45 : 1 }}><History size={13} /></button>
           <button className="aa-btn" title={`预设与技能(当前:${h.activePresetName})`} disabled={h.busy} onClick={() => toggleSheet('presets')} style={{ ...iconBtn(sheet === 'presets'), opacity: h.busy ? 0.45 : 1 }}><SlidersHorizontal size={13} /></button>
           <button className="aa-btn" title="用量账单" onClick={() => toggleSheet('bill')} style={iconBtn(sheet === 'bill')}><Receipt size={13} /></button>
@@ -85,6 +93,10 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
           {LOCKABLE_FIELDS.map((f) => (
             <button key={f.id} onClick={() => h.toggleLockedField(f.id)} style={chipButton({ primary: h.lockedFields.has(f.id) })}>{f.label}</button>
           ))}
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+            <LimitField label="单条消息 Anlas 预算" title="0 = 只放行免费的生成;要扣点的生成在任何模式下都先问" value={limits.budget} max={10000} onChange={(v) => saveLimit({ budget: v })} />
+            <LimitField label="单条消息生成上限" title="一条用户消息内最多出几张图(放行模式也算)" value={limits.maxGen} min={1} max={20} onChange={(v) => saveLimit({ maxGen: v })} />
+          </div>
         </div>
       )}
       {!h.available && (
@@ -128,6 +140,17 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
     </div>
   );
 };
+
+function LimitField({ label, title, value, min = 0, max, onChange }: { label: string; title: string; value: number; min?: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <label title={title} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--nai-agent-ink-muted)' }}>
+      {label}
+      <input type="number" min={min} max={max} step={1} value={value} aria-label={label}
+        onChange={(e) => { const n = Math.round(Number(e.target.value)); if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n))); }}
+        style={{ width: 58, padding: '3px 6px', fontSize: 11.5, color: C.text, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)', borderRadius: 'var(--nai-agent-radius-xs)', outline: 'none' }} />
+    </label>
+  );
+}
 
 function iconBtn(active: boolean): React.CSSProperties {
   return {
