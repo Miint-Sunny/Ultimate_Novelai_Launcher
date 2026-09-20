@@ -922,7 +922,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 contextPadding={contextPadding}
               />
             )}
-            {/* 对比原图覆盖层 - 按住时显示生成前快照，扩图时遮挡新增区域 */}
+            {/* 对比上一版覆盖层 - 按住时显示上次点生成那一刻的画布快照(面板里连续迭代时是上一版结果,不是进面板时的原图),扩图时遮挡新增区域 */}
             {showOriginal && snapshotRef.current && (() => {
               const snap = snapshotRef.current!;
               const s = displayWidth / imageWidth;
@@ -932,8 +932,8 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
               const origH = snap.height * s;
               return (
                 <div style={{ position: 'absolute', top: 0, left: 0, width: `${displayWidth}px`, height: `${displayHeight}px`, zIndex: 50, pointerEvents: 'none' }}>
-                  {/* 原图区域显示旧图快照 */}
-                  <img src={snap.url} alt="原图对比" style={{
+                  {/* 上一版区域显示旧图快照 */}
+                  <img src={snap.url} alt="上一版对比" style={{
                     position: 'absolute', top: `${offT}px`, left: `${offL}px`,
                     width: `${origW}px`, height: `${origH}px`,
                     display: 'block',
@@ -1228,14 +1228,14 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 </button>
               </div>
 
-              {/* 按住对比原图 - 生成过后显示 */}
+              {/* 按住对比上一版 - 生成过后显示 */}
               {hasSnapshot && !isGenerating && (
                 <button
                   onMouseDown={() => setShowOriginal(true)}
                   onMouseUp={() => setShowOriginal(false)}
                   onMouseLeave={() => setShowOriginal(false)}
                   className={`flex items-center gap-1.5 bg-gray-900/90 backdrop-blur-md rounded-xl px-3 border shadow-xl h-11 pointer-events-auto ${showOriginal ? 'text-black bg-nai-accent border-nai-accent' : 'text-gray-400 hover:text-white border-white/10'}`}
-                  title="按住对比原图"
+                  title="按住对比上一版(上次生成前的画面)"
                 >
                   <Eye className="w-[18px] h-[18px]" />
                   <span className="text-xs">对比</span>
