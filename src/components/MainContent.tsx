@@ -7,6 +7,7 @@ import { ImageToolbar } from './ImageToolbar';
 import { InpaintOverlay, type ExpandPayload } from './InpaintOverlay';
 import { WorkshopInputBar } from './workshop/WorkshopInputBar';
 import { alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
+import { expandMaskRegions } from './inpaint/maskUtils';
 import { UpscaleModal } from './UpscaleModal';
 import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
 import { WatermarkPlacementOverlay } from './watermark/WatermarkPlacementOverlay';
@@ -357,6 +358,10 @@ export const MainContent: React.FC = () => {
         // 蒙版是二值图,放大时不插值,免得边缘出现灰阶
         maskCropCtx.imageSmoothingEnabled = false;
         maskCropCtx.drawImage(maskImg, sendRect.x, sendRect.y, sendRect.width, sendRect.height, 0, 0, sent.width, sent.height);
+        // 8px 潜空间对齐必须在**发送分辨率**上做:原图尺度量化过的块被放大 s 倍后,块边落在 8px 网格中间,
+        // NovelAI 对只覆盖一部分的 8px 块会吐半透明像素(真链路实测:贴回来是一块绿色补丁)。
+        // 发送尺寸是 64 的倍数,8px 块刚好铺满。
+        maskCropCtx.putImageData(expandMaskRegions(maskCropCtx.getImageData(0, 0, sent.width, sent.height)), 0, 0);
         maskBase64 = maskCropCanvas.toDataURL('image/png').split(',')[1];
 
         cropInfo = { cropRect, sendRect, sentWidth: sent.width, sentHeight: sent.height, originalImageBase64: fullImageBase64, originalWidth: fullWidth, originalHeight: fullHeight };
