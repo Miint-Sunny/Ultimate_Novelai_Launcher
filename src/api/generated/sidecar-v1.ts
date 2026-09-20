@@ -451,6 +451,8 @@ export interface components {
             readonly content?: string | readonly components["schemas"]["AgentChatContentPart"][] | null;
             /** Name */
             readonly name?: string | null;
+            /** Reasoning Content */
+            readonly reasoning_content?: string | null;
             /**
              * Role
              * @enum {string}

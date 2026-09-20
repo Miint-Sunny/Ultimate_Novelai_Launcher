@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from agent_router import llm_relay, model_provider
 from agent_router.access import AgentAccess
+from agent_router.llm.chat_request import AGENT_CHAT_MAX_TEXT_BYTES
 from agent_router.llm.stream import RelayChannel, drain_relay
 from agent_router.router import router
 from cloud_backend.identity import Principal
@@ -476,3 +477,60 @@ def test_get_stream_target_reports_misconfiguration(monkeypatch: pytest.MonkeyPa
         model_provider.get_stream_target("")
     with pytest.raises(LookupError):
         model_provider.get_stream_target("ghost")
+
+
+async def test_assistant_reasoning_content_is_replayed_upstream(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # DeepSeek's thinking models refuse a tool-call continuation unless the
+    # assistant turn carries the reasoning it produced; the relay passes it on
+    # untouched instead of rejecting the field as unknown.
+    seen = _install_upstream(monkeypatch, lambda _r: _stream_response(CHUNK, USAGE_CHUNK))
+    messages = [
+        {"role": "user", "content": "看看当前提示词"},
+        {
+            "role": "assistant",
+            "content": None,
+            "reasoning_content": "用户想看提示词，先读参数。",
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "get_studio_parameters",
+                        "arguments": '{"keys":["prompt"]}',
+                    },
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call-1", "content": '{"prompt":"1girl"}'},
+    ]
+
+    response = await _post(app, _request_body(messages=messages))
+
+    assert response.status_code == 200, response.text
+    sent = json.loads(seen[0].content)
+    assert sent["messages"][1]["reasoning_content"] == "用户想看提示词，先读参数。"
+    assert "reasoning_content" not in sent["messages"][0]
+    assert "reasoning_content" not in sent["messages"][2]
+
+
+@pytest.mark.parametrize("role", ["system", "user", "tool"])
+async def test_reasoning_content_outside_assistant_turns_is_422(app: FastAPI, role: str) -> None:
+    message: dict[str, Any] = {"role": role, "content": "x", "reasoning_content": "no"}
+    if role == "tool":
+        message["tool_call_id"] = "call-1"
+
+    response = await _post(app, _request_body(messages=[message]))
+
+    assert response.status_code == 422, response.text
+    assert "reasoning_content" in response.text
+
+
+async def test_reasoning_content_counts_toward_the_text_budget(app: FastAPI) -> None:
+    oversized = "y" * (AGENT_CHAT_MAX_TEXT_BYTES + 1)
+    message = {"role": "assistant", "content": "ok", "reasoning_content": oversized}
+
+    response = await _post(app, _request_body(messages=[message]))
+
+    assert response.status_code == 422, response.text
