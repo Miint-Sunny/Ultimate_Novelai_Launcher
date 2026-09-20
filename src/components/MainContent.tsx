@@ -3,7 +3,7 @@ import { Copy, FileDigit, Image as ImageIcon, X, AlertCircle, Download, Settings
 import { useGeneration } from '../contexts/GenerationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { SaveModal, type SaveOptions } from './SaveModal';
-import { ImageToolbar } from './ImageToolbar';
+import { useImageActions } from './desktop/imageActions';
 import { InpaintOverlay, type ExpandPayload } from './InpaintOverlay';
 import { WorkshopInputBar } from './workshop/WorkshopInputBar';
 import { alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
@@ -81,6 +81,31 @@ export const MainContent: React.FC = () => {
     window.addEventListener('open-image-gen-page', handler);
     return () => window.removeEventListener('open-image-gen-page', handler);
   }, []);
+
+  // 画布动作的按钮住在顶栏(外壳重排第 2 步),状态留在这里:只把开法注册上去。
+  // 见 desktop/imageActions.tsx 里为什么不提状态、也不再加 window 事件。
+  // `open-image-gen-page` 这个事件原样保留 —— 它是外部(以后的导演工具、助手)
+  // 打开工坊的入口,只是不再由画布上那条浮动工具条来发。
+  const imageActions = useImageActions();
+  const canActOnImage = !!imageUrl && !isGenerating && !isInpaintMode && !isWorkshopOpen;
+  useEffect(() => {
+    imageActions.setHasImage(canActOnImage);
+  }, [imageActions, canActOnImage]);
+  useEffect(() => {
+    imageActions.register({
+      openInpaint: () => {
+        setInitialMask(null);
+        setInpaintOriginalImage(null);
+        setInpaintDimensions(null);
+        setIsInpaintMode(true);
+      },
+      openUpscale: () => setIsUpscaleModalOpen(true),
+      openEditor: () => {
+        setWorkshopInitialUrl(imageUrl || undefined);
+        setIsWorkshopOpen(true);
+      },
+    });
+  }, [imageActions, imageUrl]);
 
   // 默认保存设置
   const [defaultSaveMode, setDefaultSaveMode] = useState<'original' | 'clean' | 'custom'>('original');
@@ -496,14 +521,6 @@ export const MainContent: React.FC = () => {
           initialMask={initialMask}
         />
       )}
-
-      {/* Image Toolbar */}
-      <ImageToolbar
-        hasImage={!!imageUrl && !isGenerating && !isInpaintMode && !isWorkshopOpen}
-        imageUrl={imageUrl || undefined}
-        onInpaint={() => { setInitialMask(null); setInpaintOriginalImage(null); setInpaintDimensions(null); setIsInpaintMode(true); }}
-        onSuperResolution={() => setIsUpscaleModalOpen(true)}
-      />
 
       {/* 图像编辑（大GPT 工坊）：嵌在画布底部的紧凑输入条，提交后立即关闭 */}
       <WorkshopInputBar

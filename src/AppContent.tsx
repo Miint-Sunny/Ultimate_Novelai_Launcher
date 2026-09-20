@@ -4,6 +4,7 @@ import { MainContent } from './components/MainContent';
 import { HistoryDock } from './components/HistoryDock';
 import { RightDock } from './components/desktop/dock/RightDock';
 import { DockTopBar } from './components/desktop/dock/DockToolbar';
+import { ImageActionsProvider } from './components/desktop/imageActions';
 import { LoginModal } from './components/LoginModal';
 import { AgentDockProvider } from './contexts/AgentDockContext';
 import { useAuth } from './contexts/AuthContext';
@@ -126,6 +127,8 @@ const AppContent: React.FC = () => {
       onDrop={handleBackgroundDrop}
     >
       <AgentDockProvider>
+        {/* 顶栏的画布动作与 MainContent 的覆盖层是兄弟节点,靠这层把开法接上 */}
+        <ImageActionsProvider>
         <div className="flex flex-1 overflow-hidden relative">
           {/* 左栏直通到底：顶栏从它的右边缘才开始，不再横跨全宽把它切断
               （用户 2026-09-21 的第一条硬条件，方案见
@@ -146,6 +149,7 @@ const AppContent: React.FC = () => {
             </div>
           </div>
         </div>
+        </ImageActionsProvider>
       </AgentDockProvider>
 
       {/* Drop target selection modal - shown when dropping outside specific zones */}

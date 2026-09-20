@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Bot, History, MoreVertical, PanelRightClose } from 'lucide-react';
+import { Bot, History, Maximize2, MoreVertical, Paintbrush, PanelRightClose, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAgentDock } from '../../../contexts/AgentDockContext';
 import { C } from '../AIAssistant/tokens';
 import { DOCK_PANEL_ORDER, type DockPanelId } from './dockLayout';
+import { useImageActions } from '../imageActions';
 
 /** 面板的图标与名字。面板体本身在 RightDock 的登记表里。 */
 export const PANEL_META: Record<DockPanelId, { title: string; Icon: LucideIcon }> = {
@@ -118,6 +119,50 @@ export const DockToolbar: React.FC = () => {
 };
 
 /**
+ * 顶栏左段:对**当前这张图**动手的三个动作(外壳重排第 2 步)。
+ *
+ * 它们从画布上方那条浮动工具条搬上来 —— 那条压在图上,而图是这个应用的主角。
+ * 入口只此一处:左栏管「下一张图的输入」,顶栏管「这张图」。以后的导演工具排在后面。
+ *
+ * 复制 / 保存**不在这里**:它们是终结动作,留在图像右下角(方案 §3.6,用户 2026-09-21 定)。
+ * 没有图时整段禁用而不是隐藏 —— 位置固定,用户不用找。
+ */
+const IMAGE_ACTIONS = [
+  { key: 'inpaint', label: '重绘', Icon: Paintbrush },
+  { key: 'upscale', label: '放大', Icon: Maximize2 },
+  { key: 'editor', label: '编辑', Icon: Sparkles },
+] as const;
+
+const ImageActionBar: React.FC = () => {
+  const { hasImage, actions } = useImageActions();
+  const run = {
+    inpaint: actions.openInpaint,
+    upscale: actions.openUpscale,
+    editor: actions.openEditor,
+  };
+  return (
+    <div className="flex items-center gap-0.5">
+      {IMAGE_ACTIONS.map(({ key, label, Icon }) => (
+        <button
+          key={key}
+          type="button"
+          data-image-action={key}
+          disabled={!hasImage}
+          onClick={run[key]}
+          title={hasImage ? label : `${label}(先出一张图)`}
+          className={`group flex items-center gap-1.5 h-6 px-2 rounded-md text-[12px] transition-colors ${
+            hasImage ? 'text-gray-300 hover:text-white hover:bg-white/10' : 'text-gray-600 cursor-not-allowed'
+          }`}
+        >
+          <Icon className="w-3.5 h-3.5" />
+          <span className="whitespace-nowrap">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+/**
  * 顶栏。**从左栏的右边缘起**,只跨画布与右栏(2026-09-21 外壳重排第 1 步):
  * 左栏是主工作区,必须直通到底,不能被一条横贯全宽的条切断。
  *
@@ -128,9 +173,10 @@ export const DockToolbar: React.FC = () => {
  */
 export const DockTopBar: React.FC = () => (
   <div
-    className="shrink-0 flex items-center justify-end gap-2 px-2"
+    className="shrink-0 flex items-center justify-between gap-2 px-2"
     style={{ height: 30, background: C.bgDeep, borderBottom: `1px solid ${C.line}` }}
   >
+    <ImageActionBar />
     <DockToolbar />
   </div>
 );
