@@ -71,6 +71,11 @@ export const V5_TRANSPARENT_BACKGROUND_TAG = 'transparent background';
  * 用户自己写过就不再追加。按词面做不区分大小写的包含判断,`{transparent background}`、
  * `2.1::transparent background::` 这些写法都算写过(界面上的 💡 提示就教了后一种)。
  * 追加要绕开手写的 `text:` 块,否则这两个词会被模型当成要写的字画到图上。
+ *
+ * 落点:我们追加在质量尾**之后**,官方是写进用户的提示词框。2026-09-21 真链路复验过这个差异
+ * 不影响结果——只开开关(提示词里不写这个词)出的图全透明像素 313669(31%)、四角 alpha 0,
+ * 修之前同一个开关是 0 个。所以别为了「对齐位置」把它挪到 buildPromptPair:那层竖屏不走,
+ * 挪过去等于把竖屏漏掉,而这里和质量尾共用同一条发送期变换。
  */
 export function withV5TransparentBackgroundTag(prompt: string): string {
   if (prompt.toLowerCase().includes(V5_TRANSPARENT_BACKGROUND_TAG)) return prompt;
