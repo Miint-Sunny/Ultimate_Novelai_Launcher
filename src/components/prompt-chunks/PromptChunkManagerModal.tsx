@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
-import { AlertTriangle, Plus, Puzzle, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Plus, Puzzle, Trash2, X, SquareArrowOutUpRight } from 'lucide-react';
 import { chunkReference, lintPromptChunk } from '../../services/promptChunkMacros';
 import type { PromptChunkData } from '../../services/localLibrary/promptChunks';
 import { usePromptChunks } from './usePromptChunks';
@@ -8,6 +8,9 @@ import { usePromptChunks } from './usePromptChunks';
 interface PromptChunkManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** 内嵌在左栏「库」tab 里:没有遮罩、撑满容器。 */
+  embedded?: boolean;
+  onPopOut?: () => void;
   showToast: (message: string, type: 'success' | 'error') => void;
 }
 
@@ -43,7 +46,7 @@ const toDraft = (chunk: PromptChunkData): Draft => ({
  * 片段管理:官方 Prompt Chunks 的本地版。列表按文件夹分组;右侧编辑一条。
  * 引用规则(`@` 插入、`!macro:名字!` 嵌套)与展开细节见 services/promptChunkMacros。
  */
-export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = ({ isOpen, onClose, showToast }) => {
+export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = ({ isOpen, onClose, showToast, embedded = false, onPopOut }) => {
   const { chunks, loaded, save, remove } = usePromptChunks(isOpen);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
@@ -99,24 +102,32 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className={embedded ? 'w-full h-full min-h-0' : 'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm'} onClick={embedded ? undefined : onClose}>
       <div
-        className="bg-nai-panel border border-gray-700 rounded-xl shadow-2xl w-[760px] max-w-[95vw] h-[560px] max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200"
+        className={embedded ? 'bg-nai-panel w-full h-full flex flex-col' : 'bg-nai-panel border border-gray-700 rounded-xl shadow-2xl w-[760px] max-w-[95vw] h-[560px] max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200'}
+        data-embedded={embedded ? 'true' : undefined}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700/70">
           <h3 className="font-bold text-white flex items-center gap-2">
             <Puzzle className="w-4 h-4 text-teal-300" />
             提示词片段
-            <span className="text-xs font-normal text-gray-500">提示词里打 <code className="text-teal-200">@</code> 插入;片段内用 <code className="text-teal-200">!macro:名字!</code> 嵌套</span>
+            <span className={`text-xs font-normal text-gray-500 ${embedded ? 'hidden' : ''}`}>提示词里打 <code className="text-teal-200">@</code> 插入;片段内用 <code className="text-teal-200">!macro:名字!</code> 嵌套</span>
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onPopOut && (
+              <button onClick={onPopOut} title="在弹窗里打开" className="text-gray-400 hover:text-white transition-colors">
+                <SquareArrowOutUpRight className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={onClose} title={embedded ? '回到上一个 tab (Esc)' : '关闭'} className="text-gray-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-1 min-h-0">
-          <div className="w-[260px] border-r border-gray-700/70 flex flex-col">
+          <div className={`${embedded ? 'w-[168px]' : 'w-[260px]'} border-r border-gray-700/70 flex flex-col`}>
             <button
               onClick={() => setDraft(emptyDraft())}
               className="m-2 py-1.5 rounded text-xs font-bold border border-gray-700 bg-black/20 text-gray-300 hover:text-white hover:border-gray-500 transition-all flex items-center justify-center gap-1.5"
@@ -158,7 +169,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
           </div>
 
           <div className="flex-1 flex flex-col p-4 gap-3 min-w-0">
-            <div className="flex gap-3">
+            <div className={`flex gap-3 ${embedded ? 'flex-wrap' : ''}`}>
               <label className="flex-1 flex flex-col gap-1">
                 <span className="text-[11px] text-gray-500">名字(引用时区分大小写)</span>
                 <input
@@ -168,7 +179,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
                   className="bg-black/30 border border-gray-700 rounded px-2 py-1.5 text-sm text-white outline-none focus:border-teal-400/60"
                 />
               </label>
-              <label className="w-[180px] flex flex-col gap-1">
+              <label className={`${embedded ? 'w-full' : 'w-[180px]'} flex flex-col gap-1`}>
                 <span className="text-[11px] text-gray-500">文件夹(可空)</span>
                 <input
                   value={draft.category}

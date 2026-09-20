@@ -329,7 +329,7 @@ export const CharacterPanel: React.FC<Props> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0 min-w-0">
       {/* Toolbar */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-white/[0.06] bg-nai-dark/30 shrink-0">
+      <div data-panel-toolbar className="flex items-center gap-2.5 px-4 py-3 border-b border-white/[0.06] bg-nai-dark/30 shrink-0">
         <SearchInput value={query} onChange={setQuery} placeholder="搜索角色名 / 别名 / 提示词…" />
         <ScopeSegmented
           scope={scope}

@@ -1,4 +1,6 @@
 import { useMemo, type MouseEvent, type MutableRefObject, type RefObject } from 'react';
+import { Ban } from 'lucide-react';
+import type { PromptLayout } from '../../utils/sidebarTabs';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import { useAgentDock } from '../../contexts/AgentDockContext';
 import { useAgentModelPresentation } from '../../hooks/useAgentModelPresentation';
@@ -7,6 +9,7 @@ import { V5TogglePanel } from './V5TogglePanel';
 import {
   ChipModeToggle,
   FloatingAgentButton,
+  PromptLayoutToggle,
   PromptPane,
   PromptToolbar,
   TokenMeter,
@@ -31,6 +34,9 @@ interface PromptComposerSectionProps {
   onActiveTabChange: (tab: ActiveTab) => void;
   chipMode: boolean;
   onChipModeChange: (enabled: boolean) => void;
+  /** 分页 / 堆叠。堆叠时两栏同时可见,提示 / 排除胶囊藏起来,token 表按「提示」算。 */
+  layout: PromptLayout;
+  onLayoutChange: (layout: PromptLayout) => void;
   positivePrompt: string;
   negativePrompt: string;
   onPositivePromptChange: (value: string) => void;
@@ -50,6 +56,10 @@ interface PromptComposerSectionProps {
   onOpenPresetModal: () => void;
 }
 
+/** 堆叠排法里排除那栏的固定高度(含标签行),整框自动撑高时加上它。 */
+const STACKED_NEGATIVE_HEIGHT = 150;
+const STACKED_NEGATIVE_LABEL_HEIGHT = 26;
+
 export function PromptComposerSection({
   model,
   maxTokens,
@@ -61,6 +71,8 @@ export function PromptComposerSection({
   onActiveTabChange,
   chipMode,
   onChipModeChange,
+  layout,
+  onLayoutChange,
   positivePrompt,
   negativePrompt,
   onPositivePromptChange,
@@ -92,6 +104,8 @@ export function PromptComposerSection({
   const agentModel = useAgentModelPresentation();
 
   const caps = modelCapabilities(model);
+  const stacked = layout === 'stacked';
+  const showPositive = stacked || activeTab === 'prompt';
 
   // Anime⇄Furry:V5 取消了独立的 furry 模型,改成往提示词最前面加 `fur dataset`。
   // 能力位关着就整个不出现(V4 系有独立的 furry 模型,不走这条路)。
@@ -109,8 +123,8 @@ export function PromptComposerSection({
   // V5 文字渲染体检:只在能力位打开的家族下跑,只提示不改写输入。
   const textRenderEnabled = caps.textRendering;
   const textRenderHints = useMemo(
-    () => (textRenderEnabled && activeTab === 'prompt' ? detectTextRenderHints(positivePrompt) : []),
-    [textRenderEnabled, activeTab, positivePrompt],
+    () => (textRenderEnabled && showPositive ? detectTextRenderHints(positivePrompt) : []),
+    [textRenderEnabled, showPositive, positivePrompt],
   );
 
   return (
@@ -118,6 +132,7 @@ export function PromptComposerSection({
       <PromptToolbar
         activeTab={activeTab}
         onActiveTabChange={onActiveTabChange}
+        showTabs={!stacked}
         furry={furry}
         aiModel={aiModel}
         localPrimaryModel={agentModel.isLocal ? (agentModel.primaryModel ?? '') : null}
@@ -136,42 +151,89 @@ export function PromptComposerSection({
             transition: isDraggingPromptBox.current ? 'none' : 'height 0.25s ease-out',
           }}
         >
-          <PromptPane
-            visible={activeTab === 'prompt'}
-            direction="left"
-            promptType="positive"
-            value={positivePrompt}
-            onChange={onPositivePromptChange}
-            chipMode={chipMode}
-            showTranslation={showTranslation}
-            translationCache={translationCache}
-            onCloseTranslation={onCloseTranslation}
-            onTranslationTagClick={onTranslationTagClick}
-            editorRef={positiveEditorRef}
-            onTagsChange={onPositiveTagsChange}
-            suppressAutocompleteInQuotes={textRenderEnabled}
-            onContentHeightChange={activeTab === 'prompt' ? onPromptContentHeightChange : undefined}
-          />
+          {stacked ? (
+            /* 堆叠:提示在上占剩余高度,排除固定一段在下;整框高度仍由底部把手拖。
+               自动撑高只看提示那栏,加上排除那段的固定高度。 */
+            <div className="absolute inset-0 flex flex-col" data-testid="prompt-stacked">
+              <div className="relative flex-1 min-h-0">
+                <PromptPane
+                  visible
+                  direction="left"
+                  promptType="positive"
+                  value={positivePrompt}
+                  onChange={onPositivePromptChange}
+                  chipMode={chipMode}
+                  showTranslation={showTranslation}
+                  translationCache={translationCache}
+                  onCloseTranslation={onCloseTranslation}
+                  onTranslationTagClick={onTranslationTagClick}
+                  editorRef={positiveEditorRef}
+                  onTagsChange={onPositiveTagsChange}
+                  suppressAutocompleteInQuotes={textRenderEnabled}
+                  onContentHeightChange={(height) => onPromptContentHeightChange(height + STACKED_NEGATIVE_HEIGHT)}
+                />
+              </div>
+              <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-t border-gray-700/50 text-[11px] font-bold text-red-400/80 select-none">
+                <Ban className="w-3.5 h-3.5" />
+                排除
+              </div>
+              <div className="relative shrink-0" style={{ height: `${STACKED_NEGATIVE_HEIGHT - STACKED_NEGATIVE_LABEL_HEIGHT}px` }}>
+                <PromptPane
+                  visible
+                  direction="right"
+                  promptType="negative"
+                  value={negativePrompt}
+                  onChange={onNegativePromptChange}
+                  chipMode={chipMode}
+                  showTranslation={showTranslation}
+                  translationCache={translationCache}
+                  onCloseTranslation={onCloseTranslation}
+                  onTranslationTagClick={onTranslationTagClick}
+                  editorRef={negativeEditorRef}
+                  disableCollapsibleTags
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <PromptPane
+                visible={activeTab === 'prompt'}
+                direction="left"
+                promptType="positive"
+                value={positivePrompt}
+                onChange={onPositivePromptChange}
+                chipMode={chipMode}
+                showTranslation={showTranslation}
+                translationCache={translationCache}
+                onCloseTranslation={onCloseTranslation}
+                onTranslationTagClick={onTranslationTagClick}
+                editorRef={positiveEditorRef}
+                onTagsChange={onPositiveTagsChange}
+                suppressAutocompleteInQuotes={textRenderEnabled}
+                onContentHeightChange={activeTab === 'prompt' ? onPromptContentHeightChange : undefined}
+              />
 
-          <PromptPane
-            visible={activeTab === 'undesired'}
-            direction="right"
-            promptType="negative"
-            value={negativePrompt}
-            onChange={onNegativePromptChange}
-            chipMode={chipMode}
-            showTranslation={showTranslation}
-            translationCache={translationCache}
-            onCloseTranslation={onCloseTranslation}
-            onTranslationTagClick={onTranslationTagClick}
-            editorRef={negativeEditorRef}
-            disableCollapsibleTags
-            onContentHeightChange={activeTab === 'undesired' ? onPromptContentHeightChange : undefined}
-          />
+              <PromptPane
+                visible={activeTab === 'undesired'}
+                direction="right"
+                promptType="negative"
+                value={negativePrompt}
+                onChange={onNegativePromptChange}
+                chipMode={chipMode}
+                showTranslation={showTranslation}
+                translationCache={translationCache}
+                onCloseTranslation={onCloseTranslation}
+                onTranslationTagClick={onTranslationTagClick}
+                editorRef={negativeEditorRef}
+                disableCollapsibleTags
+                onContentHeightChange={activeTab === 'undesired' ? onPromptContentHeightChange : undefined}
+              />
+            </>
+          )}
         </div>
       </div>
 
-      {activeTab === 'prompt' && (
+      {showPositive && (
         <V5TogglePanel model={model} prompt={positivePrompt} onPromptChange={onPositivePromptChange} />
       )}
 
@@ -179,6 +241,7 @@ export function PromptComposerSection({
 
       <div className="px-2 pt-2 pb-1.5 flex items-center justify-between gap-2 border-t border-transparent">
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />
+        <PromptLayoutToggle layout={layout} onChange={onLayoutChange} />
         <TokenMeter maxTokens={maxTokens} totalTokenCount={totalTokenCount} />
         {!agentAvailable && (
           <span

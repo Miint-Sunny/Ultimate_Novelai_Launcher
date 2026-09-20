@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { AlignLeft, Ban, Bot, Grid, Loader2, Puzzle, Settings, Sparkles, Tags, X } from 'lucide-react';
+import { AlignLeft, Ban, Bot, Grid, Loader2, Puzzle, Settings, Sparkles, SquareSplitVertical, Tags, X } from 'lucide-react';
 import PromptEditor from '../PromptEditor';
 import type { CollapsibleTag, PromptEditorRef } from '../PromptEditor';
 import { DesktopChipEditor } from '../DesktopChipEditor';
@@ -19,6 +19,7 @@ export type TranslationCache = {
 export function PromptToolbar({
   activeTab,
   onActiveTabChange,
+  showTabs = true,
   aiModel,
   localPrimaryModel,
   onAiModelChange,
@@ -30,6 +31,8 @@ export function PromptToolbar({
 }: {
   activeTab: ActiveTab;
   onActiveTabChange: (tab: ActiveTab) => void;
+  /** 堆叠排法下两栏同时可见,提示 / 排除的胶囊没意义,藏起来。 */
+  showTabs?: boolean;
   /** Anime⇄Furry 开关。null = 当前模型没这一位,整个控件不出现。 */
   furry: { on: boolean; onToggle: () => void } | null;
   aiModel: string;
@@ -47,6 +50,7 @@ export function PromptToolbar({
           <div className="flex items-center gap-2 h-full min-w-0 flex-1">
           {/* 胶囊可压缩:侧栏最窄 400px 时,挤不下要让它变窄,而不是整行重叠。
               里面的滑块是百分比定位,跟着宽度走没问题。 */}
+          {showTabs && (
           <div className="relative flex items-center bg-black/40 rounded-full p-1 border border-gray-700/50 w-full max-w-[200px] min-w-[132px] h-full select-none">
             <div className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ease-out shadow-sm ${activeTab === 'prompt' ? 'left-1 w-[calc(50%-6px)] bg-nai-accent shadow-[0_0_8px_rgba(235,213,118,0.4)]' : 'left-[calc(50%+2px)] w-[calc(50%-6px)] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`} />
             <div
@@ -64,6 +68,7 @@ export function PromptToolbar({
               排除
             </div>
           </div>
+          )}
 
           {/* Anime⇄Furry。V5 取消了独立的 furry 模型,改成往提示词最前面加
               `fur dataset` —— 所以它挨着提示词/排除放,而不是塞进模型选择器。
@@ -261,6 +266,23 @@ export function ChipModeToggle({ chipMode, onChange }: { chipMode: boolean; onCh
       title={chipMode ? '切换到文本编辑器' : '切换到芯片布局'}
     >
       {chipMode ? <AlignLeft className="w-[22px] h-[22px]" /> : <Grid className="w-[22px] h-[22px]" />}
+    </button>
+  );
+}
+
+/** 提示词排法:分页(提示 / 排除切换)⇄ 堆叠(两栏同时可见)。和芯片 / 文本编辑器正交,合起来四种。 */
+export function PromptLayoutToggle({ layout, onChange }: { layout: 'tabbed' | 'stacked'; onChange: (layout: 'tabbed' | 'stacked') => void }) {
+  const stacked = layout === 'stacked';
+  return (
+    <button
+      type="button"
+      aria-pressed={stacked}
+      data-testid="prompt-layout-toggle"
+      className={`p-1.5 rounded-lg transition-colors hover:bg-white/10 flex items-center justify-center shrink-0 ${stacked ? 'text-nai-accent' : 'text-gray-400 hover:text-white'}`}
+      onClick={() => onChange(stacked ? 'tabbed' : 'stacked')}
+      title={stacked ? '堆叠排法:提示与排除同时可见。点击切回分页' : '分页排法:提示 / 排除切换。点击改成堆叠,两栏同时可见'}
+    >
+      <SquareSplitVertical className="w-[22px] h-[22px]" />
     </button>
   );
 }

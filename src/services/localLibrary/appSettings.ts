@@ -1,4 +1,5 @@
 import { DEFAULT_WATERMARK_CONFIG, normalizeWatermarkConfig, type WatermarkConfig } from '../watermark/types.ts';
+import { normalizeLibraryPane, normalizePromptLayout, restoreSidebarTab, type LibraryPane, type PromptLayout, type SidebarTab } from '../../utils/sidebarTabs';
 
 const APP_SETTINGS_KEY = 'novelai_app_settings';
 export const APP_SETTINGS_CHANGED_EVENT = 'app-settings-changed';
@@ -77,6 +78,12 @@ export interface AppSettings {
   agentAnlasBudget: number;
   /** 单条用户消息内的生成次数上限。 */
   agentMaxGenerations: number;
+  /** 左栏当前 tab(提示词 / 参数 / 参考 / 库);读档时库不还原。方案见 docs_and_plan/2026-09-20-left-sidebar-tabs-proposal.md。 */
+  leftSidebarTab: SidebarTab;
+  /** 库 tab 里上次看的子页。 */
+  leftSidebarLibraryPane: LibraryPane;
+  /** 提示词排法:分页(提示 / 排除切换)或堆叠(两栏同时可见)。和芯片 / 文本编辑器正交,合起来四种。 */
+  promptLayout: PromptLayout;
   /**
    * 导出水印(可见 logo + DCT 盲水印),照 Novelai-harness 的导出管道:保存 / 复制 / 打包时
    * 在 `processImageForSave` 里应用。默认全关;logo 存 data URL。
@@ -106,6 +113,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   agentPermissionMode: 'auto',
   agentAnlasBudget: 0,
   agentMaxGenerations: 3,
+  leftSidebarTab: 'prompt',
+  leftSidebarLibraryPane: 'tags',
+  promptLayout: 'tabbed',
   aiMaxContextLength: 30,
   aiPrisonBreakEnabled: true,
   kktServerMode: 'public',
@@ -157,5 +167,8 @@ export const getAppSettings = (): AppSettings => {
   settings.autocompleteSources = DEFAULT_AUTOCOMPLETE_SOURCES;
   // 旧设置没有这一键,或者存了半截:一律整理成合法配置,坏值回默认而不是让导出炸掉
   settings.watermark = normalizeWatermarkConfig(settings.watermark);
+  settings.leftSidebarTab = restoreSidebarTab(settings.leftSidebarTab);
+  settings.leftSidebarLibraryPane = normalizeLibraryPane(settings.leftSidebarLibraryPane);
+  settings.promptLayout = normalizePromptLayout(settings.promptLayout);
   return settings;
 };

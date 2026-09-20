@@ -3,7 +3,7 @@
 // Panel 自决工具栏 + recent + chips + grid
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Cloud, LibraryBig, Loader2, RotateCcw, Sparkles, Tag, Trash2, User, X } from 'lucide-react';
+import { Cloud, LibraryBig, Loader2, RotateCcw, Sparkles, SquareArrowOutUpRight, Tag, Trash2, User, X } from 'lucide-react';
 import type { UseOCManagerReturn } from '../oc/types';
 import type { UseArtistManagerReturn } from '../artist/types';
 import { botService } from '../../services/botService';
@@ -24,6 +24,10 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  /** 内嵌在左栏「库」tab 里:没有遮罩、撑满容器。内容和弹窗完全一样。 */
+  embedded?: boolean;
+  /** 内嵌时「在弹窗里打开」(外置)。 */
+  onPopOut?: () => void;
   ocManager: UseOCManagerReturn;
   artistManager: UseArtistManagerReturn;
   characterPromptsCount: number;
@@ -54,7 +58,7 @@ interface Props {
 }
 
 export const TagManagerModal: React.FC<Props> = ({
-  isOpen, onClose, ocManager, artistManager,
+  isOpen, onClose, embedded = false, onPopOut, ocManager, artistManager,
   characterPromptsCount, maxCharacters, showToast,
   onConfirm, onOpenInspiration,
   currentMainPrompt, currentMainNegative, currentCharacterPrompts, imageHistory,
@@ -248,18 +252,22 @@ export const TagManagerModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  return createPortal(
+  // 内嵌(左栏「库」tab)和弹窗是同一套内容,只换外壳:内嵌没有遮罩、撑满容器、圆角和阴影都去掉。
+  const body = (
     <>
     <div
-      className="fixed inset-0 z-[100] grid place-items-center bg-black/55 backdrop-blur-md animate-in fade-in duration-200"
-      onClick={onClose}
+      className={embedded ? 'w-full h-full min-h-0' : 'fixed inset-0 z-[100] grid place-items-center bg-black/55 backdrop-blur-md animate-in fade-in duration-200'}
+      onClick={embedded ? undefined : onClose}
     >
       <div
-        className="bg-nai-panel border border-gray-700 rounded-xl shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] w-[min(1100px,96vw)] h-[min(780px,92vh)] grid grid-rows-[auto_1fr] overflow-hidden animate-in zoom-in-95 duration-200"
+        className={embedded
+          ? 'bg-nai-panel w-full h-full grid grid-rows-[auto_1fr] overflow-hidden'
+          : 'bg-nai-panel border border-gray-700 rounded-xl shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] w-[min(1100px,96vw)] h-[min(780px,92vh)] grid grid-rows-[auto_1fr] overflow-hidden animate-in zoom-in-95 duration-200'}
         onClick={(e) => e.stopPropagation()}
+        data-embedded={embedded ? 'true' : undefined}
       >
         {/* Header */}
-        <header className="flex items-center gap-3 px-5 py-4 border-b border-white/[0.06] bg-nai-dark/50 shrink-0">
+        <header className={`flex items-center gap-3 border-b border-white/[0.06] bg-nai-dark/50 shrink-0 ${embedded ? 'px-3 py-2.5' : 'px-5 py-4'}`}>
           <div className="flex items-center gap-3">
             <span className="text-nai-accent inline-flex w-9 h-9 rounded-lg bg-nai-accent/10 items-center justify-center">
               <LibraryBig className="w-[22px] h-[22px]" strokeWidth={1.75} />
@@ -277,9 +285,18 @@ export const TagManagerModal: React.FC<Props> = ({
             <Cloud className="w-[18px] h-[18px]" strokeWidth={2} />
             <span className="text-[13px] font-bold">数据备份</span>
           </button>
+          {onPopOut && (
+            <button
+              onClick={onPopOut}
+              title="在弹窗里打开"
+              className="w-9 h-9 grid place-items-center rounded-lg text-nai-text-dim hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
+            >
+              <SquareArrowOutUpRight className="w-[18px] h-[18px]" />
+            </button>
+          )}
           <button
             onClick={onClose}
-            title="关闭 (Esc)"
+            title={embedded ? '回到上一个 tab (Esc)' : '关闭 (Esc)'}
             className="w-9 h-9 grid place-items-center rounded-lg text-nai-text-dim hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-[18px] h-[18px]" />
@@ -287,7 +304,7 @@ export const TagManagerModal: React.FC<Props> = ({
         </header>
 
         {/* Body: Sidebar + Main */}
-        <div className="grid grid-cols-[176px_1fr] min-h-0">
+        <div className={`grid min-h-0 ${embedded ? 'grid-cols-[124px_1fr]' : 'grid-cols-[176px_1fr]'}`}>
           <SubtypeSidebar
             subtypes={mgr.subtypes}
             activeId={mgr.activeSubtypeId}
@@ -470,7 +487,7 @@ export const TagManagerModal: React.FC<Props> = ({
     />
 
     {confirmDialog}
-    </>,
-    document.body
+    </>
   );
+  return embedded ? body : createPortal(body, document.body);
 };

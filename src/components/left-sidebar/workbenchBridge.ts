@@ -38,6 +38,8 @@ export interface WorkbenchState {
   freeform: boolean;
   generationHistory: HistoryItem[];
   isGenerating: boolean;
+  /** 助手写了哪些字段(左栏给对应 tab 亮点用)。可选:竖屏没有分 tab。 */
+  noteAgentWrite?: (fields: readonly string[]) => void;
   setPositivePrompt: Dispatch<SetStateAction<string>>;
   setNegativePrompt: Dispatch<SetStateAction<string>>;
   setSelectedModel: Dispatch<SetStateAction<ModelOption>>;
@@ -132,6 +134,7 @@ export function createWorkbenchBridge(
     },
     applyParams: (patch) => {
       const s = state();
+      s.noteAgentWrite?.(Object.keys(patch));
       if (patch.prompt !== undefined) s.setPositivePrompt(patch.prompt);
       if (patch.negative_prompt !== undefined) s.setNegativePrompt(patch.negative_prompt);
       if (patch.model !== undefined) {
@@ -184,6 +187,7 @@ export function createWorkbenchBridge(
         name: entry.name?.trim() || undefined,
       };
       s.setCharacterPrompts((prev) => [...prev, created]);
+      s.noteAgentWrite?.(['character']);
       return toWorkbenchCharacter(created);
     },
     updateCharacter: (id, patch) => {
@@ -202,15 +206,18 @@ export function createWorkbenchBridge(
           : {}),
       };
       s.setCharacterPrompts((prev) => prev.map((c) => (c.id === id ? next : c)));
+      s.noteAgentWrite?.(['character']);
       return toWorkbenchCharacter(next);
     },
     removeCharacter: (id) => {
       const s = state();
       if (!s.characterPrompts.some((c) => c.id === id)) return false;
       s.setCharacterPrompts((prev) => prev.filter((c) => c.id !== id));
+      s.noteAgentWrite?.(['character']);
       return true;
     },
     replaceCharacters: (characters) => {
+      state().noteAgentWrite?.(['character']);
       state().setCharacterPrompts(characters.map((c): CharacterPrompt => ({
         id: c.id, positive: c.prompt, negative: c.negative_prompt, activeTab: 'prompt', enabled: c.enabled,
         position: '', center: c.center, name: c.name?.trim() || undefined,

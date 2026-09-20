@@ -1164,3 +1164,13 @@ body,
 .aa-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* 左栏「库」tab 里内嵌的管理器(TagManagerModal 等的 embedded 形态):面板工具栏在 400–680px 的
+   左栏里放不下,允许横向滚动而不是被裁掉;弹窗形态不受影响。 */
+[data-embedded="true"] [data-panel-toolbar] {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+[data-embedded="true"] [data-panel-toolbar]::-webkit-scrollbar {
+  display: none;
+}

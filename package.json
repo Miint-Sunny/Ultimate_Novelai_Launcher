@@ -41,6 +41,7 @@
     "check:agent-sessions": "node --experimental-strip-types scripts/check-agent-sessions.mjs",
     "check:agent-skill-packages": "node --experimental-strip-types scripts/check-agent-skill-packages.mjs",
     "check:generation-options": "node --experimental-strip-types scripts/check-generation-options.mjs",
+    "check:sidebar-tabs": "node --experimental-strip-types scripts/check-sidebar-tabs.mjs",
     "check:text-render": "node --experimental-strip-types scripts/check-text-render.mjs"
   },
   "devDependencies": {

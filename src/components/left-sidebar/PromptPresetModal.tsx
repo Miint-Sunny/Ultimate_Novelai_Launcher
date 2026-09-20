@@ -1,4 +1,4 @@
-import { Ban, Check, Edit2, Plus, Save, Settings, Sparkles, Trash2, X } from 'lucide-react';
+import { Ban, Check, Edit2, Plus, Save, Settings, Sparkles, Trash2, X, SquareArrowOutUpRight } from 'lucide-react';
 import type React from 'react';
 import { countTokens } from '../../services/tokenizer';
 import { ResizableTextarea } from './ResizableTextarea';
@@ -9,6 +9,9 @@ interface PromptPresetModalProps {
   activePresetId: string;
   editingPresetId: string | null;
   onClose: () => void;
+  /** 内嵌在左栏「库」tab 里:没有遮罩、撑满容器。 */
+  embedded?: boolean;
+  onPopOut?: () => void;
   onActivePresetChange: (id: string) => void;
   onEditingPresetChange: (id: string | null) => void;
   onUpdatePreset: (id: string, field: 'positive' | 'negative' | 'name', value: string) => void;
@@ -21,22 +24,31 @@ export const PromptPresetModal: React.FC<PromptPresetModalProps> = ({
   activePresetId,
   editingPresetId,
   onClose,
+  embedded = false,
+  onPopOut,
   onActivePresetChange,
   onEditingPresetChange,
   onUpdatePreset,
   onAddPreset,
   onDeletePreset,
 }) => (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-    <div className="w-[500px] bg-nai-panel border border-gray-700 rounded-lg shadow-2xl flex flex-col max-h-[80vh]">
+  <div className={embedded ? 'w-full h-full min-h-0' : 'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'}>
+    <div className={embedded ? 'w-full h-full bg-nai-panel flex flex-col' : 'w-[500px] bg-nai-panel border border-gray-700 rounded-lg shadow-2xl flex flex-col max-h-[80vh]'} data-embedded={embedded ? 'true' : undefined}>
       <div className="flex items-center justify-between p-3 border-b border-gray-700">
         <h3 className="font-bold text-white flex items-center gap-2">
           <Settings className="w-4 h-4" />
           提示词预设
         </h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-white">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {onPopOut && (
+            <button onClick={onPopOut} title="在弹窗里打开" className="text-gray-400 hover:text-white">
+              <SquareArrowOutUpRight className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={onClose} title={embedded ? '回到上一个 tab (Esc)' : '关闭'} className="text-gray-400 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">

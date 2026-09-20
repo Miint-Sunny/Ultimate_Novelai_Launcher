@@ -15,7 +15,7 @@ import { InspirationModal } from './InspirationModal';
 import { ToolsModal } from './ToolsModal';
 import { SettingsModal } from './SettingsModal';
 import { ProfileModal } from './ProfileModal';
-import { saveAISettings, getAISettings, DEFAULT_AI_SETTINGS, getAppSettings, getCodexFilterSettings, saveCodexFilterSettings, type CodexFilterSettings } from '../services/localLibrary';
+import { saveAISettings, getAISettings, DEFAULT_AI_SETTINGS, getAppSettings, getCodexFilterSettings, saveCodexFilterSettings, type CodexFilterSettings, saveAppSettings } from '../services/localLibrary';
 import { appBackendApi } from '../api/appBackendApi';
 import { useGeneration, type HistoryItemMetadata } from '../contexts/GenerationContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,6 +33,9 @@ import { PromptComposerSection } from './left-sidebar/PromptComposerSection';
 import { PromptPresetModal } from './left-sidebar/PromptPresetModal';
 import { ResizableTextarea } from './left-sidebar/ResizableTextarea';
 import { SidebarHeader } from './left-sidebar/SidebarHeader';
+import { SidebarTabBar } from './left-sidebar/SidebarTabBar';
+import { LibraryTabView } from './left-sidebar/LibraryTabView';
+import { initialTabState, leaveLibrary, noteWrites, switchTab, tabForShortcut, type LibraryPane, type PromptLayout, type SidebarTab } from '../utils/sidebarTabs';
 import { ToastBanner } from './left-sidebar/ToastBanner';
 import { VibeTransferSection } from './left-sidebar/VibeTransferSection';
 import { useAprilFools } from './left-sidebar/useAprilFools';
@@ -442,6 +445,28 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
   const [activeTab, setActiveTab] = useState<'prompt' | 'undesired' | 'ai'>('prompt');
   const [chipMode, setChipMode] = useState(true); // 芯片布局模式（默认开启）
+  // 左栏分 tab(方案 A,utils/sidebarTabs.ts 算状态,这里只持久化):提示词 / 参数 / 参考 / 库。
+  const [tabState, setTabState] = useState(() => initialTabState(getAppSettings().leftSidebarTab));
+  const sidebarTab = tabState.active;
+  const goToTab = useCallback((tab: SidebarTab) => setTabState((s) => switchTab(s, tab)), []);
+  const closeLibrary = useCallback(() => setTabState((s) => leaveLibrary(s)), []);
+  useEffect(() => {
+    const settings = getAppSettings();
+    if (settings.leftSidebarTab !== sidebarTab) saveAppSettings({ ...settings, leftSidebarTab: sidebarTab });
+  }, [sidebarTab]);
+  const [libraryPane, setLibraryPane] = useState<LibraryPane>(() => getAppSettings().leftSidebarLibraryPane);
+  useEffect(() => {
+    const settings = getAppSettings();
+    if (settings.leftSidebarLibraryPane !== libraryPane) saveAppSettings({ ...settings, leftSidebarLibraryPane: libraryPane });
+  }, [libraryPane]);
+  const [promptLayout, setPromptLayoutState] = useState<PromptLayout>(() => getAppSettings().promptLayout);
+  const setPromptLayout = useCallback((layout: PromptLayout) => {
+    setPromptLayoutState(layout);
+    const settings = getAppSettings();
+    if (settings.promptLayout !== layout) saveAppSettings({ ...settings, promptLayout: layout });
+    // 堆叠下两栏都在,token 表和 V5 词条面板按「提示」算。
+    if (layout === 'stacked') setActiveTab('prompt');
+  }, []);
   // 同步 activeTabRef
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
@@ -595,7 +620,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   // 而这是个模型专属能力,记住它会让切回 4.5 时留下一个不存在的开关状态。
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [normalizeVibeStrength, setNormalizeVibeStrength] = useState(() => getAISettings().normalizeVibeStrength);
-  const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
+  // 参数有自己的 tab 之后默认展开;折叠还留着,只是没必要再折。
+  const [isAISettingsOpen, setIsAISettingsOpen] = useState(true);
 
   // 保存 AI 设置到 localStorage
   useEffect(() => {
@@ -644,6 +670,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   // Removed unused refs: promptBtnRef, undesiredBtnRef, and pillStyle state
 
   const scrollToAISettings = (settingName: string) => {
+    goToTab('params');
     setIsAISettingsOpen(true);
     // Small timeout to allow state update and DOM rendering
     setTimeout(() => {
@@ -652,6 +679,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
       setTimeout(() => setHighlightAISettings(null), 1500); // Remove highlight after animation
     }, 100);
   };
+
+  // 图进来就跳到「参考」:导入落在看不见的 tab 里,用户会以为没成功。
+  const prevImg2imgRef = useRef<typeof img2imgImage>(img2imgImage);
+  useEffect(() => {
+    if (img2imgImage && !prevImg2imgRef.current) goToTab('reference');
+    prevImg2imgRef.current = img2imgImage;
+  }, [img2imgImage, goToTab]);
+  const crCount = crManager.activePreciseRefs.length;
+  const prevCrCountRef = useRef(crCount);
+  useEffect(() => {
+    if (crCount > prevCrCountRef.current) goToTab('reference');
+    prevCrCountRef.current = crCount;
+  }, [crCount, goToTab]);
 
   // 使用 GLM Tokenizer 计算 token 数。分词口径随型号(V5=Qwen / V4系=T5)由能力表决定;
   // Qwen 资产懒加载,就绪后经依赖重算,把读数从 T5 近似升级成精确口径。
@@ -855,6 +895,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     setPositivePrompt, setNegativePrompt, setSelectedModel, setCustomWidth, setCustomHeight, setCustomWidthInput, setCustomHeightInput,
     setIsCustomRes, setSteps, setScale, setSampler, setScaleRescale, setNoiseSchedule, setActivePresetId, setSeed, setCharacterPrompts, setUseCoords,
     handleGenerate, addUpscaledImage,
+    noteAgentWrite: (fields) => setTabState((s) => noteWrites(s, fields)),
   };
   const pendingGenerateRef = useRef<{ resolve: (outcome: GenerateOutcome) => void; historyHead: string | null; timer: number } | null>(null);
   useEffect(() => {
@@ -903,6 +944,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   // 全局回车快捷键拦截
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // ⌥1–4 切左栏 tab;Esc 在库里 = 回来路(有弹窗开着时让弹窗自己处理)。
+      const shortcutTab = tabForShortcut(e);
+      if (shortcutTab) {
+        e.preventDefault();
+        goToTab(shortcutTab);
+        return;
+      }
+      if (e.key === 'Escape' && sidebarTab === 'library' && !document.querySelector('.fixed.inset-0')) {
+        closeLibrary();
+        return;
+      }
       if (e.key === 'Enter') {
         const settings = getAppSettings();
         if (settings.enterBehavior === 'generate') {
@@ -925,7 +977,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown, true);
     };
-  }, [handleGenerate]);
+  }, [handleGenerate, sidebarTab, goToTab, closeLibrary]);
 
   // 监听局部重绘事件
   useEffect(() => {
@@ -1032,8 +1084,59 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
           onOpenTools={() => setIsToolsModalOpen(true)}
         />
 
-        {/* Prompt Area */}
-        <div className="p-3 space-y-3 shrink-0">
+        <SidebarTabBar active={sidebarTab} attention={tabState.attention} onChange={goToTab} />
+
+        {/* 库:占满整栏的内嵌视图,三个管理器与弹窗是同一套组件;「在弹窗里打开」= 外置。 */}
+        {sidebarTab === 'library' && (
+          <LibraryTabView pane={libraryPane} onPaneChange={setLibraryPane}>
+            {libraryPane === 'tags' && (
+              <TagManagerModal
+                embedded
+                isOpen
+                onClose={closeLibrary}
+                onPopOut={() => { closeLibrary(); setIsTagManagerOpen(true); }}
+                ocManager={ocManager}
+                artistManager={artistManager}
+                characterPromptsCount={characterPrompts.length}
+                maxCharacters={maxCharactersForModel(selectedModel.id)}
+                showToast={showToast}
+                onConfirm={handleTagManagerConfirm}
+                onOpenInspiration={() => setIsInspirationModalOpen(true)}
+                currentMainPrompt={positivePrompt}
+                currentMainNegative={negativePrompt}
+                currentCharacterPrompts={characterPrompts}
+                imageHistory={generationHistory}
+              />
+            )}
+            {libraryPane === 'chunks' && (
+              <PromptChunkManagerModal
+                embedded
+                isOpen
+                onClose={closeLibrary}
+                onPopOut={() => { closeLibrary(); setIsPromptChunkModalOpen(true); }}
+                showToast={showToast}
+              />
+            )}
+            {libraryPane === 'presets' && (
+              <PromptPresetModal
+                embedded
+                onClose={closeLibrary}
+                onPopOut={() => { closeLibrary(); setIsPresetModalOpen(true); }}
+                promptPresets={promptPresets}
+                activePresetId={activePresetId}
+                editingPresetId={editingPresetId}
+                onActivePresetChange={setActivePresetId}
+                onEditingPresetChange={setEditingPresetId}
+                onUpdatePreset={handleUpdatePreset}
+                onAddPreset={handleAddPreset}
+                onDeletePreset={handleDeletePreset}
+              />
+            )}
+          </LibraryTabView>
+        )}
+
+        {/* 各区常驻挂载、按 tab 显隐:元数据导入、拖放、助手回溯都靠这些区的 ref 和受控 state,卸载了就断了。 */}
+        <div className={`p-3 space-y-3 shrink-0 ${sidebarTab === 'prompt' ? '' : 'hidden'}`} data-tab-panel="prompt">
 
           <PromptComposerSection
             model={selectedModel.id}
@@ -1046,6 +1149,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onActiveTabChange={setActiveTab}
             chipMode={chipMode}
             onChipModeChange={setChipMode}
+            layout={promptLayout}
+            onLayoutChange={setPromptLayout}
             positivePrompt={positivePrompt}
             negativePrompt={negativePrompt}
             onPositivePromptChange={setPositivePrompt}
@@ -1086,6 +1191,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             handleCharContentHeightChange={handleCharContentHeightChange}
           />
 
+        </div>
+
+        <div className={`p-3 space-y-3 shrink-0 ${sidebarTab === 'reference' ? '' : 'hidden'}`} data-tab-panel="reference">
           <Image2ImageSection
             sectionRef={img2imgSectionRef}
             inputRef={img2imgInputRef}
@@ -1166,6 +1274,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             onRemovePreciseRef={crManager.removePreciseRef}
           />
 
+        </div>
+
+        <div className={`p-3 space-y-3 shrink-0 ${sidebarTab === 'params' ? '' : 'hidden'}`} data-tab-panel="params">
           <AISettingsPanel
             panelRef={aiSettingsRef}
             isOpen={isAISettingsOpen}
