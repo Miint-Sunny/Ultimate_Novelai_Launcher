@@ -215,15 +215,19 @@ swap, rolls back failures, and requests a process restart.
   unsafe schemes are rejected, and sensitive headers/cookies are stripped on
   cross-origin redirects. `public` also accepts the placeholder addresses a local
   fake-ip proxy (Clash, Mihomo, sing-box, Surge TUN) hands out, 198.18.0.0/15 by
-  default plus `ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES`: they cannot reach LAN
-  services, and the proxy resolves the real hostname upstream.
+  default plus `ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES` (private LAN blocks are
+  refused there): they cannot reach LAN services, and the proxy resolves the real
+  hostname upstream.
 - [sidecar/infrastructure/http_clients.py](sidecar/infrastructure/http_clients.py)
   owns the shared cancellable HTTP clients and closes them through the runtime
   lifespan.
 - [sidecar/credentials.py](sidecar/credentials.py) stores NovelAI and LLM secrets in
   macOS Keychain, Windows Credential Manager, or Secret Service. Secure storage
   failure is fail-closed; legacy plaintext token migration is accepted only after a
-  successful secure write.
+  successful secure write. Entries are keyed by service name, so every sidecar on
+  the machine shares them; `ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE`
+  suffixes the name for a test instance, and `python -m sidecar.credential_cli`
+  stores a secret from a no-echo prompt into that store.
 
 ## Frontend transport boundary
 

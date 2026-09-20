@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .credentials import get_stored_llm_backup_key, get_stored_llm_key, get_stored_token
+from .credentials import (
+    credential_namespace,
+    get_stored_llm_backup_key,
+    get_stored_llm_key,
+    get_stored_token,
+)
 from .local_settings import read_local_settings
 from .security import OutboundPolicy
 from .security.outbound import default_fake_ip_ranges
@@ -238,6 +243,9 @@ def load_settings() -> Settings:
     # fake-ip 代理段(ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES)写错也在启动时报出来,
     # 而不是等到第一次出站请求才变成 500。
     default_fake_ip_ranges()
+    # 凭据命名空间(ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE)同理:格式不对就别起,
+    # 免得下面读钥匙串时才炸。
+    credential_namespace()
 
     return Settings(
         host=(

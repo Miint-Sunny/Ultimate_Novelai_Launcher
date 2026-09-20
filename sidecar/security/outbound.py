@@ -165,6 +165,16 @@ def _network_is_trustable(network: IPNetwork) -> bool:
     )
 
 
+# Private LAN space never qualifies as a fake-ip placeholder: listing it would turn
+# public mode into LAN access, which is what trusted-lan mode is for.  fd00::/8 is
+# the half of the ULA block real networks use; fc00::/8 (unassigned in practice)
+# stays available because sing-box hands out fc00::/18 as its IPv6 fake range.
+_LAN_RANGES_NEVER_FAKE_IP = tuple(
+    ipaddress.ip_network(value)
+    for value in ("10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16", "fd00::/8")
+)
+
+
 def _network_may_be_fake_ip(network: IPNetwork) -> bool:
     """A fake-ip range must not alias anything the always-reject rules protect."""
     if (
@@ -172,6 +182,11 @@ def _network_may_be_fake_ip(network: IPNetwork) -> bool:
         or network.is_link_local
         or network.is_multicast
         or network.is_unspecified
+    ):
+        return False
+    if any(
+        network.version == lan.version and network.overlaps(lan)
+        for lan in _LAN_RANGES_NEVER_FAKE_IP
     ):
         return False
     return not any(
@@ -192,7 +207,10 @@ def parse_fake_ip_ranges(values: Iterable[str | IPNetwork]) -> tuple[IPNetwork, 
         except ValueError as exc:
             raise ValueError(f"invalid fake-ip range: {value}") from exc
         if not _network_may_be_fake_ip(network):
-            raise ValueError(f"fake-ip range overlaps a protected address block: {network}")
+            raise ValueError(
+                f"fake-ip range overlaps a protected or private LAN block: {network}; "
+                "LAN endpoints belong in a trusted-lan allowlist"
+            )
         networks.append(network)
     return tuple(dict.fromkeys(networks))
 
