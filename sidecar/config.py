@@ -9,6 +9,7 @@ from typing import Any
 from .credentials import get_stored_llm_backup_key, get_stored_llm_key, get_stored_token
 from .local_settings import read_local_settings
 from .security import OutboundPolicy
+from .security.outbound import default_fake_ip_ranges
 
 # Per-protocol default base URLs (used when the user leaves base URL blank).
 LLM_DEFAULT_BASES = {
@@ -234,6 +235,9 @@ def load_settings() -> Settings:
         raise ValueError(
             f"ULTIMATE_NOVELAI_LAUNCHER_SIDECAR_PORT must be between 0 and 65535, got {port}"
         )
+    # fake-ip 代理段(ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES)写错也在启动时报出来,
+    # 而不是等到第一次出站请求才变成 500。
+    default_fake_ip_ranges()
 
     return Settings(
         host=(
