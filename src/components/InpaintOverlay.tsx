@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { Eraser, Undo2, Redo2, RotateCcw, Play, Square, Circle, CircleDashed, Brush, Lasso, Palette, Eye, Expand, Crop, ChevronsUp, ChevronsDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { calculateCostFromUI } from '../services/costCalculator';
 import { getCachedIsOpus, isOpusUsageExhausted } from '../services/novelai';
@@ -367,6 +367,58 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
     onToggleCrop: toggleCropMode,
     onBrushSizeDelta: adjustBrushSize,
   });
+
+  // 局部模式下还没有框(没涂抹就按了 S / 局部)时,在画布上拖就是拉框,照官方的选区工具;
+  // 有框之后拖动交给笔刷(改框用框上的手柄)。
+  const boxDragRef = useRef<{ x: number; y: number } | null>(null);
+  const toImagePoint = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current;
+    const s = baseScale * zoom;
+    if (!c || s === 0) return { x: 0, y: 0 };
+    const r = c.getBoundingClientRect();
+    return { x: Math.min(imageWidth, Math.max(0, (e.clientX - r.left) / s)), y: Math.min(imageHeight, Math.max(0, (e.clientY - r.top) / s)) };
+  };
+  const boxDragActive = isCropMode && !cropPreview && !isExpandMode && !isGenerating;
+  const onCanvasPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (boxDragActive && e.button === 0 && !spacePressed) {
+      const p = toImagePoint(e);
+      boxDragRef.current = p;
+      isDraggingCropRef.current = true;
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 合成事件没有活动指针 */ }
+      return;
+    }
+    handleMouseDown(e);
+  };
+  const onCanvasPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    const start = boxDragRef.current;
+    if (start) {
+      const p = toImagePoint(e);
+      const x = Math.round(Math.min(start.x, p.x));
+      const y = Math.round(Math.min(start.y, p.y));
+      const width = Math.round(Math.abs(p.x - start.x));
+      const height = Math.round(Math.abs(p.y - start.y));
+      if (width >= 8 && height >= 8) setCropPreview({ x, y, width, height });
+      return;
+    }
+    handleMouseMove(e);
+  };
+  const onCanvasPointerUp = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (boxDragRef.current) {
+      boxDragRef.current = null;
+      isDraggingCropRef.current = false;
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* 可能已释放 */ }
+      // 松手定稿:最小 256(与手柄拖拽一致),夹回图内;只是点了一下就当没拉
+      setCropPreview((prev) => {
+        if (!prev) return null;
+        const width = Math.min(imageWidth, Math.max(256, prev.width));
+        const height = Math.min(imageHeight, Math.max(256, prev.height));
+        return { x: Math.min(prev.x, imageWidth - width), y: Math.min(prev.y, imageHeight - height), width, height };
+      });
+      cropManuallyAdjustedRef.current = true;
+      return;
+    }
+    handleMouseUp(e);
+  };
 
   const { loadedImageRef } = useInpaintCanvas({
     canvasRef,
@@ -765,9 +817,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 cursor: spacePressed || isPanning ? 'grab' : 'none',
                 pointerEvents: 'auto',
               }}
-              onPointerDown={handleMouseDown}
-              onPointerMove={handleMouseMove}
-              onPointerUp={handleMouseUp}
+              onPointerDown={onCanvasPointerDown}
+              onPointerMove={onCanvasPointerMove}
+              onPointerUp={onCanvasPointerUp}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeaveCanvas}
               onWheel={handleWheel}
@@ -1143,7 +1195,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 }}
               >
                 <div className="text-xs text-gray-200 bg-gray-900/80 rounded-lg px-4 py-2 border border-white/10 whitespace-nowrap">
-                  {'涂抹区域将自动框选为发送范围'}
+                  {cropPreview ? '涂抹区域将自动框选为发送范围;拖手柄可改框' : '在画布上拖出发送范围;框内不涂抹就整框重绘'}
                 </div>
               </div>
             )}
