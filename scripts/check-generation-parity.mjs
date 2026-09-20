@@ -17,6 +17,10 @@
 
 import assert from 'node:assert/strict';
 
+// 先装 vite 式的目录 / 无后缀解析,再 import 前端模块 —— 装配层后来引了无后缀的
+// services/naiQualityTails,少了这一步整个脚本在 node 里 import 不起来。
+await import('./lib/load-frontend-module.mjs');
+
 const {
   buildBaseGenerationParams,
   assembleGenerateParams,
@@ -125,7 +129,10 @@ const assembleInput = (overrides = {}) => {
 // 明明拼了质量词却上报没拼,而自定义档会拿自己的时间戳 id 去查数字表(查不到落回
 // heavy=0),等于替用户谎报了一个官方档。
 const PRESET_TIER_CASES = [
-  { id: 'heavy', positive: 'best quality', uc: 'heavy', quality: 'none', toggle: true },
+  // heavy 的正面自 2026-09-04(5f1c714)起按模型取官方质量尾,旧模型族只有 standard 一档,
+  // 所以来源报 standard 而不再是 none。口径的权威在 check:preset-tiers(它逐条钉着这次改动),
+  // 这里只是跟上;本脚本当时没挂进 npm,漏改了两年——真要改行为先去动那边。
+  { id: 'heavy', positive: 'best quality', uc: 'heavy', quality: 'standard', toggle: true },
   { id: 'light', positive: 'very aesthetic', uc: 'light', quality: 'standard', toggle: true },
   { id: 'none', positive: '', uc: 'none', quality: 'none', toggle: false },
   { id: '1718000000000', positive: 'my own tags', uc: 'none', quality: 'none', toggle: true },
@@ -182,7 +189,9 @@ check('buildCharacterPromptParams:仅按 enabled 过滤(保留空 positive)', ()
       { positive: '', negative: 'x', enabled: true, position: '0.5,0.5' },
       { positive: 'y', negative: '', enabled: false },
     ]),
-    [{ positive: '', negative: 'x', enabled: true, position: '0.5,0.5' }],
+    // center 是连续坐标落地时(fd046a7)加的:漏掉它画布上摆的位置到不了发包层。
+    // 坐标口径的权威是 check:character-position。
+    [{ positive: '', negative: 'x', enabled: true, position: '0.5,0.5', center: null }],
   );
 });
 
@@ -244,11 +253,13 @@ check('clampToMaxPixels:64 取整、超像素等比缩小、最小 64', () => {
       // 所以这里是 false;而 ucPreset/qualityPresetId 报的是「选的哪个官方档」,
       // 由 id 决定。旧基线在这里写 true,和它自己的 positivePrompt 是矛盾的。
       qualityToggle: false,
-      qualityPresetId: 'none',
+      // activePresetId 'heavy' 而 activePreset 缺省 —— 这是脚本自己造的组合(真实界面两者同时给)。
+      // heavy 自 5f1c714 起报 standard;qualityToggle 仍看预设正文有没有东西,所以这里是 false。
+      qualityPresetId: 'standard',
       varietyPlus: false,
       normalizeVibeStrength: true,
       resolutionSource: '默认竖图',
-      characterPrompts: [{ positive: 'c1', negative: 'cn', enabled: true, position: '0.1,0.2' }],
+      characterPrompts: [{ positive: 'c1', negative: 'cn', enabled: true, position: '0.1,0.2', center: null }],
       preciseReferences: [
         { imageBase64: 'cr:r1', mode: 'style', informationExtracted: 0.8, strength: 0.6 },
       ],

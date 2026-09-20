@@ -23,6 +23,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+// 先装 vite 式的目录 / 无后缀解析:装配层 2026-09-04 起经 naiQualityTails 连上
+// modelResolutionOptions,两处都是无后缀 import,少了钩子这个门禁在 node 里根本起不来。
+await import('./lib/load-frontend-module.mjs');
+
 const {
   UNKNOWN_MODEL_KEY,
   EMPTY_GALLERY_FILTER,
