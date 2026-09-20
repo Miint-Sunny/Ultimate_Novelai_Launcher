@@ -30,6 +30,8 @@ interface UseInpaintBrushParams {
   isCropMode: boolean;
   cropManuallyAdjustedRef: RefObject<boolean>;
   setCropPreview: Dispatch<SetStateAction<CropRect | null>>;
+  /** 自动裁切框在遮罩外接框外留的上下文内边距(原图像素)。 */
+  cropContextPadding?: number;
 }
 
 export function useInpaintBrush({
@@ -54,6 +56,7 @@ export function useInpaintBrush({
   isCropMode,
   cropManuallyAdjustedRef,
   setCropPreview,
+  cropContextPadding,
 }: UseInpaintBrushParams) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushSize, setBrushSizeState] = useState(() => {
@@ -91,9 +94,9 @@ export function useInpaintBrush({
     const maskCtx = maskCanvasRef.current.getContext('2d');
     if (!maskCtx) return;
     const maskData = maskCtx.getImageData(0, 0, imageWidth, imageHeight);
-    const rect = calculateCropRect(maskData, imageWidth, imageHeight);
+    const rect = calculateCropRect(maskData, imageWidth, imageHeight, cropContextPadding);
     setCropPreview(rect);
-  }, [cropManuallyAdjustedRef, imageHeight, imageWidth, isCropMode, maskCanvasRef, setCropPreview]);
+  }, [cropContextPadding, cropManuallyAdjustedRef, imageHeight, imageWidth, isCropMode, maskCanvasRef, setCropPreview]);
 
   const handleUndo = useCallback(() => {
     if (history.length === 0) return;

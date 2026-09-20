@@ -3,11 +3,11 @@ import { Eraser, Undo2, RotateCcw, Play, Square, Circle, Brush, Eye, Expand, Cro
 import { calculateCostFromUI } from '../services/costCalculator';
 import { getCachedIsOpus, isOpusUsageExhausted } from '../services/novelai';
 import { getAISettings } from '../services/localLibrary';
-import { calculateCropRect, alignSendRect, type CropRect } from '../utils/maskCrop';
+import { calculateCropRect, alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
 import { CropSelectionOverlay } from './inpaint/CropSelectionOverlay';
 import { useInpaintBrush } from './inpaint/useInpaintBrush';
 import { buildExpandPayload } from './inpaint/expandPayload';
-import { getMaskBase64FromCanvas } from './inpaint/maskUtils';
+import { buildBoxMask, getMaskBase64FromCanvas, maskHasPaintInside } from './inpaint/maskUtils';
 import type { ExpandPayload } from './inpaint/types';
 import { useInpaintCanvas } from './inpaint/useInpaintCanvas';
 import { useInpaintKeyboard } from './inpaint/useInpaintKeyboard';
@@ -77,6 +77,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
   // 裁切重绘模式 - 图像超出免费分辨率阈值（1024*1024）时默认开启以节省点数
   const [isCropMode, setIsCropMode] = useState(() => imageWidth * imageHeight > 1048576);
   const [cropPreview, setCropPreview] = useState<CropRect | null>(null);
+  // 上下文内边距(原图像素,照官方焦点重绘的「最小上下文区」):遮罩外接框往外扩这么多进发送区,
+  // 框内靠边这一圈模型看得见但不重绘;框内没画遮罩时,整框去掉这一圈就是重绘区。
+  const [contextPadding, setContextPadding] = useState(128);
   // 正在手动拖拽裁切框时屏蔽画布的鼠标事件
   const isDraggingCropRef = useRef(false);
   // 用户是否手动调整过裁切框；为 true 时 updateCropPreview 不再用遮罩自动覆盖
@@ -209,6 +212,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
     isCropMode,
     cropManuallyAdjustedRef,
     setCropPreview,
+    cropContextPadding: contextPadding,
   });
 
   useInpaintKeyboard({
@@ -280,18 +284,22 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
     }
 
     // ===== 普通遮罩 / 裁切重绘模式 =====
-    const maskBase64 = getMaskBase64FromCanvas(maskCanvasRef.current, imageWidth, imageHeight);
+    let maskBase64 = getMaskBase64FromCanvas(maskCanvasRef.current, imageWidth, imageHeight);
 
     let cropRect: CropRect | undefined;
     if (isCropMode) {
       // 优先使用用户手动调整后的预览矩形，否则从遮罩重算
       if (cropPreview) {
         cropRect = cropPreview;
+        // 照官方:框内没画遮罩就整框重绘,只留上下文内边距那一圈不动
+        if (!maskHasPaintInside(maskCanvasRef.current, cropPreview)) {
+          maskBase64 = buildBoxMask(cropPreview, contextPadding, imageWidth, imageHeight);
+        }
       } else if (maskCanvasRef.current) {
         const maskCtx = maskCanvasRef.current.getContext('2d');
         if (maskCtx) {
           const maskData = maskCtx.getImageData(0, 0, imageWidth, imageHeight);
-          const rect = calculateCropRect(maskData, imageWidth, imageHeight);
+          const rect = calculateCropRect(maskData, imageWidth, imageHeight, contextPadding);
           if (rect) cropRect = rect;
         }
       }
@@ -316,8 +324,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
       };
     }
     if (isCropMode && cropPreview) {
-      const aligned = alignSendRect(cropPreview, imageWidth, imageHeight);
-      return { width: aligned.width, height: aligned.height };
+      // 焦点重绘:64 对齐后再放大到 ~1MP 发送,估价按实际发送尺寸
+      const sent = focusSendSize(alignSendRect(cropPreview, imageWidth, imageHeight));
+      return { width: sent.width, height: sent.height };
     }
     return { width: imageWidth, height: imageHeight };
   }, [isExpandMode, hasExpand, expandPadding, isCropMode, cropPreview, imageWidth, imageHeight]);
@@ -664,6 +673,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 isDraggingCropRef={isDraggingCropRef}
                 cropManuallyAdjustedRef={cropManuallyAdjustedRef}
                 setCropPreview={setCropPreview}
+                contextPadding={contextPadding}
               />
             )}
             {/* 对比原图覆盖层 - 按住时显示生成前快照，扩图时遮挡新增区域 */}
@@ -791,7 +801,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                       const ctx = mc.getContext('2d');
                       if (ctx) {
                         const maskData = ctx.getImageData(0, 0, imageWidth, imageHeight);
-                        setCropPreview(calculateCropRect(maskData, imageWidth, imageHeight));
+                        setCropPreview(calculateCropRect(maskData, imageWidth, imageHeight, contextPadding));
                       }
                     }
                     return;
@@ -821,6 +831,34 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 <Crop className="w-[18px] h-[18px]" />
                 <span className="text-xs">局部</span>
               </button>
+
+              {/* 上下文内边距(官方焦点重绘的「最小上下文区」):框内红边那一圈只给模型看、不重绘 */}
+              {isCropMode && !isExpandMode && (
+                <div
+                  className="flex items-center gap-2 bg-gray-900/90 backdrop-blur-md rounded-xl px-3 border border-white/10 shadow-xl h-11 pointer-events-auto"
+                  title="上下文:遮罩外接框往外扩这么多一起发给模型看但不重绘;框内没画遮罩时,整框去掉这一圈就是重绘区。发送前会把框内放大到约 1MP 再重绘,细节更好,Opus 免费档内不扣点"
+                >
+                  <span className="text-xs text-gray-400 whitespace-nowrap">上下文</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={256}
+                    step={16}
+                    value={contextPadding}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setContextPadding(next);
+                      // 自动框跟着上下文重算;用户手动拖过的框不动
+                      if (!cropManuallyAdjustedRef.current && maskCanvasRef.current) {
+                        const ctx = maskCanvasRef.current.getContext('2d');
+                        if (ctx) setCropPreview(calculateCropRect(ctx.getImageData(0, 0, imageWidth, imageHeight), imageWidth, imageHeight, next));
+                      }
+                    }}
+                    className="w-20 accent-nai-accent h-1 bg-gray-700 rounded-full appearance-none cursor-pointer flex-shrink-0"
+                  />
+                  <span className="text-xs text-white font-mono w-8 text-right">{contextPadding}</span>
+                </div>
+              )}
 
               {/* 扩图模式切换 */}
               <button

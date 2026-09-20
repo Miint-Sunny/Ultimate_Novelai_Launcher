@@ -8,6 +8,9 @@ export interface InpaintCropRect {
 export interface InpaintCropInfo {
   cropRect: InpaintCropRect;
   sendRect?: InpaintCropRect;
+  /** 焦点重绘实际发送的像素尺寸(sendRect 放大到 ~1MP 之后);没放大就等于 sendRect。 */
+  sentWidth?: number;
+  sentHeight?: number;
   originalImageBase64: string;
   originalWidth: number;
   originalHeight: number;
@@ -38,7 +41,7 @@ export async function pasteBackInpaintResult({
 }
 
 async function buildPasteBackImage(cropInfo: InpaintCropInfo, imageData: Blob) {
-  const { cropRect, sendRect, originalImageBase64, originalWidth, originalHeight, isExpand } = cropInfo;
+  const { cropRect, sendRect, sentWidth, sentHeight, originalImageBase64, originalWidth, originalHeight, isExpand } = cropInfo;
   const origImg = new Image();
   await new Promise<void>((resolve) => {
     origImg.onload = () => resolve();
@@ -59,6 +62,8 @@ async function buildPasteBackImage(cropInfo: InpaintCropInfo, imageData: Blob) {
   return buildCroppedPasteBack({
     cropRect,
     sendRect,
+    sentWidth,
+    sentHeight,
     originalWidth,
     originalHeight,
     origImg,
@@ -101,6 +106,8 @@ function buildExpandedPasteBack({
 function buildCroppedPasteBack({
   cropRect,
   sendRect,
+  sentWidth,
+  sentHeight,
   originalWidth,
   originalHeight,
   origImg,
@@ -108,6 +115,8 @@ function buildCroppedPasteBack({
 }: {
   cropRect: InpaintCropRect;
   sendRect?: InpaintCropRect;
+  sentWidth?: number;
+  sentHeight?: number;
   originalWidth: number;
   originalHeight: number;
   origImg: HTMLImageElement;
@@ -117,14 +126,18 @@ function buildCroppedPasteBack({
   canvas.width = originalWidth;
   canvas.height = originalHeight;
   const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(origImg, 0, 0);
 
   if (sendRect) {
-    const srcX = cropRect.x - sendRect.x;
-    const srcY = cropRect.y - sendRect.y;
+    // 焦点重绘把 sendRect 放大到 ~1MP 发送,结果是放大后的尺寸;按两轴各自的比例取回 cropRect 那块再缩回原像素。
+    const sx = sentWidth ? sentWidth / sendRect.width : 1;
+    const sy = sentHeight ? sentHeight / sendRect.height : 1;
+    const srcX = (cropRect.x - sendRect.x) * sx;
+    const srcY = (cropRect.y - sendRect.y) * sy;
     ctx.drawImage(
       cropResultBitmap,
-      srcX, srcY, cropRect.width, cropRect.height,
+      srcX, srcY, cropRect.width * sx, cropRect.height * sy,
       cropRect.x, cropRect.y, cropRect.width, cropRect.height,
     );
   } else {

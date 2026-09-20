@@ -102,3 +102,29 @@ export function alignSendRect(
 
   return { x, y, width: sendW, height: sendH };
 }
+
+/** 焦点重绘的像素预算:官方把框内区域「放大到约一百万像素」再重绘,也正好是 Opus 免费档的上限。 */
+export const FOCUS_PIXEL_BUDGET = 1024 * 1024;
+
+export interface FocusSendSize {
+  width: number;
+  height: number;
+  /** 发送尺寸 / sendRect,两轴各自算(64 对齐会让两轴差一点点,贴回时按各自比例缩回)。 */
+  scaleX: number;
+  scaleY: number;
+}
+
+/**
+ * 焦点重绘的发送尺寸:把 64 对齐的 sendRect 等比放大到不超过预算,再各轴向下对齐 64。
+ * 只放大不缩小 —— 放大是为了让模型在更高分辨率上补细节;框本身已经超过预算就按原样发,
+ * 让计费估价如实报,不偷偷缩图丢细节。
+ */
+export function focusSendSize(rect: { width: number; height: number }, budget: number = FOCUS_PIXEL_BUDGET): FocusSendSize {
+  const area = rect.width * rect.height;
+  if (area <= 0) return { width: rect.width, height: rect.height, scaleX: 1, scaleY: 1 };
+  const s = Math.sqrt(budget / area);
+  if (s <= 1) return { width: rect.width, height: rect.height, scaleX: 1, scaleY: 1 };
+  const width = Math.max(rect.width, Math.floor((rect.width * s) / 64) * 64);
+  const height = Math.max(rect.height, Math.floor((rect.height * s) / 64) * 64);
+  return { width, height, scaleX: width / rect.width, scaleY: height / rect.height };
+}

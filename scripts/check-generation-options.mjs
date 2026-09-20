@@ -46,4 +46,34 @@ check('桌面导入映射: 显示名先收敛再查显示名,结果回到 state 
   assert.equal(samplerIdToLabel(coerceSamplerId('ddim_v3')), undefined, '不认识的不设,别把垃圾写进受控 select');
 });
 
+const M = await import('../src/utils/maskCrop.ts');
+const { focusSendSize, alignSendRect, FOCUS_PIXEL_BUDGET } = M;
+
+check('焦点重绘发送尺寸: 放大到不超过 1MP 且各轴 64 对齐;只放大不缩小;贴回比例按各轴算', () => {
+  assert.equal(FOCUS_PIXEL_BUDGET, 1048576);
+  const a = focusSendSize({ width: 512, height: 768 });
+  assert.deepEqual([a.width, a.height], [832, 1216], '512×768 → 832×1216(与 NAI 常规竖图同尺寸,免费档内)');
+  assert.ok(a.width * a.height <= FOCUS_PIXEL_BUDGET);
+  assert.ok(a.width % 64 === 0 && a.height % 64 === 0);
+  assert.equal(a.scaleX, 832 / 512); assert.equal(a.scaleY, 1216 / 768);
+  const b = focusSendSize({ width: 256, height: 256 });
+  assert.deepEqual([b.width, b.height], [1024, 1024]);
+  const c = focusSendSize({ width: 1280, height: 1280 });
+  assert.deepEqual([c.width, c.height, c.scaleX, c.scaleY], [1280, 1280, 1, 1], '已经超预算的框原样发,不偷偷缩');
+  const d = focusSendSize({ width: 1024, height: 1024 });
+  assert.deepEqual([d.width, d.height], [1024, 1024]);
+  for (const [w, h] of [[64, 64], [320, 1024], [1024, 320], [960, 704]]) {
+    const r = focusSendSize({ width: w, height: h });
+    assert.ok(r.width * r.height <= FOCUS_PIXEL_BUDGET, `${w}x${h} 超预算`);
+    assert.ok(r.width >= w && r.height >= h, `${w}x${h} 缩小了`);
+    assert.ok(r.width % 64 === 0 && r.height % 64 === 0, `${w}x${h} 未对齐`);
+  }
+  // 先 64 对齐再放大,和发送路径一致
+  const aligned = alignSendRect({ x: 100, y: 100, width: 300, height: 500 }, 2000, 3000);
+  assert.deepEqual([aligned.width, aligned.height], [320, 512]);
+  const sent = focusSendSize(aligned);
+  assert.deepEqual([sent.width, sent.height], [768, 1280], '各轴向下对齐 64,乘积 983040 在预算内');
+  assert.ok(sent.width * sent.height <= FOCUS_PIXEL_BUDGET);
+});
+
 console.log(`\n${checks} 项生成参数合法值校验全部通过。`);

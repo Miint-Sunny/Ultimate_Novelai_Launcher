@@ -6,7 +6,7 @@ import { SaveModal, type SaveOptions } from './SaveModal';
 import { ImageToolbar } from './ImageToolbar';
 import { InpaintOverlay, type ExpandPayload } from './InpaintOverlay';
 import { WorkshopInputBar } from './workshop/WorkshopInputBar';
-import { alignSendRect, type CropRect } from '../utils/maskCrop';
+import { alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
 import { UpscaleModal } from './UpscaleModal';
 import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
 import { WatermarkPlacementOverlay } from './watermark/WatermarkPlacementOverlay';
@@ -326,37 +326,42 @@ export const MainContent: React.FC = () => {
       });
 
       // 裁切重绘模式
-      let cropInfo: { cropRect: CropRect; sendRect?: CropRect; originalImageBase64: string; originalWidth: number; originalHeight: number } | undefined;
+      let cropInfo: { cropRect: CropRect; sendRect?: CropRect; sentWidth?: number; sentHeight?: number; originalImageBase64: string; originalWidth: number; originalHeight: number } | undefined;
 
       if (cropRect) {
         const fullImageBase64 = imageBase64;
 
-        // tight cropRect 是"真正贴回去"的区域；sendRect 是 64 对齐后发送给 API 的区域
+        // tight cropRect 是"真正贴回去"的区域；sendRect 是 64 对齐后从原图截取的区域;
+        // 照官方的焦点重绘,截下来的这块再放大到 ~1MP 发送(只放大不缩小),模型在更高分辨率上补细节,回贴时缩回。
         const sendRect = alignSendRect(cropRect, fullWidth, fullHeight);
+        const sent = focusSendSize(sendRect);
 
         const fullImg = new Image();
         await new Promise<void>((resolve) => { fullImg.onload = () => resolve(); fullImg.src = `data:image/png;base64,${fullImageBase64}`; });
         const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = sendRect.width;
-        cropCanvas.height = sendRect.height;
+        cropCanvas.width = sent.width;
+        cropCanvas.height = sent.height;
         const cropCtx = cropCanvas.getContext('2d')!;
-        cropCtx.drawImage(fullImg, -sendRect.x, -sendRect.y);
+        cropCtx.imageSmoothingQuality = 'high';
+        cropCtx.drawImage(fullImg, sendRect.x, sendRect.y, sendRect.width, sendRect.height, 0, 0, sent.width, sent.height);
         imageBase64 = cropCanvas.toDataURL('image/png').split(',')[1];
 
         const maskImg = new Image();
         await new Promise<void>((resolve) => { maskImg.onload = () => resolve(); maskImg.src = `data:image/png;base64,${maskBase64}`; });
         const maskCropCanvas = document.createElement('canvas');
-        maskCropCanvas.width = sendRect.width;
-        maskCropCanvas.height = sendRect.height;
+        maskCropCanvas.width = sent.width;
+        maskCropCanvas.height = sent.height;
         const maskCropCtx = maskCropCanvas.getContext('2d')!;
         maskCropCtx.fillStyle = '#000000';
-        maskCropCtx.fillRect(0, 0, sendRect.width, sendRect.height);
-        maskCropCtx.drawImage(maskImg, -sendRect.x, -sendRect.y);
+        maskCropCtx.fillRect(0, 0, sent.width, sent.height);
+        // 蒙版是二值图,放大时不插值,免得边缘出现灰阶
+        maskCropCtx.imageSmoothingEnabled = false;
+        maskCropCtx.drawImage(maskImg, sendRect.x, sendRect.y, sendRect.width, sendRect.height, 0, 0, sent.width, sent.height);
         maskBase64 = maskCropCanvas.toDataURL('image/png').split(',')[1];
 
-        cropInfo = { cropRect, sendRect, originalImageBase64: fullImageBase64, originalWidth: fullWidth, originalHeight: fullHeight };
-        fullWidth = sendRect.width;
-        fullHeight = sendRect.height;
+        cropInfo = { cropRect, sendRect, sentWidth: sent.width, sentHeight: sent.height, originalImageBase64: fullImageBase64, originalWidth: fullWidth, originalHeight: fullHeight };
+        fullWidth = sent.width;
+        fullHeight = sent.height;
       }
 
       if (cropInfo) pendingPasteBackRef.current = true; // 裁切有回贴

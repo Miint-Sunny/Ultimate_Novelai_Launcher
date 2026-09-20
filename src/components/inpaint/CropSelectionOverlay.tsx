@@ -11,6 +11,11 @@ interface CropSelectionOverlayProps {
   isDraggingCropRef: MutableRefObject<boolean>;
   cropManuallyAdjustedRef: MutableRefObject<boolean>;
   setCropPreview: Dispatch<SetStateAction<CropRect | null>>;
+  /**
+   * 上下文内边距(原图像素):框内靠边的这一圈模型看得见但不重绘;
+   * 照官方焦点重绘用半透明红边标出来。0 = 不画。
+   */
+  contextPadding?: number;
 }
 
 type ResizeMode = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -33,6 +38,7 @@ export function CropSelectionOverlay({
   isDraggingCropRef,
   cropManuallyAdjustedRef,
   setCropPreview,
+  contextPadding = 0,
 }: CropSelectionOverlayProps) {
   const startDrag = (
     event: PointerEvent<HTMLDivElement>,
@@ -223,6 +229,21 @@ export function CropSelectionOverlay({
           pointerEvents: 'none',
         }}
       />
+      {/* 上下文内边距:框内靠边这一圈只给模型看不重绘,照官方用半透明红边标出 */}
+      {contextPadding > 0 && contextPadding * scale * 2 < Math.min(rw, rh) && (
+        <div
+          style={{
+            position: 'absolute',
+            top: `${ry + contextPadding * scale}px`,
+            left: `${rx + contextPadding * scale}px`,
+            width: `${rw - contextPadding * scale * 2}px`,
+            height: `${rh - contextPadding * scale * 2}px`,
+            boxShadow: `0 0 0 ${Math.max(1, contextPadding * scale)}px rgba(239, 68, 68, 0.22), inset 0 0 0 1px rgba(239, 68, 68, 0.75)`,
+            clipPath: `inset(-${contextPadding * scale}px)`,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
       <div style={{ position: 'absolute', top: `${ry}px`, left: `${rx + rw / 3}px`, width: '1px', height: `${rh}px`, background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />
       <div style={{ position: 'absolute', top: `${ry}px`, left: `${rx + rw * 2 / 3}px`, width: '1px', height: `${rh}px`, background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />
       <div style={{ position: 'absolute', top: `${ry + rh / 3}px`, left: `${rx}px`, width: `${rw}px`, height: '1px', background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />

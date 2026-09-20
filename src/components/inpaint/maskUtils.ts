@@ -113,3 +113,45 @@ export function getMaskBase64FromCanvas(
 
   return tempCanvas.toDataURL('image/png').split(',')[1];
 }
+
+/** 遮罩画布在 rect 范围内有没有画过(任何非透明像素)。 */
+export function maskHasPaintInside(
+  maskCanvas: HTMLCanvasElement | null,
+  rect: { x: number; y: number; width: number; height: number },
+): boolean {
+  if (!maskCanvas) return false;
+  const ctx = maskCanvas.getContext('2d');
+  if (!ctx) return false;
+  const x = Math.max(0, Math.floor(rect.x));
+  const y = Math.max(0, Math.floor(rect.y));
+  const w = Math.min(maskCanvas.width - x, Math.ceil(rect.width));
+  const h = Math.min(maskCanvas.height - y, Math.ceil(rect.height));
+  if (w <= 0 || h <= 0) return false;
+  const { data } = ctx.getImageData(x, y, w, h);
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true;
+  return false;
+}
+
+/**
+ * 照官方焦点重绘的「框内没画遮罩就整框重绘」:整框去掉上下文内边距那一圈就是重绘区。
+ * 内边距太大把框吃光时退回至少 64px 的中心区,保证还有东西可画。返回 base64 PNG(白 = 重绘)。
+ */
+export function buildBoxMask(
+  box: { x: number; y: number; width: number; height: number },
+  contextPadding: number,
+  imageWidth: number,
+  imageHeight: number,
+): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = imageWidth;
+  canvas.height = imageHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, imageWidth, imageHeight);
+  const padX = Math.min(Math.max(0, contextPadding), Math.max(0, (box.width - 64) / 2));
+  const padY = Math.min(Math.max(0, contextPadding), Math.max(0, (box.height - 64) / 2));
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(Math.round(box.x + padX), Math.round(box.y + padY), Math.round(box.width - padX * 2), Math.round(box.height - padY * 2));
+  return canvas.toDataURL('image/png').split(',')[1];
+}
