@@ -27,6 +27,11 @@ export interface ToolDeps {
   upscaleV5: (imageBase64: string) => Promise<{ image: string; width: number; height: number }>;
   /** 图片缩到最长边 maxEdge,返回 base64(不含 data: 前缀)。 */
   downscaleImage: (blob: Blob, maxEdge: number | null) => Promise<{ base64: string; mimeType: string; width: number; height: number }>;
+  /**
+   * 按**归一化的框**(0–1)裁一块出来看。框的坐标口径与画布摆位一致:相对这张图本身,
+   * 不是相对屏幕上显示的尺寸。裁完再按 maxEdge 压,省视觉 token。
+   */
+  cropImage?: (blob: Blob, box: { x: number; y: number; w: number; h: number }, maxEdge: number | null) => Promise<{ base64: string; mimeType: string; width: number; height: number }>;
   postJson: <T>(path: string, body: unknown) => Promise<T>;
   /** 标签联想:三种来源走 sidecar 同一条路由。 */
   suggestTags: (query: string, opts: { source: TagSuggestSource; limit: number; model?: string }) => Promise<{ items: TagSuggestItem[] }>;

@@ -48,6 +48,31 @@ function readLockedFields(): Set<string> {
   }
 }
 
+async function cropImage(
+  blob: Blob,
+  box: { x: number; y: number; w: number; h: number },
+  maxEdge: number | null,
+) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    // 归一化框 → 这张图自己的像素。夹一刀:模型给的框可能越界,越界就贴边,不报错。
+    const sx = Math.round(Math.min(Math.max(box.x, 0), 1) * bitmap.width);
+    const sy = Math.round(Math.min(Math.max(box.y, 0), 1) * bitmap.height);
+    const sw = Math.max(1, Math.min(Math.round(box.w * bitmap.width), bitmap.width - sx));
+    const sh = Math.max(1, Math.min(Math.round(box.h * bitmap.height), bitmap.height - sy));
+    const ratio = maxEdge ? Math.min(1, maxEdge / Math.max(sw, sh)) : 1;
+    const width = Math.max(1, Math.round(sw * ratio));
+    const height = Math.max(1, Math.round(sh * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    canvas.getContext('2d')?.drawImage(bitmap, sx, sy, sw, sh, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    return { base64: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: 'image/jpeg', width, height, sourceWidth: sw, sourceHeight: sh };
+  } finally {
+    bitmap.close();
+  }
+}
+
 async function downscaleImage(blob: Blob, maxEdge: number | null) {
   const bitmap = await createImageBitmap(blob);
   try {
@@ -242,6 +267,7 @@ export function useAgentHarness(): AgentHarnessController {
       upscaleQuote: (w, h) => ({ cost: v5UpscaleCost(w, h), target: v5UpscaleTargetSize(w, h) }),
       upscaleV5: (image) => sidecarV1Api.upscaleV5({ image, model: 'nai-diffusion-5-curated', declared_blur_sigma: 0 }),
       downscaleImage,
+      cropImage,
       postJson: (path, body) => appBackendApi.postJson(path, body),
       suggestTags: (query, opts) => localSidecarApi.getJson<{ items: TagSuggestItem[] }>('/api/v1/tags/suggest', { source: opts.source, q: query, limit: opts.limit, model: opts.model }),
       renderOverlay: renderCharacterOverlay,

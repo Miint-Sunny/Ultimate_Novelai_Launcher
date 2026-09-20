@@ -1,4 +1,11 @@
-/** view_canvas_image:把历史坞里的图给视觉模型看,默认叠角色位置覆盖层。 */
+/**
+ * 画布类工具。
+ * - `view_canvas_image`:把历史坞里的图给视觉模型看,默认叠角色位置覆盖层。
+ * - `view_canvas_region`:只看图里的一块。二期工具的第一条(契约见
+ *   docs_and_plan/2026-09-06-agent-harness-gap.md §7),先把**归一化框**的口径跑通,
+ *   后面 inpaint_region / edit_image 用同一套坐标:框是 0–1、相对这张图本身,
+ *   不是相对屏幕上显示的尺寸 —— 这正是画布摆位那条踩过的坑。
+ */
 
 import { toolError, type AgentTool } from '../toolRegistry';
 import { buildOverlaySpec, freePositioningForModel } from './canvasOverlay';
@@ -84,7 +91,78 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
       return { toolCallId, toolName: view.name, content: lines.join('\n'), imageBase64: encoded.base64, imageMimeType: encoded.mimeType };
     },
   };
-  return [view];
+  const region: AgentTool = {
+    name: 'view_canvas_region',
+    label: '查看画板局部',
+    description: '放大查看已生成图片中的**某一块**,用于核对细节(手部、文字、面部、纹理等)。box 用归一化坐标 {x, y, w, h},取值 0–1,相对图片本身的左上角;例如右下角四分之一是 {x:0.5, y:0.5, w:0.5, h:0.5}。越界会自动贴边。index 与 view_canvas_image 同义(0 = 最新)。不叠角色覆盖层。注意:当前对话模型需要具备图像理解能力。',
+    parameters: {
+      type: 'object',
+      properties: {
+        box: {
+          type: 'object',
+          description: '归一化的框(0–1,相对图片本身):x/y 是左上角,w/h 是宽高。',
+          properties: {
+            x: { type: 'number', description: '左上角 x,0–1' },
+            y: { type: 'number', description: '左上角 y,0–1' },
+            w: { type: 'number', description: '宽,0–1' },
+            h: { type: 'number', description: '高,0–1' },
+          },
+          required: ['x', 'y', 'w', 'h'],
+        },
+        index: { type: 'integer', description: '要看的图片索引(0 = 最新,默认 0)。' },
+        full_resolution: { type: 'boolean', description: '是否不压缩返回(默认 false,压到最长边 1024px)。裁出来本来就小,通常不用开。' },
+      },
+      required: ['box'],
+    },
+    permissionClass: 'R',
+    execute: async (toolCallId, args) => {
+      const raw = args.box as { x?: unknown; y?: unknown; w?: unknown; h?: unknown } | undefined;
+      const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const x = num(raw?.x); const y = num(raw?.y); const w = num(raw?.w); const h = num(raw?.h);
+      if (x === null || y === null || w === null || h === null) {
+        return toolError(toolCallId, region.name, 'box 需要四个数字 {x, y, w, h},都是 0–1 的归一化坐标。');
+      }
+      if (w <= 0 || h <= 0) {
+        return toolError(toolCallId, region.name, `框的宽高必须大于 0(收到 w=${w}, h=${h})。要看整张图请用 view_canvas_image。`);
+      }
+      if (!deps.cropImage) {
+        return toolError(toolCallId, region.name, '当前环境不支持裁剪,请改用 view_canvas_image 查看整张图。');
+      }
+      const images = deps.adapter.images();
+      const index = typeof args.index === 'number' && Number.isInteger(args.index) && args.index >= 0 ? args.index : 0;
+      const image = images[index];
+      if (!image) {
+        return toolError(toolCallId, region.name, images.length === 0 ? '画板当前没有已生成的图片历史。' : `图片索引 ${index} 超出范围(共 ${images.length} 张)。`);
+      }
+      let blob: Blob;
+      try {
+        blob = await image.blob();
+      } catch (error) {
+        return toolError(toolCallId, region.name, `读不到这张图片的数据:${error instanceof Error ? error.message : String(error)}`);
+      }
+      let encoded;
+      try {
+        encoded = await deps.cropImage(blob, { x, y, w, h }, args.full_resolution === true ? null : DEFAULT_MAX_EDGE);
+      } catch (error) {
+        return toolError(toolCallId, region.name, `裁剪失败:${error instanceof Error ? error.message : String(error)}`);
+      }
+      const px = {
+        x: Math.round(x * image.width), y: Math.round(y * image.height),
+        w: Math.round(w * image.width), h: Math.round(h * image.height),
+      };
+      const lines = [
+        `已裁出图片(索引 ${index},共 ${images.length} 张)的局部:`,
+        `• 原图尺寸: ${image.width}x${image.height}`,
+        `• 框(归一化): x=${x.toFixed(3)} y=${y.toFixed(3)} w=${w.toFixed(3)} h=${h.toFixed(3)}`,
+        `• 框(像素): 左上 (${px.x}, ${px.y}),约 ${px.w}x${px.h}`,
+        `• 附件尺寸: ${encoded.width}x${encoded.height}`,
+        '图片已作为附件随本条结果返回。框超出图片时会自动贴边,所以附件尺寸可能小于你要的框。',
+      ];
+      return { toolCallId, toolName: region.name, content: lines.join('\n'), imageBase64: encoded.base64, imageMimeType: encoded.mimeType };
+    },
+  };
+
+  return [view, region];
 }
 
 function formatTime(ts: number): string {

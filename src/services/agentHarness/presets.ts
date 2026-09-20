@@ -15,7 +15,7 @@ export const PHASE_ONE_TOOLS = [
   'get_studio_parameters', 'update_studio_parameters',
   'list_character_prompts', 'add_character_prompt', 'update_character_prompt', 'remove_character_prompt',
   'novelai_generate', 'novelai_upscale', 'novelai_account_info', 'novelai_suggest_tags',
-  'view_canvas_image', 'ask_user', 'load_skill',
+  'view_canvas_image', 'view_canvas_region', 'ask_user', 'load_skill',
   'danbooru_search_tags', 'danbooru_related_tags',
   'search_prompt_library', 'add_prompt_library_entry', 'update_prompt_library_entry', 'delete_prompt_library_entry',
   'context_memory',

@@ -19,6 +19,7 @@ const check = async (name, fn) => {
 
 function fakeAdapter() {
   const state = {
+    crops: [],
     params: { prompt: '1girl', negative_prompt: '', model: 'nai-diffusion-5-full', width: 832, height: 1216, steps: 28, scale: 5, cfg_rescale: 0, sampler: 'k_euler_ancestral', noise_schedule: 'karras', quality_preset: 'Standard', seed: '', character_ai_position: true },
     characters: [],
     images: [
@@ -62,6 +63,7 @@ const makeDeps = (allowed = ['prompt', 'negative_prompt', 'model', 'resolution',
     upscaleQuote: (w, h) => (w * h > 3145728 ? { cost: null, target: { width: 0, height: 0 } } : { cost: 1, target: { width: 1664, height: 2432 } }),
     upscaleV5: async () => ({ image: btoa('png'), width: 1664, height: 2432 }),
     downscaleImage: async () => ({ base64: 'QUJD', mimeType: 'image/png', width: 700, height: 1024 }),
+    cropImage: async (blob, box, maxEdge) => { state.crops.push({ box, maxEdge }); return { base64: 'Q1JQ', mimeType: 'image/jpeg', width: 256, height: 256 }; },
     postJson: async (path, body) => ({ results: [{ name: `${path}:${body.query ?? body.tags?.join('+')}`, count: 5, zh: '译' }] }),
     suggestTags: async (query, opts) => { state.suggested = { query, ...opts }; return { items: query === 'none' ? [] : [{ tag: `${query}_tag`, count: 3, confidence: 0.5, translation: '译' }, { tag: `${query}_2`, count: null, confidence: null, category: '1' }, { tag: `${query}_3`, category: 'meta' }] }; },
     renderOverlay: async (blob, spec, maxEdge) => { state.overlays.push({ spec, maxEdge }); return { base64: 'T1ZM', mimeType: 'image/jpeg', width: 1024, height: 1024 }; },
@@ -73,12 +75,12 @@ const makeDeps = (allowed = ['prompt', 'negative_prompt', 'model', 'resolution',
 };
 const run = (registry, name, args = {}) => registry.get(name).execute('call', args, { sendEpoch: 1, lockedFields: new Set() });
 
-await check('工具表: 一期 19 个工具都注册了,名字与他的一致', () => {
+await check('工具表: 20 个工具都注册了(一期 19 + 二期的 view_canvas_region)', () => {
   const { registry } = makeDeps();
   assert.deepEqual(registry.names.sort(), [
     'add_character_prompt', 'add_prompt_library_entry', 'ask_user', 'danbooru_related_tags', 'danbooru_search_tags', 'delete_prompt_library_entry',
     'get_studio_parameters', 'list_character_prompts', 'load_skill', 'novelai_account_info', 'novelai_generate', 'novelai_suggest_tags', 'novelai_upscale',
-    'remove_character_prompt', 'search_prompt_library', 'update_character_prompt', 'update_prompt_library_entry', 'update_studio_parameters', 'view_canvas_image',
+    'remove_character_prompt', 'search_prompt_library', 'update_character_prompt', 'update_prompt_library_entry', 'update_studio_parameters', 'view_canvas_image', 'view_canvas_region',
   ]);
   for (const tool of registry.getAll()) assert.ok(['R', 'W', 'D', 'P', 'A'].includes(tool.permissionClass), tool.name);
 });
@@ -401,6 +403,28 @@ await check('角色批量: characters 数组一次全加,名额不够整体拒�
   assert.equal(state.characters.length, 1);
   const rNone = await run(registry, 'remove_character_prompt', {});
   assert.equal(rNone.isError, true);
+});
+
+await check('view_canvas_region: 归一化框原样交给裁剪,报出像素框;坏框与缺能力都拦住', async () => {
+  const { registry, state } = makeDeps();
+  const ok = await run(registry, 'view_canvas_region', { box: { x: 0.5, y: 0.25, w: 0.5, h: 0.5 } });
+  // 框按**这张图自己的尺寸**换算(832×1216),不按屏幕上显示的大小 —— 与画布摆位同一口径。
+  assert.deepEqual(state.crops.at(-1).box, { x: 0.5, y: 0.25, w: 0.5, h: 0.5 });
+  assert.equal(ok.imageBase64, 'Q1JQ');
+  assert.match(ok.content, /左上 \(416, 304\)/);
+  assert.match(ok.content, /416x608/);
+  // 宽高为 0 / 非数字 / 缺失都不发
+  for (const bad of [{ x: 0, y: 0, w: 0, h: 0.5 }, { x: 0, y: 0, w: 'a', h: 0.5 }, undefined]) {
+    const res = await run(registry, 'view_canvas_region', { box: bad });
+    assert.ok(res.isError, JSON.stringify(bad));
+  }
+  // 环境不支持裁剪时说清楚,而不是静默返回整张
+  const noCrop = makeDeps();
+  noCrop.deps.cropImage = undefined;
+  const reg2 = T.createWorkbenchToolRegistry(noCrop.deps);
+  const res = await reg2.get('view_canvas_region').execute('c', { box: { x: 0, y: 0, w: 1, h: 1 } }, { sendEpoch: 1, lockedFields: new Set() });
+  assert.ok(res.isError);
+  assert.match(res.content, /view_canvas_image/);
 });
 
 console.log(`\n${checks} 项 agent 工具校验全部通过。`);
