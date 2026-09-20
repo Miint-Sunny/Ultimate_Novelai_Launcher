@@ -670,8 +670,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   const aiSettingsRef = useRef<HTMLDivElement>(null);
   // Removed unused refs: promptBtnRef, undesiredBtnRef, and pillStyle state
 
+  // 底栏摘要点一下,参数从底下往上展开(用户 2026-09-21 拍板,官方也是这么摆的)。
+  // 不是 tab,所以不动 tabState;再点同一处就收回去。
+  const [isParamsSheetOpen, setIsParamsSheetOpen] = useState(false);
+  const paramsSheetSourceRef = useRef<string | null>(null);
   const scrollToAISettings = (settingName: string) => {
-    goToTab('params');
+    // 点同一处再收回去(摘要上的数字既是把手也是开关);点另一处则留着抽屉、换高亮。
+    if (isParamsSheetOpen && paramsSheetSourceRef.current === settingName) {
+      setIsParamsSheetOpen(false);
+      paramsSheetSourceRef.current = null;
+      return;
+    }
+    paramsSheetSourceRef.current = settingName;
+    setIsParamsSheetOpen(true);
     setIsAISettingsOpen(true);
     // Small timeout to allow state update and DOM rendering
     setTimeout(() => {
@@ -945,11 +956,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   // 全局回车快捷键拦截
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // ⌥1–4 切左栏 tab;Esc 在库里 = 回来路(有弹窗开着时让弹窗自己处理)。
+      // ⌥1–3 切左栏 tab;Esc 先收参数抽屉、再回库的来路(有弹窗开着时让弹窗自己处理)。
       const shortcutTab = tabForShortcut(e);
       if (shortcutTab) {
         e.preventDefault();
         goToTab(shortcutTab);
+        return;
+      }
+      if (e.key === 'Escape' && isParamsSheetOpen && !document.querySelector('.fixed.inset-0')) {
+        e.preventDefault();
+        setIsParamsSheetOpen(false);
         return;
       }
       if (e.key === 'Escape' && sidebarTab === 'library' && !document.querySelector('.fixed.inset-0')) {
@@ -978,7 +994,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown, true);
     };
-  }, [handleGenerate, sidebarTab, goToTab, closeLibrary]);
+  }, [handleGenerate, sidebarTab, goToTab, closeLibrary, isParamsSheetOpen]);
 
   // 监听局部重绘事件
   useEffect(() => {
@@ -1291,11 +1307,20 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
 
         </div>
 
-        <div className={`p-3 space-y-3 shrink-0 ${sidebarTab === 'params' ? '' : 'hidden'}`} data-tab-panel="params">
+      </div>
+
+      {/* 参数抽屉:从底栏那条摘要往上展开,盖在滚动区上方、压不住底栏。
+          它不是 tab —— 摘要上的数字就是它的把手,点哪个开哪个。 */}
+      {isParamsSheetOpen && (
+        <div
+          className="shrink-0 border-t border-gray-800 bg-nai-panel max-h-[55vh] overflow-y-auto p-3 space-y-3 shadow-[0_-8px_24px_rgba(0,0,0,0.45)]"
+          data-testid="params-sheet"
+        >
           <AISettingsPanel
             panelRef={aiSettingsRef}
             isOpen={isAISettingsOpen}
-            onOpenChange={setIsAISettingsOpen}
+            /* 折叠 = 收起抽屉,不然会留下一个空壳挡着画布 */
+            onOpenChange={(open) => (open ? setIsAISettingsOpen(true) : setIsParamsSheetOpen(false))}
             onReset={resetAISettings}
             highlightSetting={highlightAISettings}
             steps={steps}
@@ -1317,7 +1342,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             model={selectedModel.id}
           />
         </div>
-      </div>
+      )}
 
       <GenerationFooterControls
         opusUsage={anlasInfo?.opusUsage}
