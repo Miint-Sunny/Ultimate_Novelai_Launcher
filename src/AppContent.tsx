@@ -126,17 +126,25 @@ const AppContent: React.FC = () => {
       onDrop={handleBackgroundDrop}
     >
       <AgentDockProvider>
-        {/* 窗口顶栏：面板开关住在这里（同 Claude Desktop），右侧不留竖窄条 */}
-        <DockTopBar />
         <div className="flex flex-1 overflow-hidden relative">
+          {/* 左栏直通到底：顶栏从它的右边缘才开始，不再横跨全宽把它切断
+              （用户 2026-09-21 的第一条硬条件，方案见
+              docs_and_plan/2026-09-21-shell-rearrange-and-director-tools.md §2） */}
           <LeftSidebar onLogout={logout} />
-          {/* 中央工作区：画布在上，历史条横放在下方展开 */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <MainContent />
-            <HistoryDock />
+          {/* 顶栏 + 画布 + 右栏：顶栏跨这一整块，所以它对「当前这张图」和「视图」说话，
+              而左栏说的是「下一张图的输入」，两者互不打断 */}
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            <DockTopBar />
+            <div className="flex flex-1 overflow-hidden">
+              {/* 中央工作区：画布在上，历史条横放在下方展开 */}
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                <MainContent />
+                <HistoryDock />
+              </div>
+              {/* 右侧：可拼凑的停靠区（一块都没开时整个不渲染） */}
+              <RightDock />
+            </div>
           </div>
-          {/* 右侧：可拼凑的停靠区（一块都没开时整个不渲染） */}
-          <RightDock />
         </div>
       </AgentDockProvider>
 
