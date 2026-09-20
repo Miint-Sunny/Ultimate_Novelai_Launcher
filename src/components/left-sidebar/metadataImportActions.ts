@@ -1,5 +1,5 @@
 import type React from 'react';
-import { normalizeNoiseSchedule, samplerIdToLabel } from '../../utils/generationOptions';
+import { coerceSamplerId, normalizeNoiseSchedule, samplerIdToLabel } from '../../utils/generationOptions';
 import {
   LARGE_RESOLUTIONS,
   MODELS,
@@ -185,7 +185,8 @@ export function applyImportedSettings({
   if (scaleNum !== null) setScale(scaleNum);
 
   if (metadata.sampler) {
-    const samplerLabel = samplerIdToLabel(metadata.sampler);
+    // 元数据里可能是 id(PNG 解析)也可能是显示名(历史坞 / 助手卡片从 state 拼的),先收敛再映射。
+    const samplerLabel = samplerIdToLabel(coerceSamplerId(metadata.sampler));
     if (samplerLabel) setSampler(samplerLabel);
   }
 

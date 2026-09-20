@@ -53,6 +53,17 @@ export const normalizeSamplerToId = (v?: string | null): string => {
   return samplerLabelToId(v) ?? 'k_euler_ancestral';
 };
 
+/**
+ * 显示名 → id,已经是 id 或认不出的值原样返回(不像 normalizeSamplerToId 那样退回默认)。
+ * 给「从 app 自己的 state 拼 ImageMetadata」的地方用:桌面 state 存的是显示名,
+ * 而 ImageMetadata.sampler 约定是 id;认不出的值留着,导入校验才能如实报「不支持」。
+ */
+export const coerceSamplerId = (v?: string | null): string | undefined => {
+  if (!v) return undefined;
+  if (SAMPLER_IDS.includes(v)) return v;
+  return samplerLabelToId(v) ?? v;
+};
+
 // ===== 导入校验 =====
 export interface UnsupportedSetting {
   field: string;
@@ -69,7 +80,9 @@ export function getUnsupportedImportSettings(meta: ImageMetadata): UnsupportedSe
   if (meta.noiseSchedule && !isSupportedNoiseSchedule(meta.noiseSchedule)) {
     issues.push({ field: 'noise schedule', value: String(meta.noiseSchedule) });
   }
-  // NovelAI 元数据里的 sampler 是 id；不在受支持 id 列表内则视为不支持。
+  // NovelAI 元数据里的 sampler 是 id;不在受支持 id 列表内则视为不支持。
+  // 这里故意不认显示名:竖屏端的导入把这个字段原样写进按 id 的 state,放宽会让显示名漏进去。
+  // 从桌面 state 拼 ImageMetadata 的生产端(历史坞 / 助手卡片)要自己先 coerceSamplerId。
   if (meta.sampler && !isSupportedSamplerId(meta.sampler)) {
     issues.push({ field: 'sampler', value: String(meta.sampler) });
   }

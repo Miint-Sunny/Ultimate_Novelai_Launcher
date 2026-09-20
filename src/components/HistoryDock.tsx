@@ -5,6 +5,7 @@ import { useGeneration } from '../contexts/GenerationContext';
 import { legacyCellToCenter } from '../services/characterPosition';
 import { useDragDrop } from '../contexts/DragDropContext';
 import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
+import { coerceSamplerId } from '../utils/generationOptions';
 import { generateImageFileName } from '../utils/fileSystem';
 import JSZip from 'jszip';
 
@@ -376,7 +377,8 @@ export const HistoryDock: React.FC = () => {
           seed: String(item.seed),
           steps: String(m.steps),
           scale: String(m.scale),
-          sampler: m.sampler,
+          // 桌面 state 存显示名,ImageMetadata 约定存 id;不转的话弹窗会把自己出的图判成「不支持」。
+          sampler: coerceSamplerId(m.sampler),
           cfgRescale: m.cfgRescale,
           noiseSchedule: m.noiseSchedule,
           characterPrompts: m.characterPrompts?.map(cp => ({
