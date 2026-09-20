@@ -274,9 +274,22 @@ class OutboundSecurityTests(unittest.TestCase):
         )
         policy.validate_url("https://v6.example/")
         policy.validate_url("https://v4.example/")
-        # Loopback, link-local, multicast, metadata-bearing blocks and garbage are
+        # Loopback, link-local, multicast, metadata-bearing blocks, private LAN
+        # space (even as a wider block that merely overlaps it) and garbage are
         # refused at startup rather than widening the policy.
-        for bad in ("127.0.0.0/8", "169.254.0.0/16", "224.0.0.0/4", "100.64.0.0/10", "nope"):
+        for bad in (
+            "127.0.0.0/8",
+            "169.254.0.0/16",
+            "224.0.0.0/4",
+            "100.64.0.0/10",
+            "192.168.0.0/16",
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.0.0.0/8",
+            "fd00::/8",
+            "fd12:3456::/32",
+            "nope",
+        ):
             with mock.patch.dict(os.environ, {env_name: bad}):
                 with self.assertRaises(ValueError) as raised:
                     OutboundPolicy("public")

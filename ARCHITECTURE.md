@@ -215,8 +215,9 @@ swap, rolls back failures, and requests a process restart.
   unsafe schemes are rejected, and sensitive headers/cookies are stripped on
   cross-origin redirects. `public` also accepts the placeholder addresses a local
   fake-ip proxy (Clash, Mihomo, sing-box, Surge TUN) hands out, 198.18.0.0/15 by
-  default plus `ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES`: they cannot reach LAN
-  services, and the proxy resolves the real hostname upstream.
+  default plus `ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES` (private LAN blocks are
+  refused there): they cannot reach LAN services, and the proxy resolves the real
+  hostname upstream.
 - [sidecar/infrastructure/http_clients.py](sidecar/infrastructure/http_clients.py)
   owns the shared cancellable HTTP clients and closes them through the runtime
   lifespan.
