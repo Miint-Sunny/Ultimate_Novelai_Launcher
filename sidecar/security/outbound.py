@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 import socket
 from collections.abc import Callable, Iterable, Mapping
@@ -84,6 +85,15 @@ _TRUSTABLE_LAN_RANGES = tuple(
     )
 )
 
+FAKE_IP_RANGES_ENV = "ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES"
+# RFC 2544 benchmarking block.  It is never routed on the public Internet or on
+# any sane LAN, so a resolver answer inside it can only come from a local
+# fake-ip proxy (Clash / Mihomo / sing-box / Surge hand out 198.18.0.0/15 by
+# default): the TUN maps the placeholder back to the hostname and the proxy
+# resolves it upstream.  Public mode therefore accepts it in place of a global
+# address.  Other placeholder ranges go in FAKE_IP_RANGES_ENV.
+_BUILTIN_FAKE_IP_RANGES: tuple[IPNetwork, ...] = (ipaddress.ip_network("198.18.0.0/15"),)
+
 SENSITIVE_REDIRECT_HEADERS = frozenset(
     {
         "api-key",
@@ -155,12 +165,60 @@ def _network_is_trustable(network: IPNetwork) -> bool:
     )
 
 
+def _network_may_be_fake_ip(network: IPNetwork) -> bool:
+    """A fake-ip range must not alias anything the always-reject rules protect."""
+    if (
+        network.is_loopback
+        or network.is_link_local
+        or network.is_multicast
+        or network.is_unspecified
+    ):
+        return False
+    return not any(
+        address.version == network.version and address in network for address in _METADATA_ADDRESSES
+    )
+
+
+def parse_fake_ip_ranges(values: Iterable[str | IPNetwork]) -> tuple[IPNetwork, ...]:
+    """Parse placeholder ranges handed out by a local fake-ip proxy."""
+    networks: list[IPNetwork] = []
+    for value in values:
+        try:
+            network = (
+                value
+                if isinstance(value, (ipaddress.IPv4Network, ipaddress.IPv6Network))
+                else ipaddress.ip_network(str(value).strip(), strict=False)
+            )
+        except ValueError as exc:
+            raise ValueError(f"invalid fake-ip range: {value}") from exc
+        if not _network_may_be_fake_ip(network):
+            raise ValueError(f"fake-ip range overlaps a protected address block: {network}")
+        networks.append(network)
+    return tuple(dict.fromkeys(networks))
+
+
+def default_fake_ip_ranges() -> tuple[IPNetwork, ...]:
+    """Built-in fake-ip ranges plus the comma-separated FAKE_IP_RANGES_ENV extras."""
+    raw = os.environ.get(FAKE_IP_RANGES_ENV, "")
+    try:
+        configured = parse_fake_ip_ranges(item for item in raw.split(",") if item.strip())
+    except ValueError as exc:
+        raise ValueError(f"{FAKE_IP_RANGES_ENV} is invalid: {exc}") from exc
+    return tuple(dict.fromkeys((*_BUILTIN_FAKE_IP_RANGES, *configured)))
+
+
 class OutboundPolicy:
     """DNS-aware SSRF policy for public, loopback, or explicitly trusted LANs.
 
     Every resolved address must satisfy the selected mode.  Rejecting a hostname
     with mixed public/private answers closes the common DNS-rebinding bypass where
     a client chooses an address that the validator did not approve.
+
+    Public mode also accepts the placeholder addresses of a local fake-ip proxy
+    (``fake_ip_ranges``): the machine's resolver answers 198.18.x.x for every
+    name while the proxy TUN is up, and the real destination is still the public
+    hostname.  Those ranges cannot address LAN services, and the always-reject
+    rules (metadata, link-local, multicast) keep running in front of them.
     """
 
     def __init__(
@@ -168,9 +226,15 @@ class OutboundPolicy:
         mode: str | OutboundMode = OutboundMode.PUBLIC,
         *,
         trusted_networks: Iterable[str | ipaddress.IPv4Network | ipaddress.IPv6Network] = (),
+        fake_ip_ranges: Iterable[str | IPNetwork] | None = None,
         resolver: Resolver | None = None,
     ) -> None:
         self.mode = _normalize_mode(mode)
+        self.fake_ip_ranges = (
+            parse_fake_ip_ranges(fake_ip_ranges)
+            if fake_ip_ranges is not None
+            else default_fake_ip_ranges()
+        )
         networks: list[IPNetwork] = []
         for value in trusted_networks:
             try:
@@ -284,9 +348,15 @@ class OutboundPolicy:
                 code="outbound_address_forbidden",
             )
 
+    def _is_fake_ip(self, address: IPAddress) -> bool:
+        return any(
+            address.version == network.version and address in network
+            for network in self.fake_ip_ranges
+        )
+
     def _address_allowed(self, address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
         if self.mode is OutboundMode.PUBLIC:
-            return address.is_global
+            return address.is_global or self._is_fake_ip(address)
         if self.mode is OutboundMode.LOOPBACK:
             return address.is_loopback
         return any(

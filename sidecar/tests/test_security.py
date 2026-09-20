@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from sidecar.security import (
     AuthenticationError,
@@ -217,6 +219,69 @@ class _Resolver:
 
 
 class OutboundSecurityTests(unittest.TestCase):
+    def test_public_policy_accepts_local_fake_ip_placeholders(self) -> None:
+        # A fake-ip proxy (Clash / Mihomo / sing-box TUN) answers 198.18.x.x for
+        # every public name.  The exact address changes per name and per
+        # session, so the whole RFC 2544 block is what the policy recognises.
+        resolver = _Resolver(
+            {
+                "image.novelai.net": ["198.18.0.34"],
+                "api.deepseek.com": ["198.19.255.254"],
+                "real.example": ["93.184.216.34"],
+                "half-real.example": ["198.18.0.34", "93.184.216.34"],
+            }
+        )
+        policy = OutboundPolicy("public", resolver=resolver)
+        for host in ("image.novelai.net", "api.deepseek.com", "real.example", "half-real.example"):
+            policy.validate_url(f"https://{host}/v1")
+        approved = policy.validate_url("https://api.deepseek.com/v1")
+        self.assertEqual([str(address) for address in approved.addresses], ["198.19.255.254"])
+
+    def test_fake_ip_placeholders_do_not_open_lan_or_metadata_space(self) -> None:
+        resolver = _Resolver(
+            {
+                "lan.example": ["10.0.0.5"],
+                "mixed.example": ["198.18.0.34", "192.168.1.1"],
+                "metadata.example": ["169.254.169.254"],
+                "loopback.example": ["127.0.0.1"],
+            }
+        )
+        policy = OutboundPolicy("public", resolver=resolver)
+        for host in ("lan.example", "mixed.example", "metadata.example", "loopback.example"):
+            with self.assertRaises(OutboundPolicyError):
+                policy.validate_url(f"https://{host}/")
+        loopback_policy = OutboundPolicy(
+            "loopback", resolver=_Resolver({"fake.example": ["198.18.0.34"]})
+        )
+        with self.assertRaises(OutboundPolicyError):
+            loopback_policy.validate_url("http://fake.example/")
+        no_placeholders = OutboundPolicy(
+            "public",
+            fake_ip_ranges=(),
+            resolver=_Resolver({"fake.example": ["198.18.0.34"]}),
+        )
+        with self.assertRaises(OutboundPolicyError):
+            no_placeholders.validate_url("https://fake.example/")
+
+    def test_fake_ip_ranges_come_from_the_environment_and_stay_bounded(self) -> None:
+        env_name = "ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES"
+        resolver = _Resolver({"v6.example": ["fc00::1"], "v4.example": ["28.0.0.7"]})
+        with mock.patch.dict(os.environ, {env_name: " fc00::/18 , 28.0.0.0/8"}):
+            policy = OutboundPolicy("public", resolver=resolver)
+        self.assertEqual(
+            [str(network) for network in policy.fake_ip_ranges],
+            ["198.18.0.0/15", "fc00::/18", "28.0.0.0/8"],
+        )
+        policy.validate_url("https://v6.example/")
+        policy.validate_url("https://v4.example/")
+        # Loopback, link-local, multicast, metadata-bearing blocks and garbage are
+        # refused at startup rather than widening the policy.
+        for bad in ("127.0.0.0/8", "169.254.0.0/16", "224.0.0.0/4", "100.64.0.0/10", "nope"):
+            with mock.patch.dict(os.environ, {env_name: bad}):
+                with self.assertRaises(ValueError) as raised:
+                    OutboundPolicy("public")
+            self.assertIn(env_name, str(raised.exception))
+
     def test_public_policy_rejects_mixed_private_and_metadata_answers(self) -> None:
         resolver = _Resolver(
             {
