@@ -10,11 +10,17 @@ If no secure store is available the caller receives a :class:`CredentialStorageE
 instead of the secret being written to disk in plaintext. The legacy plaintext
 ``novelai.token`` file (NovelAI token only) is no longer written; it is read once
 for migration and then deleted.
+
+The store entries are keyed by service name, not by data directory, so every
+sidecar on the machine shares them. ``ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE``
+suffixes the service name (``Ultimate Novelai launcher (test)``) so a test instance
+can hold its own secrets in the same OS store without touching the app's.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,10 +30,29 @@ SERVICE_NAME = "Ultimate Novelai launcher"
 ACCOUNT_NOVELAI = "novelai-token"
 ACCOUNT_LLM = "llm-api-key"
 ACCOUNT_LLM_BACKUP = "llm-api-key-backup"
+CREDENTIAL_NAMESPACE_ENV = "ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE"
+_NAMESPACE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}\Z")
 
 
 class CredentialStorageError(RuntimeError):
     """Raised when a secret cannot be stored or removed via a secure OS store."""
+
+
+def credential_namespace() -> str:
+    """Return the configured store namespace, or ``""`` for the app's own entries."""
+    raw = os.environ.get(CREDENTIAL_NAMESPACE_ENV, "").strip()
+    if raw and not _NAMESPACE_PATTERN.fullmatch(raw):
+        raise ValueError(
+            f"{CREDENTIAL_NAMESPACE_ENV} must be 1-32 characters of letters, digits, "
+            "'.', '_' or '-', starting with a letter or digit"
+        )
+    return raw
+
+
+def service_name() -> str:
+    """Service name the OS store entries are filed under, namespaced when configured."""
+    namespace = credential_namespace()
+    return f"{SERVICE_NAME} ({namespace})" if namespace else SERVICE_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +203,7 @@ def _macos_get_password(account: str) -> str:
         return ""
     try:
         result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
-            [executable, "find-generic-password", "-s", SERVICE_NAME, "-a", account, "-w"],
+            [executable, "find-generic-password", "-s", service_name(), "-a", account, "-w"],
             capture_output=True,
             check=False,
             text=True,
@@ -211,7 +236,7 @@ def _macos_answer_password_prompt(executable: str, account: str, value: str) -> 
                 "add-generic-password",
                 "-U",
                 "-s",
-                SERVICE_NAME,
+                service_name(),
                 "-a",
                 account,
                 "-w",
@@ -263,7 +288,7 @@ def _macos_delete_password(account: str) -> None:
         return
     try:
         subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
-            [executable, "delete-generic-password", "-s", SERVICE_NAME, "-a", account],
+            [executable, "delete-generic-password", "-s", service_name(), "-a", account],
             capture_output=True,
             check=False,
             text=True,
@@ -279,7 +304,7 @@ def _macos_delete_password(account: str) -> None:
 
 
 def _secret_tool_attrs(account: str) -> list[str]:
-    return ["service", SERVICE_NAME, "account", account]
+    return ["service", service_name(), "account", account]
 
 
 def _secret_tool_get(account: str) -> str:
@@ -306,7 +331,7 @@ def _secret_tool_set(account: str, value: str) -> bool:
     try:
         # The secret is read from stdin, keeping it out of the process argv list.
         result = subprocess.run(  # noqa: S603 - executable is resolved by shutil.which
-            [executable, "store", "--label", SERVICE_NAME, *_secret_tool_attrs(account)],
+            [executable, "store", "--label", service_name(), *_secret_tool_attrs(account)],
             input=value,
             capture_output=True,
             check=False,
@@ -343,7 +368,7 @@ _CRED_PERSIST_LOCAL_MACHINE = 2
 
 
 def _windows_target(account: str) -> str:
-    return f"{SERVICE_NAME}/{account}"
+    return f"{service_name()}/{account}"
 
 
 def _windows_advapi():

@@ -44,6 +44,24 @@ npm run sidecar
 
 想走真链路就去掉 `MOCK_GENERATION` 那行,并换一个 `DATA_DIR`,免得两边的历史混在一起。
 
+### 真链路的 key 放哪
+
+不要写进 `.env`、shell 历史或任何文件。sidecar 只认两处:进程环境变量 `NAI_TOKEN` /
+`LLM_API_KEY`(优先,不落盘,适合一次性命令),以及系统钥匙串。钥匙串条目按服务名共享,
+**不分数据目录**,所以测试实例直接存会覆盖正式 app 的那把;给它一个命名空间就分开了:
+
+```bash
+ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE=test \
+uv run --frozen python -m sidecar.credential_cli set novelai
+```
+
+命令会关掉回显来读 key,存进 `Ultimate Novelai launcher (test)` 这个钥匙串条目;
+`set llm` / `set llm-backup` 同理,`status` 只报「有没有」,`delete` 清掉。起真链路
+sidecar 时带同一个 `ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE=test`,它就读这套。
+
+代理走 fake-ip 模式(域名解析成 198.18.x.x)的机器上,public 出站策略默认放行这一段;
+用了别的段就配 `ULTIMATE_NOVELAI_LAUNCHER_FAKE_IP_RANGES`,私网段填不进去。
+
 前端另开一个终端:`VITE_SIDECAR_URL=http://127.0.0.1:38999 npm run dev`。
 
 ## 让浏览器连上

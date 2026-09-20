@@ -223,7 +223,10 @@ swap, rolls back failures, and requests a process restart.
 - [sidecar/credentials.py](sidecar/credentials.py) stores NovelAI and LLM secrets in
   macOS Keychain, Windows Credential Manager, or Secret Service. Secure storage
   failure is fail-closed; legacy plaintext token migration is accepted only after a
-  successful secure write.
+  successful secure write. Entries are keyed by service name, so every sidecar on
+  the machine shares them; `ULTIMATE_NOVELAI_LAUNCHER_CREDENTIAL_NAMESPACE`
+  suffixes the name for a test instance, and `python -m sidecar.credential_cli`
+  stores a secret from a no-echo prompt into that store.
 
 ## Frontend transport boundary
 

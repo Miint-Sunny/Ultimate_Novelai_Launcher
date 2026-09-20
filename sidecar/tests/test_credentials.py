@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -129,6 +130,40 @@ class CredentialsTests(unittest.TestCase):
             with self.assertRaises(credentials.CredentialStorageError):
                 credentials.get_stored_token(self._data_dir())
         self.assertEqual(legacy.read_text(encoding="utf-8"), "token-orphan-value")
+
+    def test_namespace_suffixes_the_store_service_name(self) -> None:
+        env = credentials.CREDENTIAL_NAMESPACE_ENV
+        with mock.patch.dict(os.environ, {env: ""}):
+            self.assertEqual(credentials.credential_namespace(), "")
+            self.assertEqual(credentials.service_name(), credentials.SERVICE_NAME)
+        with mock.patch.dict(os.environ, {env: " test "}):
+            self.assertEqual(credentials.credential_namespace(), "test")
+            self.assertEqual(credentials.service_name(), "Ultimate Novelai launcher (test)")
+            self.assertEqual(
+                credentials._windows_target("novelai-token"),
+                "Ultimate Novelai launcher (test)/novelai-token",
+            )
+            self.assertEqual(
+                credentials._secret_tool_attrs("llm-api-key"),
+                ["service", "Ultimate Novelai launcher (test)", "account", "llm-api-key"],
+            )
+        for bad in ("bad name", "-leading", "x" * 33, "semi;colon"):
+            with mock.patch.dict(os.environ, {env: bad}), self.assertRaises(ValueError):
+                credentials.service_name()
+
+    def test_namespace_reaches_the_macos_keychain_commands(self) -> None:
+        completed = mock.Mock(returncode=0, stdout="stored-secret\n")
+        with (
+            mock.patch.dict(os.environ, {credentials.CREDENTIAL_NAMESPACE_ENV: "test"}),
+            mock.patch.object(credentials.shutil, "which", return_value="/usr/bin/security"),
+            mock.patch.object(credentials.subprocess, "run", return_value=completed) as run,
+        ):
+            self.assertEqual(credentials._macos_get_password("novelai-token"), "stored-secret")
+            credentials._macos_delete_password("novelai-token")
+        self.assertEqual(len(run.call_args_list), 2)
+        for call in run.call_args_list:
+            args = call.args[0]
+            self.assertEqual(args[args.index("-s") + 1], "Ultimate Novelai launcher (test)")
 
     def test_macos_keychain_write_verifies_the_round_trip(self) -> None:
         secret = "super-secret-value"
