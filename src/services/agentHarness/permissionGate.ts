@@ -4,6 +4,9 @@
  *
  * 任何模式都绕不过的硬上限在这里:每条消息的生成次数、Anlas 预算、体力条耗尽时
  * P 类一律确认、用户锁定字段一律拒绝。
+ *
+ * auto 下估价明确免费的 P 类直接放行(用户 2026-09-20 定的);扣点、估不出、体力条
+ * 耗尽照旧确认。Anlas 预算只放宽 yolo,auto 的「花钱会问」不因预算调高而失效。
  */
 
 import type { AgentTool, ToolContext } from './toolRegistry';
@@ -56,10 +59,15 @@ export class MessageBudget {
   }
 }
 
-function modeAllows(mode: PermissionMode, cls: PermissionClass): 'allow' | 'ask' {
+function modeAllows(mode: PermissionMode, cls: PermissionClass, cost: CostEstimate | undefined): 'allow' | 'ask' {
   if (cls === 'R' || cls === 'A') return 'allow';
   if (mode === 'yolo') return 'allow';
-  if (mode === 'auto') return cls === 'W' ? 'allow' : 'ask';
+  if (mode === 'auto') {
+    if (cls === 'W') return 'allow';
+    // 证明得了免费才放;没有估价的工具也算证明不了。
+    if (cls === 'P') return cost?.free === true ? 'allow' : 'ask';
+    return 'ask';
+  }
   return 'ask';
 }
 
@@ -86,7 +94,7 @@ export async function checkPermission(
   let cost: CostEstimate | undefined;
   if (cls === 'P' && tool.estimateCost) cost = await tool.estimateCost(args, ctx);
 
-  let verdict = modeAllows(ctx.mode, cls);
+  let verdict = modeAllows(ctx.mode, cls, cost);
   if (cls === 'P') {
     // 钱包闸:体力条耗尽,或估价超出预算,任何模式都要问。
     const overBudget = cost ? !cost.free && cost.anlas > ctx.limits.anlasBudget : true;

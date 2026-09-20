@@ -21,7 +21,7 @@ import { useAgentHarness } from './useAgentHarness';
 
 const MODES: readonly { id: PermissionMode; label: string; hint: string }[] = [
   { id: 'manual', label: '逐项确认', hint: '每次修改都先问' },
-  { id: 'auto', label: '自动', hint: '写类自动应用可撤销,花钱与删除会问' },
+  { id: 'auto', label: '自动', hint: '写类自动应用可撤销;免费出图直接出,扣点与删除会问' },
   { id: 'yolo', label: '放行', hint: '硬上限内全部自动;仍然拦体力条耗尽与锁定字段' },
 ];
 
@@ -103,7 +103,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
             <button key={f.id} onClick={() => h.toggleLockedField(f.id)} style={chipButton({ primary: h.lockedFields.has(f.id) })}>{f.label}</button>
           ))}
           <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-            <LimitField label="单条消息 Anlas 预算" title="0 = 只放行免费的生成;要扣点的生成在任何模式下都先问" value={limits.budget} max={10000} onChange={(v) => saveLimit({ budget: v })} />
+            <LimitField label="单条消息 Anlas 预算" title="0 = 只放行免费的生成;扣点的生成在自动模式下总是先问,放行模式在预算内自动" value={limits.budget} max={10000} onChange={(v) => saveLimit({ budget: v })} />
             <LimitField label="单条消息生成上限" title="一条用户消息内最多出几张图(放行模式也算)" value={limits.maxGen} min={1} max={20} onChange={(v) => saveLimit({ maxGen: v })} />
           </div>
         </div>

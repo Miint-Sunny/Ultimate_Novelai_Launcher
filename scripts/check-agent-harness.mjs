@@ -362,17 +362,30 @@ await check('权限: auto 下 W 自动、D 要问;「本轮同类都允许」后
   assert.equal(events.filter((e) => e.type === 'tool_result').length, 3);
 });
 
-await check('权限: P 类——免费在 auto 下也要问;yolo 免费放行;yolo 超预算要问;体力条耗尽一律问', async () => {
-  const run = async (mode, cost, exhausted = false) => {
+await check('权限: P 类——auto 免费直接出、扣点要问、估不出要问、不信预算;yolo 免费与预算内放行、超预算要问;体力条耗尽一律问', async () => {
+  const run = async (mode, cost, exhausted = false, opts = {}) => {
     let asked = false;
     const p = scriptedProvider([callTool('novelai_generate'), text('ok')]);
-    await runWithDecision(harnessWith(p, { permissionMode: () => mode, cost, opusExhausted: () => exhausted }), null, (req) => { asked = true; req.respond({ kind: 'allow' }); });
+    await runWithDecision(harnessWith(p, { permissionMode: () => mode, cost, opusExhausted: () => exhausted, ...opts }), null, (req) => { asked = true; req.respond({ kind: 'allow' }); });
     return asked;
   };
-  assert.equal(await run('auto', { anlas: 0, free: true }), true);
+  assert.equal(await run('manual', { anlas: 0, free: true }), true);
+  assert.equal(await run('auto', { anlas: 0, free: true }), false);
+  assert.equal(await run('auto', { anlas: 5, free: false }), true);
+  assert.equal(await run('auto', { anlas: 0, free: true }, true), true, '体力条耗尽:免费也问');
+  const budget30 = { permissionLimits: () => ({ maxGenerationsPerMessage: 3, anlasBudget: 30 }) };
+  assert.equal(await run('auto', { anlas: 5, free: false }, false, budget30), true, 'auto 不因预算调高而放行扣点');
+  assert.equal(await run('yolo', { anlas: 5, free: false }, false, budget30), false, 'yolo 在预算内自动');
   assert.equal(await run('yolo', { anlas: 0, free: true }), false);
   assert.equal(await run('yolo', { anlas: 30, free: false }), true);
   assert.equal(await run('yolo', { anlas: 0, free: true }, true), true);
+  // 没有估价的 P 类工具在 auto 下也要问:证明不了免费就不放。
+  const registry = new ToolRegistry();
+  registry.register({ name: 'paid', label: '付费', description: 'd', parameters: { type: 'object', properties: {} }, permissionClass: 'P', execute: async (id) => ({ toolCallId: id, content: 'x' }) });
+  let askedNoEstimate = false;
+  const h = new AgentHarness({ tools: registry, provider: scriptedProvider([callTool('paid', {}, 'c1'), text('x')]), preset: { ...PRESET, enabledToolNames: ['paid'] }, sleep: fastSleep, permissionMode: () => 'auto' });
+  await runWithDecision(h, null, (req) => { askedNoEstimate = true; req.respond({ kind: 'allow' }); });
+  assert.equal(askedNoEstimate, true);
 });
 
 await check('权限: 生成次数到上限直接拒绝(yolo 也算);参数锁在任何模式都拒绝且不问', async () => {
