@@ -1182,6 +1182,27 @@ def _resolve_use_coords(params: dict, char_captions: list) -> bool:
     return False
 
 
+def _apply_inpaint_strength(parameters: dict, strength) -> None:
+    """把重绘「强度」写成 NovelAI 真正读取的形状。
+
+    真链路实测(2026-09-20,V5 Full,同图同蒙版同 seed):infill 请求里平铺的
+    ``strength`` 与 ``inpaintImg2ImgStrength`` 改成 0.2 或 0.95 出图逐像素相同,
+    只有嵌套的 ``img2img: {strength, color_correct}`` 才让蒙版区随强度变化
+    (0.2 与原图均差 5.72,0.95 为 14.98)。官方客户端也是强度 < 1 时才发这个
+    嵌套对象。平铺字段照旧保留,服务端不看它们。
+    """
+    try:
+        value = float(strength)
+    except (TypeError, ValueError):
+        value = 0.7
+    value = min(1.0, max(0.0, value))
+    parameters["inpaintImg2ImgStrength"] = value
+    if value < 1.0:
+        parameters["img2img"] = {"strength": value, "color_correct": True}
+    else:
+        parameters.pop("img2img", None)
+
+
 async def generate_novelai_image_stream(
     params: dict,
     progress_callback: Callable = None,
@@ -1343,6 +1364,7 @@ async def generate_novelai_image_stream(
         payload["parameters"]["noise"] = params.get("noise", 0)
         payload["parameters"]["extra_noise_seed"] = int(seed)
         payload["parameters"]["add_original_image"] = True
+        _apply_inpaint_strength(payload["parameters"], params.get("strength", 0.7))
     
     # Vibe 参数
     if params.get("reference_image_multiple"):
@@ -5177,6 +5199,7 @@ def convert_web_params_to_stream(web_params: dict) -> dict:
         stream_params["mask"] = inpaint.get("maskBase64")
         stream_params["strength"] = inpaint.get("strength", 0.7)
         stream_params["noise"] = inpaint.get("noise", 0)
+        _apply_inpaint_strength(stream_params, inpaint.get("strength", 0.7))
         # inpaint 需要使用 inpainting 模型
         base_model = stream_params.get("model", "nai-diffusion-4-5-full")
         if base_model == "nai-diffusion-5-curated":
