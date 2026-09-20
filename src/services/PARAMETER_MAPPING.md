@@ -112,7 +112,8 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.legacy_v3_extend` | `false` | V3 扩展 | 固定值 |
 | `parameters.use_coords` | `params.useCoords ?? shouldUseCoords(activeCharacters)` | 使用坐标 | 官方位置区块的**全局**二选一（AI's Choice / Custom），默认 false、坐标照发。桌面端把开关如实传；没传的调用方退回「有人手动摆过才开」的推断 |
 | `parameters.normalize_reference_strength_multiple` | `true` | 归一化参考强度 | 固定值 |
-| `parameters.inpaintImg2ImgStrength` | `1` | 修复强度 | 需要 Inpaint 功能 |
+| `parameters.inpaintImg2ImgStrength` | 重绘滑杆值(非重绘时 `1`) | 修复强度(官方客户端字段) | 服务端**不看**平铺的 `strength`,2026-09-20 真链路实测 0.2 与 0.95 逐像素相同 |
+| `parameters.img2img` | 重绘且强度 < 1 时 `{strength, color_correct: true}`;等于 1 不发 | 官方「Inpainting Strength」真正生效的位置(Swagger 标注 used by inpaint) | 同上实测:0.2 与原图差 5.72、0.95 差 14.98 |
 | `parameters.v4_prompt.use_coords` | 同上 | 使用坐标 | 同上，与顶层保持一致 |
 | `parameters.v4_prompt.use_order` | `true` | 使用顺序 | 固定值 |
 | `parameters.v4_negative_prompt.legacy_uc` | `false` | 旧版 UC | 固定值 |

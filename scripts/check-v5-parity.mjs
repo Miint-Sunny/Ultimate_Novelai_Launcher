@@ -396,6 +396,25 @@ check('载荷: V5 Curated 重绘是 4.5 顶替(NAI 上线真模型后要摘掉�
   assert.equal(full.model, 'nai-diffusion-5-full-inpainting');
 });
 
+// 2026-09-20 真链路实测(V5 Full,同图同蒙版同 seed):服务端不看平铺的 strength,也不看单独的
+// inpaintImg2ImgStrength;只有嵌套的 parameters.img2img.strength 才让结果随强度变。
+check('载荷: 重绘强度走嵌套 img2img(强度 < 1 才发,等于 1 不发),inpaintImg2ImgStrength 跟滑杆', () => {
+  const at = (strength) => buildRequestPayload(baseParams({ model: 'v5-full', inpaint: { imageBase64: 'a', maskBase64: 'b', strength } })).parameters;
+  const soft = at(0.7);
+  assert.deepEqual(soft.img2img, { strength: 0.7, color_correct: true });
+  assert.equal(soft.inpaintImg2ImgStrength, 0.7);
+  assert.equal(soft.add_original_image, true);
+  const hard = at(1);
+  assert.equal('img2img' in hard, false, '强度 1 = 整区重画,官方客户端不发嵌套对象');
+  assert.equal(hard.inpaintImg2ImgStrength, 1);
+  const bad = at(Number.NaN);
+  assert.equal('img2img' in bad, false); assert.equal(bad.inpaintImg2ImgStrength, 1);
+  assert.equal(at(5).inpaintImg2ImgStrength, 1, '越界夹回');
+  assert.equal(at(0).img2img.strength, 0.01, '0 夹到最小正值,别发 0');
+  const plain = buildRequestPayload(baseParams({ model: 'v5-full' })).parameters;
+  assert.equal(plain.inpaintImg2ImgStrength, 1); assert.equal('img2img' in plain, false, '非重绘不带');
+});
+
 // 导入 V5 图片能不能选中 V5 模型。这条钉的是**两张表的接缝**:
 // metadataImportActions 的关键词表匹配的是 imageMetadata 归一化之后的显示名,
 // 不是 PNG 里的原始 Source 串。曾经 V5 在显示名表里没有条目,被正则压成

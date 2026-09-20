@@ -424,6 +424,8 @@ export function buildRequestPayload(params: GenerateImageParams) {
   const negativePrompt = cleanPromptMarkers(params.negativePrompt);
   const seed = params.seed ?? generateSeed();
   const isInpaint = !!params.inpaint;
+  // 滑杆值收窄到 (0, 1];不是数就当 1(整区重画),别把 NaN 发出去
+  const clampInpaintStrength = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0.01, v)) : 1);
   const baseModel = MODEL_MAP[params.model] || 'nai-diffusion-4-5-full';
 
   // 如果是 inpaint 模式，使用对应的 inpainting 模型
@@ -537,7 +539,9 @@ export function buildRequestPayload(params: GenerateImageParams) {
       skip_cfg_above_sigma: !isV5 && params.varietyPlus ? 58 : null,
       use_coords: useCoords,
       normalize_reference_strength_multiple: params.normalizeVibeStrength ?? true,
-      inpaintImg2ImgStrength: 1,
+      // 重绘强度:服务端不看平铺的 strength(2026-09-20 真链路实测 0.2 与 0.95 逐像素相同),
+      // 生效的是下面 inpaint 分支里嵌套的 img2img.strength;这个键照官方客户端跟着滑杆走。
+      inpaintImg2ImgStrength: params.inpaint ? clampInpaintStrength(params.inpaint.strength) : 1,
       v4_prompt: {
         caption: { base_caption: inputPrompt, char_captions: charCaptions },
         use_coords: useCoords,
@@ -574,6 +578,11 @@ export function buildRequestPayload(params: GenerateImageParams) {
         noise: params.inpaint.noise ?? 0,
         extra_noise_seed: seed,
         add_original_image: true,  // 保持原图质量
+        // 官方「Inpainting Strength」真正生效的位置:强度 < 1 时官方客户端额外发这个嵌套对象
+        // (官方 Swagger 里标注 "used by inpaint");等于 1 就不发,与官方一致。
+        ...(clampInpaintStrength(params.inpaint.strength) < 1 && {
+          img2img: { strength: clampInpaintStrength(params.inpaint.strength), color_correct: true },
+        }),
       }),
       // Precise Reference 参数 - 支持多图
       // 不发的两种情况：V4 基座从来不支持；V5 是「暂时」不支持——官方说还在训练，
