@@ -243,14 +243,8 @@ export function PromptComposerSection({
         <ChipModeToggle chipMode={chipMode} onChange={onChipModeChange} />
         <PromptLayoutToggle layout={layout} onChange={onLayoutChange} />
         <TokenMeter maxTokens={maxTokens} totalTokenCount={totalTokenCount} />
-        {!agentAvailable && (
-          <span
-            className="shrink-0 text-[10px] text-gray-600"
-            title={agentUnavailableReason}
-          >
-            Agent 未启用
-          </span>
-        )}
+        {/* 不再挂「Agent 未启用」的灰字:右边那颗按钮本来就是禁用态,
+            原因写在它的 tooltip 里,重复一遍只是占地方(用户 2026-09-21)。 */}
         <FloatingAgentButton
           isOpen={isDockOpen}
           isGenerating={isGeneratingPrompt}

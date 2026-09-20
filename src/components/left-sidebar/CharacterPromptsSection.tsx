@@ -78,7 +78,7 @@ export function CharacterPromptsSection({
               role="radiogroup"
               className="flex items-center p-0.5 mr-1 rounded-full border border-gray-700 bg-black/20"
               onClick={(event) => event.stopPropagation()}
-              title="官方位置区块的全局开关:AI 排版 = 坐标照发但交给模型构图(use_coords false);用我摆的 = 按每个角色的坐标出图"
+              title="官方位置区块的全局开关:AI 排版 = 坐标照发但交给模型构图(use_coords false);用我摆的 = 按每个角色的坐标出图,点它直接开摆位"
             >
               {[{ value: false, label: 'AI 排版' }, { value: true, label: '用我摆的' }].map((option) => {
                 const on = useCoords === option.value;
@@ -87,7 +87,14 @@ export function CharacterPromptsSection({
                     key={option.label}
                     role="radio"
                     aria-checked={on}
-                    onClick={() => onSetUseCoords(option.value)}
+                    onClick={() => {
+                      onSetUseCoords(option.value);
+                      // 切到「用我摆的」就直接把摆位打开 —— 否则用户切完了,
+                      // 不知道「我自己排在哪排」(用户 2026-09-21 原话)。
+                      if (option.value && characterPrompts.length > 0) {
+                        setEditingPositionId(characterPrompts[0].id);
+                      }
+                    }}
                     className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}
                   >
                     {option.label}
