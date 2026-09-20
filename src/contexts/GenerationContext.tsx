@@ -47,6 +47,7 @@ export interface HistoryItem {
   upscaleScale?: number; // 实际达成倍率：原生超分 2/4，图生图重绘 1/1.5/2（Max 档按结果尺寸折算）
   isInpainted?: boolean; // 是否为局部重绘图片
   isBananaRepaint?: boolean; // 是否为香蕉重绘图片
+  isDirector?: boolean; // 是否为导演工具的产物(线稿 / 去背 / 上色…)
 }
 
 interface GenerationState {
@@ -81,6 +82,8 @@ interface GenerationContextType extends GenerationState {
   addUpscaledImage: (imageUrl: string, width: number, height: number, originalSeed: number, scale: number) => void;
   setImage: (imageUrl: string, width: number, height: number, seed?: number) => void;
   addInpaintedImage: (imageUrl: string, width: number, height: number, seed: number) => void;
+  /** 导演工具的产物:和重绘一样切到当前显示,尺寸以服务端返回的为准。 */
+  addDirectorImage: (imageUrl: string, width: number, height: number, seed: number) => void;
   addBananaRepaintImage: (imageUrl: string, width: number, height: number, seed?: number) => string; // 返回 historyItem id
   setViewingHistory: (v: boolean) => void;
 }
@@ -489,6 +492,31 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  // 导演工具的产物:整图换新,和重绘一样切到当前显示。尺寸用服务端返回的,不拿源图顶。
+  const addDirectorImage = useCallback(
+    (newImageUrl: string, width: number, height: number, seed: number) => {
+      const historyItem: HistoryItem = {
+        id: `director_${Date.now()}`,
+        imageUrl: newImageUrl,
+        seed,
+        timestamp: Date.now(),
+        width,
+        height,
+        isDirector: true,
+      };
+
+      setState((prev) => ({
+        ...prev,
+        imageUrl: newImageUrl,
+        currentSeed: seed,
+        targetWidth: width,
+        targetHeight: height,
+        history: [historyItem, ...prev.history],
+      }));
+    },
+    []
+  );
+
   // 添加香蕉重绘图片到历史记录（不切换当前显示，返回 id 用于后续跳转）
   const addBananaRepaintImage = useCallback(
     (newImageUrl: string, width: number, height: number, seed?: number): string => {
@@ -531,7 +559,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <GenerationContext.Provider value={{ ...state, generate, cancelTask, setSeedSetting, reset, clearHistory, selectHistoryItem, deleteHistoryItem, deleteHistoryItems, addUpscaledImage, setImage, addInpaintedImage, addBananaRepaintImage, setViewingHistory }}>
+    <GenerationContext.Provider value={{ ...state, generate, cancelTask, setSeedSetting, reset, clearHistory, selectHistoryItem, deleteHistoryItem, deleteHistoryItems, addUpscaledImage, setImage, addInpaintedImage, addDirectorImage, addBananaRepaintImage, setViewingHistory }}>
       {children}
     </GenerationContext.Provider>
   );

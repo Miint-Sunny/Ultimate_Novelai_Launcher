@@ -626,6 +626,18 @@ export const sidecarV1Api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /**
+   * 导演工具(官方 Director Tools)。宽高由服务端从 PNG 头读,**不收客户端的**;
+   * 结果的尺寸以返回值为准,不拿源图尺寸顶。
+   *
+   * 这是计费端点:失败就原样上抛,**不自动重发**。上游失败回 503 时 Problem Details 的
+   * `retryable` 恒为真,那是通用映射,不是「可以再花一次钱」的许可。
+   */
+  directorAugment: (body: SidecarV1Schemas['DirectorAugmentRequest']) =>
+    requestJson<SidecarV1Schemas['DirectorAugmentResponse']>('/api/v1/director/augment', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   createGenerationJob: (
     body: CanonicalGenerationJobCreate,
     idempotencyKey?: string,

@@ -26,6 +26,8 @@ export interface ImageActionHandlers {
   openUpscale: () => void;
   /** 开图像编辑(工坊)的紧凑输入条。 */
   openEditor: () => void;
+  /** 开导演工具的紧凑条(线稿 / 去背 / 上色…)。 */
+  openDirector: () => void;
 }
 
 interface ImageActionsValue {
@@ -58,6 +60,7 @@ export function ImageActionsProvider({ children }: { children: ReactNode }) {
     openInpaint: () => handlersRef.current?.openInpaint(),
     openUpscale: () => handlersRef.current?.openUpscale(),
     openEditor: () => handlersRef.current?.openEditor(),
+    openDirector: () => handlersRef.current?.openDirector(),
   }), []);
 
   const value = useMemo<ImageActionsValue>(
@@ -76,7 +79,7 @@ const INERT: ImageActionsValue = {
   hasImage: false,
   setHasImage: () => {},
   register: () => {},
-  actions: { openInpaint: () => {}, openUpscale: () => {}, openEditor: () => {} },
+  actions: { openInpaint: () => {}, openUpscale: () => {}, openEditor: () => {}, openDirector: () => {} },
 };
 
 export function useImageActions(): ImageActionsValue {

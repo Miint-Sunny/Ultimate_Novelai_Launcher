@@ -4,6 +4,7 @@ import { useGeneration } from '../contexts/GenerationContext';
 import { useAuth } from '../contexts/AuthContext';
 import { SaveModal, type SaveOptions } from './SaveModal';
 import { useImageActions } from './desktop/imageActions';
+import { DirectorBar } from './director/DirectorBar';
 import { InpaintOverlay, type ExpandPayload } from './InpaintOverlay';
 import { WorkshopInputBar } from './workshop/WorkshopInputBar';
 import { alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
@@ -36,6 +37,7 @@ export const MainContent: React.FC = () => {
     queuePosition,
     cancelTask,
     addUpscaledImage,
+    addDirectorImage,
     selectHistoryItem,
     history,
     viewingHistory,
@@ -71,6 +73,7 @@ export const MainContent: React.FC = () => {
 
   // 工坊输入条：监听全局事件触发，原图保持显示在画布上
   const [isWorkshopOpen, setIsWorkshopOpen] = useState(false);
+  const [isDirectorOpen, setIsDirectorOpen] = useState(false);
   const [workshopInitialUrl, setWorkshopInitialUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
     const handler = (e: Event) => {
@@ -87,7 +90,7 @@ export const MainContent: React.FC = () => {
   // `open-image-gen-page` 这个事件原样保留 —— 它是外部(以后的导演工具、助手)
   // 打开工坊的入口,只是不再由画布上那条浮动工具条来发。
   const imageActions = useImageActions();
-  const canActOnImage = !!imageUrl && !isGenerating && !isInpaintMode && !isWorkshopOpen;
+  const canActOnImage = !!imageUrl && !isGenerating && !isInpaintMode && !isWorkshopOpen && !isDirectorOpen;
   useEffect(() => {
     imageActions.setHasImage(canActOnImage);
   }, [imageActions, canActOnImage]);
@@ -104,6 +107,7 @@ export const MainContent: React.FC = () => {
         setWorkshopInitialUrl(imageUrl || undefined);
         setIsWorkshopOpen(true);
       },
+      openDirector: () => setIsDirectorOpen(true),
     });
   }, [imageActions, imageUrl]);
 
@@ -527,6 +531,17 @@ export const MainContent: React.FC = () => {
         isOpen={isWorkshopOpen}
         onClose={() => setIsWorkshopOpen(false)}
         initialImageUrl={workshopInitialUrl || imageUrl || undefined}
+      />
+
+      {/* 导演工具:同样是嵌在画布底部的紧凑条,不需要在画布上画东西 */}
+      <DirectorBar
+        isOpen={isDirectorOpen}
+        onClose={() => setIsDirectorOpen(false)}
+        imageUrl={imageUrl || undefined}
+        width={targetWidth}
+        height={targetHeight}
+        seed={currentSeed || 0}
+        onResult={addDirectorImage}
       />
 
       {/* Error Toast */}

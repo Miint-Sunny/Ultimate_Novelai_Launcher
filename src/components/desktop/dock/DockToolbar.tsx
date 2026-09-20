@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bot, History, Maximize2, MoreVertical, Paintbrush, PanelRightClose, Sparkles } from 'lucide-react';
+import { Bot, History, Maximize2, MoreVertical, Paintbrush, PanelRightClose, Sparkles, Wand2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAgentDock } from '../../../contexts/AgentDockContext';
 import { C } from '../AIAssistant/tokens';
@@ -131,6 +131,7 @@ const IMAGE_ACTIONS = [
   { key: 'inpaint', label: '重绘', Icon: Paintbrush },
   { key: 'upscale', label: '放大', Icon: Maximize2 },
   { key: 'editor', label: '编辑', Icon: Sparkles },
+  { key: 'director', label: '导演', Icon: Wand2 },
 ] as const;
 
 const ImageActionBar: React.FC = () => {
@@ -139,6 +140,7 @@ const ImageActionBar: React.FC = () => {
     inpaint: actions.openInpaint,
     upscale: actions.openUpscale,
     editor: actions.openEditor,
+    director: actions.openDirector,
   };
   return (
     <div className="flex items-center gap-0.5">
