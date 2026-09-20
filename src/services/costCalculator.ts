@@ -10,6 +10,8 @@
  * 3. calculateSamplingCost - 其他情况（查表法）
  */
 
+import { modelCapabilities } from '../components/generation/modelResolutionOptions';
+
 // 模型分组
 type ModelGroup = 'V5' | 'V4' | 'SDXL' | 'SDXL_FURRY' | 'LEGACY';
 
@@ -146,8 +148,15 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
   const pixels = width * height;
   const isImg2Img = img2imgStrength !== undefined && img2imgStrength > 0;
   const strength = isImg2Img ? img2imgStrength! : 1.0;
-  const hasPreciseRef = preciseRefCount > 0;
-  const extraVibeCount = Math.max(0, vibeRefCount - 4);
+  // 模型不支持的参考图不计价。载荷层压根不会发它们（能力位关着），界面上却可能还挂着
+  // 切模型之前留下的图——少了这一刀，V5 上每张精确参考虚收 5 Anlas，而出的图里什么都没有
+  // （2026-09-21 真链路实测：载荷无 director_reference_*，余额纹丝不动，按钮却写着 5 💎）。
+  // 拦在这里而不是各自的界面里：桌面底栏、竖屏工具条、助手估价读的都是这一个函数。
+  const caps = modelCapabilities(model);
+  const chargedPreciseRefCount = caps.preciseReference ? preciseRefCount : 0;
+  const chargedVibeRefCount = caps.vibeTransfer ? vibeRefCount : 0;
+  const hasPreciseRef = chargedPreciseRefCount > 0;
+  const extraVibeCount = Math.max(0, chargedVibeRefCount - 4);
 
   let perImageCost: number;
 
@@ -179,7 +188,7 @@ export function calculateAnlasCost(params: CostCalculationParams): CostResult {
   perImageCost = Math.min(perImageCost, MAX_COST_PER_IMAGE);
 
   // Precise Reference 附加费：每张 +5 anlas（即使 Opus 免费生成也要付）
-  const preciseRefCost = hasPreciseRef ? 5 * preciseRefCount : 0;
+  const preciseRefCost = hasPreciseRef ? 5 * chargedPreciseRefCount : 0;
 
   // Vibe Transfer 附加费：第 5 张起每张 +2 anlas（前 4 张免费；Opus 免费生成也要付）
   const vibeExtraCost = extraVibeCount * 2;

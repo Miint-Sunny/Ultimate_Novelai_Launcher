@@ -88,7 +88,11 @@ export interface ModelCapabilities {
   furryMode: boolean;
   /** 氛围转移。V5 暂缺——官方后续会上,不是永久没有。 */
   vibeTransfer: boolean;
-  /** 精确参考。V5 暂缺,同上。 */
+  /**
+   * 精确参考(director reference)。两种「没有」在这一位上合流:V5 是暂缺(官方后续会上,
+   * 与 vibeTransfer 同理),V4 基座(V4 Full / V4 Curated Preview)是从来没有过。
+   * 界面、计价、载荷都问这一位,不要再各自散写型号名——2026-09-21 就是散写漏了 V5。
+   */
   preciseReference: boolean;
   /** 是否消耗 Opus「体力条」:目前只有 V5。 */
   opusUsageLimit: boolean;
@@ -172,9 +176,33 @@ const LEGACY_CAPABILITIES: ModelCapabilities = {
   maxPromptTokens: 512,
 };
 
+/**
+ * V4 基座没有 director reference:载荷层从来就把这两个型号排除在外(services/novelai.ts)。
+ * 能力表必须和载荷说同一件事,否则「界面放行、照样收费、出图没效果」——2026-09-21 后端 lane
+ * 的真链路实测正是这样:V5 挂着精确参考出图,载荷里五个 director_reference_* 全缺席、
+ * Anlas 一点没扣,按钮上却多写了 5 💎。
+ */
+const NO_PRECISE_REFERENCE: ReadonlySet<string> = new Set([
+  'nai-diffusion-4-full',
+  // V4 Curated 的官方 id 有带 / 不带 `-preview` 两种写法,指同一条模型。元数据导入、
+  // Vibe 存档(vibeTypes / metadataVibeImport)走的是不带后缀的那个,两种都要认 ——
+  // 少认一种,导进来的旧图就又会落回「界面放行、载荷丢弃」。
+  'nai-diffusion-4-curated-preview',
+  'nai-diffusion-4-curated',
+]);
+
+const LEGACY_WITHOUT_PRECISE_REFERENCE: ModelCapabilities = {
+  ...LEGACY_CAPABILITIES,
+  preciseReference: false,
+};
+
 export function modelCapabilities(model: string): ModelCapabilities {
-  if (!isV5Model(model)) return LEGACY_CAPABILITIES;
   const backendId = MODEL_MAP[model] ?? model;
+  if (!isV5Model(model)) {
+    // 重绘变体(…-inpainting)与它的基座是同一套能力,先把后缀摘掉再查。
+    const base = backendId.replace(/-inpainting$/, '');
+    return NO_PRECISE_REFERENCE.has(base) ? LEGACY_WITHOUT_PRECISE_REFERENCE : LEGACY_CAPABILITIES;
+  }
   return backendId.includes('curated') ? V5_CURATED_CAPABILITIES : V5_CAPABILITIES;
 }
 

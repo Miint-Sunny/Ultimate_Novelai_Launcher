@@ -6,6 +6,10 @@ import { HelpTip } from './HelpTip';
 
 interface PreciseReferenceSectionProps {
   disabled: boolean;
+  /** 停用时的副标题。缺省是 V4 基座那句;V5 传的是「官方还在训练」。 */
+  disabledNote?: string;
+  /** 停用时的第二行说明,只有「暂时没有」的型号才需要(照 Vibe 那张卡的写法)。 */
+  disabledDetail?: string;
   inputRef: RefObject<HTMLInputElement | null>;
   dropZoneHandlers: HTMLAttributes<HTMLDivElement>;
   crDropActive: boolean;
@@ -18,6 +22,8 @@ interface PreciseReferenceSectionProps {
 
 export function PreciseReferenceSection({
   disabled,
+  disabledNote,
+  disabledDetail,
   inputRef,
   dropZoneHandlers,
   crDropActive,
@@ -29,16 +35,19 @@ export function PreciseReferenceSection({
 }: PreciseReferenceSectionProps) {
   if (disabled) {
     return (
-      <div className="bg-nai-input/50 rounded p-2.5 border border-gray-800/50 opacity-50">
+      <div className="bg-nai-input/50 rounded p-2.5 border border-gray-800">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 flex items-center justify-center text-gray-500">
             <PreciseReferenceIcon />
           </div>
           <div>
             <div className="text-sm font-bold text-gray-500">Precise Reference</div>
-            <div className="text-xs text-gray-600">V4 模型不支持此功能</div>
+            <div className="text-xs text-gray-600">{disabledNote ?? 'V4 模型不支持此功能'}</div>
           </div>
         </div>
+        {disabledDetail && (
+          <p className="mt-1 text-[11px] leading-4 text-gray-500">{disabledDetail}</p>
+        )}
       </div>
     );
   }

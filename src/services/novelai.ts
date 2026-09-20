@@ -586,8 +586,10 @@ export function buildRequestPayload(params: GenerateImageParams) {
       }),
       // Precise Reference 参数 - 支持多图
       // 不发的两种情况：V4 基座从来不支持；V5 是「暂时」不支持——官方说还在训练，
-      // 上线后把 !isV5 去掉即可，功能代码保持原样不要删。
-      ...(params.preciseReferences && params.preciseReferences.length > 0 && !isV5 && baseModel !== 'nai-diffusion-4-full' && baseModel !== 'nai-diffusion-4-curated-preview' && (() => {
+      // 上线后把能力表里那一位翻成 true 即可，功能代码保持原样不要删。
+      // 判据交给能力位（与上面的 vibe 一样）：界面、计价、载荷读同一个答案。散写型号名
+      // 的老写法把 V5 漏在了界面与估价两处，2026-09-21 真链路实测才发现。
+      ...(params.preciseReferences && params.preciseReferences.length > 0 && modelCapabilities(baseModel).preciseReference && (() => {
         console.log('[API] 构建 Precise Reference 参数:', params.preciseReferences.length, '张图片');
         params.preciseReferences.forEach((pr, i) => {
           console.log(`[API] PR ${i}: mode=${pr.mode}, ie=${pr.informationExtracted}, str=${pr.strength}, base64长度=${pr.imageBase64.length}`);

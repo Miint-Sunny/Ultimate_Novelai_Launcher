@@ -593,4 +593,53 @@ check('agent 契约: UI id 与官方 id 都映到 nai_v5_* / nai_v45_*,V4/V3 报
   assert.equal(agentImageModelFor(''), '');
 });
 
+// ---- 2026-09-21 真链路暴露的两条:能力位散写、开关只发 hint 不发词 ----
+// 后端 lane 在真 key 上做的对照实验:
+//   1. V5 挂精确参考出图 —— 载荷里五个 director_reference_* 全缺席、Anlas 一点没扣,
+//      但界面放行、按钮上还多写了 5 💎;
+//   2. V5 只开透明背景开关 —— 全透明像素 0 个、四角 alpha 254;同参数手写
+//      transparent background 才有 58085 个(5.7%)、四角 alpha 0。
+// 两条都是「不报错、只是静默不对」,所以钉在这里。
+
+check('能力位: 精确参考只在 4.5 / V3 上为真(V5 暂缺,V4 基座从来没有)', () => {
+  // V4 Curated 两种官方写法都要认:元数据 / Vibe 导入用的是不带 -preview 的那个。
+  for (const model of ['v5-full', 'v5-curated', 'nai-diffusion-5-full', 'v4-full', 'v4-curated-preview', 'nai-diffusion-4-full', 'nai-diffusion-4-curated']) {
+    assert.equal(modelCapabilities(model).preciseReference, false, model);
+  }
+  for (const model of ['v4.5-full', 'v4.5-curated', 'nai-diffusion-4-5-full', 'v3']) {
+    assert.equal(modelCapabilities(model).preciseReference, true, model);
+  }
+  // 重绘变体与基座同一套能力,别因为后缀掉进另一条分支。
+  assert.equal(modelCapabilities('nai-diffusion-4-full-inpainting').preciseReference, false);
+  assert.equal(modelCapabilities('nai-diffusion-4-5-full-inpainting').preciseReference, true);
+});
+
+check('载荷: 精确参考只发给能力位为真的模型(V4 基座与 V5 都不发,4.5 照发)', () => {
+  const withRef = (model) => paramsOf({ model, preciseReferences: [{ imageBase64: 'aaa', mode: 'character' }] });
+  for (const model of ['v5-full', 'v4-full', 'v4-curated-preview']) {
+    const leaked = Object.keys(withRef(model)).filter((key) => key.startsWith('director_reference_'));
+    assert.deepEqual(leaked, [], `${model} 不该发精确参考: ${leaked.join(', ')}`);
+  }
+  assert.deepEqual(withRef('v4.5-full').director_reference_images, ['aaa']);
+});
+
+check('计价: 模型不支持的参考图不收钱(V5 上的精确参考虚收过 5/张)', () => {
+  const cost = (overrides) => calculateAnlasCost({
+    width: 832, height: 1216, steps: 28, sampler: 'k_euler_ancestral', ...overrides,
+  });
+  const v5Plain = cost({ model: 'nai-diffusion-5-full' }).total;
+  assert.equal(cost({ model: 'nai-diffusion-5-full', preciseRefCount: 2 }).total, v5Plain, 'V5 不该为精确参考收钱');
+  // 同一张表在 4.5 上照收:这一刀只砍能力位关着的模型,别把功能一起砍了。
+  const legacyPlain = cost({ model: 'nai-diffusion-4-5-full' }).total;
+  assert.equal(cost({ model: 'nai-diffusion-4-5-full', preciseRefCount: 2 }).total, legacyPlain + 10);
+  // Vibe 是同一个洞:第 5 张起每张 +2,V5 上一样不该收。
+  assert.equal(cost({ model: 'nai-diffusion-5-full', vibeRefCount: 6 }).total, v5Plain);
+  assert.equal(cost({ model: 'nai-diffusion-4-5-full', vibeRefCount: 6 }).total, legacyPlain + 4);
+  // UI 口径走的是同一条路。
+  assert.equal(
+    calculateCostFromUI({ width: 832, height: 1216, steps: 28, modelId: 'v5-full', sampler: 'k_euler_ancestral', preciseRefCount: 3 }).total,
+    calculateCostFromUI({ width: 832, height: 1216, steps: 28, modelId: 'v5-full', sampler: 'k_euler_ancestral' }).total,
+  );
+});
+
 console.log(`\n${checks} 项 V5 支持对等校验全部通过。`);

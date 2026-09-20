@@ -66,6 +66,7 @@ import {
   RESOLUTIONS,
   clampToMaxPixels,
   defaultModelOption,
+  isV5Model,
   maxCharactersForModel,
   maxPromptTokensForModel,
   modelCapabilities,
@@ -1039,6 +1040,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
     setIsCharacterSectionOpen,
   });
 
+  // 精确参考的两种「没有」文案不同:V5 是暂缺(官方还在训练,已存的参考等上线就能用),
+  // V4 基座是从来没有。能不能用只问能力位,这里只挑话说。
+  const preciseReferenceSupported = modelCapabilities(selectedModel.id).preciseReference;
+  const preciseReferenceComingLater = isV5Model(selectedModel.id);
+
   return (
     <div 
       className="bg-nai-panel flex flex-col border-r border-gray-800 shrink-0 overflow-hidden relative group/sidebar transition-[width] duration-0"
@@ -1257,8 +1263,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
           />
           )}
 
+          {/* 精确参考在 V5 上也是「暂时」没有。此前这里写死的是两个 V4 型号,于是 V5 上用户能上传、
+              能调 Strength / Fidelity,按钮上还多收 5 💎,载荷里却一个 director_reference_* 都没有
+              (2026-09-21 后端 lane 真链路实测)。判据交给能力位,官方上线时一处翻位、三处同时亮。 */}
           <PreciseReferenceSection
-            disabled={selectedModel.id === 'v4-full' || selectedModel.id === 'v4-curated-preview'}
+            disabled={!preciseReferenceSupported}
+            disabledNote={preciseReferenceComingLater ? `${selectedModel.name} 暂不支持` : undefined}
+            disabledDetail={
+              preciseReferenceComingLater
+                ? '官方说仍在训练中。上线后这里会自动恢复,已保存的精确参考不会丢。'
+                : undefined
+            }
             inputRef={crManager.quickCRInputRef}
             dropZoneHandlers={createDropZoneHandlers(
               setCrDropActive,
