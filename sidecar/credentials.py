@@ -19,12 +19,15 @@ can hold its own secrets in the same OS store without touching the app's.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 SERVICE_NAME = "Ultimate Novelai launcher"
 ACCOUNT_NOVELAI = "novelai-token"
@@ -156,6 +159,11 @@ def _no_store_error() -> CredentialStorageError:
 
 # ---------------------------------------------------------------------------
 # Secure backend dispatch (per platform), keyed by account
+#
+# The store commands run without a timeout.  The only thing they ever wait on is
+# the OS asking the user to unlock the store (the macOS keychain dialog, the
+# Secret Service unlock prompt); cutting that short turned a real dialog into a
+# false "not stored" read or a failed write.
 # ---------------------------------------------------------------------------
 
 
@@ -207,7 +215,6 @@ def _macos_get_password(account: str) -> str:
             capture_output=True,
             check=False,
             text=True,
-            timeout=5,
         )
     except Exception:
         return ""
@@ -221,6 +228,12 @@ def _macos_answer_password_prompt(executable: str, account: str, value: str) -> 
     prompts on the controlling terminal, twice (enter, then confirm). Attaching
     a pty answers it the way it asks, and unlike putting the secret on argv it
     keeps the secret out of ``ps``.
+
+    The child starts its own session so it has no controlling terminal.  With
+    one (a sidecar or the credential CLI run from a terminal) ``security`` reads
+    the answers from ``/dev/tty`` instead of stdin: the prompt lands on the
+    user's terminal, the pty writes are ignored, and the write never completes.
+    Without a controlling terminal it falls back to stdin, which is the pty.
     """
     import pty
 
@@ -245,6 +258,7 @@ def _macos_answer_password_prompt(executable: str, account: str, value: str) -> 
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             close_fds=True,
+            start_new_session=True,
         )
     except Exception:
         os.close(master)
@@ -254,7 +268,7 @@ def _macos_answer_password_prompt(executable: str, account: str, value: str) -> 
     os.close(slave)
     try:
         os.write(master, ((value + "\n") * 2).encode())
-        process.wait(timeout=10)
+        _stdout, stderr = process.communicate()
     except Exception:
         process.kill()
         process.wait()
@@ -262,7 +276,21 @@ def _macos_answer_password_prompt(executable: str, account: str, value: str) -> 
     finally:
         os.close(master)
 
-    return process.returncode == 0
+    if process.returncode != 0:
+        # stderr carries only the tool's prompts and its error text; the secret
+        # went down the pty and is never on argv or in this output.
+        _log.warning(
+            "security add-generic-password exited %s: %s",
+            process.returncode,
+            _tool_output(stderr),
+        )
+        return False
+    return True
+
+
+def _tool_output(data: bytes | str | None) -> str:
+    text = data.decode(errors="replace") if isinstance(data, bytes) else (data or "")
+    return " ".join(text.split())[:300] or "(no output)"
 
 
 def _macos_set_password(account: str, value: str) -> bool:
@@ -279,7 +307,10 @@ def _macos_set_password(account: str, value: str) -> bool:
         return False
     if not _macos_answer_password_prompt(executable, account, value):
         return False
-    return _macos_get_password(account) == value
+    if _macos_get_password(account) != value:
+        _log.warning("keychain write for %s exited 0 but the value did not read back", account)
+        return False
+    return True
 
 
 def _macos_delete_password(account: str) -> None:
@@ -292,7 +323,6 @@ def _macos_delete_password(account: str) -> None:
             capture_output=True,
             check=False,
             text=True,
-            timeout=5,
         )
     except Exception:
         return
@@ -317,7 +347,6 @@ def _secret_tool_get(account: str) -> str:
             capture_output=True,
             check=False,
             text=True,
-            timeout=5,
         )
     except Exception:
         return ""
@@ -336,7 +365,6 @@ def _secret_tool_set(account: str, value: str) -> bool:
             capture_output=True,
             check=False,
             text=True,
-            timeout=10,
         )
     except Exception:
         return False
@@ -353,7 +381,6 @@ def _secret_tool_delete(account: str) -> None:
             capture_output=True,
             check=False,
             text=True,
-            timeout=5,
         )
     except Exception:
         return

@@ -187,6 +187,7 @@ class CredentialsTests(unittest.TestCase):
         # every `ps` on the machine. It goes down the pty instead.
         secret = "super-secret-value"
         process = mock.Mock(returncode=0)
+        process.communicate.return_value = (b"", b"")
         with (
             mock.patch.object(credentials.subprocess, "Popen", return_value=process) as popen,
             mock.patch.object(credentials.os, "write"),
@@ -199,6 +200,57 @@ class CredentialsTests(unittest.TestCase):
         self.assertEqual(args[-1], "-w")
         self.assertNotIn(secret, args)
 
+    def test_macos_keychain_prompt_runs_without_a_controlling_terminal(self) -> None:
+        # With a controlling terminal `security` asks /dev/tty, not stdin, so the
+        # prompt surfaced on the user's terminal and the pty answers were ignored.
+        # A new session has no controlling terminal, and the wait is unbounded:
+        # the only thing left to wait on is the OS unlock dialog.
+        secret = "super-secret-value"
+        process = mock.Mock(returncode=0)
+        process.communicate.return_value = (b"", b"")
+        with (
+            mock.patch.object(credentials.subprocess, "Popen", return_value=process) as popen,
+            mock.patch.object(credentials.os, "write"),
+            mock.patch.object(credentials.os, "close"),
+        ):
+            self.assertTrue(
+                credentials._macos_answer_password_prompt("/usr/bin/security", "account", secret)
+            )
+        self.assertIs(popen.call_args.kwargs["start_new_session"], True)
+        process.communicate.assert_called_once_with()
+        process.wait.assert_not_called()
+
+    def test_macos_keychain_write_failure_is_logged_with_the_tool_error(self) -> None:
+        process = mock.Mock(returncode=36)
+        process.communicate.return_value = (b"", b"password data for new item: boom\n")
+        with (
+            mock.patch.object(credentials.subprocess, "Popen", return_value=process),
+            mock.patch.object(credentials.os, "write"),
+            mock.patch.object(credentials.os, "close"),
+            self.assertLogs("sidecar.credentials", level="WARNING") as logs,
+        ):
+            self.assertFalse(
+                credentials._macos_answer_password_prompt("/usr/bin/security", "account", "value")
+            )
+        self.assertIn("exited 36", logs.output[0])
+        self.assertIn("boom", logs.output[0])
+        self.assertNotIn("value", logs.output[0].split("exited", 1)[1])
+
+    def test_store_commands_have_no_timeout(self) -> None:
+        completed = mock.Mock(returncode=0, stdout="")
+        with (
+            mock.patch.object(credentials.shutil, "which", return_value="/usr/bin/tool"),
+            mock.patch.object(credentials.subprocess, "run", return_value=completed) as run,
+        ):
+            credentials._macos_get_password("account")
+            credentials._macos_delete_password("account")
+            credentials._secret_tool_get("account")
+            credentials._secret_tool_set("account", "value")
+            credentials._secret_tool_delete("account")
+        self.assertEqual(len(run.call_args_list), 5)
+        for call in run.call_args_list:
+            self.assertNotIn("timeout", call.kwargs)
+
     def test_macos_keychain_write_fails_when_the_secret_does_not_round_trip(self) -> None:
         # The regression this guards: `security add-generic-password -w` prompts
         # on a terminal rather than reading stdin, so a sidecar's piped write
@@ -207,6 +259,7 @@ class CredentialsTests(unittest.TestCase):
         # that would not save. A zero exit is therefore not enough -- the value
         # has to read back.
         process = mock.Mock(returncode=0)
+        process.communicate.return_value = (b"", b"")
         with (
             mock.patch.object(
                 credentials.shutil,
@@ -214,9 +267,13 @@ class CredentialsTests(unittest.TestCase):
                 return_value="/usr/bin/security",
             ),
             mock.patch.object(credentials.subprocess, "Popen", return_value=process),
+            mock.patch.object(credentials.os, "write"),
+            mock.patch.object(credentials.os, "close"),
             mock.patch.object(credentials, "_macos_get_password", return_value=""),
+            self.assertLogs("sidecar.credentials", level="WARNING") as logs,
         ):
             self.assertFalse(credentials._macos_set_password("account", "super-secret-value"))
+        self.assertIn("did not read back", logs.output[0])
 
     def test_macos_keychain_write_requires_resolved_executable(self) -> None:
         with (
