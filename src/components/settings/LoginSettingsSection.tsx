@@ -1,7 +1,44 @@
 import React from 'react';
-import { Bot, Key, CheckCircle, Loader2, Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { Bot, Key, CheckCircle, AlertTriangle, Info, Loader2, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { type AppSettings } from '../../services/localLibrary';
 import { type BotAuthState } from '../../services/botService';
+import { type TokenStatus } from '../../api/sidecar';
+
+type StatusTone = 'ok' | 'warn' | 'muted';
+
+export interface TokenStatusView {
+  tone: StatusTone;
+  title: string;
+  detail: string;
+  /** 只有存在凭据库里的 Token 才能从这里清;环境变量的清不掉,没配置的没得清。 */
+  canClear: boolean;
+}
+
+const TONE_TEXT: Record<StatusTone, string> = { ok: 'text-green-400', warn: 'text-amber-400', muted: 'text-gray-400' };
+
+/** 把 sidecar 的 token 状态翻成一行能读的话。环境变量优先于凭据库(sidecar/config.py)。 */
+export function describeTokenStatus(status: TokenStatus | null, unreachable: boolean): TokenStatusView {
+  if (unreachable) return { tone: 'muted', title: '无法读取 Token 状态', detail: '本地服务未连接;连上后重新打开设置。', canClear: false };
+  if (!status) return { tone: 'muted', title: '读取中…', detail: '正在向本地服务查询 Token 状态。', canClear: false };
+  const mock = status.mock_generation ? ';当前开着模拟出图,不会真的请求 NovelAI' : '';
+  if (status.configured && status.source === 'environment') {
+    return { tone: 'ok', title: '已配置 · 环境变量', detail: `来自 NAI_TOKEN 环境变量,优先于凭据库,在这里填写不会生效${mock}。`, canClear: false };
+  }
+  if (status.configured) {
+    return { tone: 'ok', title: '已配置 · 系统凭据库', detail: `Token 存在系统凭据库里,前端不保存明文${mock}。`, canClear: true };
+  }
+  if (status.mock_generation) {
+    return { tone: 'warn', title: '未配置 · 模拟出图', detail: '当前开着模拟出图,不会真的请求 NovelAI;填入 Token 也不会用到。', canClear: false };
+  }
+  return { tone: 'muted', title: '未配置', detail: '填入 Token 后会写进系统凭据库。', canClear: false };
+}
+
+const StatusIcon: React.FC<{ tone: StatusTone }> = ({ tone }) => {
+  const cls = `w-4 h-4 mt-0.5 shrink-0 ${TONE_TEXT[tone]}`;
+  if (tone === 'ok') return <CheckCircle className={cls} />;
+  if (tone === 'warn') return <AlertTriangle className={cls} />;
+  return <Info className={cls} />;
+};
 
 interface LoginSettingsSectionProps {
   settings: AppSettings;
@@ -20,6 +57,9 @@ interface LoginSettingsSectionProps {
   tokenError: string;
   setTokenError: (value: string) => void;
   handleSaveToken: () => void;
+  tokenStatus: TokenStatus | null;
+  tokenStatusUnreachable: boolean;
+  handleClearToken: () => void;
 }
 
 export const LoginSettingsSection: React.FC<LoginSettingsSectionProps> = ({
@@ -39,7 +79,11 @@ export const LoginSettingsSection: React.FC<LoginSettingsSectionProps> = ({
   tokenError,
   setTokenError,
   handleSaveToken,
+  tokenStatus,
+  tokenStatusUnreachable,
+  handleClearToken,
 }) => {
+  const tokenView = describeTokenStatus(tokenStatus, tokenStatusUnreachable);
   return (
     <div className="space-y-4">
       {/* Bot 授权区域 */}
@@ -159,6 +203,24 @@ export const LoginSettingsSection: React.FC<LoginSettingsSectionProps> = ({
         <label className="block text-xs text-gray-400 mb-3 uppercase tracking-wider">
           API Token 配置
         </label>
+        <div className="flex items-start justify-between gap-3 mb-3" data-testid="token-status" data-tone={tokenView.tone}>
+          <div className="flex items-start gap-2 min-w-0">
+            <StatusIcon tone={tokenView.tone} />
+            <div className="min-w-0">
+              <div className={`text-sm font-medium ${TONE_TEXT[tokenView.tone]}`}>{tokenView.title}</div>
+              <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">{tokenView.detail}</div>
+            </div>
+          </div>
+          {tokenView.canClear && (
+            <button
+              type="button"
+              onClick={handleClearToken}
+              className="shrink-0 px-3 py-1.5 bg-red-900/50 text-red-400 rounded-lg hover:bg-red-900/70 text-xs transition-colors"
+            >
+              清除 Token
+            </button>
+          )}
+        </div>
         <div className="relative">
           <input
             type={showToken ? 'text' : 'password'}
@@ -168,7 +230,7 @@ export const LoginSettingsSection: React.FC<LoginSettingsSectionProps> = ({
               setTokenError('');
             }}
             onBlur={handleSaveToken}
-            placeholder="pst-..."
+            placeholder={tokenStatus?.configured ? '已配置;输入新 Token 可替换' : 'pst-...'}
             className={`w-full bg-gray-900 border rounded-lg px-4 py-3 pr-10 text-sm text-white placeholder-gray-500 focus:outline-none transition-colors ${tokenError ? 'border-red-500' : 'border-gray-700 focus:border-nai-accent/50'
               }`}
           />
@@ -181,14 +243,8 @@ export const LoginSettingsSection: React.FC<LoginSettingsSectionProps> = ({
           </button>
         </div>
         {tokenError && <p className="text-red-400 text-xs mt-2">{tokenError}</p>}
-        {token && !tokenError && (
-          <div className="flex items-center gap-1.5 text-green-400 text-xs mt-2">
-            <CheckCircle className="w-3.5 h-3.5" />
-            <span>Token 已保存</span>
-          </div>
-        )}
         <p className="text-xs text-gray-500 mt-2">
-          通过抓包或者 NovelAI 网站获取你的 API Token。在此处填入即可直接使用个人账号跑图。
+          通过抓包或者 NovelAI 网站获取你的 API Token。填入后会存进系统凭据库,前端不保存明文;留空不会清除已存的 Token。
         </p>
       </div>
     </div>

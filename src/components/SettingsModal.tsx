@@ -11,7 +11,7 @@ import {
 import { botService, type BotAuthState, type BotTaskState } from '../services/botService';
 import { clearTagCache } from '../services/tagAutocomplete';
 import { getDataCounts, DEFAULT_EXPORT_OPTIONS, type BackupData, type BackupSummary, type ExportOptions } from '../services/backupService';
-import { sidecarApi } from '../api/sidecar';
+import { sidecarApi, type TokenStatus } from '../api/sidecar';
 import { ThemeSettingsSection } from './settings/ThemeSettingsSection';
 import { AISettingsSection } from './settings/AISettingsSection';
 import { AutocompleteSettingsSection } from './settings/AutocompleteSettingsSection';
@@ -47,6 +47,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
+  // Token 状态从 sidecar 读(是否已配置 / 来源 / 是否模拟出图);前端永远拿不到明文。
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus | null>(null);
+  const [tokenStatusUnreachable, setTokenStatusUnreachable] = useState(false);
 
   // Bot授权状态
   const [botAuthState, setBotAuthState] = useState<BotAuthState>(botService.getAuthState());
@@ -74,6 +77,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       const savedToken = getApiToken();
       setToken(savedToken || '');
       setTokenError('');
+      setTokenStatus(null);
+      setTokenStatusUnreachable(false);
+      sidecarApi.tokenStatus()
+        .then((status) => { setTokenStatus(status); setTokenStatusUnreachable(false); })
+        .catch(() => { setTokenStatusUnreachable(true); });
 
       // 恢复Bot会话（异步）
       botService.restoreSession().then(() => {
@@ -163,29 +171,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   }, [botAuthState.authCode]);
 
-  // 保存Token
+  // 保存Token。输入框打开时永远是空的(前端读不到 Token),所以空输入必须是 no-op:
+  // 以前点进去再点出去就把凭据库里的 Token 删了。清除走显式按钮。
   const handleSaveToken = useCallback(async () => {
     const trimmedToken = token.trim();
-    if (trimmedToken && !trimmedToken.startsWith('pst-')) {
+    if (!trimmedToken) {
+      setTokenError('');
+      return;
+    }
+    if (!trimmedToken.startsWith('pst-')) {
       setTokenError('Token 格式不正确 (应以 pst- 开头)');
       return;
     }
     setTokenError('');
     try {
-      if (trimmedToken) {
-        await sidecarApi.saveToken(trimmedToken);
-        markApiTokenConfigured(true);
-        setToken('');
-      } else {
-        await sidecarApi.clearToken();
-        markApiTokenConfigured(false);
-      }
+      // POST 回的就是最新状态,不用再查一次。
+      const status = await sidecarApi.saveToken(trimmedToken);
+      markApiTokenConfigured(true);
+      setToken('');
+      setTokenStatus(status);
+      setTokenStatusUnreachable(false);
       setShowSaveToast(true);
       setTimeout(() => setShowSaveToast(false), 1500);
     } catch (error) {
       setTokenError(error instanceof Error ? error.message : 'Token 保存失败');
     }
   }, [token]);
+
+  const handleClearToken = useCallback(async () => {
+    setTokenError('');
+    try {
+      const status = await sidecarApi.clearToken();
+      markApiTokenConfigured(false);
+      setToken('');
+      setTokenStatus(status);
+      setTokenStatusUnreachable(false);
+      setShowSaveToast(true);
+      setTimeout(() => setShowSaveToast(false), 1500);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Token 清除失败');
+    }
+  }, []);
 
   if (!isOpen) return null;
 
@@ -297,6 +323,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 tokenError={tokenError}
                 setTokenError={setTokenError}
                 handleSaveToken={handleSaveToken}
+                tokenStatus={tokenStatus}
+                tokenStatusUnreachable={tokenStatusUnreachable}
+                handleClearToken={handleClearToken}
               />
             )}
             {activeTab === 'watermark' && (
