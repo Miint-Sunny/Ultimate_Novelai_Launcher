@@ -167,7 +167,14 @@ async def test_c_positioned_characters_turn_coords_on_without_a_client_flag(
 
     _assert_both_sites(parameters, True)
     negative = parameters["v4_negative_prompt"]["caption"]["char_captions"]
-    assert negative == [{"char_caption": "bad hands", "centers": [{"x": 0.2, "y": 0.8}]}]
+    # 负向与正向**逐个对应**,没写的补空串:NovelAI 对不等长整单 400,而且不等长时
+    # 剩下那条还会按下标错配。这里三个角色只有第一个写了负向,所以是一条 + 两条空串,
+    # 每条的 centers 跟着自己的角色。详见 test_legacy_character_negatives.py。
+    assert negative == [
+        {"char_caption": "bad hands", "centers": [{"x": 0.2, "y": 0.8}]},
+        {"char_caption": "", "centers": [{"x": 0.3, "y": 0.3}]},
+        {"char_caption": "", "centers": [{"x": 0.5, "y": 0.3}]},
+    ]
 
 
 async def test_d_auto_characters_without_a_client_flag_stay_off(

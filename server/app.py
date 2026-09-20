@@ -1255,11 +1255,21 @@ async def generate_novelai_image_stream(
                     "char_caption": cp.get("prompt", ""),
                     "centers": [center]
                 })
-                if cp.get("uc"):
-                    negative_char_captions.append({
-                        "char_caption": cp.get("uc", ""),
-                        "centers": [center]
-                    })
+                # 负向 char_captions 要么**一条都不给**,要么**与正向逐个对应**。
+                # 原来只给写了负向的角色追加:三个角色里只有第二个写了负向时,
+                # 正向 3 条、负向 1 条 —— NovelAI 直接 400
+                # ("V4 positive and negative character prompts must have the same
+                # length."),就算服务端放过,那条负向也会按下标错配到第一个角色头上。
+                # 没写负向的补空串,保持等长。(Plana-App 894393b 同一处修正;
+                # 桌面前端 f83d287 已改。)
+                negative_char_captions.append({
+                    "char_caption": cp.get("uc") or "",
+                    "centers": [center]
+                })
+    # 全员都没写负向时也照发等长的空串,不退回空列表:两种形状真链路都能出图,
+    # 而且**同种子逐像素完全相同**(2026-09-21 对照:2 角色,一次发两条空串、
+    # 一次发空列表,结果图 sha 不同但像素平均差 0.0000、最大差 0),所以没有
+    # 保留特例的理由 —— 三条发送路径(桌面前端 / 宿主 / Plana 上游)同一条规则。
     # 全图一个开关:照客户端传,没传按角色坐标推导(见 _resolve_use_coords)
     use_coords = _resolve_use_coords(params, char_captions)
 
