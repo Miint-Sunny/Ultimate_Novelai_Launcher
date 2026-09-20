@@ -1,8 +1,13 @@
 import React from 'react';
 import { Image as ImageIcon, Paintbrush, Sparkles } from 'lucide-react';
 
-// 悬浮页栏(P3):.glass 胶囊,3 项(生图/创作室/图库),选中项滑动 pill 指示;
+// 页栏(P3):.glass 胶囊,3 项(生图/创作室/图库),选中项滑动 pill 指示;
 // AI 页(页 0,负一屏)从页栏不可达,激活时页栏无选中态。
+//
+// **它占一条,不浮在内容上**(用户 2026-09-21:「这个还是很遮挡啊,能不能以新的
+// plana-app 的去做啊」)。原先是 `fixed` + safe-area 12px,页面底部的东西(生成按钮、
+// 图库的缩略图条)全被压在胶囊下面。Plana 的做法是 Scaffold 的 bottomNavigationBar ——
+// 没开 extendBody,正文永远排在它上面。这里照同一条:胶囊留在流里,外观不变。
 const PAGE_BAR_ITEMS = [
   { page: 1, label: '生图', icon: Sparkles },
   { page: 2, label: '创作室', icon: Paintbrush },
@@ -22,10 +27,10 @@ export const MobilePageBar: React.FC<MobilePageBarProps> = ({ activePage, onNavi
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-30 pointer-events-none"
-      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+      className="shrink-0 z-30 flex justify-center px-3 pt-2"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}
     >
-      <div className="glass relative flex items-center rounded-full shadow-xl pointer-events-auto" style={{ padding: BAR_PADDING }}>
+      <div className="glass relative flex items-center rounded-full shadow-xl" style={{ padding: BAR_PADDING }}>
         <div
           aria-hidden
           className="absolute rounded-full bg-nai-accent/20 border border-nai-accent/50 transition-all duration-300 ease-spring"

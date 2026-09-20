@@ -7,6 +7,7 @@ import { MobileGalleryPage } from '../MobileImagePage';
 import { MobileAIPage } from './MobileAIPage';
 import { MobileMineSheet } from './MobileMineSheet';
 import { MobilePageBar } from './MobilePageBar';
+import { useIntegerTrackWidth } from '../useIntegerTrackWidth';
 import { MobileStudioPage } from './MobileStudioPage';
 import { usePagerPanGesture } from './usePagerPanGesture';
 
@@ -164,12 +165,34 @@ export const MobilePagerShell: React.FC<MobilePagerShellProps> = ({ onLogout }) 
     window.dispatchEvent(new CustomEvent('studio-open-tool', { detail: { tool } }));
   }, [navigate]);
 
+  // 分页靠 transform 走,容器自己**永远不该有滚动偏移**。但 overflow-hidden 的元素照样
+  // 能被浏览器推:某一页里的输入框自动聚焦、或者谁调了 scrollIntoView,浏览器就会把这个
+  // 容器横向滚过去,而它没有滚动条,用户再也拨不回来 —— 表现就是两页同时露出来、
+  // 底栏高亮的却是第三页(2026-09-21 用户截图,实测 scrollLeft=627 / 每页 390)。
+  // Plana 那边是 NeverScrollableScrollPhysics + 只由程序 animateToPage 驱动,同一个意思:
+  // 页面位置只有一个来源。这里把被推走的偏移立刻拨回去。
+  const pagerViewportRef = useRef<HTMLDivElement | null>(null);
+  const trackBox = useIntegerTrackWidth<HTMLDivElement>();
+  const keepPagerAligned = useCallback(() => {
+    const el = pagerViewportRef.current;
+    if (!el) return;
+    if (el.scrollLeft !== 0) el.scrollLeft = 0;
+    if (el.scrollTop !== 0) el.scrollTop = 0;
+  }, []);
+  useEffect(keepPagerAligned, [keepPagerAligned, activePage]);
+
   return (
     <div
       className="flex flex-col bg-nai-bg text-white overflow-hidden"
       style={{ height: viewportHeight }}
     >
-      <div className="flex-1 overflow-hidden relative">
+      {/* 宽度钉成整数:分数宽会让相邻页的边缘被舍入到可见(见 useIntegerTrackWidth) */}
+      <div
+        className="flex-1 min-h-0 overflow-hidden relative"
+        ref={(node) => { pagerViewportRef.current = node; trackBox.ref.current = node; }}
+        onScroll={keepPagerAligned}
+        style={trackBox.width ? { width: trackBox.width } : undefined}
+      >
         <div
           className="absolute inset-0"
           style={{ touchAction: 'pan-y' }}
@@ -200,7 +223,7 @@ export const MobilePagerShell: React.FC<MobilePagerShellProps> = ({ onLogout }) 
         </div>
       </div>
 
-      {/* 悬浮页栏:编辑器全屏打开时隐藏(与旧底栏行为一致) */}
+      {/* 页栏:占一条,不浮在内容上(见 MobilePageBar 的注释)。编辑器全屏打开时隐藏 */}
       {!isEditorOpen && (
         <MobilePageBar activePage={activePage} onNavigate={navigate} />
       )}

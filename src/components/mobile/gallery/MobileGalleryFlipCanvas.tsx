@@ -5,6 +5,7 @@ import { pageToHistoryIndex } from './galleryViewLogic';
 import { useGalleryFlipCanvas } from './useGalleryFlipCanvas';
 import { useGalleryPrefetch } from './useGalleryPrefetch';
 import { useImageBridge } from './useImageBridge';
+import { useIntegerTrackWidth } from '../useIntegerTrackWidth';
 
 interface MobileGalleryFlipCanvasProps {
   history: HistoryItem[];
@@ -68,6 +69,8 @@ export const MobileGalleryFlipCanvas: React.FC<MobileGalleryFlipCanvasProps> = (
   // 轨道动画只在「拖动落定/回弹」那一帧启用:身份推导的页码平移(头页插入/
   // 消失、胶片条/网格跳选)必须瞬时到位,否则整列图会无理由滑一页
   const isDragging = dragOffset !== null;
+  // 页宽钉成整数,避免分数宽下相邻页露出一条缝(见 useIntegerTrackWidth)
+  const flipBox = useIntegerTrackWidth<HTMLDivElement>();
   const wasDraggingRef = useRef(false);
   useEffect(() => {
     wasDraggingRef.current = isDragging;
@@ -102,8 +105,9 @@ export const MobileGalleryFlipCanvas: React.FC<MobileGalleryFlipCanvasProps> = (
     >
       <div
         className="h-full flex"
+        ref={flipBox.ref}
         style={{
-          width: `${pageCount * 100}%`,
+          width: flipBox.width ? flipBox.width * pageCount : `${pageCount * 100}%`,
           transform: `translateX(calc(${(-activePage * 100) / pageCount}% + ${dragOffset ?? 0}px))`,
           transition: trackTransition,
         }}
@@ -115,7 +119,7 @@ export const MobileGalleryFlipCanvas: React.FC<MobileGalleryFlipCanvasProps> = (
             <div
               key={item ? item.id : '__live__'}
               className="h-full shrink-0 overflow-hidden"
-              style={{ width: `${100 / pageCount}%` }}
+                  style={{ width: flipBox.width || `${100 / pageCount}%` }}
             >
               {Math.abs(page - activePage) <= 1 && (
                 <div className="w-full h-full flex items-center justify-center p-4">
