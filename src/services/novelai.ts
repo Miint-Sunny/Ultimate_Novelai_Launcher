@@ -469,7 +469,12 @@ export function buildRequestPayload(params: GenerateImageParams) {
   activeCharacters.forEach((cp, index) => {
     const center = characterCenters[index];
     charCaptions.push({ char_caption: cp.positive, centers: [center] });
-    if (cp.negative) negativeCharCaptions.push({ char_caption: cp.negative, centers: [center] });
+    // 负向必须和正向**等长**:没写负向的发空串,不能跳过。NAI 对长度不等直接 400
+    // 「V4 positive and negative character prompts must have the same length.」。
+    // 老写法只收负向非空的那几个,两三个角色里有一个没写负向就会整单失败,
+    // 而且剩下那条负向还会按下标错配到别的角色身上。
+    // 证据:Plana-App 上游 894393b(2026-09-20)因同一条 400 改成等长发送。
+    negativeCharCaptions.push({ char_caption: cp.negative || '', centers: [center] });
     characterPromptsForApi.push({ prompt: cp.positive, uc: cp.negative || '', center, enabled: true });
   });
 

@@ -664,4 +664,30 @@ check('载荷: 透明背景词不重复、不落进手写 text: 块', () => {
   assert.equal(inputOf('1girl, text: Hello'), '1girl, transparent background, text: Hello');
 });
 
+check('载荷: 角色负向与正向等长,没写负向的发空串(不等长服务端 400)', () => {
+  // NAI 的原话:「V4 positive and negative character prompts must have the same length.」
+  // 老写法只收负向非空的那几个 —— 三个角色里有一个没写负向就整单 400,
+  // 而且活下来的那条负向会按下标错配到别的角色头上。
+  // 来源:Plana-App 上游 894393b(2026-09-20)因同一条 400 改成等长发送。
+  const parameters = paramsOf({
+    characterPrompts: [
+      { positive: 'girl a', negative: '', enabled: true, center: { x: 0.25, y: 0.5 } },
+      { positive: 'girl b', negative: 'bad hands', enabled: true, center: { x: 0.75, y: 0.5 } },
+    ],
+  });
+  const pos = parameters.v4_prompt.caption.char_captions;
+  const neg = parameters.v4_negative_prompt.caption.char_captions;
+  assert.equal(neg.length, pos.length, '两份 char_captions 必须等长');
+  assert.equal(neg[0].char_caption, '', '没写负向的发空串,不是跳过');
+  assert.equal(neg[1].char_caption, 'bad hands', '写了的那条要落在它自己的位置上');
+  assert.deepEqual(neg[1].centers, pos[1].centers, '负向的坐标跟着同一个角色');
+  // 一个负向都没写时也得等长,别退回空数组。
+  const none = paramsOf({
+    characterPrompts: [
+      { positive: 'solo', negative: '', enabled: true, center: { x: 0.5, y: 0.5 } },
+    ],
+  });
+  assert.equal(none.v4_negative_prompt.caption.char_captions.length, 1);
+});
+
 console.log(`\n${checks} 项 V5 支持对等校验全部通过。`);
