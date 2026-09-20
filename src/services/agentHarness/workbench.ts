@@ -70,6 +70,38 @@ export interface GenerateOutcome {
   height?: number;
 }
 
+/** 归一化的框(0–1,相对**那张图本身**,不是屏幕上显示的尺寸)。与 view_canvas_region 同一口径。 */
+export interface NormalizedBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface InpaintRegionOptions {
+  /** 重绘强度 0–1;不传按重绘面板的默认值。 */
+  strength?: number;
+  /** 框内四周留多少源图像素当上下文(官方的「框内没画遮罩就整框重绘」);不传按面板默认值。 */
+  contextPadding?: number;
+}
+
+/**
+ * 重绘之前先问一句会发多大。估价必须按**真正发出去的尺寸**算,不是画布尺寸:
+ * 焦点重绘把框 64 对齐之后放大到约 1MP 再发(utils/maskCrop.ts),重绘面板上显示的价
+ * 读的也是这个尺寸。本身不花钱,权限闸与确认卡都读它。
+ */
+export type InpaintRegionQuote =
+  | {
+    ok: true;
+    /** 画布上那张图的像素尺寸。 */
+    source: { width: number; height: number };
+    /** 框换算到源图像素后的矩形(已夹边取整)。 */
+    box: { x: number; y: number; width: number; height: number };
+    /** 真正发给 NAI 的尺寸。 */
+    send: { width: number; height: number };
+  }
+  | { ok: false; reason: string };
+
 export interface AgentQuestionOption {
   label: string;
   description?: string;
@@ -106,6 +138,17 @@ export interface WorkbenchAdapter {
 
   /** 按当前工作台参数生成,等到出图或失败才返回。 */
   generate(): Promise<GenerateOutcome>;
+  /**
+   * 局部重绘一块(助手的 `inpaint_region`)。三个都是可选的:只有桌面画布挂上来才有,
+   * 竖屏与校验脚本里没有,工具查不到就如实说不支持,而不是静默降级。
+   *
+   * 实现方必须走与**手动重绘完全同一条**发送路径。强度只有嵌套在 `parameters.img2img`
+   * 里才生效(平铺的 `strength` 服务端根本不看),另起一套发送必然再踩一次这个坑。
+   */
+  /** 不花钱的预估:能不能重绘、框落在哪、实际会发多大。 */
+  inpaintQuote?(box: NormalizedBox, opts?: InpaintRegionOptions): InpaintRegionQuote;
+  /** 真发。等到出图(含裁切回贴)或失败才返回。 */
+  inpaintRegion?(box: NormalizedBox, opts?: InpaintRegionOptions): Promise<GenerateOutcome>;
   /** 历史图片,最新的在前。 */
   images(): WorkbenchImage[];
   /** 把放大结果放回历史坞。 */

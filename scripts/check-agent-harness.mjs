@@ -515,10 +515,10 @@ await check('预设库: 内置永远在;新建/复制/删除/切换;内置不可
   assert.equal(L.sanitizePresetLibrary('garbage').presets.length, 1);
 });
 
-await check('工具目录: listWorkbenchTools 不需要真依赖,列出 21 个带标签与权限类的工具(含挂在 harness 上的 context_memory)', async () => {
+await check('工具目录: listWorkbenchTools 不需要真依赖,列出 22 个带标签与权限类的工具(含挂在 harness 上的 context_memory)', async () => {
   const { listWorkbenchTools } = await import('../src/services/agentHarness/tools/index.ts');
   const tools = listWorkbenchTools();
-  assert.equal(tools.length, 21);
+  assert.equal(tools.length, 22);
   assert.ok(tools.some((t) => t.name === 'context_memory'));
   assert.ok(tools.every((t) => t.label && ['R', 'W', 'D', 'P', 'A'].includes(t.permissionClass)));
 });

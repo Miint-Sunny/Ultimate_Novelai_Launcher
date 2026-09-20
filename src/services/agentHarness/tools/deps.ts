@@ -20,8 +20,12 @@ export interface ToolDeps {
   adapter: WorkbenchAdapter;
   /** 当前预设允许 update_studio_parameters 改的参数键。 */
   allowedParams: () => ReadonlySet<string>;
-  /** 估当前工作台参数出一张图要多少点(免费也要如实报 0)。 */
-  estimateGenerationCost: () => CostEstimate;
+  /**
+   * 估当前工作台参数出一张图要多少点(免费也要如实报 0)。
+   * 传 size 就按那个尺寸估:局部重绘发的是**框的尺寸**(64 对齐 + 焦点超采样之后),
+   * 不是画布尺寸,照画布估会把价报错。
+   */
+  estimateGenerationCost: (size?: { width: number; height: number }) => CostEstimate;
   /** V5 扩散超分:源图尺寸 → 目标尺寸与点数;超上限 cost 为 null。 */
   upscaleQuote: (width: number, height: number) => { cost: number | null; target: { width: number; height: number } };
   upscaleV5: (imageBase64: string) => Promise<{ image: string; width: number; height: number }>;

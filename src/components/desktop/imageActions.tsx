@@ -18,6 +18,12 @@
  */
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import type {
+  GenerateOutcome,
+  InpaintRegionOptions,
+  InpaintRegionQuote,
+  NormalizedBox,
+} from '../../services/agentHarness/workbench';
 
 export interface ImageActionHandlers {
   /** 进重绘覆盖层(清掉上一次的蒙版与裁切信息)。 */
@@ -28,6 +34,12 @@ export interface ImageActionHandlers {
   openEditor: () => void;
   /** 开导演工具的紧凑条(线稿 / 去背 / 上色…)。 */
   openDirector: () => void;
+  /**
+   * 助手的 `inpaint_region`:不开覆盖层,直接按归一化的框重绘一块。
+   * 走的是 `handleInpaintGenerate` —— 与手动重绘**同一条**路径,不是另一套发送。
+   */
+  inpaintQuote: (box: NormalizedBox, opts?: InpaintRegionOptions) => InpaintRegionQuote;
+  inpaintRegion: (box: NormalizedBox, opts?: InpaintRegionOptions) => Promise<GenerateOutcome>;
 }
 
 interface ImageActionsValue {
@@ -61,6 +73,9 @@ export function ImageActionsProvider({ children }: { children: ReactNode }) {
     openUpscale: () => handlersRef.current?.openUpscale(),
     openEditor: () => handlersRef.current?.openEditor(),
     openDirector: () => handlersRef.current?.openDirector(),
+    // 这两条是计费路径的入口:没挂载就如实说,绝不静默当成功。
+    inpaintQuote: (box, opts) => handlersRef.current?.inpaintQuote(box, opts) ?? NOT_MOUNTED,
+    inpaintRegion: async (box, opts) => handlersRef.current?.inpaintRegion(box, opts) ?? { ok: false, message: NOT_MOUNTED.reason },
   }), []);
 
   const value = useMemo<ImageActionsValue>(
@@ -75,11 +90,17 @@ export function ImageActionsProvider({ children }: { children: ReactNode }) {
  * 没有 Provider 时返回一个静默的空壳(顶栏在别处被单独挂起来时不该炸)。
  * 真正的消费方都在 Provider 里面,拿到的是活的。
  */
+const NOT_MOUNTED = { ok: false, reason: '画布还没有挂载,现在没法重绘。' } as const;
+
 const INERT: ImageActionsValue = {
   hasImage: false,
   setHasImage: () => {},
   register: () => {},
-  actions: { openInpaint: () => {}, openUpscale: () => {}, openEditor: () => {}, openDirector: () => {} },
+  actions: {
+    openInpaint: () => {}, openUpscale: () => {}, openEditor: () => {}, openDirector: () => {},
+    inpaintQuote: () => NOT_MOUNTED,
+    inpaintRegion: async () => ({ ok: false, message: NOT_MOUNTED.reason }),
+  },
 };
 
 export function useImageActions(): ImageActionsValue {

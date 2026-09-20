@@ -9,6 +9,7 @@ await import('./lib/load-frontend-module.mjs');
 const T = await import('../src/services/agentHarness/tools/index.ts');
 const { createWorkbenchToolRegistry, normalizeStudioUpdate, describeStudioDiff, parseQuestions, RESOLUTION_PRESETS, buildOverlaySpec, anchorDisplayFor, freePositioningForModel } = T;
 const { findSkill, formatSkillsForSystemPrompt } = await import('../src/services/agentHarness/skillCatalog.ts');
+const geometry = await import('../src/components/inpaint/regionGeometry.ts');
 
 let checks = 0;
 const check = async (name, fn) => {
@@ -30,6 +31,11 @@ function fakeAdapter() {
     upscaled: [],
     asked: null,
     generateCalls: 0,
+    // 画布上那张图(inpaint_region 的源)。取景几何用的是产品里那一份,不是脚本里另写一遍。
+    canvas: { width: 832, height: 1216 },
+    inpaints: [],
+    inpaintOutcome: { ok: true, message: '重绘完成', seed: 99, width: 832, height: 1216 },
+    estimates: [],
     suggested: null,
     overlays: [],
   };
@@ -47,6 +53,9 @@ function fakeAdapter() {
     generate: async () => { state.generateCalls += 1; return { ok: true, message: 'ok', seed: 7, width: 832, height: 1216 }; },
     images: () => state.images,
     addUpscaledImage: (blob, w, h, seed) => state.upscaled.push({ w, h, seed }),
+    inpaintQuote: (box) => (state.canvas ? geometry.quoteInpaintRegion(box, state.canvas) : { ok: false, reason: '画布上现在没有图' }),
+    // promptAtSend:记下**发的那一刻**工作台里的提示词,用来钉住「先写进去、再发」的顺序。
+    inpaintRegion: async (box, opts) => { state.inpaints.push({ box, opts, promptAtSend: state.params.prompt }); return state.inpaintOutcome; },
     anlas: async () => ({ fixedTrainingStepsLeft: 10, purchasedTrainingSteps: 5, isOpus: true, opusUsage: { percent: 0, isNegative: false, timeUntilNextPercent: 0 } }),
     isOpus: () => true, opusExhausted: () => true,
     askUser: async (qs) => { state.asked = qs; return qs.map(() => 'A'); },
@@ -59,7 +68,8 @@ const makeDeps = (allowed = ['prompt', 'negative_prompt', 'model', 'resolution',
   const deps = {
     adapter,
     allowedParams: () => new Set(allowed),
-    estimateGenerationCost: () => ({ anlas: 0, free: true }),
+    // 不传尺寸 = 按工作台参数(现有工具的用法);传了就是局部重绘的发送尺寸,记下来好断言。
+    estimateGenerationCost: (size) => { if (!size) return { anlas: 0, free: true }; state.estimates.push(size); return { anlas: 30, free: false }; },
     upscaleQuote: (w, h) => (w * h > 3145728 ? { cost: null, target: { width: 0, height: 0 } } : { cost: 1, target: { width: 1664, height: 2432 } }),
     upscaleV5: async () => ({ image: btoa('png'), width: 1664, height: 2432 }),
     downscaleImage: async () => ({ base64: 'QUJD', mimeType: 'image/png', width: 700, height: 1024 }),
@@ -73,13 +83,14 @@ const makeDeps = (allowed = ['prompt', 'negative_prompt', 'model', 'resolution',
   };
   return { deps, state, registry: createWorkbenchToolRegistry(deps) };
 };
-const run = (registry, name, args = {}) => registry.get(name).execute('call', args, { sendEpoch: 1, lockedFields: new Set() });
+const CTX = { sendEpoch: 1, lockedFields: new Set() };
+const run = (registry, name, args = {}) => registry.get(name).execute('call', args, CTX);
 
-await check('工具表: 20 个工具都注册了(一期 19 + 二期的 view_canvas_region)', () => {
+await check('工具表: 21 个工具都注册了(一期 19 + 二期的 view_canvas_region / inpaint_region)', () => {
   const { registry } = makeDeps();
   assert.deepEqual(registry.names.sort(), [
     'add_character_prompt', 'add_prompt_library_entry', 'ask_user', 'danbooru_related_tags', 'danbooru_search_tags', 'delete_prompt_library_entry',
-    'get_studio_parameters', 'list_character_prompts', 'load_skill', 'novelai_account_info', 'novelai_generate', 'novelai_suggest_tags', 'novelai_upscale',
+    'get_studio_parameters', 'inpaint_region', 'list_character_prompts', 'load_skill', 'novelai_account_info', 'novelai_generate', 'novelai_suggest_tags', 'novelai_upscale',
     'remove_character_prompt', 'search_prompt_library', 'update_character_prompt', 'update_prompt_library_entry', 'update_studio_parameters', 'view_canvas_image', 'view_canvas_region',
   ]);
   for (const tool of registry.getAll()) assert.ok(['R', 'W', 'D', 'P', 'A'].includes(tool.permissionClass), tool.name);
@@ -425,6 +436,91 @@ await check('view_canvas_region: 归一化框原样交给裁剪,报出像素框;
   const res = await reg2.get('view_canvas_region').execute('c', { box: { x: 0, y: 0, w: 1, h: 1 } }, { sendEpoch: 1, lockedFields: new Set() });
   assert.ok(res.isError);
   assert.match(res.content, /view_canvas_image/);
+});
+
+await check('取景几何: 框按源图像素换算(不按显示尺寸);发送尺寸 64 对齐并放大到约 1MP', () => {
+  const q = geometry.quoteInpaintRegion({ x: 0.25, y: 0.25, w: 0.5, h: 0.25 }, { width: 832, height: 1216 });
+  assert.equal(q.ok, true);
+  assert.deepEqual(q.box, { x: 208, y: 304, width: 416, height: 304 });
+  // 64 对齐 448x320 → 焦点重绘放大到不超过 100 万像素
+  assert.deepEqual(q.send, { width: 1152, height: 832 });
+  assert.equal(q.send.width % 64, 0); assert.equal(q.send.height % 64, 0);
+  assert.ok(q.send.width * q.send.height <= 1024 * 1024, '不超过焦点重绘的像素预算');
+  // 越界贴边,不报错
+  assert.deepEqual(geometry.quoteInpaintRegion({ x: 0.8, y: 0.8, w: 0.5, h: 0.5 }, { width: 832, height: 1216 }).box,
+    { x: 666, y: 973, width: 166, height: 243 });
+  // 同一个框换一张更大的源图,像素框跟着源图走 —— 口径是源图,不是屏幕上显示的大小
+  assert.deepEqual(geometry.quoteInpaintRegion({ x: 0.25, y: 0.25, w: 0.5, h: 0.25 }, { width: 1664, height: 2432 }).box,
+    { x: 416, y: 608, width: 832, height: 608 });
+  // 换算后不足 64px 的框直接拒
+  assert.equal(geometry.quoteInpaintRegion({ x: 0, y: 0, w: 0.01, h: 0.5 }, { width: 832, height: 1216 }).ok, false);
+});
+
+await check('inpaint_region: P 类计入生成;估价按**发送尺寸**不按画布尺寸;提示词先落进工作台再发', async () => {
+  const { registry, state } = makeDeps();
+  const tool = registry.get('inpaint_region');
+  assert.equal(tool.permissionClass, 'P');
+  assert.equal(tool.countsAsGeneration, true);
+  const args = { box: { x: 0.25, y: 0.25, w: 0.5, h: 0.25 }, prompt: 'perfect hand' };
+  // 锁了正面提示词就不许借这条工具绕过去;不带 prompt 时不声明写入
+  assert.deepEqual(tool.writesFields(args), ['prompt']);
+  assert.deepEqual(tool.writesFields({ box: args.box }), []);
+
+  const cost = await tool.estimateCost(args, CTX);
+  assert.deepEqual(state.estimates.at(-1), { width: 1152, height: 832 }, '按实际发送的 1152x832 估,不是画布的 832x1216');
+  assert.equal(cost.free, false);
+  assert.match(cost.note, /1152x832/);
+  assert.match(await tool.describeChange(args, CTX), /\(208, 304\) 起 416x304 这一块,实际发送 1152x832/);
+
+  const r = await run(registry, 'inpaint_region', args);
+  assert.equal(r.isError, undefined);
+  assert.equal(state.params.prompt, 'perfect hand', '提示词写进工作台,用户在左栏看得见');
+  assert.equal(state.inpaints.at(-1).promptAtSend, 'perfect hand', '写在**发送之前**,不是发完才写');
+  assert.deepEqual(state.inpaints.at(-1).box, args.box, '交给实现方的仍是归一化框(像素换算只在实现侧做一次)');
+  assert.deepEqual(state.inpaints.at(-1).opts, { strength: undefined, contextPadding: undefined }, '不传就交空,由实现方用重绘面板的默认档');
+  assert.match(r.content, /随机种子: 99/);
+  assert.match(r.content, /view_canvas_region/);
+
+  // 不带 prompt 就沿用工作台现有的,不清空也不改写
+  await run(registry, 'inpaint_region', { box: args.box, strength: 0.4, context_padding: 64 });
+  assert.equal(state.params.prompt, 'perfect hand');
+  assert.deepEqual(state.inpaints.at(-1).opts, { strength: 0.4, contextPadding: 64 });
+});
+
+await check('inpaint_region: 框太小 / strength 越界 / 没接开口都不发;失败不自动重发', async () => {
+  const { registry, state } = makeDeps();
+  const box = { x: 0.25, y: 0.25, w: 0.5, h: 0.25 };
+  const tiny = await run(registry, 'inpaint_region', { box: { x: 0, y: 0, w: 0.01, h: 0.5 } });
+  assert.ok(tiny.isError); assert.match(tiny.content, /框太小/);
+  for (const strength of [0, 1.4, 'x']) {
+    const bad = await run(registry, 'inpaint_region', { box, strength });
+    assert.ok(bad.isError, String(strength)); assert.match(bad.content, /strength/);
+  }
+  const badPad = await run(registry, 'inpaint_region', { box, context_padding: -8 });
+  assert.ok(badPad.isError); assert.match(badPad.content, /context_padding/);
+  assert.equal(state.inpaints.length, 0, '一次都没发出去');
+
+  state.inpaintOutcome = { ok: false, message: '上游 500' };
+  const failed = await run(registry, 'inpaint_region', { box });
+  assert.ok(failed.isError); assert.match(failed.content, /上游 500/);
+  assert.equal(state.inpaints.length, 1, '计费端点失败就停,不自动重发');
+
+  // 画布上没有图:估价必须如实报「不会发生」,不能让闸以为要扣点
+  const noImage = makeDeps();
+  noImage.state.canvas = null;
+  const regNoImage = T.createWorkbenchToolRegistry(noImage.deps);
+  const empty = await regNoImage.get('inpaint_region').execute('c', { box }, CTX);
+  assert.ok(empty.isError); assert.match(empty.content, /没有图/);
+
+  // 竖屏 / 校验环境根本没接这个开口时说清楚,而不是静默当成功
+  const bare = makeDeps();
+  delete bare.deps.adapter.inpaintQuote;
+  delete bare.deps.adapter.inpaintRegion;
+  const regBare = T.createWorkbenchToolRegistry(bare.deps);
+  const unsupported = await regBare.get('inpaint_region').execute('c', { box }, CTX);
+  assert.ok(unsupported.isError); assert.match(unsupported.content, /桌面画布/);
+  const quote = await regBare.get('inpaint_region').estimateCost({ box }, CTX);
+  assert.equal(quote.anlas, 0, '发不出去就别报价');
 });
 
 console.log(`\n${checks} 项 agent 工具校验全部通过。`);

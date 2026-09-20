@@ -8,6 +8,7 @@ import { appBackendApi } from '../../../../api/appBackendApi';
 import { cloudBackendApi } from '../../../../api/cloudBackendApi';
 import { localSidecarApi, sidecarV1Api } from '../../../../api/localSidecarApi';
 import { useAgentDock } from '../../../../contexts/AgentDockContext';
+import { useImageActions } from '../../imageActions';
 import { AgentHarness } from '../../../../services/agentHarness/harness';
 import { DEFAULT_PERMISSION_LIMITS } from '../../../../services/agentHarness/permissionGate';
 import { HOST_AGENT_LLM_CHAT_PATH, createSidecarLlmProvider, type LlmProvider } from '../../../../services/agentHarness/provider';
@@ -131,6 +132,10 @@ export interface AgentHarnessController {
 
 export function useAgentHarness(): AgentHarnessController {
   const { handlersRef, handlersReady, aiModel } = useAgentDock();
+  // 画布动作的注册台(MainContent 交上来的)。助手的 inpaint_region 从这里走,
+  // 与顶栏那四个按钮同一个口子;每次渲染存进 ref,工具在异步循环里拿到的才是当前值。
+  const imageActions = useImageActions();
+  const imageActionsRef = useRef(imageActions); imageActionsRef.current = imageActions;
   const [items, setItems] = useState<TranscriptItem[]>(loadCurrentTranscript);
   const [busy, setBusy] = useState(false);
   const [mode, setModeState] = useState<PermissionMode>(() => getAppSettings().agentPermissionMode);
@@ -250,16 +255,22 @@ export function useAgentHarness(): AgentHarnessController {
         });
     }
     if (harnessRef.current) return harnessRef.current;
-    const adapter: WorkbenchAdapter = { ...bridge, askUser };
+    const adapter: WorkbenchAdapter = {
+      ...bridge,
+      askUser,
+      inpaintQuote: (box) => imageActionsRef.current.actions.inpaintQuote(box),
+      inpaintRegion: (box, opts) => imageActionsRef.current.actions.inpaintRegion(box, opts),
+    };
     const preset = resolveActivePreset(libraryRef.current);
     const skills = allSkills(BUILTIN_SKILLS, libraryRef.current);
     const registry = createWorkbenchToolRegistry({
       adapter,
       allowedParams: () => new Set(preset.allowedModifiableParams),
-      estimateGenerationCost: () => {
+      estimateGenerationCost: (size) => {
         const p = adapter.getParams();
         const result = calculateCostFromUI({
-          width: p.width, height: p.height, steps: p.steps, modelId: uiModelIdFor(p.model), sampler: p.sampler,
+          width: size?.width ?? p.width, height: size?.height ?? p.height,
+          steps: p.steps, modelId: uiModelIdFor(p.model), sampler: p.sampler,
           isOpus: getCachedIsOpus(), opusUsageExhausted: isOpusUsageExhausted(),
         });
         return { anlas: result.total, free: result.total === 0 };

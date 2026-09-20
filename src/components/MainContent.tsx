@@ -8,7 +8,15 @@ import { DirectorBar } from './director/DirectorBar';
 import { InpaintOverlay, type ExpandPayload } from './InpaintOverlay';
 import { WorkshopInputBar } from './workshop/WorkshopInputBar';
 import { alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
-import { expandMaskRegions } from './inpaint/maskUtils';
+import { buildBoxMask, expandMaskRegions } from './inpaint/maskUtils';
+import { quoteInpaintRegion } from './inpaint/regionGeometry';
+import type { GenerateResult } from '../services/novelai';
+import type {
+  GenerateOutcome,
+  InpaintRegionOptions,
+  InpaintRegionQuote,
+  NormalizedBox,
+} from '../services/agentHarness/workbench';
 import { UpscaleModal } from './UpscaleModal';
 import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
 import { WatermarkPlacementOverlay } from './watermark/WatermarkPlacementOverlay';
@@ -20,6 +28,38 @@ const STORAGE_KEY_CUSTOM_PROMPT = 'nai_save_custom_prompt';
 const STORAGE_KEY_SAVE_FORMAT = 'nai_save_format';
 const STORAGE_KEY_SAVE_QUALITY = 'nai_save_quality';
 const DEFAULT_QUALITY = 0.92;
+
+// 助手 inpaint_region 的默认值,与重绘面板上的默认档一致(InpaintOverlay:强度 0.7、上下文 128px),
+// 助手不传就按用户手动重绘时看到的那一套来,不另立一套口径。
+const REGION_DEFAULT_STRENGTH = 0.7;
+const REGION_DEFAULT_CONTEXT_PADDING = 128;
+const REGION_TIMEOUT_MS = 5 * 60_000;
+// 生成收尾之后留给「裁切结果回贴」的宽限:回贴只是一次画布合成,远用不了这么久;
+// 等满还没有新图就当这一轮没出图(不自动重发,计费路径失败一次就停)。
+const REGION_PASTEBACK_GRACE_MS = 10_000;
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** 画布现状 + 发送入口的活引用:注册给外面的开法只认它,免得闭包里是上一帧的值。 */
+interface RegionLive {
+  sourceUrl: string | null;
+  width: number;
+  height: number;
+  ready: boolean;
+  isGenerating: boolean;
+  headId: string | null;
+  lastResult: GenerateResult | null;
+  send: (maskBase64: string, strength: number, cropRect: CropRect) => Promise<boolean>;
+}
+
+interface PendingRegion {
+  resolve: (outcome: GenerateOutcome) => void;
+  headId: string | null;
+  resultAtStart: GenerateResult | null;
+  sawGenerating: boolean;
+  timer: number;
+  grace: number | null;
+}
 
 export const MainContent: React.FC = () => {
   const {
@@ -94,6 +134,61 @@ export const MainContent: React.FC = () => {
   useEffect(() => {
     imageActions.setHasImage(canActOnImage);
   }, [imageActions, canActOnImage]);
+
+  // ===== 助手的 inpaint_region(契约见 docs_and_plan/2026-09-06-agent-harness-gap.md §7)=====
+  // 不开覆盖层,直接按归一化的框重绘一块,但发送走的是下面那个 handleInpaintGenerate ——
+  // 与手动重绘**完全同一条**路径。另起一套的话,强度那条(只有嵌套 parameters.img2img 才生效)
+  // 必然再踩一次。这里的两个开法都只从 regionLiveRef 读现状,所以永远不是上一帧的值。
+  const regionLiveRef = useRef<RegionLive | null>(null);
+  const pendingRegionRef = useRef<PendingRegion | null>(null);
+
+  const settleRegion = useCallback((outcome: GenerateOutcome) => {
+    const pending = pendingRegionRef.current;
+    if (!pending) return;
+    pendingRegionRef.current = null;
+    window.clearTimeout(pending.timer);
+    if (pending.grace !== null) window.clearTimeout(pending.grace);
+    pending.resolve(outcome);
+  }, []);
+
+  const quoteRegion = useCallback((box: NormalizedBox): InpaintRegionQuote => {
+    const live = regionLiveRef.current;
+    if (!live || !live.sourceUrl) return { ok: false, reason: '画布上现在没有图,先出一张再重绘。' };
+    if (!live.ready) return { ok: false, reason: '画布正忙(正在生成,或重绘 / 编辑 / 导演工具开着),等它结束再试。' };
+    // 换算与发送尺寸都在 inpaint/regionGeometry:那份能在 node 里被门禁直接加载断言。
+    return quoteInpaintRegion(box, { width: live.width, height: live.height });
+  }, []);
+
+  const runInpaintRegion = useCallback(async (box: NormalizedBox, opts?: InpaintRegionOptions): Promise<GenerateOutcome> => {
+    const quote = quoteRegion(box);
+    if (!quote.ok) return { ok: false, message: quote.reason };
+    const live = regionLiveRef.current;
+    if (!live) return { ok: false, message: '画布还没有挂载。' };
+    if (pendingRegionRef.current) return { ok: false, message: '已有一次重绘在进行中,等它结束再试。' };
+    if (live.isGenerating) return { ok: false, message: '已有生成在进行中,等它结束再试。' };
+    const strength = clamp01(typeof opts?.strength === 'number' && Number.isFinite(opts.strength) ? opts.strength : REGION_DEFAULT_STRENGTH);
+    const padding = Math.max(0, Math.round(
+      typeof opts?.contextPadding === 'number' && Number.isFinite(opts.contextPadding) ? opts.contextPadding : REGION_DEFAULT_CONTEXT_PADDING,
+    ));
+    // 与手动重绘「框内没画遮罩就整框重绘」同一条:框内除了上下文内边距那一圈全是重绘区。
+    const mask = buildBoxMask(quote.box, padding, quote.source.width, quote.source.height);
+    if (!mask) return { ok: false, message: '蒙版没画出来(浏览器没给出画布上下文)。' };
+    const outcome = new Promise<GenerateOutcome>((resolve) => {
+      pendingRegionRef.current = {
+        resolve,
+        headId: live.headId,
+        resultAtStart: live.lastResult,
+        sawGenerating: false,
+        timer: window.setTimeout(() => settleRegion({ ok: false, message: '重绘超时(5 分钟)。' }), REGION_TIMEOUT_MS),
+        grace: null,
+      };
+    });
+    if (!(await live.send(mask, strength, quote.box))) {
+      settleRegion({ ok: false, message: '重绘没能发出去(没登录,或画布状态已经变了)。' });
+    }
+    return outcome;
+  }, [quoteRegion, settleRegion]);
+
   useEffect(() => {
     imageActions.register({
       openInpaint: () => {
@@ -108,8 +203,10 @@ export const MainContent: React.FC = () => {
         setIsWorkshopOpen(true);
       },
       openDirector: () => setIsDirectorOpen(true),
+      inpaintQuote: quoteRegion,
+      inpaintRegion: runInpaintRegion,
     });
-  }, [imageActions, imageUrl]);
+  }, [imageActions, imageUrl, quoteRegion, runInpaintRegion]);
 
   // 默认保存设置
   const [defaultSaveMode, setDefaultSaveMode] = useState<'original' | 'clean' | 'custom'>('original');
@@ -302,14 +399,15 @@ export const MainContent: React.FC = () => {
     }
   };
 
-  // 局部重绘处理
-  const handleInpaintGenerate = async (maskBase64: string, strength: number, cropRect?: CropRect, expandPayload?: ExpandPayload) => {
+  // 局部重绘处理。返回「这一次到底发出去了没有」:覆盖层不看,助手的 inpaint_region 要靠它
+  // 分辨「在等出图」和「压根没发」,否则失败时只能干等到超时。
+  const handleInpaintGenerate = async (maskBase64: string, strength: number, cropRect?: CropRect, expandPayload?: ExpandPayload): Promise<boolean> => {
     const sourceImageUrl = inpaintOriginalImage || imageUrl;
-    if (!sourceImageUrl) return;
+    if (!sourceImageUrl) return false;
 
     if (!isAuthenticated) {
       requireAuth(() => handleInpaintGenerate(maskBase64, strength, cropRect, expandPayload));
-      return;
+      return false;
     }
 
     setIsInpainting(true);
@@ -335,7 +433,7 @@ export const MainContent: React.FC = () => {
           }
         });
         window.dispatchEvent(event);
-        return;
+        return true;
       }
 
       // ===== 普通重绘 / 裁切重绘模式 =====
@@ -403,9 +501,11 @@ export const MainContent: React.FC = () => {
         detail: { imageBase64, maskBase64, strength, width: fullWidth, height: fullHeight, cropInfo }
       });
       window.dispatchEvent(event);
+      return true;
     } catch (error) {
       console.error('局部重绘失败:', error);
       setIsInpainting(false);
+      return false;
     }
   };
 
@@ -467,6 +567,43 @@ export const MainContent: React.FC = () => {
     window.addEventListener('open-inpaint-mode', handler);
     return () => window.removeEventListener('open-inpaint-mode', handler);
   }, []);
+
+  // 每次渲染刷新一次画布现状,上面注册给助手的两个开法只从这里读(与左栏 workbenchBridge 同一套做法)。
+  regionLiveRef.current = {
+    sourceUrl: inpaintOriginalImage || imageUrl,
+    width: inpaintDimensions?.width || targetWidth,
+    height: inpaintDimensions?.height || targetHeight,
+    ready: canActOnImage,
+    isGenerating,
+    headId: history[0]?.id ?? null,
+    lastResult: result,
+    send: handleInpaintGenerate,
+  };
+
+  // inpaint_region 的收口:等到真出图才回话。裁切重绘是 skipHistory + 回贴,
+  // 所以判据统一用「历史头换了没有」—— 回贴后的 addInpaintedImage 也会换头。
+  useEffect(() => {
+    const pending = pendingRegionRef.current;
+    if (!pending) return;
+    if (isGenerating) { pending.sawGenerating = true; return; }
+    const head = history[0];
+    if (head && head.id !== pending.headId) {
+      settleRegion({ ok: true, message: '重绘完成', seed: head.seed, width: head.width, height: head.height });
+      return;
+    }
+    if (!pending.sawGenerating) return;
+    // 这一轮的结果对象换了且是失败:立刻报错,不用等宽限窗口。
+    if (result && result !== pending.resultAtStart && !result.success) {
+      settleRegion({ ok: false, message: `重绘失败:${result.error || '未知错误'}` });
+      return;
+    }
+    // 生成收尾了但历史还没换:大概率是回贴晚一拍。等满宽限还没换就当这轮没出图。
+    if (pending.grace === null) {
+      pending.grace = window.setTimeout(() => {
+        settleRegion({ ok: false, message: '重绘没有产出新图片(可能被取消或失败,看左下角提示)。' });
+      }, REGION_PASTEBACK_GRACE_MS);
+    }
+  }, [isGenerating, history, result, settleRegion]);
 
   // 超分辨率完成处理
   const handleUpscaleComplete = async (resultBlob: Blob, scale: number) => {

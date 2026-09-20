@@ -5,13 +5,56 @@
  *   docs_and_plan/2026-09-06-agent-harness-gap.md §7),先把**归一化框**的口径跑通,
  *   后面 inpaint_region / edit_image 用同一套坐标:框是 0–1、相对这张图本身,
  *   不是相对屏幕上显示的尺寸 —— 这正是画布摆位那条踩过的坑。
+ * - `inpaint_region`:按同一个框重绘一块。**付费**,所以它自己一行发送逻辑都不写:
+ *   适配器把开口交给桌面画布(components/MainContent),走与手动重绘完全同一条路径。
  */
 
 import { toolError, type AgentTool } from '../toolRegistry';
 import { buildOverlaySpec, freePositioningForModel } from './canvasOverlay';
 import type { ToolDeps } from './deps';
+import type { InpaintRegionQuote, NormalizedBox, StudioParams } from '../workbench';
 
 const DEFAULT_MAX_EDGE = 1024;
+/** 写进工作台的参数多久必须能读回来;读不回来就不发(计费路径上宁可不做)。 */
+const PARAM_SETTLE_TIMEOUT_MS = 3000;
+
+type BoxRead = { ok: true; box: NormalizedBox } | { ok: false; reason: string };
+
+/** 归一化框的统一读法:三条二期工具共用,口径一处定义。 */
+function readNormalizedBox(raw: unknown): BoxRead {
+  const src = raw as { x?: unknown; y?: unknown; w?: unknown; h?: unknown } | undefined;
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const x = num(src?.x); const y = num(src?.y); const w = num(src?.w); const h = num(src?.h);
+  if (x === null || y === null || w === null || h === null) {
+    return { ok: false, reason: 'box 需要四个数字 {x, y, w, h},都是 0–1 的归一化坐标。' };
+  }
+  if (w <= 0 || h <= 0) {
+    return { ok: false, reason: `框的宽高必须大于 0(收到 w=${w}, h=${h})。` };
+  }
+  return { ok: true, box: { x, y, w, h } };
+}
+
+const BOX_SCHEMA = {
+  type: 'object',
+  description: '归一化的框(0–1,相对图片本身):x/y 是左上角,w/h 是宽高。',
+  properties: {
+    x: { type: 'number', description: '左上角 x,0–1' },
+    y: { type: 'number', description: '左上角 y,0–1' },
+    w: { type: 'number', description: '宽,0–1' },
+    h: { type: 'number', description: '高,0–1' },
+  },
+  required: ['x', 'y', 'w', 'h'],
+};
+
+/** 等一个写进工作台的参数真的读得回来(界面是 React 状态,写完不是立刻生效)。 */
+async function waitForParam(deps: ToolDeps, done: (params: StudioParams) => boolean): Promise<boolean> {
+  const started = Date.now();
+  while (!done(deps.adapter.getParams())) {
+    if (Date.now() - started > PARAM_SETTLE_TIMEOUT_MS) return false;
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  return true;
+}
 
 export function createCanvasTools(deps: ToolDeps): AgentTool[] {
   const view: AgentTool = {
@@ -98,17 +141,7 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
     parameters: {
       type: 'object',
       properties: {
-        box: {
-          type: 'object',
-          description: '归一化的框(0–1,相对图片本身):x/y 是左上角,w/h 是宽高。',
-          properties: {
-            x: { type: 'number', description: '左上角 x,0–1' },
-            y: { type: 'number', description: '左上角 y,0–1' },
-            w: { type: 'number', description: '宽,0–1' },
-            h: { type: 'number', description: '高,0–1' },
-          },
-          required: ['x', 'y', 'w', 'h'],
-        },
+        box: BOX_SCHEMA,
         index: { type: 'integer', description: '要看的图片索引(0 = 最新,默认 0)。' },
         full_resolution: { type: 'boolean', description: '是否不压缩返回(默认 false,压到最长边 1024px)。裁出来本来就小,通常不用开。' },
       },
@@ -116,15 +149,9 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
     },
     permissionClass: 'R',
     execute: async (toolCallId, args) => {
-      const raw = args.box as { x?: unknown; y?: unknown; w?: unknown; h?: unknown } | undefined;
-      const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-      const x = num(raw?.x); const y = num(raw?.y); const w = num(raw?.w); const h = num(raw?.h);
-      if (x === null || y === null || w === null || h === null) {
-        return toolError(toolCallId, region.name, 'box 需要四个数字 {x, y, w, h},都是 0–1 的归一化坐标。');
-      }
-      if (w <= 0 || h <= 0) {
-        return toolError(toolCallId, region.name, `框的宽高必须大于 0(收到 w=${w}, h=${h})。要看整张图请用 view_canvas_image。`);
-      }
+      const read = readNormalizedBox(args.box);
+      if (!read.ok) return toolError(toolCallId, region.name, `${read.reason}要看整张图请用 view_canvas_image。`);
+      const { x, y, w, h } = read.box;
       if (!deps.cropImage) {
         return toolError(toolCallId, region.name, '当前环境不支持裁剪,请改用 view_canvas_image 查看整张图。');
       }
@@ -162,7 +189,98 @@ export function createCanvasTools(deps: ToolDeps): AgentTool[] {
     },
   };
 
-  return [view, region];
+  /** 估价与确认卡共用:先把框换算好、问出实际发送尺寸,问不出就说清楚为什么。 */
+  const quoteFor = (args: Record<string, unknown>): InpaintRegionQuote | null => {
+    if (!deps.adapter.inpaintQuote) return null;
+    const read = readNormalizedBox(args.box);
+    if (!read.ok) return { ok: false, reason: read.reason };
+    return deps.adapter.inpaintQuote(read.box);
+  };
+
+  const inpaint: AgentTool = {
+    name: 'inpaint_region',
+    label: '局部重绘',
+    description: '对画布上**当前这张图**的某一块做局部重绘(官方的焦点重绘):框内除了四周留作上下文的一圈,整块重画,其余部分原样保留。box 用归一化坐标 {x, y, w, h}(0–1,相对图片本身),与 view_canvas_region 同一口径 —— 动手前建议先用 view_canvas_region 把这块放大看清楚。prompt 传了会先写进工作台的正面提示词(用户在左栏看得见)再重绘;不传就沿用工作台现有的提示词。模型、步数、CFG、负面词等一律取工作台当前值,要改先用 update_studio_parameters。这是**付费**操作,按实际发送的分辨率计费(框会先 64 对齐,再放大到约 100 万像素送去重绘),预计消耗非零时会先向用户确认;失败不会自动重试。',
+    parameters: {
+      type: 'object',
+      properties: {
+        box: BOX_SCHEMA,
+        prompt: { type: 'string', description: '这一块要画成什么。会写进工作台的正面提示词再重绘;不传则沿用当前提示词。' },
+        strength: { type: 'number', description: '重绘强度,0–1,默认 0.7。越大越不像原图。' },
+        context_padding: { type: 'integer', description: '框内四周保留多少像素的原图当上下文,默认 128。' },
+      },
+      required: ['box'],
+    },
+    permissionClass: 'P',
+    countsAsGeneration: true,
+    // 用户锁了正面提示词就不许借这条工具绕过去(闸在任何模式下都拒)。
+    writesFields: (args) => (typeof args.prompt === 'string' && args.prompt.trim() ? ['prompt'] : []),
+    estimateCost: async (args) => {
+      const quote = quoteFor(args);
+      // 估不出来 = 这次根本发不出去,如实报 0;理由写在 note 里,执行时再原样拦一次。
+      if (!quote) return { anlas: 0, free: true, note: '当前环境没有接局部重绘' };
+      if (!quote.ok) return { anlas: 0, free: true, note: quote.reason };
+      return { ...deps.estimateGenerationCost(quote.send), note: `实际发送 ${quote.send.width}x${quote.send.height}` };
+    },
+    describeChange: async (args) => {
+      const quote = quoteFor(args);
+      if (!quote) return '当前环境没有接局部重绘。';
+      if (!quote.ok) return quote.reason;
+      const cost = deps.estimateGenerationCost(quote.send);
+      const wanted = typeof args.prompt === 'string' ? args.prompt.trim() : '';
+      return `重绘 ${quote.source.width}x${quote.source.height} 上 (${quote.box.x}, ${quote.box.y}) 起 ${quote.box.width}x${quote.box.height} 这一块,实际发送 ${quote.send.width}x${quote.send.height};${cost.free ? '免费' : `约 ${cost.anlas} Anlas`}${wanted ? `;正面提示词改成「${wanted}」` : ''}`;
+    },
+    execute: async (toolCallId, args) => {
+      const { inpaintQuote, inpaintRegion } = deps.adapter;
+      if (!inpaintQuote || !inpaintRegion) {
+        return toolError(toolCallId, inpaint.name, '当前环境没有接局部重绘(只有桌面画布支持)。');
+      }
+      const read = readNormalizedBox(args.box);
+      if (!read.ok) return toolError(toolCallId, inpaint.name, read.reason);
+      const quote = inpaintQuote(read.box);
+      if (!quote.ok) return toolError(toolCallId, inpaint.name, quote.reason);
+
+      let strength: number | undefined;
+      if (args.strength !== undefined) {
+        const value = typeof args.strength === 'number' && Number.isFinite(args.strength) ? args.strength : null;
+        if (value === null || value <= 0 || value > 1) {
+          return toolError(toolCallId, inpaint.name, `strength 要是 0–1 之间的数(不含 0),收到 ${JSON.stringify(args.strength)}。`);
+        }
+        strength = value;
+      }
+      let contextPadding: number | undefined;
+      if (args.context_padding !== undefined) {
+        const value = typeof args.context_padding === 'number' && Number.isFinite(args.context_padding) ? Math.round(args.context_padding) : null;
+        if (value === null || value < 0) {
+          return toolError(toolCallId, inpaint.name, `context_padding 要是不小于 0 的整数,收到 ${JSON.stringify(args.context_padding)}。`);
+        }
+        contextPadding = value;
+      }
+
+      // 提示词先落进工作台,**并等它真的读得回来**再发:界面是 React 状态,写完不是立刻生效,
+      // 抢在生效之前发出去就等于花钱重绘了上一版提示词。等不到就不发。
+      const wanted = typeof args.prompt === 'string' ? args.prompt.trim() : '';
+      if (wanted && deps.adapter.getParams().prompt !== wanted) {
+        deps.adapter.applyParams({ prompt: wanted });
+        if (!(await waitForParam(deps, (params) => params.prompt === wanted))) {
+          return toolError(toolCallId, inpaint.name, '提示词没能写进工作台(界面没跟上),本次未发送,请重试。');
+        }
+      }
+
+      const outcome = await inpaintRegion(read.box, { strength, contextPadding });
+      // 计费端点:失败就停下来说清楚,不自动重发。要不要再花一次由用户定。
+      if (!outcome.ok) return toolError(toolCallId, inpaint.name, `局部重绘失败:${outcome.message}`);
+      const lines = [
+        `局部重绘完成:重绘了 ${quote.source.width}x${quote.source.height} 上 (${quote.box.x}, ${quote.box.y}) 起 ${quote.box.width}x${quote.box.height} 这一块(实际发送 ${quote.send.width}x${quote.send.height})。`,
+        `• 结果尺寸: ${outcome.width}x${outcome.height}(重绘结果已贴回原图,所以还是整张图的尺寸)`,
+      ];
+      if (typeof outcome.seed === 'number') lines.push(`• 随机种子: ${outcome.seed}`);
+      lines.push('已放进历史坞(index 0)并显示在画布上。要核对这一块请用 view_canvas_region 传同一个 box。');
+      return { toolCallId, toolName: inpaint.name, content: lines.join('\n') };
+    },
+  };
+
+  return [view, region, inpaint];
 }
 
 function formatTime(ts: number): string {
