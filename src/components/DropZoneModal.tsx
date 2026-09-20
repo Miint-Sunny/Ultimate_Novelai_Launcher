@@ -17,7 +17,7 @@ import {
   getPictureSizeType,
   type ImageMetadata,
 } from '../utils/imageMetadata';
-import { getUnsupportedImportSettings, formatUnsupportedSettings } from '../utils/generationOptions';
+import { getUnsupportedImportSettings, formatUnsupportedSettings, samplerIdToLabel } from '../utils/generationOptions';
 import { MetadataDetailPanel, type MetadataFile } from './ToolsModal';
 import {
   analyzeImageWithWDTagger,
@@ -572,7 +572,8 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
               )}
               {metadata.sampler && (
                 <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] text-gray-300">
-                  {metadata.sampler}
+                  {/* 元数据里是 API id;认识的就显示 UI 名,不认识的原样给出,和「不支持」提示对得上 */}
+                  {samplerIdToLabel(metadata.sampler) ?? metadata.sampler}
                 </span>
               )}
               {metadata.characterPrompts && metadata.characterPrompts.length > 0 && (
