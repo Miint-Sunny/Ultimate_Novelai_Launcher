@@ -30,6 +30,8 @@ interface CharacterPromptsSectionProps {
   ) => void;
   moveCharacterPrompt: (index: number, direction: -1 | 1) => void;
   setEditingPositionId: (id: string) => void;
+  /** 打开画布上的摆位层;没传就退回旧的小面板。 */
+  onPlaceOnCanvas?: () => void;
   chipMode: boolean;
   charHeights: Record<string, number>;
   isDraggingChar: MutableRefObject<string | null>;
@@ -51,6 +53,7 @@ export function CharacterPromptsSection({
   updateCharacterPrompt,
   moveCharacterPrompt,
   setEditingPositionId,
+  onPlaceOnCanvas,
   chipMode,
   charHeights,
   isDraggingChar,
@@ -78,7 +81,7 @@ export function CharacterPromptsSection({
               role="radiogroup"
               className="flex items-center p-0.5 mr-1 rounded-full border border-gray-700 bg-black/20"
               onClick={(event) => event.stopPropagation()}
-              title="官方位置区块的全局开关:AI 排版 = 坐标照发但交给模型构图(use_coords false);用我摆的 = 按每个角色的坐标出图,点它直接开摆位"
+              title="官方位置区块的全局开关:AI 排版 = 坐标照发但交给模型构图(use_coords false);用我摆的 = 按每个角色的坐标出图,点它直接在画布上摆"
             >
               {[{ value: false, label: 'AI 排版' }, { value: true, label: '用我摆的' }].map((option) => {
                 const on = useCoords === option.value;
@@ -92,7 +95,7 @@ export function CharacterPromptsSection({
                       // 切到「用我摆的」就直接把摆位打开 —— 否则用户切完了,
                       // 不知道「我自己排在哪排」(用户 2026-09-21 原话)。
                       if (option.value && characterPrompts.length > 0) {
-                        setEditingPositionId(characterPrompts[0].id);
+                        onPlaceOnCanvas?.();
                       }
                     }}
                     className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}

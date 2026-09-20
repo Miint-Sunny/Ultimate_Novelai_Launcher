@@ -24,6 +24,9 @@ import { countTokens } from '../services/tokenizer';
 import { useAgentDock } from '../contexts/AgentDockContext';
 import { AISettingsPanel } from './left-sidebar/AISettingsPanel';
 import { CharacterPositionModal } from './left-sidebar/CharacterPositionModal';
+import { CharacterPlacementOverlay } from './canvas/CharacterPlacementOverlay';
+import { createPortal } from 'react-dom';
+import { NEUTRAL_CENTER, placedCenter } from '../services/characterPosition';
 import { CharacterPromptsSection } from './left-sidebar/CharacterPromptsSection';
 import { GenerationFooterControls } from './left-sidebar/GenerationFooterControls';
 import { Image2ImageSection } from './left-sidebar/Image2ImageSection';
@@ -673,6 +676,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   // 底栏摘要点一下,参数从底下往上展开(用户 2026-09-21 拍板,官方也是这么摆的)。
   // 不是 tab,所以不动 tabState;再点同一处就收回去。
   const [isParamsSheetOpen, setIsParamsSheetOpen] = useState(false);
+  // 画布上的摆位:开关在角色区头上的「用我摆的」
+  const [isPlacingOnCanvas, setIsPlacingOnCanvas] = useState(false);
+  const [placingId, setPlacingId] = useState<string | null>(null);
   const paramsSheetSourceRef = useRef<string | null>(null);
   const scrollToAISettings = (settingName: string) => {
     // 点同一处再收回去(摘要上的数字既是把手也是开关);点另一处则留着抽屉、换高亮。
@@ -1206,6 +1212,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             updateCharacterPrompt={updateCharacterPrompt}
             moveCharacterPrompt={moveCharacterPrompt}
             setEditingPositionId={setEditingPositionId}
+            onPlaceOnCanvas={() => { setPlacingId(characterPrompts[0]?.id ?? null); setIsPlacingOnCanvas(true); }}
             chipMode={chipMode}
             charHeights={charHeights}
             isDraggingChar={isDraggingChar}
@@ -1423,7 +1430,35 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
         onOpenInspiration={() => setIsInspirationModalOpen(true)}
       />
 
-      {/* Character Position Modal */}
+      {/* 角色摆位:直接叠在主画布上,取景框按**这次要生成的**尺寸画(用户 2026-09-21)。
+          portal 到画布根节点,因为角色状态在左栏、画布在中间,两者是兄弟节点。 */}
+      {isPlacingOnCanvas && typeof document !== 'undefined' && document.getElementById('canvas-stage')
+        ? createPortal(
+            <CharacterPlacementOverlay
+              open
+              targetWidth={customWidth}
+              targetHeight={customHeight}
+              characters={characterPrompts.map((char) => ({
+                id: char.id,
+                name: char.name,
+                center: placedCenter(char) ?? NEUTRAL_CENTER,
+                enabled: char.enabled,
+              }))}
+              activeId={placingId ?? characterPrompts[0]?.id ?? null}
+              useCoords={useCoords}
+              onSetUseCoords={setUseCoords}
+              onSelect={setPlacingId}
+              onMove={(id, center) => {
+                updateCharacterPrompt(id, 'center', center);
+                updateCharacterPrompt(id, 'position', '');
+              }}
+              onClose={() => setIsPlacingOnCanvas(false)}
+            />,
+            document.getElementById('canvas-stage')!,
+          )
+        : null}
+
+      {/* Character Position Modal(旧的小面板,右键 / 单角色按钮仍可用) */}
       {editingPositionId && (
         <CharacterPositionModal
           editingPositionId={editingPositionId}

@@ -485,7 +485,7 @@ export const MainContent: React.FC = () => {
 
 
   return (
-    <div className="flex-1 bg-nai-bg flex flex-col relative overflow-hidden">
+    <div id="canvas-stage" className="flex-1 bg-nai-bg flex flex-col relative overflow-hidden">
       {/* Save Modal */}
       <SaveModal
         isOpen={isSaveModalOpen}
