@@ -111,6 +111,36 @@ class V5UpscaleResponse(StrictModel):
     declared_blur_sigma: float
 
 
+DirectorToolValue = Literal[
+    "bg-removal",
+    "lineart",
+    "sketch",
+    "colorize",
+    "emotion",
+    "declutter",
+]
+
+
+class DirectorAugmentRequest(StrictModel):
+    """导演工具请求。源图 PNG 的 base64;宽高由服务端从 PNG 头读,不收客户端的。"""
+
+    image: str = Field(min_length=8)
+    req_type: DirectorToolValue
+    # 只有 colorize(上色提示)与 emotion(情绪词)使用,其余工具忽略。
+    prompt: str = Field(default="", max_length=2000)
+    # 官方 0-5 档;其余工具忽略。
+    defry: int = Field(default=0, ge=0, le=5)
+
+
+class DirectorAugmentResponse(StrictModel):
+    """结果 PNG 的 base64 与实际尺寸(前端按它对账,不信本地推算)。"""
+
+    image: str
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    req_type: DirectorToolValue
+
+
 class PairingChallengeResponse(StrictModel):
     code: str = Field(pattern=r"^[0-9]{6}$")
     expires_at: datetime

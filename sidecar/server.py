@@ -117,6 +117,8 @@ def _register_middleware(app: FastAPI, components: RuntimeComponents) -> None:
             "/upscale": 45 * 1024 * 1024,
             # V5 扩散超分:源图以 base64 JSON 进来,预算与 compat /upscale 同档。
             "/api/v1/upscale": 45 * 1024 * 1024,
+            # 导演工具:同样是 base64 JSON 的整图输入,同档预算。
+            "/api/v1/director": 45 * 1024 * 1024,
             "/api/oc": 45 * 1024 * 1024,
             "/api/artists": 45 * 1024 * 1024,
             "/api/cr": 45 * 1024 * 1024,

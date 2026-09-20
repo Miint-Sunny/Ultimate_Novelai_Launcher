@@ -855,6 +855,97 @@ async def _upscale_image_v5_legacy_fallback(
     )
 
 
+# --- 导演工具(Director Tools) ---
+#
+# 官方 `POST /ai/augment-image`(image. 主机;2026-09-21 从 live OpenAPI 取:
+# image.AugmentImageRequest = {image, req_type, width, height, prompt?, defry?},
+# 201 + application/zip)。解包与生成、超分共用 _extract_image_from_zip。
+#
+# req_type 在 spec 里是自由字符串,取值来自官方前端枚举。本地先拦一刀:发一个
+# 服务端不认的类型只会换来一次注定失败的往返,而这是计费端点。
+DIRECTOR_TOOL_TYPES = frozenset(
+    {
+        "bg-removal",
+        "lineart",
+        "sketch",
+        "colorize",
+        "emotion",
+        "declutter",
+    }
+)
+
+# 只有这两个吃 prompt / defry(上色的提示词、情绪词与 0-5 档强度);其余工具
+# 是整图一键,多发字段属于"赌服务端宽容",不做。
+DIRECTOR_TOOLS_WITH_PROMPT = frozenset({"colorize", "emotion"})
+
+# 官方给的输入上限是 1536×2048。按**面积**拦而不是按边长:横竖两种取向都合法,
+# 按边长拦会误伤 2048×1536。真正的判定在服务端,这里只挡住明显超标的那一类。
+DIRECTOR_MAX_INPUT_PIXELS = 1536 * 2048
+
+
+async def augment_image(
+    *,
+    settings: Settings,
+    image: str,
+    req_type: str,
+    prompt: str = "",
+    defry: int = 0,
+    http: HttpClientPool | None = None,
+    client: httpx.AsyncClient | None = None,
+    outbound_policy: OutboundPolicy | None = None,
+) -> bytes:
+    """导演工具:整图一次性处理,JSON 进、zip 出。
+
+    宽高由这里从源图 PNG 头读出来,**不收调用方传的值**:服务端按这两个数切图,
+    传错得到的是一张错位的结果而不是一个错误,那种错最难查。
+
+    失败语义与 V5 超分一致:上游明确失败就原样上抛,**绝不换传输格式重发**
+    ——这是计费端点,换格式重试等于重复扣费。
+    """
+    if not settings.nai_token:
+        raise NovelAIError("NAI token is not configured")
+    if req_type not in DIRECTOR_TOOL_TYPES:
+        raise NovelAIError(f"unknown director tool {req_type!r}")
+    try:
+        raw_image = base64.b64decode(image, validate=True)
+    except Exception as exc:
+        raise NovelAIError("director tool image is not valid base64") from exc
+
+    dimensions = png_dimensions(raw_image)
+    if dimensions is None:
+        raise NovelAIError(
+            "director tools need a PNG source image (could not read dimensions)",
+        )
+    width, height = dimensions
+    if width * height > DIRECTOR_MAX_INPUT_PIXELS:
+        raise NovelAIError(
+            f"director tool input is too large: {width}x{height} exceeds the "
+            f"{DIRECTOR_MAX_INPUT_PIXELS} pixel budget",
+        )
+
+    payload: dict[str, Any] = {
+        "image": image,
+        "req_type": req_type,
+        "width": width,
+        "height": height,
+    }
+    if req_type in DIRECTOR_TOOLS_WITH_PROMPT:
+        payload["prompt"] = prompt
+        payload["defry"] = defry
+
+    response = await _post_nai_json(
+        settings=settings,
+        path="/ai/augment-image",
+        payload=payload,
+        accept="application/zip",
+        read_timeout=180.0,
+        http=http,
+        client=client,
+        outbound_policy=outbound_policy,
+    )
+    return await _extract_image_from_zip(response.content)
+
+
 def parse_anlas_subscription(data: dict[str, Any]) -> dict[str, Any]:
     steps = data.get("trainingStepsLeft")
     if not isinstance(steps, dict):

@@ -18,6 +18,7 @@ from .agent import create_agent_router
 from .auth import create_auth_router
 from .backups import create_backup_router
 from .cursors import decode_cursor, encode_cursor, resolve_event_cursor
+from .director import create_director_router
 from .events import SSEStreamingResponse, generation_event_stream
 from .library import create_library_router
 from .models import (
@@ -287,6 +288,7 @@ def create_v1_router(runtime: AppRuntime | None = None) -> APIRouter:
     router.include_router(create_storage_router(runtime))
     router.include_router(create_backup_router(runtime))
     router.include_router(create_upscale_router(runtime))
+    router.include_router(create_director_router(runtime))
     router.include_router(create_agent_router(runtime))
     router.include_router(create_tags_router(runtime))
     return router

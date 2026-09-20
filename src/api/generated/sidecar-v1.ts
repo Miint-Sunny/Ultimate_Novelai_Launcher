@@ -181,6 +181,30 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/director/augment": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Augment
+         * @description 导演工具:整图一次性处理,结果是一张新图。
+         *
+         *     计费未知——官方没公布每个工具的 Anlas 单价,前端按「未知费用」走付费闸,
+         *     不假装免费。失败语义见 client.augment_image:上游明确失败原样上抛,
+         *     不重试、不换传输格式(这是计费端点)。
+         */
+        readonly post: operations["augment_api_v1_director_augment_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/generation/jobs": {
         readonly parameters: {
             readonly query?: never;
@@ -727,6 +751,46 @@ export interface components {
             readonly name: string;
             /** Zh Names */
             readonly zh_names?: readonly string[];
+        };
+        /**
+         * DirectorAugmentRequest
+         * @description 导演工具请求。源图 PNG 的 base64;宽高由服务端从 PNG 头读,不收客户端的。
+         */
+        readonly DirectorAugmentRequest: {
+            /**
+             * Defry
+             * @default 0
+             */
+            readonly defry: number;
+            /** Image */
+            readonly image: string;
+            /**
+             * Prompt
+             * @default
+             */
+            readonly prompt: string;
+            /**
+             * Req Type
+             * @enum {string}
+             */
+            readonly req_type: "bg-removal" | "lineart" | "sketch" | "colorize" | "emotion" | "declutter";
+        };
+        /**
+         * DirectorAugmentResponse
+         * @description 结果 PNG 的 base64 与实际尺寸(前端按它对账,不信本地推算)。
+         */
+        readonly DirectorAugmentResponse: {
+            /** Height */
+            readonly height: number;
+            /** Image */
+            readonly image: string;
+            /**
+             * Req Type
+             * @enum {string}
+             */
+            readonly req_type: "bg-removal" | "lineart" | "sketch" | "colorize" | "emotion" | "declutter";
+            /** Width */
+            readonly width: number;
         };
         /** DrainResponse */
         readonly DrainResponse: {
@@ -2644,6 +2708,138 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BackupValidationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Authentication required */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Permission denied */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflicting state */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Resource expired */
+            readonly 410: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request body too large */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Request validation failed */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Capacity or rate limit exceeded */
+            readonly 429: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal server error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Runtime or dependency unavailable */
+            readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Insufficient storage */
+            readonly 507: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly augment_api_v1_director_augment_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DirectorAugmentRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DirectorAugmentResponse"];
                 };
             };
             /** @description Invalid request */

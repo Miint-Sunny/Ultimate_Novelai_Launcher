@@ -898,6 +898,88 @@
         "title": "CrLibraryData",
         "type": "object"
       },
+      "DirectorAugmentRequest": {
+        "additionalProperties": false,
+        "description": "导演工具请求。源图 PNG 的 base64;宽高由服务端从 PNG 头读,不收客户端的。",
+        "properties": {
+          "defry": {
+            "default": 0,
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Defry",
+            "type": "integer"
+          },
+          "image": {
+            "minLength": 8,
+            "title": "Image",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "req_type": {
+            "enum": [
+              "bg-removal",
+              "lineart",
+              "sketch",
+              "colorize",
+              "emotion",
+              "declutter"
+            ],
+            "title": "Req Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image",
+          "req_type"
+        ],
+        "title": "DirectorAugmentRequest",
+        "type": "object"
+      },
+      "DirectorAugmentResponse": {
+        "additionalProperties": false,
+        "description": "结果 PNG 的 base64 与实际尺寸(前端按它对账,不信本地推算)。",
+        "properties": {
+          "height": {
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "image": {
+            "title": "Image",
+            "type": "string"
+          },
+          "req_type": {
+            "enum": [
+              "bg-removal",
+              "lineart",
+              "sketch",
+              "colorize",
+              "emotion",
+              "declutter"
+            ],
+            "title": "Req Type",
+            "type": "string"
+          },
+          "width": {
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "image",
+          "width",
+          "height",
+          "req_type"
+        ],
+        "title": "DirectorAugmentResponse",
+        "type": "object"
+      },
       "DrainResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4497,6 +4579,164 @@
         "tags": [
           "v1",
           "v1-backups"
+        ]
+      }
+    },
+    "/api/v1/director/augment": {
+      "post": {
+        "description": "导演工具:整图一次性处理,结果是一张新图。\n\n计费未知——官方没公布每个工具的 Anlas 单价,前端按「未知费用」走付费闸,\n不假装免费。失败语义见 client.augment_image:上游明确失败原样上抛,\n不重试、不换传输格式(这是计费端点)。",
+        "operationId": "augment_api_v1_director_augment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectorAugmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectorAugmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Permission denied"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflicting state"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Resource expired"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Request body too large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Capacity or rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Runtime or dependency unavailable"
+          },
+          "507": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Insufficient storage"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Augment",
+        "tags": [
+          "v1",
+          "v1-director"
         ]
       }
     },
