@@ -92,8 +92,9 @@ export function getMaskBase64FromCanvas(
   const outputData = tempCtx.getImageData(0, 0, width, height);
   const output = outputData.data;
 
+  // 二值化按官方阈值 alpha > 155:硬笔刷本来就是 255;软圆笔刷的渐变边只有内侧较实的一段算进遮罩。
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i] > 0 || data[i + 1] > 0 || data[i + 2] > 0 || data[i + 3] > 0) {
+    if (data[i + 3] > 155) {
       output[i] = 255;
       output[i + 1] = 255;
       output[i + 2] = 255;
@@ -128,7 +129,8 @@ export function maskHasPaintInside(
   const h = Math.min(maskCanvas.height - y, Math.ceil(rect.height));
   if (w <= 0 || h <= 0) return false;
   const { data } = ctx.getImageData(x, y, w, h);
-  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true;
+  // 与导出阈值一致(alpha > 155),软圆笔刷的淡边不算「画过」
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 155) return true;
   return false;
 }
 

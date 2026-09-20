@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Eraser, Undo2, RotateCcw, Play, Square, Circle, Brush, Eye, Expand, Crop, ChevronsUp, ChevronsDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Eraser, Undo2, Redo2, RotateCcw, Play, Square, Circle, CircleDashed, Brush, Lasso, Palette, Eye, Expand, Crop, ChevronsUp, ChevronsDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { calculateCostFromUI } from '../services/costCalculator';
 import { getCachedIsOpus, isOpusUsageExhausted } from '../services/novelai';
 import { getAISettings } from '../services/localLibrary';
 import { calculateCropRect, alignSendRect, focusSendSize, type CropRect } from '../utils/maskCrop';
 import { CropSelectionOverlay } from './inpaint/CropSelectionOverlay';
-import { useInpaintBrush } from './inpaint/useInpaintBrush';
+import { DEFAULT_MASK_COLOR, useInpaintBrush } from './inpaint/useInpaintBrush';
 import { buildExpandPayload } from './inpaint/expandPayload';
 import { buildBoxMask, getMaskBase64FromCanvas, maskHasPaintInside } from './inpaint/maskUtils';
 import type { ExpandPayload } from './inpaint/types';
@@ -14,6 +14,16 @@ import { useInpaintKeyboard } from './inpaint/useInpaintKeyboard';
 import { useInpaintPreviewComposite } from './inpaint/useInpaintPreviewComposite';
 
 export type { ExpandPayload, ExpandSelection } from './inpaint/types';
+
+/** 蒙版的显示样式;导出不受它影响。 */
+interface MaskStyle {
+  color: string;
+  opacity: number;
+  border: boolean;
+  pattern: 'none' | 'hatch';
+}
+
+const MASK_COLOR_PRESETS = ['#a855f7', '#3b82f6', '#ef4444', '#22c55e', '#f59e0b'] as const;
 
 interface InpaintOverlayProps {
   imageUrl: string;
@@ -80,6 +90,82 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
   // 上下文内边距(原图像素,照官方焦点重绘的「最小上下文区」):遮罩外接框往外扩这么多进发送区,
   // 框内靠边这一圈模型看得见但不重绘;框内没画遮罩时,整框去掉这一圈就是重绘区。
   const [contextPadding, setContextPadding] = useState(128);
+
+  // 蒙版显示样式(照官方:颜色 / 透明度 / 花纹 / 描边可调),只影响画布上怎么看,导出按 alpha 二值化。
+  const [maskStyle, setMaskStyle] = useState<MaskStyle>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('inpaint_mask_style') || 'null');
+      if (saved && typeof saved === 'object') {
+        return {
+          color: typeof saved.color === 'string' && /^#[0-9a-f]{6}$/i.test(saved.color) ? saved.color : DEFAULT_MASK_COLOR,
+          opacity: typeof saved.opacity === 'number' ? Math.min(0.9, Math.max(0.2, saved.opacity)) : 0.5,
+          border: saved.border === true,
+          pattern: saved.pattern === 'hatch' ? 'hatch' : 'none',
+        };
+      }
+    } catch { /* 坏了就用默认 */ }
+    return { color: DEFAULT_MASK_COLOR, opacity: 0.5, border: false, pattern: 'none' };
+  });
+  const updateMaskStyle = (patch: Partial<MaskStyle>) => setMaskStyle((prev) => {
+    const next = { ...prev, ...patch };
+    try { localStorage.setItem('inpaint_mask_style', JSON.stringify(next)); } catch { /* 存不下就算了 */ }
+    return next;
+  });
+  const [showMaskStyle, setShowMaskStyle] = useState(false);
+  const maskStyleRef = useRef(maskStyle); maskStyleRef.current = maskStyle;
+  /** 描边 / 花纹画在这层,不动遮罩数据层;每笔画完刷新一次。 */
+  const maskDecorRef = useRef<HTMLCanvasElement | null>(null);
+  const refreshMaskDecor = useCallback(() => {
+    const decor = maskDecorRef.current;
+    const mask = maskCanvasRef.current;
+    if (!decor || !mask) return;
+    const ctx = decor.getContext('2d');
+    if (!ctx) return;
+    if (decor.width !== mask.width || decor.height !== mask.height) { decor.width = mask.width; decor.height = mask.height; }
+    ctx.clearRect(0, 0, decor.width, decor.height);
+    const { border, pattern } = maskStyleRef.current;
+    if (!border && pattern === 'none') return;
+    const w = mask.width;
+    const h = mask.height;
+    if (pattern === 'hatch') {
+      // 用遮罩的 alpha 做剪裁(source-in),斜纹只出现在遮罩内
+      ctx.save();
+      ctx.drawImage(mask, 0, 0);
+      ctx.globalCompositeOperation = 'source-in';
+      const tile = document.createElement('canvas');
+      tile.width = 12; tile.height = 12;
+      const t = tile.getContext('2d');
+      if (t) {
+        t.strokeStyle = 'rgba(255,255,255,0.55)'; t.lineWidth = 2;
+        t.beginPath(); t.moveTo(-3, 15); t.lineTo(15, -3); t.moveTo(-3, 3); t.lineTo(3, -3); t.moveTo(9, 15); t.lineTo(15, 9); t.stroke();
+        const fill = ctx.createPattern(tile, 'repeat');
+        if (fill) { ctx.fillStyle = fill; ctx.fillRect(0, 0, w, h); }
+      }
+      ctx.restore();
+    }
+    if (border) {
+      const maskCtx = mask.getContext('2d');
+      if (!maskCtx) return;
+      const src = maskCtx.getImageData(0, 0, w, h).data;
+      const out = new ImageData(w, h);
+      const o = out.data;
+      const inside = (i: number) => src[i * 4 + 3] > 155;
+      for (let y = 0; y < h; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          const i = y * w + x;
+          if (!inside(i)) continue;
+          if (x === 0 || y === 0 || x === w - 1 || y === h - 1 || !inside(i - 1) || !inside(i + 1) || !inside(i - w) || !inside(i + w)) {
+            o[i * 4] = 255; o[i * 4 + 1] = 255; o[i * 4 + 2] = 255; o[i * 4 + 3] = 230;
+          }
+        }
+      }
+      const tmp = document.createElement('canvas');
+      tmp.width = w; tmp.height = h;
+      tmp.getContext('2d')?.putImageData(out, 0, 0);
+      // 叠两次错开 1px,描边 2px 宽,缩小显示时也看得见
+      ctx.drawImage(tmp, 0, 0); ctx.drawImage(tmp, 1, 0); ctx.drawImage(tmp, 0, 1);
+    }
+  }, []);
   // 正在手动拖拽裁切框时屏蔽画布的鼠标事件
   const isDraggingCropRef = useRef(false);
   // 用户是否手动调整过裁切框；为 true 时 updateCropPreview 不再用遮罩自动覆盖
@@ -172,17 +258,24 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
   const {
     brushSize,
     setBrushSize,
+    adjustBrushSize,
     brushShape,
     setBrushShape,
+    tool,
+    setTool,
+    lassoPoints,
     isEraser,
     setIsEraser,
     history,
     setHistory,
+    canRedo,
     cursorPos,
     showCursor,
     saveHistory,
     updateCropPreview,
+    recolorMask,
     handleUndo,
+    handleRedo,
     handleClear,
     handleMouseDown,
     handleMouseMove,
@@ -213,12 +306,66 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
     cropManuallyAdjustedRef,
     setCropPreview,
     cropContextPadding: contextPadding,
+    maskColor: maskStyle.color,
+    onMaskChanged: refreshMaskDecor,
   });
+
+  // 换颜色:已画的像素整体换色,装饰层跟着刷
+  useEffect(() => {
+    recolorMask(maskStyle.color);
+    refreshMaskDecor();
+  }, [maskStyle.color, recolorMask, refreshMaskDecor]);
+  useEffect(() => { refreshMaskDecor(); }, [maskStyle.border, maskStyle.pattern, refreshMaskDecor]);
+
+  /** 「局部」开关(按钮与 s 键共用):已有涂抹时直接进入并显示裁切框。 */
+  const toggleCropMode = useCallback(() => {
+    if (!isCropMode && history.length > 0 && !isExpandMode) {
+      cropManuallyAdjustedRef.current = false;
+      setIsCropMode(true);
+      setIsExpandMode(false);
+      resetExpand();
+      triggerCropHint();
+      // 同步计算裁切矩形,避免 updateCropPreview 闭包里读到旧的 isCropMode=false
+      const mc = maskCanvasRef.current;
+      if (mc) {
+        const ctx = mc.getContext('2d');
+        if (ctx) {
+          const maskData = ctx.getImageData(0, 0, imageWidth, imageHeight);
+          setCropPreview(calculateCropRect(maskData, imageWidth, imageHeight, contextPadding));
+        }
+      }
+      return;
+    }
+    if (isExpandMode) return;
+    const next = !isCropMode;
+    setIsCropMode(next);
+    if (next) {
+      cropManuallyAdjustedRef.current = false;
+      setIsExpandMode(false);
+      resetExpand();
+      updateCropPreview();
+      triggerCropHint();
+    } else {
+      cropManuallyAdjustedRef.current = false;
+      setCropPreview(null);
+    }
+  }, [contextPadding, history.length, imageHeight, imageWidth, isCropMode, isExpandMode, resetExpand, triggerCropHint, updateCropPreview]);
+
+  const pickBrush = useCallback(() => { setTool('brush'); setIsEraser(false); }, [setIsEraser, setTool]);
+  const pickEraser = useCallback(() => { setIsEraser(true); }, [setIsEraser]);
+  const pickLasso = useCallback(() => { setTool((prev) => (prev === 'lasso' ? 'brush' : 'lasso')); }, [setTool]);
 
   useInpaintKeyboard({
     onClose,
     setSpacePressed,
     setIsPanning,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onBrush: pickBrush,
+    onEraser: pickEraser,
+    onLasso: pickLasso,
+    onToggleCrop: toggleCropMode,
+    onBrushSizeDelta: adjustBrushSize,
   });
 
   const { loadedImageRef } = useInpaintCanvas({
@@ -435,8 +582,23 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
           );
         }
 
-        // 圆形模式：自由光标
-        const actualBrushSize = Math.max(2, brushSize - 8);
+        // 套索模式:小十字准心
+        if (tool === 'lasso') {
+          return (
+            <div
+              className="fixed pointer-events-none z-50"
+              style={{ left: cursorPos.x, top: cursorPos.y, transform: 'translate(-50%, -50%)' }}
+            >
+              <div style={{ width: 16, height: 16, position: 'relative' }}>
+                <div style={{ position: 'absolute', left: 7, top: 0, width: 2, height: 16, background: isEraser ? '#f87171' : 'white', boxShadow: '0 0 2px rgba(0,0,0,0.8)' }} />
+                <div style={{ position: 'absolute', left: 0, top: 7, width: 16, height: 2, background: isEraser ? '#f87171' : 'white', boxShadow: '0 0 2px rgba(0,0,0,0.8)' }} />
+              </div>
+            </div>
+          );
+        }
+
+        // 圆形 / 软圆模式:自由光标(软圆用虚线边表示渐变)
+        const actualBrushSize = brushShape === 'soft' ? Math.max(4, brushSize) : Math.max(2, brushSize - 8);
         return (
           <div
             className="fixed pointer-events-none z-50"
@@ -452,6 +614,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 width: actualBrushSize * scale,
                 height: actualBrushSize * scale,
                 borderRadius: '50%',
+                borderStyle: brushShape === 'soft' ? 'dashed' : 'solid',
                 boxShadow: isEraser ? 'none' : '0 0 0 1.5px rgba(0,0,0,0.7)',
               }}
             />
@@ -598,7 +761,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                opacity: isGenerating ? 0 : 0.5,
+                opacity: isGenerating ? 0 : maskStyle.opacity,
                 cursor: spacePressed || isPanning ? 'grab' : 'none',
                 pointerEvents: 'auto',
               }}
@@ -610,6 +773,37 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
               onWheel={handleWheel}
               onContextMenu={(e) => e.preventDefault()}
             />
+            {/* 蒙版描边 / 斜纹装饰层:只看不点,每笔画完刷新 */}
+            <canvas
+              ref={maskDecorRef}
+              width={imageWidth}
+              height={imageHeight}
+              style={{
+                width: `${displayWidth}px`, height: `${displayHeight}px`,
+                position: 'absolute', top: 0, left: 0,
+                opacity: isGenerating || (!maskStyle.border && maskStyle.pattern === 'none') ? 0 : 1,
+                pointerEvents: 'none',
+              }}
+            />
+            {/* 套索拖拽中的轨迹 */}
+            {tool === 'lasso' && lassoPoints.length > 1 && (
+              <svg
+                width={displayWidth}
+                height={displayHeight}
+                viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 4 }}
+              >
+                <polygon
+                  points={lassoPoints.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill={isEraser ? 'rgba(239,68,68,0.15)' : `${maskStyle.color}33`}
+                  stroke={isEraser ? '#f87171' : '#ffffff'}
+                  strokeWidth={2 / (baseScale * zoom)}
+                  strokeDasharray={`${6 / (baseScale * zoom)} ${4 / (baseScale * zoom)}`}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+            )}
             {/* 流式预览图 */}
             {isGenerating && (isExpandGeneratingRef.current ? previewUrl : compositeUrl) && (() => {
               if (isExpandGeneratingRef.current && previewUrl && expandGenSizeRef.current) {
@@ -734,20 +928,28 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
               {/* 笔刷工具 */}
               <div className="flex items-center gap-1 bg-gray-900/90 backdrop-blur-md rounded-xl p-1 border border-white/10 shadow-xl h-11 pointer-events-auto">
                 <button
-                  className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all ${!isEraser ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'
+                  className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all ${!isEraser && tool === 'brush' ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'
                     }`}
-                  onClick={() => setIsEraser(false)}
-                  title="笔刷"
+                  onClick={pickBrush}
+                  title="笔刷 (B)"
                 >
                   <Brush className="w-[18px] h-[18px]" />
                 </button>
                 <button
                   className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all ${isEraser ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'
                     }`}
-                  onClick={() => setIsEraser(true)}
-                  title="橡皮擦"
+                  onClick={pickEraser}
+                  title="橡皮擦 (E);套索模式下整块擦除"
                 >
                   <Eraser className="w-[18px] h-[18px]" />
+                </button>
+                <button
+                  className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all ${tool === 'lasso' ? 'bg-white/20 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  onClick={pickLasso}
+                  title="套索 (L):拖一圈松手,整块填进蒙版(橡皮时整块擦掉);再按一次回到笔刷"
+                >
+                  <Lasso className="w-[18px] h-[18px]" />
                 </button>
               </div>
 
@@ -769,6 +971,60 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 >
                   <Circle className="w-[18px] h-[18px]" />
                 </button>
+                <button
+                  className={`h-9 w-9 flex items-center justify-center rounded-lg transition-all ${brushShape === 'soft' ? 'bg-white/20 text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  onClick={() => setBrushShape('soft')}
+                  title="软圆笔刷:边缘渐变;导出时按官方阈值,只有较实的一段算进蒙版"
+                >
+                  <CircleDashed className="w-[18px] h-[18px]" />
+                </button>
+              </div>
+
+              {/* 蒙版样式:颜色 / 透明度 / 描边 / 斜纹 */}
+              <div className="relative pointer-events-auto">
+                <button
+                  className={`h-11 w-11 flex items-center justify-center bg-gray-900/90 backdrop-blur-md rounded-xl border shadow-xl transition-all ${showMaskStyle ? 'text-white border-white/30' : 'text-gray-400 hover:text-white border-white/10'}`}
+                  onClick={() => setShowMaskStyle((v) => !v)}
+                  title="蒙版显示样式(颜色 / 透明度 / 描边 / 斜纹),不影响发送的蒙版"
+                >
+                  <Palette className="w-[18px] h-[18px]" style={{ color: showMaskStyle ? undefined : maskStyle.color }} />
+                </button>
+                {showMaskStyle && (
+                  <div className="absolute top-12 left-0 z-30 w-56 bg-gray-900/95 backdrop-blur-md rounded-xl border border-white/10 shadow-xl p-3 flex flex-col gap-2.5 text-xs text-gray-300">
+                    <div className="flex items-center gap-2">
+                      <span className="w-10 text-gray-400">颜色</span>
+                      <div className="flex items-center gap-1.5">
+                        {MASK_COLOR_PRESETS.map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => updateMaskStyle({ color: c })}
+                            className={`w-5 h-5 rounded-full border-2 transition-transform ${maskStyle.color === c ? 'border-white scale-110' : 'border-transparent hover:scale-105'}`}
+                            style={{ background: c }}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2">
+                      <span className="w-10 text-gray-400">透明度</span>
+                      <input
+                        type="range" min={0.2} max={0.9} step={0.05} value={maskStyle.opacity}
+                        onChange={(e) => updateMaskStyle({ opacity: Number(e.target.value) })}
+                        className="flex-1 accent-nai-accent h-1 bg-gray-700 rounded-full appearance-none cursor-pointer"
+                      />
+                      <span className="w-8 text-right font-mono text-white">{Math.round(maskStyle.opacity * 100)}%</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={maskStyle.border} onChange={(e) => updateMaskStyle({ border: e.target.checked })} className="accent-nai-accent" />
+                      <span>描边(蒙版边缘画白线)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={maskStyle.pattern === 'hatch'} onChange={(e) => updateMaskStyle({ pattern: e.target.checked ? 'hatch' : 'none' })} className="accent-nai-accent" />
+                      <span>斜纹花纹</span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* 笔刷大小 */}
@@ -787,38 +1043,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
 
               {/* 局部重绘模式切换 */}
               <button
-                onClick={() => {
-                  // 未在局部模式且已有涂抹时点击：直接进入局部模式并立即显示裁切预览 UI
-                  if (!isCropMode && history.length > 0 && !isExpandMode) {
-                    cropManuallyAdjustedRef.current = false;
-                    setIsCropMode(true);
-                    setIsExpandMode(false);
-                    resetExpand();
-                    triggerCropHint();
-                    // 同步计算裁切矩形，避免 updateCropPreview 闭包里读到旧的 isCropMode=false
-                    const mc = maskCanvasRef.current;
-                    if (mc) {
-                      const ctx = mc.getContext('2d');
-                      if (ctx) {
-                        const maskData = ctx.getImageData(0, 0, imageWidth, imageHeight);
-                        setCropPreview(calculateCropRect(maskData, imageWidth, imageHeight, contextPadding));
-                      }
-                    }
-                    return;
-                  }
-                  const next = !isCropMode;
-                  setIsCropMode(next);
-                  if (next) {
-                    cropManuallyAdjustedRef.current = false;
-                    setIsExpandMode(false);
-                    resetExpand();
-                    updateCropPreview();
-                    triggerCropHint();
-                  } else {
-                    cropManuallyAdjustedRef.current = false;
-                    setCropPreview(null);
-                  }
-                }}
+                onClick={toggleCropMode}
                 disabled={isExpandMode}
                 className={`flex items-center gap-1.5 bg-gray-900/90 backdrop-blur-md rounded-xl px-3 border shadow-xl h-11 transition-all pointer-events-auto ${isCropMode
                   ? 'text-black bg-nai-accent border-nai-accent'
@@ -904,7 +1129,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                 }}
               >
                 <div className="text-xs text-gray-200 bg-gray-900/80 rounded-lg px-4 py-2 border border-white/10 whitespace-nowrap">
-                  {'滚轮缩放 · 中键/空格拖动 · Esc退出'}
+                  {'滚轮缩放 · 中键/空格拖动 · B 笔刷 E 橡皮 L 套索 S 局部 · [ ] 笔刷大小 · Esc退出'}
                 </div>
               </div>
             )}
@@ -930,9 +1155,17 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   onClick={handleUndo}
                   disabled={history.length === 0}
                   className="h-9 w-9 flex items-center justify-center rounded-lg text-red-400 hover:text-red-300 hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="撤销"
+                  title="撤销 (Cmd/Ctrl+Z)"
                 >
                   <Undo2 className="w-[18px] h-[18px]" />
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  className="h-9 w-9 flex items-center justify-center rounded-lg text-red-400 hover:text-red-300 hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="重做 (Cmd/Ctrl+Shift+Z)"
+                >
+                  <Redo2 className="w-[18px] h-[18px]" />
                 </button>
                 <button
                   onClick={() => { handleClear(); if (isExpandMode) resetExpand(); }}
