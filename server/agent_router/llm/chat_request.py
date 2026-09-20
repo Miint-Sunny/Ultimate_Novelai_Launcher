@@ -137,6 +137,10 @@ class AgentChatMessage(_StrictModel):
     name: str | None = Field(default=None, max_length=128)
     tool_calls: list[AgentChatToolCall] | None = Field(default=None, max_length=32)
     tool_call_id: str | None = Field(default=None, max_length=256)
+    # A thinking model's own reasoning, replayed on the assistant turn that
+    # carried it.  DeepSeek rejects a tool-call continuation without it; the
+    # relay forwards it untouched and the text budget counts it like content.
+    reasoning_content: str | None = None
 
     @model_validator(mode="after")
     def validate_shape(self) -> AgentChatMessage:
@@ -146,6 +150,8 @@ class AgentChatMessage(_StrictModel):
             raise ValueError("tool_call_id is only valid on tool messages")
         if self.tool_calls and self.role != "assistant":
             raise ValueError("tool_calls are only valid on assistant messages")
+        if self.reasoning_content is not None and self.role != "assistant":
+            raise ValueError("reasoning_content is only valid on assistant messages")
         if self.content is None and not self.tool_calls:
             raise ValueError("messages require content unless they carry tool_calls")
         if self.role != "user" and isinstance(self.content, list):
@@ -162,6 +168,8 @@ class AgentChatMessage(_StrictModel):
             pieces.extend(part.text for part in self.content if part.text is not None)
         for call in self.tool_calls or []:
             pieces.append(call.function.arguments)
+        if self.reasoning_content is not None:
+            pieces.append(self.reasoning_content)
         return pieces
 
     def image_count(self) -> int:

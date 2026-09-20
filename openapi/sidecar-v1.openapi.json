@@ -104,6 +104,17 @@
             ],
             "title": "Name"
           },
+          "reasoning_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Content"
+          },
           "role": {
             "enum": [
               "system",
