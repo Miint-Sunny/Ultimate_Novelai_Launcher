@@ -10,6 +10,7 @@
 //   4. 存量用户升级后旧的两个单面板键没迁移 → 原本开着的助手栏变成空白右栏。
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const M = await import('../src/components/desktop/dock/dockLayout.ts');
 const {
@@ -158,6 +159,59 @@ check('登记表: 规范顺序覆盖全部已知面板,无重复', () => {
   assert.equal(new Set(DOCK_PANEL_ORDER).size, DOCK_PANEL_ORDER.length);
   assert.ok(DOCK_PANEL_ORDER.includes('assistant'));
   assert.ok(DOCK_PANEL_ORDER.includes('sessions'));
+});
+
+// ---- 5. 外壳重排的结构断言(2026-09-21,方案 §2 / §3.2 / §3.6)----
+// 这几条钉的是**决定**,不是实现细节:第 3、4 步还要动同一批文件,没有它们
+// 前两步很容易被悄悄改回去,而改回去不报错、只是又变难用。
+// 文本扫描的做法照 check-gallery-parity 第 7 段。
+
+const readSrc = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+
+check('结构: 顶栏在左栏右边,不横跨全宽(左栏必须直通到底)', () => {
+  const src = readSrc('../src/AppContent.tsx');
+  const sidebar = src.indexOf('<LeftSidebar');
+  const topBar = src.indexOf('<DockTopBar');
+  assert.ok(sidebar > 0 && topBar > 0);
+  assert.ok(
+    topBar > sidebar,
+    '顶栏又跑到 LeftSidebar 前面了 —— 那就是横跨全宽、把左栏从顶上切断的老布局',
+  );
+});
+
+check('结构: 画布上那条浮动工具条不能回来', () => {
+  let exists = true;
+  try { readSrc('../src/components/ImageToolbar.tsx'); } catch { exists = false; }
+  assert.equal(exists, false, 'ImageToolbar 已于第 2 步退役:图不该被按钮压着');
+  assert.equal(readSrc('../src/components/MainContent.tsx').includes('ImageToolbar'), false);
+});
+
+check('结构: 三个图像动作在顶栏,且没有图时禁用', () => {
+  const src = readSrc('../src/components/desktop/dock/DockToolbar.tsx');
+  for (const key of ['inpaint', 'upscale', 'editor']) {
+    assert.ok(src.includes(`'${key}'`), `顶栏少了图像动作 ${key}`);
+  }
+  assert.ok(src.includes('data-image-action'), '按钮要留 data-image-action 给浏览器验证用');
+  assert.ok(src.includes('disabled={!hasImage}'), '没有图时要禁用而不是隐藏:位置固定,用户不用找');
+});
+
+check('结构: 复制 / 保存不上顶栏(终结动作留在图像右下角)', () => {
+  // 只看代码,不看注释 —— 注释里正说着「它们不在这里」,扫进去会自己打自己。
+  const src = readSrc('../src/components/desktop/dock/DockToolbar.tsx')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  for (const word of ['复制', '保存']) {
+    assert.equal(src.includes(word), false, `顶栏不该有「${word}」—— 用户 2026-09-21 定的 §3.6`);
+  }
+});
+
+check('结构: 重绘那套状态仍在 MainContent,注册台不持有它', () => {
+  const main = readSrc('../src/components/MainContent.tsx');
+  assert.ok(main.includes('const [isInpaintMode, setIsInpaintMode]'), '重绘状态被提走了:那是刚对齐官方的一套,不要搬');
+  assert.ok(main.includes('imageActions.register'), 'MainContent 要把三个开法注册给顶栏');
+  const bridge = readSrc('../src/components/desktop/imageActions.tsx');
+  assert.equal(bridge.includes('isInpaintMode'), false, '注册台只转交开法,不许自己存重绘状态');
+  assert.ok(bridge.includes('useRef'), '开法走 ref,照 workbenchBridge 的做法');
 });
 
 console.log(`\n${checks} 项停靠布局校验全部通过。`);
