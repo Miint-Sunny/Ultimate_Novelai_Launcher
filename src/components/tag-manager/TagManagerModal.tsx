@@ -382,7 +382,11 @@ export const TagManagerModal: React.FC<Props> = ({
             )}
 
             {/* Footer - 旧版风格 (批量操作菜单 + 红色清空) */}
-            <footer className="flex items-center gap-2 px-4 py-3 border-t border-gray-800 bg-nai-dark/50 shrink-0">
+            <footer
+              /* 内嵌进左栏时这行只有 ~305px,四个按钮挤不下。允许换行 + 按钮不准被压缩,
+                 否则 flex 会把它们压到文字宽度以下,标签变成一个字一行(2026-09-21 用户截图)。 */
+              className={`flex items-center flex-wrap gap-2 border-t border-gray-800 bg-nai-dark/50 shrink-0 ${embedded ? 'px-2 py-2' : 'px-4 py-3'}`}
+            >
               {/* 左侧批量操作 - artist-style 删除 + 添加; character 仅添加 */}
               {showBatchActions && (
                 <>
@@ -391,7 +395,7 @@ export const TagManagerModal: React.FC<Props> = ({
                       onClick={handleBatchDelete}
                       disabled={isBatchDeleting}
                       title="批量删除"
-                      className="h-9 px-3 rounded-md border border-red-800/50 text-red-400 hover:bg-red-900/30 text-[13px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="h-9 px-3 rounded-md border border-red-800/50 text-red-400 hover:bg-red-900/30 text-[13px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
                     >
                       {isBatchDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                       删除 ({batchTargetIds.length})
@@ -400,7 +404,7 @@ export const TagManagerModal: React.FC<Props> = ({
                   <button
                     onClick={() => setBatchTagOpen(true)}
                     title="批量添加标签"
-                    className="h-9 px-3 rounded-md border border-gray-700 text-gray-300 hover:bg-white/10 hover:text-white text-[13px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="h-9 px-3 rounded-md border border-gray-700 text-gray-300 hover:bg-white/10 hover:text-white text-[13px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                   >
                     <Tag className="w-3.5 h-3.5" />
                     添加标签 ({batchTargetIds.length})
@@ -414,14 +418,14 @@ export const TagManagerModal: React.FC<Props> = ({
                 onClick={() => mgr.clearSelection()}
                 disabled={totalSelected === 0}
                 title="清空所有 subtype 已选"
-                className="px-3 py-1.5 text-[13px] font-bold text-red-400 hover:text-red-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 text-[13px] font-bold text-red-400 hover:text-red-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
               >
                 <RotateCcw className="w-4 h-4" />
                 清空选择
               </button>
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 text-[13px] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-[13px] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               >
                 取消
               </button>
@@ -432,26 +436,26 @@ export const TagManagerModal: React.FC<Props> = ({
                     onClick={() => handleConfirm('main')}
                     disabled={(mgr.selectionMap['character']?.size || 0) === 0}
                     title="拼接到主提示词"
-                    className="px-4 py-2 text-[13px] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-4 py-2 text-[13px] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                   >
                     <Sparkles className="w-4 h-4" />
-                    加入主提示词
+                    {embedded ? '主提示词' : '加入主提示词'}
                   </button>
                   <button
                     onClick={() => handleConfirm('character')}
                     disabled={(mgr.selectionMap['character']?.size || 0) === 0 || characterPromptsCount >= maxCharacters}
                     title={characterPromptsCount >= maxCharacters ? `角色提示词已满 (${maxCharacters}/${maxCharacters})` : '加入角色提示词'}
-                    className="px-4 py-2 text-[13px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                    className="px-4 py-2 text-[13px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                   >
                     <User className="w-4 h-4" />
-                    加入角色提示词
+                    {embedded ? '角色提示词' : '加入角色提示词'}
                   </button>
                 </>
               ) : (
                 <button
                   onClick={() => handleConfirm()}
                   disabled={totalSelected === 0}
-                  className="px-4 py-2 text-[13px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                  className="px-4 py-2 text-[13px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                 >
                   <Sparkles className="w-4 h-4" />
                   添加到提示词 ({totalSelected})
