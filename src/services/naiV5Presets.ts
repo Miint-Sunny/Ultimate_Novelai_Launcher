@@ -17,6 +17,8 @@
  *     且用上了数字权重语法 `0::ai-generated::`。
  */
 
+import { appendBeforeTextBlock } from '../utils/textRenderHints';
+
 export type NaiV5UcPresetId = 'heavy' | 'light' | 'furryFocus' | 'humanFocus' | 'none';
 export type NaiV5QualityPresetId = 'standard' | 'light' | 'none';
 
@@ -51,10 +53,29 @@ export const V5_UC_PREFIX: Record<NaiV5UcPresetId, string> = {
 
 /**
  * 透明背景开关注入的词条。官方那个开关的 tooltip 原文就是
- * "Adds \"transparent background\" to the prompt",即它只是替用户写词,
- * 真正让 alpha 通道出来的是载荷里的 `straight_alpha`。
+ * "Adds \"transparent background\" to the prompt",即它只是替用户写词。
+ *
+ * ⚠ 这个词**必须发**:`straight_alpha` 只是让 32 通道 VAE 把 alpha 通道吐出来,
+ * 不会让模型真的留出透明区域。2026-09-21 真链路对照(832×1216,同角色同参数,
+ * 两次都开着开关,只差提示词里这一个词):只开开关 → 全透明像素 0 个、四角 alpha 254;
+ * 手写这个词 → 58085 个(5.7%)、四角 alpha 0。此前我们只发了 tag hint,
+ * 于是开关点了等于没点,而界面上的说明写着「会在提示词里加入」。
  */
 export const V5_TRANSPARENT_BACKGROUND_TAG = 'transparent background';
+
+/**
+ * 把透明背景词并进正向提示词。**发送期**变换,和质量尾同一个口径:
+ * 用户编辑框里的原文不动,词条面板(naiV5Toggles 的背景形态互斥组)也就不会被它搅乱——
+ * 那边这个词是 detectOnly,本来就是为这个开关让路的。
+ *
+ * 用户自己写过就不再追加。按词面做不区分大小写的包含判断,`{transparent background}`、
+ * `2.1::transparent background::` 这些写法都算写过(界面上的 💡 提示就教了后一种)。
+ * 追加要绕开手写的 `text:` 块,否则这两个词会被模型当成要写的字画到图上。
+ */
+export function withV5TransparentBackgroundTag(prompt: string): string {
+  if (prompt.toLowerCase().includes(V5_TRANSPARENT_BACKGROUND_TAG)) return prompt;
+  return appendBeforeTextBlock(prompt, V5_TRANSPARENT_BACKGROUND_TAG);
+}
 
 /**
  * Furry 模式注入的数据集前缀(官方 tags 文档)。V5 用一个 Anime⇄Furry 开关

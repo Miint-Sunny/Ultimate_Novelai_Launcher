@@ -109,6 +109,28 @@ export function hasManualTextBlock(prompt: string): boolean {
   return MANUAL_TEXT_BLOCK_PATTERN.test(prompt);
 }
 
+/**
+ * 把一个后缀拼到提示词末尾,但要**绕开用户手写的 `text:` 块**。
+ *
+ * `text:` 之后的内容会被模型画到图上。后缀要是直接拼在整条提示词最后,就落进了
+ * text: 块里 —— `very aesthetic, masterpiece, no text` 会被当成要写的字画出来。
+ * 官方那边同样是先按这个标记切开、只拼到前半段末尾。
+ *
+ * 标记正则会把 `text:` 前面那个分隔符一起吃掉,所以两侧的分隔符统一规范成 `, `。
+ *
+ * 两个调用方:质量尾(components/generation/generationPrompts)与透明背景词
+ * (services/naiV5Presets)。行为是桌面生成链路的逐字节基线,改这里先看
+ * check:preset-tiers 与 check:auto-text。
+ */
+export function appendBeforeTextBlock(prompt: string, suffix: string): string {
+  const match = MANUAL_TEXT_BLOCK_PATTERN.exec(prompt);
+  const head = (match ? prompt.slice(0, match.index) : prompt).replace(/[\s,]+$/, '');
+  const merged = head ? `${head}, ${suffix}` : suffix;
+  if (!match) return merged;
+  const tail = prompt.slice(match.index).replace(/^[\s,]+/, '');
+  return tail ? `${merged}, ${tail}` : merged;
+}
+
 export interface QuoteSpan {
   /** 开引号在提示词中的下标。 */
   start: number;

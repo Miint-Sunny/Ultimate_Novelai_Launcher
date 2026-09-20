@@ -8,7 +8,7 @@ import { generateLegacyImage, sidecarApi, type GenerationParams as SidecarGenera
 import type { OpusUsage } from '../api/localSidecarApi';
 import { appBackendApi } from '../api/appBackendApi';
 import { resolveUcPreset } from './naiUcPresets';
-import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId, type NaiV5QualityPresetId } from './naiV5Presets';
+import { officialPresetHint, toV5QualityPresetId, toV5UcPresetId, withV5TransparentBackgroundTag, type NaiV5QualityPresetId } from './naiV5Presets';
 import { isV5Model, modelCapabilities } from '../components/generation/modelResolutionOptions';
 import { applyAutoText } from '../utils/autoText';
 import {
@@ -477,12 +477,23 @@ export function buildRequestPayload(params: GenerateImageParams) {
   // 收集各角色里的引号,而中心坐标正是在上面这段才算出来的;同时这也让所有发包
   // 路径(桌面/移动/放大重绘/OC)走同一条变换,与官方在发送时才转是一致的。
   // 质量尾此时已经拼好,块追加在它之后——正是官方的位置。
+  // 透明背景开关真正起作用的地方:官方那个开关的 tooltip 原文就是
+  // Adds "transparent background" to the prompt —— 它就是替用户写词。
+  // `straight_alpha` 只开通道,不会让模型留出透明区域;2026-09-21 真链路对照里,
+  // 只发 tag hint 的那张图全透明像素是 0 个,手写这个词的是 58085 个。
+  // 和质量尾一样是发送期变换,编辑框里的原文不动;放在 applyAutoText 之前,
+  // 这样自动的 teXt: 块仍然追加在最末尾(官方的位置)。
+  const promptWithTransparency =
+    params.transparentBackground && modelCapabilities(baseModel).transparency
+      ? withV5TransparentBackgroundTag(positivePrompt)
+      : positivePrompt;
+
   const inputPrompt = modelCapabilities(baseModel).textRendering
-    ? applyAutoText(positivePrompt, {
+    ? applyAutoText(promptWithTransparency, {
         characters: characterPromptsForApi,
         useCoords,
       })
-    : positivePrompt;
+    : promptWithTransparency;
 
   return {
     input: inputPrompt,

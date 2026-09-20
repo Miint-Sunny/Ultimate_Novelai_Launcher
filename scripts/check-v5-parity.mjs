@@ -642,4 +642,26 @@ check('计价: 模型不支持的参考图不收钱(V5 上的精确参考虚收�
   );
 });
 
+check('载荷: 透明背景开关把词写进提示词(只发 hint 等于没开)', () => {
+  const on = paramsOf({ model: 'v5-full', positivePrompt: '1girl', transparentBackground: true });
+  assert.ok(on.tag_hint_transparent_background, 'hint 仍然要发');
+  assert.equal(buildRequestPayload(baseParams({ positivePrompt: '1girl', transparentBackground: true })).input, '1girl, transparent background');
+  // 没开就不加;4.5 没有这个能力,开了也不加。
+  assert.equal(buildRequestPayload(baseParams({ positivePrompt: '1girl' })).input, '1girl');
+  assert.equal(
+    buildRequestPayload(baseParams({ model: 'v4.5-full', positivePrompt: '1girl', transparentBackground: true })).input,
+    '1girl',
+  );
+});
+
+check('载荷: 透明背景词不重复、不落进手写 text: 块', () => {
+  const inputOf = (positivePrompt) => buildRequestPayload(baseParams({ positivePrompt, transparentBackground: true })).input;
+  // 用户自己写过就不再追加 —— 含权重与花括号写法(界面的 💡 提示就教了 2.1:: 那种)。
+  assert.equal(inputOf('1girl, transparent background'), '1girl, transparent background');
+  assert.equal(inputOf('1girl, 2.1::transparent background::'), '1girl, 2.1::transparent background::');
+  assert.equal(inputOf('1girl, {Transparent Background}'), '1girl, {Transparent Background}');
+  // 落进 text: 块里模型会把这两个词画到图上,必须拼在块之前(与质量尾同一个坑)。
+  assert.equal(inputOf('1girl, text: Hello'), '1girl, transparent background, text: Hello');
+});
+
 console.log(`\n${checks} 项 V5 支持对等校验全部通过。`);

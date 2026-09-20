@@ -3,7 +3,7 @@
 // 不按行处理),桌面生成链路必须保持该行为逐字节不变;移动端自带的提示词组装(折叠标记展开、
 // 中文翻译、行级过滤)不在本模块,见 mobile/generate/mobilePromptPreparation。
 
-import { MANUAL_TEXT_BLOCK_PATTERN } from '../../utils/textRenderHints.ts';
+import { appendBeforeTextBlock } from '../../utils/textRenderHints.ts';
 import type { CharacterCenter } from '../../services/characterPosition';
 import { qualityTailForModel, type QualityTier } from '../../services/naiQualityTails';
 
@@ -27,24 +27,6 @@ export interface CharacterPromptContent {
   position?: string;
   /** 画布上的连续坐标(0–1);`null`/缺省 = 自动。见 services/characterPosition。 */
   center?: CharacterCenter | null;
-}
-
-/**
- * 把后缀拼到提示词末尾,但要**绕开用户手写的 `text:` 块**。
- *
- * `text:` 之后的内容会被模型**画到图上**。质量尾要是直接拼在整条提示词最后,
- * 就落进了 text: 块里 —— `very aesthetic, masterpiece, no text` 会被当成
- * 要写的字画出来。官方那边同样是先按这个标记切开、只拼到前半段末尾。
- *
- * 标记正则会把 `text:` 前面那个分隔符一起吃掉,所以两侧的分隔符统一规范成 `, `。
- */
-function appendBeforeTextBlock(prompt: string, suffix: string): string {
-  const match = MANUAL_TEXT_BLOCK_PATTERN.exec(prompt);
-  const head = (match ? prompt.slice(0, match.index) : prompt).replace(/[\s,]+$/, '');
-  const merged = head ? `${head}, ${suffix}` : suffix;
-  if (!match) return merged;
-  const tail = prompt.slice(match.index).replace(/^[\s,]+/, '');
-  return tail ? `${merged}, ${tail}` : merged;
 }
 
 export function filterHiddenTags(prompt: string) {
