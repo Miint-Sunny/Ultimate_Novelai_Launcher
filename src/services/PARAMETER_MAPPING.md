@@ -124,6 +124,19 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.stream` | `'msgpack'` | 流格式 | 固定值 |
 | `use_new_shared_trial` | `true` | 新试用 | 固定值 |
 
+### 重绘强度的线格式(2026-09-20 真链路实测)
+
+infill 请求里,服务端**只读嵌套对象** `parameters.img2img = { strength, color_correct }`;
+顶层 `strength` 与 `inpaintImg2ImgStrength` 改成 0.2 或 0.95 出图逐像素相同,只有嵌套对象
+让蒙版区随强度变化(0.2 与原图均差 5.72,0.95 为 14.98)。契约:
+
+- `inpaintImg2ImgStrength: v`(v = 滑杆值,钳到 [0, 1]);
+- v < 1 时追加 `img2img: { strength: v, color_correct: true }`,v == 1 不发嵌套对象;
+- 顶层 `strength` / `noise` 保留历史形状,服务端不读。
+
+宿主 `server/app.py` 两条 infill 路径(`_apply_inpaint_strength`)与桌面 `novelai.ts` 的 inpaint 分支
+都已按此发(桌面把 v 钳到 [0.01, 1],非数当 1;宿主钳到 [0, 1],非法值回 0.7)。实验记录见 `docs_and_plan/2026-09-20-inpaint-official-alignment.md` §5。
+
 ## 请求头参数
 
 | Header | 说明 | 来源 |
