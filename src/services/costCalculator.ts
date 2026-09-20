@@ -78,6 +78,25 @@ function calculateDimensionCost(
 }
 
 /**
+ * 导演工具(`/ai/augment-image`)的**基础价**。
+ *
+ * 官方没有另一套公式:它把出图那条维度公式借来用,固定按 **28 步、无 SMEA、strength 1**
+ * 算,然后各工具在这个 base 上再做手脚(见 services/directorTools.ts)。
+ *
+ * 口径来源:LlmKira/novelai-python 的 `AugmentImageInfer.calculate_cost`,另有从官方
+ * bundle 逆出的两份实现佐证。真链路实测(2026-09-21,真 key):
+ *   832×1216 → base 20 → 去背 65,实扣 65;
+ *   256×256  → base 2  → 去背 11,实扣 11;lineart 同尺寸 Opus 下实扣 0。
+ *
+ * ⚠ 注意 novelai-python 用的是旧常数(`2.9518e-6*area + 5.7533e-7*area*steps`),
+ * 我们这条是官方后来的新公式(`5.773e-7*area*(steps+5)`)。28 步上两者差 0.05%,
+ * 两个实测点都取到同一个整数。真要对得更死,得再买几个落在进位边界上的点。
+ */
+export function directorBaseCost(width: number, height: number): number {
+  return calculateDimensionCost(width, height, 28, false, false);
+}
+
+/**
  * 旧模型 + 小尺寸 + 简单采样器的点数计算
  */
 function calculateStepsCost(
