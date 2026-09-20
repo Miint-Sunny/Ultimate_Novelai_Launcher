@@ -112,7 +112,7 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.legacy_v3_extend` | `false` | V3 扩展 | 固定值 |
 | `parameters.use_coords` | `params.useCoords ?? shouldUseCoords(activeCharacters)` | 使用坐标 | 官方位置区块的**全局**二选一（AI's Choice / Custom），默认 false、坐标照发。桌面端把开关如实传；没传的调用方退回「有人手动摆过才开」的推断 |
 | `parameters.normalize_reference_strength_multiple` | `true` | 归一化参考强度 | 固定值 |
-| `parameters.inpaintImg2ImgStrength` | `1` | 修复强度 | 需要 Inpaint 功能 |
+| `parameters.inpaintImg2ImgStrength` | 滑杆值 `v` | 重绘强度 | 见下方「重绘强度的线格式」;单独发它服务端不读 |
 | `parameters.v4_prompt.use_coords` | 同上 | 使用坐标 | 同上，与顶层保持一致 |
 | `parameters.v4_prompt.use_order` | `true` | 使用顺序 | 固定值 |
 | `parameters.v4_negative_prompt.legacy_uc` | `false` | 旧版 UC | 固定值 |
@@ -122,6 +122,19 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.image_format` | `'png'` | 图像格式 | V5 透明背景依赖 PNG，勿改成 JPEG |
 | `parameters.stream` | `'msgpack'` | 流格式 | 固定值 |
 | `use_new_shared_trial` | `true` | 新试用 | 固定值 |
+
+### 重绘强度的线格式(2026-09-20 真链路实测)
+
+infill 请求里,服务端**只读嵌套对象** `parameters.img2img = { strength, color_correct }`;
+顶层 `strength` 与 `inpaintImg2ImgStrength` 改成 0.2 或 0.95 出图逐像素相同,只有嵌套对象
+让蒙版区随强度变化(0.2 与原图均差 5.72,0.95 为 14.98)。契约:
+
+- `inpaintImg2ImgStrength: v`(v = 滑杆值,钳到 [0, 1]);
+- v < 1 时追加 `img2img: { strength: v, color_correct: true }`,v == 1 不发嵌套对象;
+- 顶层 `strength` / `noise` 保留历史形状,服务端不读。
+
+宿主 `server/app.py` 两条 infill 路径已按此发(`_apply_inpaint_strength`);桌面 `novelai.ts`
+的 inpaint 分支待改成同样形状。实验记录见 `docs_and_plan/2026-09-20-inpaint-official-alignment.md` §5。
 
 ## 请求头参数
 
