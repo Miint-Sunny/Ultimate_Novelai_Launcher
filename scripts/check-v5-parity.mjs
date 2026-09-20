@@ -690,4 +690,31 @@ check('载荷: 角色负向与正向等长,没写负向的发空串(不等长服
   assert.equal(none.v4_negative_prompt.caption.char_captions.length, 1);
 });
 
+const { parseNAIMetadata } = await import('../src/utils/imageMetadata.ts');
+
+check('导入: 角色负向从 v4_negative_prompt 读回来(等长才按下标配)', () => {
+  // parseNAIMetadata 收的是整块 PNG 文本,Comment 才是那段 JSON。
+  const comment = (negatives) => ({ Comment: JSON.stringify({
+    prompt: '1girl', uc: 'lowres', steps: 28, scale: 5, sampler: 'k_euler',
+    width: 832, height: 1216, seed: 1,
+    v4_prompt: { caption: { base_caption: '1girl', char_captions: [
+      { char_caption: 'girl a', centers: [{ x: 0.25, y: 0.5 }] },
+      { char_caption: 'girl b', centers: [{ x: 0.75, y: 0.5 }] },
+    ] } },
+    v4_negative_prompt: { caption: { base_caption: 'lowres', char_captions: negatives } },
+  }) });
+  // 等长(我们自己出的图):每个人的负向各归各位。老写法只读 char_uc,会把它们全丢光。
+  const paired = parseNAIMetadata(comment([
+    { char_caption: '', centers: [{ x: 0.25, y: 0.5 }] },
+    { char_caption: 'bad hands', centers: [{ x: 0.75, y: 0.5 }] },
+  ]));
+  assert.deepEqual(paired.characterPrompts.map((c) => c.uc), ['', 'bad hands']);
+  // 不等长(老图 / 老客户端只写了非空的那几条):按下标配会安到别人头上,宁可留空。
+  const skewed = parseNAIMetadata(comment([{ char_caption: 'bad hands', centers: [{ x: 0.75, y: 0.5 }] }]));
+  assert.deepEqual(skewed.characterPrompts.map((c) => c.uc), ['', '']);
+  // 正向与坐标两种情况都照常。
+  assert.deepEqual(paired.characterPrompts.map((c) => c.prompt), ['girl a', 'girl b']);
+  assert.deepEqual(skewed.characterPrompts.map((c) => c.center), [{ x: 0.25, y: 0.5 }, { x: 0.75, y: 0.5 }]);
+});
+
 console.log(`\n${checks} 项 V5 支持对等校验全部通过。`);

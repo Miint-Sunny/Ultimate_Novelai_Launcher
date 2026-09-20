@@ -564,7 +564,8 @@ function parseSDParameters(parametersStr: string): ImageMetadata | null {
 /**
  * 解析 NovelAI 格式的元数据
  */
-function parseNAIMetadata(data: any): ImageMetadata | null {
+/** 导出仅为校验脚本可直接喂 Comment JSON(check:v5-parity 的导入段)。 */
+export function parseNAIMetadata(data: any): ImageMetadata | null {
   try {
     const comment = typeof data.Comment === 'string'
       ? JSON.parse(data.Comment)
@@ -581,13 +582,22 @@ function parseNAIMetadata(data: any): ImageMetadata | null {
     // 提取角色提示词
     const characterPrompts: ImageMetadata['characterPrompts'] = [];
     if (comment.v4_prompt?.caption?.char_captions) {
-      for (const char of comment.v4_prompt.caption.char_captions) {
+      const positives = comment.v4_prompt.caption.char_captions;
+      const negatives = comment.v4_negative_prompt?.caption?.char_captions;
+      // 角色负向在**另一份列表**里(v4_negative_prompt),不在正向条目的 char_uc 上,
+      // 所以只读 char_uc 的话,导我们自己出的多角色图会把每个人的负向丢光。
+      //
+      // 按下标配对的前提是两份等长 —— NAI 本来就要求等长(不等直接 400),我们
+      // 2026-09-21 起也总是等长发。但老图与老客户端可能只写了非空的那几条,
+      // 那种不等长的按下标配会把负向安到别人头上,宁可留空也不猜。
+      const pairable = Array.isArray(negatives) && negatives.length === positives.length;
+      positives.forEach((char: { char_caption?: string; char_uc?: string; centers?: Array<{ x: number; y: number }> }, index: number) => {
         characterPrompts.push({
           prompt: char.char_caption || '',
-          uc: char.char_uc || '',
+          uc: char.char_uc || (pairable ? negatives[index]?.char_caption || '' : ''),
           center: char.centers?.[0],
         });
-      }
+      });
     }
     const useCoords =
       typeof comment.use_coords === 'boolean'

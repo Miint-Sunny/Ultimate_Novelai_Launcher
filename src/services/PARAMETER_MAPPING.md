@@ -88,7 +88,7 @@ Anlas。`subscription.usage` 的读数是用户唯一的越界提示，因此 UI
 | `parameters.v4_negative_prompt.caption.base_caption` | `negativePrompt` | 负向提示词（同上） |
 | `parameters.characterPrompts` | `characterPrompts[]` | 角色提示词数组 |
 | `parameters.v4_prompt.caption.char_captions` | `characterPrompts[].positive` | 角色正向提示词 |
-| `parameters.v4_negative_prompt.caption.char_captions` | `characterPrompts[].negative` | 角色负向提示词 |
+| `parameters.v4_negative_prompt.caption.char_captions` | `characterPrompts[].negative` | 角色负向提示词。**必须与正向那份等长**,没写负向的发空串 —— 不等长服务端直接 400「V4 positive and negative character prompts must have the same length.」。两种形状(全员空串 vs 空列表)经真链路 A/B 验证出图逐像素相同 —— 同一份载荷同一个 seed,`ImageChops.difference().getbbox()` 为 None、平均差 0.0000、最大差 0(后端 lane 2026-09-21 实测),所以统一发等长不会让老种子漂。导入端按下标配对,且只在两份等长时配(老图可能只写了非空的那几条,硬配会安到别人头上)。 |
 | `parameters.characterPrompts[].center` | `characterPrompts[].center` | 角色位置。连续坐标（0–1），由 `services/characterPosition` 的 `resolveCharacterCenters` 解析：显式 `center` → 旧的 `position`（A1–E5）→ 按人数的默认布局 |
 
 ## 部分映射参数 ⚠️
