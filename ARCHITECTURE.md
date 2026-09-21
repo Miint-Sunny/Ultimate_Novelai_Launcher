@@ -33,9 +33,9 @@ The versioned package resource
 `server/agent_router/resources/prompts.yaml` remains a hard build/runtime dependency.
 `npm run check:agent-prompts` calls the package validator against that exact file,
 and `npm run build:sidecar` runs the preflight before adding it to the PyInstaller
-bundle. The formal file is currently absent, so packaged `dev` acceptance remains
-blocked. Tests may inject synthetic YAML in temporary directories; release builds
-must never create or accept a placeholder resource.
+bundle. The formal file is present in the tree and loads through the package validator.
+Tests may inject synthetic YAML in temporary directories; release builds must never
+create or accept a placeholder resource.
 
 ## Runtime topology
 
