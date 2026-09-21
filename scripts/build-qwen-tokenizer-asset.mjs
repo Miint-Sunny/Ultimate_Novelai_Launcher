@@ -22,7 +22,7 @@
 // BPE merge("left right"),行序即 rank。merges 已在 GPT-2 字节映射空间里,
 // byte-level 映射后不含空格与换行,行格式才安全。
 //
-// 归属:参考仓 MIT 协议,资产与转换思路源自该项目(NOTICE.md 有署名)。
+// 归属:参考仓 MIT 协议,资产与转换思路源自该项目(见仓库根目录 NOTICE.md §2)。
 
 import { createWriteStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
