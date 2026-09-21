@@ -122,5 +122,6 @@ SOFTWARE.
   不在本文逐条重复。
 - **NovelAI 官方的请求格式、参数语义与提示词词表**:属于对公开接口行为的记录,
   不是代码取用。本项目与 NovelAI 官方无任何关联。
-- **`src/assets/tokenizer/t5_tokenizer.json`**:V4 / V4.5 提示词计数用的 T5 分词器表。
-  其来源与协议尚未核实清楚,公开前需要确认。
+- **`src/assets/tokenizer/t5_tokenizer.json`**:V4 / V4.5 提示词计数用的 T5 分词器表,
+  内容出自 NovelAI 官方分词器,与 §2 的 Qwen 资产同属「记录官方接口行为」而非代码取用。
+  该表是否随官方改版而更新,本项目未做跟踪。
