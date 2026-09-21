@@ -8,6 +8,19 @@ Apache-2.0 部分保留出处并说明我们做了改动。GPL-3.0 部分与本�
 
 ---
 
+## 致谢
+
+这个项目是站在几个人的工作上做出来的。许可义务写在下面各节,这一节不替代它们,
+只是把人记下来。
+
+- **mc5024** —— 本项目最初的代码基础来自他。后来绝大部分已经重写,但起点是他给的。
+- **saltysalrua** —— Novelai-harness(§1)。桌面端助手那一整条实现线的来源,
+  包括我们逐字沿用的工具契约。
+- **Aaalice233** 与 **rabiarabbit** —— Aaalice_NAI_Launcher(§2)。分词器资产、
+  质量档表与请求格式回退的参照。
+
+---
+
 ## 1. Novelai-harness — MIT
 
 - 上游:<https://github.com/saltysalrua/Novelai-harness>
@@ -101,7 +114,7 @@ SOFTWARE.
 
 ## 4. Plana-App — GPL-3.0
 
-- fork:<https://github.com/Miint-Sunny/Plana-App>(原作者 Sora_Light)
+- fork:<https://github.com/Miint-Sunny/Plana-App>(原作者 mc5024)
 
 **取用范围**:竖屏形态的设计参照;`src/components/generation/genModules.ts` 与
 `src/components/mobile/pager/studioModules.ts` 的分块机制移植自其 `gen_modules.dart`
