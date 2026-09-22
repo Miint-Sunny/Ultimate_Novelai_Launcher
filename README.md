@@ -3,11 +3,34 @@
 一个跑在自己电脑上的 NovelAI 客户端:桌面应用与同一套网页界面,
 生图、重绘、导演工具、角色摆位、以及一个能直接操作工作台的 AI 助手。
 
-桌面外壳基于 Tauri,三平台都能从源码构建;目前只有 **Windows 安装包由 CI 产出**,
-macOS 与 Linux 需要自己打包(命令见下)。
+模型覆盖 NovelAI Diffusion **V5**(Full / Curated)、**V4.5**、**V4**,
+以及仍可选的旧模型(V3、SDXL、SD3、SD1.5)。
 
 **与 NovelAI 官方无任何关联。** 使用本项目需要你自己的 NovelAI 账号与订阅,
 产生的 Anlas 消耗由你的账号承担。
+
+---
+
+## 装一个
+
+**目前还没有发布正式版本。** 正式安装包以后会发在
+[Releases](../../releases);在那之前:
+
+去 [Actions](../../actions) 找最近一次 `level=package` 的 CI 运行,在它的 Artifacts 里
+按平台取:`installer-windows`(.msi / .exe)、`installer-macos-arm64`(.dmg)、
+`installer-linux`(.deb / .AppImage)。也可以[从源码构建](#自己跑起来)。
+
+**这些包都没有签名。** macOS 上 Gatekeeper 会拦下来,需要
+`xattr -dr com.apple.quarantine <应用路径>` 才能打开;Windows 会弹 SmartScreen,
+选「仍要运行」。去掉这些提示要开发者证书,不是构建流程能解决的。
+
+## 界面
+
+桌面端是「左栏输入 / 中间画布 / 右侧可拼停靠区」的三段式,顶栏对当前这张图说话:
+重绘、放大、编辑、导演工具都在那里。
+
+竖屏是**另写的一套**翻页式界面,不是把桌面端压窄——横向翻页在生图 / 创作台 /
+图库之间切,不跟桌面端共用布局。
 
 ---
 
@@ -25,11 +48,6 @@ macOS 与 Linux 需要自己打包(命令见下)。
   离线词典三路)、PNG 元数据读回。
 - **AI 助手不是聊天框**,它直接改你的工作台:写提示词、加角色、调参数、出图、
   放大、看图、局部重绘。每一个动作都过权限闸,花钱的先报价再确认。
-
-## 界面
-
-桌面端是「左栏输入 / 中间画布 / 右侧可拼停靠区」的三段式,顶栏对当前这张图说话。
-竖屏是独立的一套翻页式界面,不是把桌面端压窄。
 
 ## 安全上的几条底线
 
@@ -67,9 +85,8 @@ npm run desktop:dev     # 开发
 npm run desktop:build   # 打包(产物在 src-tauri/target/release/bundle/)
 ```
 
-**Windows 安装包由 CI 产出**:手动触发 `CI` 工作流、level 选 `package`,
-构建完成后在该次 run 的 Artifacts 里下载。开发机是 macOS 时交叉编译到 Windows 走不通,
-这是唯一的来源。
+要出安装包:手动触发 `CI` 工作流、level 选 `package`,三平台并行构建,
+完成后在该次运行的 Artifacts 里下载(见上面[装一个](#装一个))。
 
 ## 代码结构
 
