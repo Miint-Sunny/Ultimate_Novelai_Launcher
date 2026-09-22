@@ -78,14 +78,21 @@ API routers -> application services -> backend_core protocols <- infrastructure
 
 1. Tauri creates a random `instance_id` and process Bearer token. Its own
    single-instance plugin prevents duplicate desktop windows.
-2. Tauri starts `sidecar.bootstrap` with loopback host and `port=0`.
+2. Tauri starts `sidecar.bootstrap` with loopback host and `port=0`. A packaged app
+   ships it as a PyInstaller onedir build under `bundle.resources` (`sidecar/` in the
+   resource directory), not a onefile binary: onefile unpacked every native module
+   into a fresh temp directory on each launch, and the system re-validated them all.
+   The window opens at once and does not wait for the sidecar.
    [sidecar/bootstrap.py](sidecar/bootstrap.py) also locks the data directory, binds
    and retains the kernel-assigned socket, and passes that same socket to Uvicorn.
    There is no probe-then-release port scan.
 3. After the full lifespan starts, the sidecar emits one JSON readiness handshake
    containing `service`, `version`, `instance_id`, `protocol`, and the bound `port`.
-   Tauri rejects a mismatched instance/protocol and exposes the exact endpoint and
-   token through the `sidecar_connection` command.
+   Tauri waits for it off the main thread for at most 120 seconds, rejects a
+   mismatched instance/protocol, and kills a sidecar that never becomes usable. The
+   `sidecar_connection` command resolves once that settles: with the exact endpoint
+   and token, or with the failure, which the frontend shows in place of the app.
+   A setup error would abort the app, so sidecar failures never become one.
 4. [src/api/localSidecarApi.ts](src/api/localSidecarApi.ts) reads that desktop
    connection. It does not discover ports or persist a sidecar URL in
    `localStorage`.

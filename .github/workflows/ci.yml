@@ -146,3 +146,23 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 14
+      # sidecar 是 onedir 目录,作为 Tauri 资源进包(Tauri 会把里面的符号链接展开成实体文件)。
+      # 上面的冒烟跑的是 build/ 里的原件;这里拆开**用户拿到的安装包**,用包里那一份再跑一遍,
+      # 证明目录结构和可执行位都保住了。放在上传之后:路径万一对不上,也不耽误出包。
+      - name: Smoke the sidecar shipped inside the installer
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/unpacked"
+          case "$RUNNER_OS" in
+            macOS)
+              exe="$(ls -d src-tauri/target/release/bundle/macos/*.app | head -1)/Contents/Resources/sidecar/ultimate-novelai-sidecar" ;;
+            Linux)
+              dpkg-deb -x "$(ls src-tauri/target/release/bundle/deb/*.deb | head -1)" "$out"
+              exe="$(find "$out" -type f -path '*/sidecar/ultimate-novelai-sidecar' | head -1)" ;;
+            Windows)
+              7z x -y -o"$out" "$(ls src-tauri/target/release/bundle/nsis/*.exe | head -1)" > /dev/null
+              exe="$(find "$out" -type f -path '*/sidecar/ultimate-novelai-sidecar.exe' | head -1)" ;;
+          esac
+          if [ -z "$exe" ] || [ ! -e "$exe" ]; then echo "sidecar not found inside the installer"; exit 1; fi
+          echo "smoking $exe"
+          node scripts/smoke-sidecar.mjs "$exe"

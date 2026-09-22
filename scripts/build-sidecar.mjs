@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,24 +18,24 @@ try {
 }
 
 const extension = process.platform === 'win32' ? '.exe' : '';
-const targetTriple = execFileSync('rustc', ['--print', 'host-tuple'], { encoding: 'utf8' }).trim();
-if (!targetTriple) throw new Error('Failed to determine Rust host target triple');
 
 const buildRoot = path.join(root, 'build', 'sidecar');
 const distDir = path.join(buildRoot, 'dist');
 const workDir = path.join(buildRoot, 'work');
 const specDir = path.join(buildRoot, 'spec');
 const configDir = path.join(buildRoot, 'config');
-const binariesDir = path.join(root, 'src-tauri', 'binaries');
-for (const directory of [distDir, workDir, specDir, configDir, binariesDir]) {
+for (const directory of [distDir, workDir, specDir, configDir]) {
   mkdirSync(directory, { recursive: true });
 }
 
+// onedir,不是 onefile:onefile 每次启动都把原生模块解到一个新的临时目录,系统逐个重新校验签名,
+// 冷启动 4–12 秒(壳原先 15 秒超时,超了就崩);onedir 的文件路径固定,只有首次启动要校验,之后 0.4 秒。
+// 整个目录作为 Tauri 资源打进包(tauri.conf.json 的 bundle.resources),壳从资源目录启动它。
 execFileSync('uv', [
   'run', '--frozen', '--group', 'dev', 'pyinstaller',
   '--noconfirm',
   '--clean',
-  '--onefile',
+  '--onedir',
   '--name', 'ultimate-novelai-sidecar',
   '--distpath', distDir,
   '--workpath', workDir,
@@ -51,8 +51,6 @@ execFileSync('uv', [
   stdio: 'inherit',
 });
 
-const built = path.join(distDir, `ultimate-novelai-sidecar${extension}`);
-const target = path.join(binariesDir, `ultimate-novelai-sidecar-${targetTriple}${extension}`);
-copyFileSync(built, target);
-if (process.platform !== 'win32') chmodSync(target, 0o755);
-console.log(`Bundled sidecar: ${path.relative(root, target)}`);
+const executable = path.join(distDir, 'ultimate-novelai-sidecar', `ultimate-novelai-sidecar${extension}`);
+if (!existsSync(executable)) throw new Error(`PyInstaller did not produce ${executable}`);
+console.log(`Bundled sidecar: ${path.relative(root, path.dirname(executable))}${path.sep}`);

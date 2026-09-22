@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::Manager;
+use tauri::{path::BaseDirectory, Manager};
 use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
     ShellExt,
@@ -16,9 +16,18 @@ use tauri_plugin_shell::{
 const SIDECAR_SERVICE: &str = "ultimate-novelai-launcher-sidecar";
 const SIDECAR_PROTOCOL: u32 = 1;
 // Bounds how long a broken sidecar keeps the window on its startup screen; nothing
-// blocks on it any more. A cold start of the bundled onefile sidecar already takes
-// ~12 s on Apple silicon, and Windows Defender scanning each unpacked module is slower.
+// blocks on it any more. The first start after install still has the system validate
+// every native module of the bundled sidecar, which Windows Defender makes slow.
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
+// A PyInstaller onedir build shipped under `bundle.resources` in tauri.conf.json: the
+// executable next to its `_internal/` folder. (It was a onefile externalBin, which
+// unpacked every native module into a fresh temp directory on each launch and had
+// the system re-validate them all: 4-12 s per start instead of 0.4 s.)
+const BUNDLED_SIDECAR: &str = if cfg!(windows) {
+    "sidecar/ultimate-novelai-sidecar.exe"
+} else {
+    "sidecar/ultimate-novelai-sidecar"
+};
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(8);
 const MANAGED_SIDECAR_PORT: &str = "0";
 
@@ -61,9 +70,9 @@ struct SidecarProcess {
 
 /// How far the sidecar has got, settled exactly once off the main thread.
 ///
-/// Setup used to block on the handshake. The bundled sidecar is a PyInstaller onefile
-/// binary that unpacks and re-validates every native module on each launch, so the
-/// window froze through that and a start slower than the deadline panicked inside
+/// Setup used to block on the handshake. The bundled sidecar was then a PyInstaller
+/// onefile binary that took seconds to start on every launch, so the window froze
+/// through that and a start slower than the deadline panicked inside
 /// `did_finish_launching` — an abort, not an error. Now the window opens at once and
 /// the frontend waits on `sidecar_connection` instead.
 struct SidecarReadiness {
@@ -400,10 +409,11 @@ fn spawn_bundled_sidecar(
     auth_token: &str,
     instance_id: &str,
 ) -> Result<SidecarProcess, String> {
-    let mut command = app
-        .shell()
-        .sidecar("ultimate-novelai-sidecar")
+    let program = app
+        .path()
+        .resolve(BUNDLED_SIDECAR, BaseDirectory::Resource)
         .map_err(|error| format!("bundled sidecar is unavailable: {error}"))?;
+    let mut command = app.shell().command(program);
     for (name, value) in managed_sidecar_environment(auth_token, instance_id) {
         command = command.env(name, value);
     }
@@ -1007,6 +1017,25 @@ sys.exit(0 if valid else 12)
         assert_eq!(
             command_environment(&command, "ULTIMATE_NOVELAI_LAUNCHER_ALLOW_DEV_ORIGINS").as_deref(),
             Some("1")
+        );
+    }
+
+    #[test]
+    fn bundled_sidecar_path_is_where_the_bundle_puts_the_onedir_build() {
+        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json parses");
+        let bundle = &config["bundle"];
+        assert_eq!(
+            bundle["resources"]["../build/sidecar/dist/ultimate-novelai-sidecar/"],
+            "sidecar/"
+        );
+        // A onefile externalBin would bring the per-launch unpacking back.
+        assert!(bundle.get("externalBin").is_none());
+        let executable = Path::new(BUNDLED_SIDECAR);
+        assert_eq!(executable.parent(), Some(Path::new("sidecar")));
+        assert_eq!(
+            executable.file_stem().and_then(|stem| stem.to_str()),
+            Some("ultimate-novelai-sidecar")
         );
     }
 

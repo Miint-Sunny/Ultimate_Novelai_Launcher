@@ -1,19 +1,21 @@
 import { once } from 'node:events';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const binariesDirectory = path.join(root, 'src-tauri', 'binaries');
-const targetTriple = execFileSync('rustc', ['--print', 'host-tuple'], { encoding: 'utf8' }).trim();
 const extension = process.platform === 'win32' ? '.exe' : '';
-const expectedBinary = `ultimate-novelai-sidecar-${targetTriple}${extension}`;
-const candidates = (await readdir(binariesDirectory)).filter(name => name === expectedBinary);
-if (candidates.length !== 1) {
-  throw new Error(`Expected one bundled sidecar, found: ${candidates.join(', ')}`);
-}
+// 默认跑 scripts/build-sidecar.mjs 产出的 onedir;出包后 CI 会把**包里**那一份的路径传进来,
+// 顺带证明资源拷贝保住了目录结构、符号链接和可执行位。
+const sidecarExecutable = process.argv.length > 2
+  ? path.resolve(process.argv[2])
+  : path.join(root, 'build', 'sidecar', 'dist', 'ultimate-novelai-sidecar', `ultimate-novelai-sidecar${extension}`);
+await access(sidecarExecutable, process.platform === 'win32' ? constants.F_OK : constants.X_OK).catch(() => {
+  throw new Error(`Bundled sidecar is missing or not executable: ${sidecarExecutable}`);
+});
 
 let fakeLlmRequests = 0;
 const fakeLlm = createServer(async (request, response) => {
@@ -86,7 +88,7 @@ if (!fakeLlmAddress || typeof fakeLlmAddress === 'string') {
 const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'ultimate-novelai-sidecar-'));
 const token = 'smoke-test-process-token';
 const instanceId = 'smoke-test-instance';
-const child = spawn(path.join(binariesDirectory, candidates[0]), [], {
+const child = spawn(sidecarExecutable, [], {
   cwd: root,
   env: {
     ...process.env,
