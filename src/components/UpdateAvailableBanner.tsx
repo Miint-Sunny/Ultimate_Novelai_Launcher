@@ -4,14 +4,25 @@ import { RefreshCw, Sparkles, X } from 'lucide-react';
 const CHECK_INTERVAL_MS = 60_000;
 const DISMISS_KEY = 'appUpdate.dismissedSignature';
 
-function extractBuildSignature(html: string): string | null {
-  const assetMatches = Array.from(html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+\.(?:js|css))"/g))
-    .map((match) => match[1])
+// 构建签名只取入口模块脚本(<script type="module" src>):它由 index.html 声明,运行期不会多出来。
+// 别把 <link> 算进去 —— 懒加载时 Vite 会往 <head> 里补 modulepreload / stylesheet,拿 DOM 去比
+// index.html 永远多出几条,后端一就绪、桌面布局一挂上就误报「网站已更新」。只看入口也不会漏更新:
+// 懒加载块的文件名写在入口里,入口 CSS 的文件名也并进了入口的哈希(vite:css-post 的 augmentChunkHash)。
+function entrySignature(doc: Document, baseUrl: string): string | null {
+  const entries = Array.from(doc.querySelectorAll('script[type="module"][src]'))
+    .map((el) => {
+      const src = el.getAttribute('src') || '';
+      try {
+        const url = new URL(src, baseUrl);
+        return `${url.pathname}${url.search}`;
+      } catch {
+        return src;
+      }
+    })
+    .filter(Boolean)
     .sort();
-  if (assetMatches.length > 0) return assetMatches.join('|');
 
-  const viteEntry = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/);
-  return viteEntry?.[1] || null;
+  return entries.length > 0 ? entries.join('|') : null;
 }
 
 async function fetchCurrentSignature(signal?: AbortSignal): Promise<string | null> {
@@ -26,27 +37,12 @@ async function fetchCurrentSignature(signal?: AbortSignal): Promise<string | nul
   if (!response.ok) return null;
 
   const html = await response.text();
-  return extractBuildSignature(html);
+  return entrySignature(new DOMParser().parseFromString(html, 'text/html'), url.toString());
 }
 
-function getLoadedSignature(): string | null {
-  const assets = Array.from(document.querySelectorAll<HTMLScriptElement | HTMLLinkElement>(
-    'script[src*="/assets/"], link[href*="/assets/"]'
-  ))
-    .map((el) => (el instanceof HTMLScriptElement ? el.src : el.href))
-    .filter(Boolean)
-    .map((href) => {
-      try {
-        const url = new URL(href);
-        return `${url.pathname}${url.search}`;
-      } catch {
-        return href;
-      }
-    })
-    .sort();
-
-  return assets.length > 0 ? assets.join('|') : null;
-}
+// 桌面壳的前端编进了程序里,进程活着就换不了:检查只会白跑,「刷新」也拿不到新版本。
+// 开发服务器有 HMR,同样用不着。
+const shouldCheckForUpdates = () => !import.meta.env.DEV && !('__TAURI__' in window);
 
 export const UpdateAvailableBanner: React.FC = () => {
   const [availableSignature, setAvailableSignature] = useState<string | null>(null);
@@ -54,11 +50,13 @@ export const UpdateAvailableBanner: React.FC = () => {
   const dismissedSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!shouldCheckForUpdates()) return;
+
     try {
       dismissedSignatureRef.current = localStorage.getItem(DISMISS_KEY);
     } catch { /* ignore */ }
 
-    initialSignatureRef.current = getLoadedSignature();
+    initialSignatureRef.current = entrySignature(document, document.baseURI);
     const controller = new AbortController();
     let cancelled = false;
 
