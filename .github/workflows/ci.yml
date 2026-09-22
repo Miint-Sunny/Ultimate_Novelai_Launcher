@@ -139,8 +139,9 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installer-${{ matrix.label }}
+          # Windows 只出 NSIS(src-tauri/tauri.windows.conf.json):sidecar 带着中文文件名的技能资料,
+          # MSI 数据库只能用单一代码页(默认 1252),WiX light 报 LGHT0311;NSIS 是 Unicode 的。
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/macos/*.app.tar.gz
@@ -151,20 +152,28 @@ jobs:
       # sidecar 是 onedir 目录,作为 Tauri 资源进包(Tauri 会把里面的符号链接展开成实体文件)。
       # 上面的冒烟跑的是 build/ 里的原件;这里拆开**用户拿到的安装包**,用包里那一份再跑一遍,
       # 证明目录结构和可执行位都保住了。放在上传之后:路径万一对不上,也不耽误出包。
+      # Linux 两份都要测:linuxdeploy 打 AppImage 时会逐个处理 AppDir 里的 ELF,
+      # 给 sidecar 的 .so 改 rpath,所以 AppImage 里那份和 .deb 里的原件已经不是同一个东西。
       - name: Smoke the sidecar shipped inside the installer
         shell: bash
         run: |
           out="$RUNNER_TEMP/unpacked"
+          mkdir -p "$out"
+          find_sidecar() { find "$1" -type f -path '*/sidecar/ultimate-novelai-sidecar*' ! -path '*/_internal/*' | head -1; }
           case "$RUNNER_OS" in
             macOS)
-              exe="$(ls -d src-tauri/target/release/bundle/macos/*.app | head -1)/Contents/Resources/sidecar/ultimate-novelai-sidecar" ;;
+              exes=("$(ls -d src-tauri/target/release/bundle/macos/*.app | head -1)/Contents/Resources/sidecar/ultimate-novelai-sidecar") ;;
             Linux)
-              dpkg-deb -x "$(ls src-tauri/target/release/bundle/deb/*.deb | head -1)" "$out"
-              exe="$(find "$out" -type f -path '*/sidecar/ultimate-novelai-sidecar' | head -1)" ;;
+              dpkg-deb -x "$(ls src-tauri/target/release/bundle/deb/*.deb | head -1)" "$out/deb"
+              appimage="$(realpath "$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -1)")"
+              (cd "$out" && "$appimage" --appimage-extract > /dev/null)
+              exes=("$(find_sidecar "$out/deb")" "$(find_sidecar "$out/squashfs-root")") ;;
             Windows)
-              7z x -y -o"$out" "$(ls src-tauri/target/release/bundle/nsis/*.exe | head -1)" > /dev/null
-              exe="$(find "$out" -type f -path '*/sidecar/ultimate-novelai-sidecar.exe' | head -1)" ;;
+              7z x -y -o"$out/nsis" "$(ls src-tauri/target/release/bundle/nsis/*.exe | head -1)" > /dev/null
+              exes=("$(find_sidecar "$out/nsis")") ;;
           esac
-          if [ -z "$exe" ] || [ ! -e "$exe" ]; then echo "sidecar not found inside the installer"; exit 1; fi
-          echo "smoking $exe"
-          node scripts/smoke-sidecar.mjs "$exe"
+          for exe in "${exes[@]}"; do
+            if [ -z "$exe" ] || [ ! -e "$exe" ]; then echo "sidecar not found inside an installer"; exit 1; fi
+            echo "smoking $exe"
+            node scripts/smoke-sidecar.mjs "$exe"
+          done
