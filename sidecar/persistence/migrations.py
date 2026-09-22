@@ -807,7 +807,7 @@ async def configure_live_connection(
     try:
         await connection.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
         if enable_wal:
-            row = await _fetchone(connection, "PRAGMA journal_mode = WAL")
+            row = await _enable_wal(connection, busy_timeout_ms=busy_timeout_ms)
         else:
             row = await _fetchone(connection, "PRAGMA journal_mode")
         if row is None or str(row[0]).lower() != "wal":
@@ -825,6 +825,45 @@ async def configure_live_connection(
         raise DatabaseIntegrityError("SQLite foreign key enforcement is disabled")
     if busy_timeout is None or int(str(busy_timeout[0])) != int(busy_timeout_ms):
         raise DatabaseIntegrityError("SQLite busy timeout was not applied")
+
+
+"""切进 WAL 时两次重试之间的等待。短到不拖慢启动,长到让对手的事务有机会收尾。"""
+_WAL_RETRY_INTERVAL_SECONDS = 0.02
+
+
+async def _enable_wal(
+    connection: aiosqlite.Connection, *, busy_timeout_ms: int
+) -> aiosqlite.Row | tuple[object, ...] | None:
+    """把 journal mode 切到 WAL,自己吸收「切换期的 SQLITE_BUSY」。
+
+    `PRAGMA busy_timeout` 盖不住这一条。切**进** WAL 要拿独占锁,而这条语句在别的连接
+    开着同一个库时**直接返回 SQLITE_BUSY,不走 busy handler**:实测把 busy_timeout 设成
+    5000 ms,对手持写锁时它 **0.000 s** 就抛 ``database is locked``。所以退避只能自己做。
+
+    重试是安全的,因为它**幂等**:库一旦已经是 WAL,再执行只是把 ``wal`` 读回来,
+    即使此刻别人正持写锁也照样成功(同一次实测验证)。也就是说输掉这一局的连接
+    重试时走的是幂等路径,不会第二次去抢独占锁。
+
+    预算直接复用调用方的 ``busy_timeout_ms``——它表达的就是「这个库上愿意为锁等多久」,
+    没必要再发明一个常量。等满仍未成功就把原异常抛出去,由调用方转成
+    ``DatabaseIntegrityError``:**fail-closed 不变**,起不来好过带着错的 journal mode 起来。
+
+    真实触发场景不只是测试里两个 ``Database`` 打架:sidecar 重启与旧进程收尾重叠、
+    单实例守卫失手时,同一个库上就会有两条初始化路径,输掉的那条会起不来。
+    """
+
+    deadline = time.monotonic() + max(int(busy_timeout_ms), 0) / 1000
+    while True:
+        try:
+            return await _fetchone(connection, "PRAGMA journal_mode = WAL")
+        except aiosqlite.OperationalError as exc:
+            message = str(exc).lower()
+            # 只吸收「锁竞争」这一类;损坏、只读、磁盘满之类要原样上抛。
+            if "locked" not in message and "busy" not in message:
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            await asyncio.sleep(_WAL_RETRY_INTERVAL_SECONDS)
 
 
 async def _fetchone(
