@@ -17,7 +17,7 @@
 [Releases](../../releases);在那之前:
 
 去 [Actions](../../actions) 找最近一次 `level=package` 的 CI 运行,在它的 Artifacts 里
-按平台取:`installer-windows`(.msi / .exe)、`installer-macos-arm64`(.dmg)、
+按平台取:`installer-windows`(安装程序 .exe)、`installer-macos-arm64`(.dmg)、
 `installer-linux`(.deb / .AppImage)。也可以[从源码构建](#自己跑起来)。
 
 **这些包都没有签名。** macOS 上 Gatekeeper 会拦下来,需要
