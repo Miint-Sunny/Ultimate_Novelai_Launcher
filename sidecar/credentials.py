@@ -29,6 +29,9 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
+# Stored secrets are looked up by this exact service name, so it keeps the spelling the
+# first builds wrote with; renaming the product (now "Ultimate Novelai Launcher") must not
+# touch it, or every existing install silently loses its tokens.
 SERVICE_NAME = "Ultimate Novelai launcher"
 ACCOUNT_NOVELAI = "novelai-token"
 ACCOUNT_LLM = "llm-api-key"

@@ -1,3 +1,3 @@
-"""Ultimate Novelai launcher Python sidecar."""
+"""Ultimate Novelai Launcher Python sidecar."""
 
 APP_VERSION = "0.1.0"

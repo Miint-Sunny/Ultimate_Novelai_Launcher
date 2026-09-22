@@ -171,7 +171,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("failed to build Ultimate Novelai launcher");
+        .expect("failed to build Ultimate Novelai Launcher");
 
     app.run(|app_handle, event| {
         if matches!(event, tauri::RunEvent::Exit) {

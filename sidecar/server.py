@@ -65,7 +65,7 @@ def create_app(
             int(challenge.expires_in),
         )
         logger.info(
-            "Ultimate Novelai launcher sidecar ready at data_dir=%s",
+            "Ultimate Novelai Launcher sidecar ready at data_dir=%s",
             components.settings.current.data_dir,
         )
         try:
@@ -75,7 +75,7 @@ def create_app(
             await components.runtime.shutdown()
 
     app = FastAPI(
-        title="Ultimate Novelai launcher Sidecar",
+        title="Ultimate Novelai Launcher Sidecar",
         version=APP_VERSION,
         lifespan=lifespan,
     )

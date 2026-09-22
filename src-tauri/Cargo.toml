@@ -1,8 +1,8 @@
 [package]
 name = "ultimate_novelai_launcher"
 version = "0.1.0"
-description = "Ultimate Novelai launcher desktop shell over the refactored reference UI"
-authors = ["Ultimate Novelai launcher Contributors"]
+description = "Ultimate Novelai Launcher desktop shell over the refactored reference UI"
+authors = ["Ultimate Novelai Launcher Contributors"]
 license = "GPL-3.0-only"
 edition = "2021"
 rust-version = "1.88"

@@ -100,6 +100,8 @@ def _configured_choice(
 
 
 def _default_data_dir() -> Path:
+    # Where existing installs keep their database: a storage location, not a display name,
+    # so it does not follow product renames (Linux paths are case-sensitive).
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "Ultimate_Novelai_launcher"
     if sys.platform == "win32":

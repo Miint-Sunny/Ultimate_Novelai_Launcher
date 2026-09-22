@@ -1,4 +1,4 @@
-# Ultimate NovelAI Launcher
+# Ultimate Novelai Launcher
 
 一个跑在自己电脑上的 NovelAI 客户端:桌面应用与同一套网页界面,
 生图、重绘、导演工具、角色摆位、以及一个能直接操作工作台的 AI 助手。

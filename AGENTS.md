@@ -1,4 +1,4 @@
-# Ultimate NovelAI Launcher engineering rules
+# Ultimate Novelai Launcher engineering rules
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing backend code. It is the
 current system map; this file contains the rules that keep that architecture intact.

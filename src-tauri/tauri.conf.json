@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Ultimate Novelai launcher",
+  "productName": "Ultimate Novelai Launcher",
   "version": "0.1.0",
   "identifier": "com.miintsunny.ultimate-novelai-launcher",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Ultimate Novelai launcher",
+        "title": "Ultimate Novelai Launcher",
         "width": 1280,
         "height": 820,
         "minWidth": 980,

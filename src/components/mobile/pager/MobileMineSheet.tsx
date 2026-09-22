@@ -183,7 +183,7 @@ export const MobileMineSheet: React.FC<MobileMineSheetProps> = ({ isOpen, onClos
         return (
           <div className="wide-touch-column flex-1 overflow-y-auto p-4">
             <section className="bg-nai-input rounded-xl border border-gray-700/50 p-4 flex flex-col gap-2">
-              <div className="text-sm text-gray-300">Ultimate NovelAI Launcher</div>
+              <div className="text-sm text-gray-300">Ultimate Novelai Launcher</div>
               <div className="text-xs text-gray-500">版本 v{packageJson.version}</div>
               <div className="text-xs text-gray-500">移动端分页壳(P3)· vertical-redesign</div>
             </section>
