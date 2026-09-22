@@ -77,7 +77,18 @@ function PairingScreen() {
   )
 }
 
+// 桌面壳不再卡着窗口等 sidecar:单文件打包的 sidecar 每次冷启动都要十几秒,
+// 这段时间窗口已经出来了,得告诉用户在等什么,而不是一片空白。
+function StartingScreen() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-nai-dark p-6 text-gray-100">
+      <p className="animate-pulse text-sm text-gray-400">正在启动本地后端…</p>
+    </main>
+  )
+}
+
 async function bootstrap() {
+  root.render(<StartingScreen />)
   try {
     await initializeLocalSidecar()
     renderApp()

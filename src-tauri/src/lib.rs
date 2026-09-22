@@ -4,7 +4,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child as DevelopmentChild, Command as DevelopmentCommand, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -15,7 +15,10 @@ use tauri_plugin_shell::{
 
 const SIDECAR_SERVICE: &str = "ultimate-novelai-launcher-sidecar";
 const SIDECAR_PROTOCOL: u32 = 1;
-const READY_TIMEOUT: Duration = Duration::from_secs(15);
+// Bounds how long a broken sidecar keeps the window on its startup screen; nothing
+// blocks on it any more. A cold start of the bundled onefile sidecar already takes
+// ~12 s on Apple silicon, and Windows Defender scanning each unpacked module is slower.
+const READY_TIMEOUT: Duration = Duration::from_secs(120);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(8);
 const MANAGED_SIDECAR_PORT: &str = "0";
 
@@ -52,8 +55,70 @@ enum SidecarChild {
 }
 
 struct SidecarProcess {
-    child: Mutex<Option<SidecarChild>>,
-    connection: SidecarConnection,
+    child: Arc<Mutex<Option<SidecarChild>>>,
+    readiness: Arc<SidecarReadiness>,
+}
+
+/// How far the sidecar has got, settled exactly once off the main thread.
+///
+/// Setup used to block on the handshake. The bundled sidecar is a PyInstaller onefile
+/// binary that unpacks and re-validates every native module on each launch, so the
+/// window froze through that and a start slower than the deadline panicked inside
+/// `did_finish_launching` — an abort, not an error. Now the window opens at once and
+/// the frontend waits on `sidecar_connection` instead.
+struct SidecarReadiness {
+    outcome: Mutex<Option<Result<SidecarConnection, String>>>,
+    settled: Condvar,
+}
+
+impl SidecarReadiness {
+    fn pending() -> Arc<Self> {
+        Arc::new(Self {
+            outcome: Mutex::new(None),
+            settled: Condvar::new(),
+        })
+    }
+
+    fn settled_with(outcome: Result<SidecarConnection, String>) -> Arc<Self> {
+        let readiness = Self::pending();
+        readiness.settle(outcome);
+        readiness
+    }
+
+    /// The first outcome wins; later ones are ignored.
+    fn settle(&self, outcome: Result<SidecarConnection, String>) {
+        let mut guard = self
+            .outcome
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.is_none() {
+            *guard = Some(outcome);
+        }
+        self.settled.notify_all();
+    }
+
+    fn wait(&self, timeout: Duration) -> Result<SidecarConnection, String> {
+        let guard = self
+            .outcome
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (guard, _) = self
+            .settled
+            .wait_timeout_while(guard, timeout, |outcome| outcome.is_none())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard
+            .clone()
+            .unwrap_or_else(|| Err("sidecar is still starting".to_string()))
+    }
+
+    fn connection(&self) -> Option<SidecarConnection> {
+        self.outcome
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .and_then(|outcome| outcome.as_ref().ok())
+            .cloned()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -64,6 +129,15 @@ enum ShutdownOutcome {
 }
 
 impl SidecarProcess {
+    /// A sidecar that could not even be spawned is reported in the window like any
+    /// other startup failure, never as a crash.
+    fn failed(error: String) -> Self {
+        Self {
+            child: Arc::new(Mutex::new(None)),
+            readiness: SidecarReadiness::settled_with(Err(error)),
+        }
+    }
+
     fn shutdown(&self) {
         let _ = self.shutdown_with_timeout(DRAIN_TIMEOUT);
     }
@@ -80,7 +154,11 @@ impl SidecarProcess {
         };
 
         let deadline = Instant::now() + timeout;
-        let drain_accepted = request_graceful_shutdown(&self.connection, deadline);
+        // Before its handshake the sidecar has no port to drain through.
+        let drain_accepted = self
+            .readiness
+            .connection()
+            .is_some_and(|connection| request_graceful_shutdown(&connection, deadline));
         while Instant::now() < deadline {
             if child_has_exited(&mut child) {
                 return ShutdownOutcome::Exited { drain_accepted };
@@ -92,17 +170,21 @@ impl SidecarProcess {
             thread::sleep(remaining.min(Duration::from_millis(100)));
         }
 
-        match child {
-            SidecarChild::Bundled { child, .. } => {
-                let _ = child.kill();
-            }
-            SidecarChild::Development(mut child) => {
-                if child.kill().is_ok() {
-                    let _ = child.wait();
-                }
+        kill_child(child);
+        ShutdownOutcome::Forced { drain_accepted }
+    }
+}
+
+fn kill_child(child: SidecarChild) {
+    match child {
+        SidecarChild::Bundled { child, .. } => {
+            let _ = child.kill();
+        }
+        SidecarChild::Development(mut child) => {
+            if child.kill().is_ok() {
+                let _ = child.wait();
             }
         }
-        ShutdownOutcome::Forced { drain_accepted }
     }
 }
 
@@ -115,20 +197,37 @@ impl Drop for SidecarProcess {
     }
 }
 
+/// Resolves once the sidecar has settled. Waits on a blocking-pool thread: a
+/// synchronous command would park the main thread and freeze the window again.
+async fn settled_connection(readiness: Arc<SidecarReadiness>) -> Result<SidecarConnection, String> {
+    // Outlast the handshake deadline so callers see the settled error, not "still starting".
+    tauri::async_runtime::spawn_blocking(move || {
+        readiness.wait(READY_TIMEOUT + Duration::from_secs(5))
+    })
+    .await
+    .map_err(|error| format!("sidecar readiness wait failed: {error}"))?
+}
+
 #[tauri::command]
-fn sidecar_connection(process: tauri::State<'_, SidecarProcess>) -> SidecarConnection {
-    process.connection.clone()
+async fn sidecar_connection(
+    process: tauri::State<'_, SidecarProcess>,
+) -> Result<SidecarConnection, String> {
+    settled_connection(Arc::clone(&process.readiness)).await
 }
 
 /// Kept for one bundled release while callers move to `sidecar_connection`.
 #[tauri::command]
-fn sidecar_auth_token(process: tauri::State<'_, SidecarProcess>) -> String {
-    process.connection.token.clone()
+async fn sidecar_auth_token(process: tauri::State<'_, SidecarProcess>) -> Result<String, String> {
+    Ok(settled_connection(Arc::clone(&process.readiness))
+        .await?
+        .token)
 }
 
 #[tauri::command]
-fn sidecar_endpoint(process: tauri::State<'_, SidecarProcess>) -> String {
-    process.connection.endpoint.clone()
+async fn sidecar_endpoint(process: tauri::State<'_, SidecarProcess>) -> Result<String, String> {
+    Ok(settled_connection(Arc::clone(&process.readiness))
+        .await?
+        .endpoint)
 }
 
 fn random_hex<const N: usize>() -> Result<String, getrandom::Error> {
@@ -165,8 +264,13 @@ pub fn run() {
             sidecar_endpoint
         ])
         .setup(move |app| {
+            // An error returned here panics inside did_finish_launching, which aborts
+            // the app; a sidecar that cannot start is shown in the window instead.
             let process = spawn_sidecar(app.handle(), &setup_token, &setup_instance)
-                .map_err(std::io::Error::other)?;
+                .unwrap_or_else(|error| {
+                    eprintln!("sidecar failed to start: {error}");
+                    SidecarProcess::failed(error)
+                });
             app.manage(process);
             Ok(())
         })
@@ -283,14 +387,12 @@ fn spawn_development_command(
         }
     });
 
-    let handshake = receive_handshake(receiver, instance_id).inspect_err(|_| {
-        let _ = child.kill();
-        let _ = child.wait();
-    })?;
-    Ok(SidecarProcess {
-        child: Mutex::new(Some(SidecarChild::Development(child))),
-        connection: connection_from_handshake(handshake, auth_token),
-    })
+    Ok(watch_for_handshake(
+        SidecarChild::Development(child),
+        receiver,
+        auth_token,
+        instance_id,
+    ))
 }
 
 fn spawn_bundled_sidecar(
@@ -348,26 +450,64 @@ fn spawn_bundled_sidecar(
         }
     });
 
-    let handshake = match receive_handshake(receiver, instance_id) {
-        Ok(handshake) => handshake,
-        Err(error) => {
-            let _ = child.kill();
-            return Err(error);
+    Ok(watch_for_handshake(
+        SidecarChild::Bundled { child, terminated },
+        receiver,
+        auth_token,
+        instance_id,
+    ))
+}
+
+/// Hands the child to a `SidecarProcess` at once and settles its readiness from the
+/// first stdout line on a background thread. A child that never becomes usable is
+/// killed there, so it cannot sit on its port or the data-directory lock until the
+/// app quits.
+fn watch_for_handshake(
+    child: SidecarChild,
+    receiver: mpsc::Receiver<String>,
+    auth_token: &str,
+    instance_id: &str,
+) -> SidecarProcess {
+    let child = Arc::new(Mutex::new(Some(child)));
+    let readiness = SidecarReadiness::pending();
+    let waiting_child = Arc::clone(&child);
+    let waiting_readiness = Arc::clone(&readiness);
+    let auth_token = auth_token.to_string();
+    let instance_id = instance_id.to_string();
+    thread::spawn(move || {
+        let outcome = receive_handshake(receiver, &instance_id, READY_TIMEOUT)
+            .map(|handshake| connection_from_handshake(handshake, &auth_token));
+        if let Err(error) = &outcome {
+            eprintln!("sidecar did not become ready: {error}");
+            let unusable = waiting_child
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take();
+            if let Some(unusable) = unusable {
+                kill_child(unusable);
+            }
         }
-    };
-    Ok(SidecarProcess {
-        child: Mutex::new(Some(SidecarChild::Bundled { child, terminated })),
-        connection: connection_from_handshake(handshake, auth_token),
-    })
+        waiting_readiness.settle(outcome);
+    });
+    SidecarProcess { child, readiness }
 }
 
 fn receive_handshake(
     receiver: mpsc::Receiver<String>,
     expected_instance: &str,
+    timeout: Duration,
 ) -> Result<ReadyHandshake, String> {
-    let line = receiver.recv_timeout(READY_TIMEOUT).map_err(|_| {
-        "sidecar did not produce a readiness handshake within 15 seconds".to_string()
-    })?;
+    let line = receiver
+        .recv_timeout(timeout)
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => format!(
+                "sidecar did not produce a readiness handshake within {} seconds",
+                timeout.as_secs()
+            ),
+            mpsc::RecvTimeoutError::Disconnected => {
+                "sidecar exited before producing a readiness handshake".to_string()
+            }
+        })?;
     let handshake: ReadyHandshake = serde_json::from_str(&line)
         .map_err(|error| format!("invalid sidecar readiness handshake: {error}"))?;
     if handshake.event != "ready"
@@ -401,14 +541,14 @@ fn skipped_sidecar(auth_token: &str, instance_id: &str) -> SidecarProcess {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
     SidecarProcess {
-        child: Mutex::new(None),
-        connection: SidecarConnection {
+        child: Arc::new(Mutex::new(None)),
+        readiness: SidecarReadiness::settled_with(Ok(SidecarConnection {
             endpoint: endpoint.trim_end_matches('/').to_string(),
             token: auth_token.to_string(),
             instance_id: instance_id.to_string(),
             protocol: SIDECAR_PROTOCOL,
             port,
-        },
+        })),
     }
 }
 
@@ -527,6 +667,8 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind((host, int(port)))
 server.listen(1)
 actual_port = server.getsockname()[1]
+if os.environ.get("FAKE_SIDECAR_MODE") == "slow":
+    time.sleep(1)
 print(json.dumps({
     "event": "ready",
     "service": "ultimate-novelai-launcher-sidecar",
@@ -634,7 +776,8 @@ sys.exit(0 if valid else 12)
                 r#"{"event":"ready","service":"ultimate-novelai-launcher-sidecar","instance_id":"expected","protocol":1,"port":41234}"#.to_string(),
             )
             .expect("send handshake");
-        let handshake = receive_handshake(receiver, "expected").expect("valid handshake");
+        let handshake =
+            receive_handshake(receiver, "expected", READY_TIMEOUT).expect("valid handshake");
         let resolved = connection_from_handshake(handshake, "secret-token");
         assert_eq!(resolved.endpoint, "http://127.0.0.1:41234");
         assert_eq!(resolved.token, "secret-token");
@@ -645,7 +788,7 @@ sys.exit(0 if valid else 12)
                 r#"{"event":"ready","service":"ultimate-novelai-launcher-sidecar","instance_id":"other","protocol":1,"port":41234}"#.to_string(),
             )
             .expect("send mismatched handshake");
-        assert!(receive_handshake(receiver, "expected").is_err());
+        assert!(receive_handshake(receiver, "expected", READY_TIMEOUT).is_err());
 
         for invalid in [
             r#"{"event":"starting","service":"ultimate-novelai-launcher-sidecar","instance_id":"expected","protocol":1,"port":41234}"#,
@@ -655,8 +798,63 @@ sys.exit(0 if valid else 12)
         ] {
             let (sender, receiver) = mpsc::channel();
             sender.send(invalid.to_string()).expect("send handshake");
-            assert!(receive_handshake(receiver, "expected").is_err());
+            assert!(receive_handshake(receiver, "expected", READY_TIMEOUT).is_err());
         }
+    }
+
+    #[test]
+    fn handshake_errors_tell_a_slow_sidecar_from_one_that_exited() {
+        let (_sender, receiver) = mpsc::channel::<String>();
+        let error = receive_handshake(receiver, "expected", Duration::from_secs(1))
+            .expect_err("no handshake within the deadline");
+        assert!(error.contains("within 1 seconds"));
+
+        let (sender, receiver) = mpsc::channel::<String>();
+        drop(sender);
+        let error = receive_handshake(receiver, "expected", READY_TIMEOUT)
+            .expect_err("sidecar went away before its handshake");
+        assert!(error.contains("exited before"));
+    }
+
+    #[test]
+    fn a_slow_sidecar_does_not_hold_up_spawn() {
+        let started = Instant::now();
+        let process = spawn_development_command(
+            fake_sidecar_command("slow", "fixture-token", "fixture-instance"),
+            "fixture-token",
+            "fixture-instance",
+        )
+        .expect("spawn fake sidecar");
+        assert!(started.elapsed() < Duration::from_millis(900));
+        assert_eq!(
+            process.readiness.wait(Duration::ZERO).err().as_deref(),
+            Some("sidecar is still starting")
+        );
+
+        let connection = process
+            .readiness
+            .wait(Duration::from_secs(10))
+            .expect("a slow sidecar still becomes ready");
+        assert_ne!(connection.port, 0);
+        assert_eq!(
+            process.shutdown_with_timeout(Duration::from_secs(2)),
+            ShutdownOutcome::Exited {
+                drain_accepted: true
+            }
+        );
+    }
+
+    #[test]
+    fn a_sidecar_that_cannot_start_is_reported_not_raised() {
+        let process = SidecarProcess::failed("failed to start bundled sidecar: fixture".into());
+        assert_eq!(
+            process.readiness.wait(Duration::ZERO).err().as_deref(),
+            Some("failed to start bundled sidecar: fixture")
+        );
+        assert_eq!(
+            process.shutdown_with_timeout(Duration::from_millis(50)),
+            ShutdownOutcome::AlreadyStopped
+        );
     }
 
     #[test]
@@ -699,6 +897,10 @@ sys.exit(0 if valid else 12)
             "fixture-instance",
         )
         .expect("spawn fake sidecar");
+        process
+            .readiness
+            .wait(Duration::from_secs(10))
+            .expect("fake sidecar becomes ready");
 
         let started = Instant::now();
         let outcome = process.shutdown_with_timeout(Duration::from_millis(50));
@@ -725,14 +927,18 @@ sys.exit(0 if valid else 12)
             "fixture-instance",
         )
         .expect("spawn fake sidecar");
+        let connection = process
+            .readiness
+            .wait(Duration::from_secs(10))
+            .expect("fake sidecar becomes ready");
 
-        assert_eq!(process.connection.token, "fixture-token");
-        assert_eq!(process.connection.instance_id, "fixture-instance");
-        assert_eq!(process.connection.protocol, SIDECAR_PROTOCOL);
-        assert_ne!(process.connection.port, 0);
+        assert_eq!(connection.token, "fixture-token");
+        assert_eq!(connection.instance_id, "fixture-instance");
+        assert_eq!(connection.protocol, SIDECAR_PROTOCOL);
+        assert_ne!(connection.port, 0);
         assert_eq!(
-            process.connection.endpoint,
-            format!("http://127.0.0.1:{}", process.connection.port)
+            connection.endpoint,
+            format!("http://127.0.0.1:{}", connection.port)
         );
 
         assert_eq!(
@@ -755,10 +961,15 @@ sys.exit(0 if valid else 12)
         ] {
             let mut command = fake_sidecar_command("graceful", "fixture-token", "fixture-instance");
             command.env(name, value);
-            let error = spawn_development_command(command, "fixture-token", "fixture-instance")
-                .err()
-                .expect("mismatched handshake must be rejected");
+            let process = spawn_development_command(command, "fixture-token", "fixture-instance")
+                .expect("spawn fake sidecar");
+            let error = process
+                .readiness
+                .wait(Duration::from_secs(10))
+                .expect_err("mismatched handshake must be rejected");
             assert!(error.contains("did not match this desktop instance"));
+            // Killed before the error became visible, not left running until exit.
+            assert!(process.child.lock().expect("sidecar child mutex").is_none());
         }
     }
 
