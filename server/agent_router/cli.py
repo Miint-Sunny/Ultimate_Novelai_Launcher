@@ -5,7 +5,7 @@ AI Agent 交互式调试 CLI。
     python -m agent_router.cli
 
 或从仓库根:
-    cd novelai_web_ui/server && python -m agent_router.cli
+    cd server && python -m agent_router.cli
 
 前置条件:
     - server 必须在 8766（或自定义）端口跑着，因为 chat_agent 的 tools 要调本机数据 API

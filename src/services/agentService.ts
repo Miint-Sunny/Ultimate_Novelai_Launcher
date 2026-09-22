@@ -16,7 +16,7 @@ import { getAppSettings } from './localLibrary/appSettings';
 import { cleanPromptMarkers } from './novelai';
 
 // ==================== 可选 model（与后端 MODEL_CHOICES 对齐）====================
-// 与后端 MODEL_CHOICES（novelai_web_ui/server/config.py）保持同步。
+// 与后端 MODEL_CHOICES（server/config.py）保持同步。
 // key 传给后端 model 字段；空字符串 = 后端用全局默认 ACTIVE_MODEL。
 export interface AiModelChoice {
   key: string;

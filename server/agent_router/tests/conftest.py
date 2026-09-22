@@ -2,7 +2,7 @@
 pytest 公共 fixture & 路径配置。
 
 让测试可以从仓库根目录直接跑：
-    cd <repo> && pytest novelai_web_ui/server/agent_router/tests
+    cd <repo> && pytest server/agent_router/tests
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """
 Web 后端独立配置（去敏模板）
 
-仅供 novelai_web_ui/server 使用的配置项，
+仅供 server/ 使用的配置项，
 与 Bot 端 config/settings.py 解耦。
 
 ⚠️ 这是脱敏后的示例配置：所有密钥 / Token / Cookie / 内网 IP 均已替换为占位符。
@@ -87,7 +87,7 @@ TRANSLATE_EN2ZH_MIN_MAX_TOKENS = 2000
 
 # ==================== AI 模型配置（两层）====================
 # 这是新架构下 AI 模型的**唯一权威配置点**。
-# 被 novelai_web_ui/server/agent_router/model_provider.py 读取，喂给 PydanticAI。
+# 被 server/agent_router/model_provider.py 读取，喂给 PydanticAI。
 #
 # 设计哲学：把"模型有哪些 / 来自哪个渠道"和"用户能切换哪些 model"完全解耦。
 #   - MODEL_REGISTRY：列出所有可用模型，每个模型绑死一个渠道（base_url / api_key / proxy）

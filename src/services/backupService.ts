@@ -23,6 +23,7 @@ const BACKUP_LOCALSTORAGE_KEYS = [
   'novelai_active_preset',
 ] as const;
 
+// 备份文件的格式标识,导入时逐字比对:沿用旧项目名是故意的,改了以前导出的备份就导不进来了。
 const BACKUP_IDENTIFIER = 'novelai-web-ui-backup';
 const BACKUP_VERSION = 1;
 

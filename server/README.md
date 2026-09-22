@@ -10,7 +10,7 @@
 
 ---
 
-# NovelAI Web UI 后端服务
+# Ultimate Novelai Launcher 后端服务
 
 排队系统后端服务，用于多用户共享Token时的单线程队列管理。
 

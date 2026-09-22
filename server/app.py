@@ -9,7 +9,7 @@
 - 仅作为可选的云/队列/workshop 适配面保留，待逐步迁移后下线。
 - 不要在日志中打印 token / cookie / Authorization / 完整 base64 图片。
 
-NovelAI Web UI 后端服务（独立运行版）
+Ultimate Novelai Launcher 后端服务（独立运行版）
 - 内置图片生成队列：直接调用 NovelAI API，不依赖 Bot
 - 排队系统：多用户共享Token时的单线程队列管理
 - Bot授权：通过授权码实现Bot登录
@@ -3503,7 +3503,7 @@ async def queue_processor():
 
 
 app = FastAPI(
-    title="NovelAI Web UI Backend",
+    title="Ultimate Novelai Launcher Backend",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -6185,7 +6185,7 @@ _STATS_DB = BOT_DATA_DIR / "stats_data.db"
 _workshop_quota = SQLiteWorkshopQuotaRepository(_STATS_DB)
 
 # ---------- 27日结算周期工具函数 ----------
-# 计费参数集中维护于 novelai_web_ui/server/config.py（BILLING_*）
+# 计费参数集中维护于 server/config.py（BILLING_*）
 
 
 def _billing_period(ref: "datetime | None" = None):
@@ -6525,7 +6525,7 @@ async def get_platform_hourly_users(days: int = 30):
 
 
 # ==================== 计费分摊系统 ====================
-# 计费参数集中维护于 novelai_web_ui/server/config.py（BILLING_*）
+# 计费参数集中维护于 server/config.py（BILLING_*）
 
 
 def _compute_billing(user_data: list[dict], *,

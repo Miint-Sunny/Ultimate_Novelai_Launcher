@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NovelAI Web UI 后端服务启动脚本
+Ultimate Novelai Launcher 后端服务启动脚本
 
 独立运行版本 - 内置图片生成队列，不依赖 Bot
 
@@ -20,7 +20,7 @@ import uvicorn
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NovelAI Web UI Backend Server")
+    parser = argparse.ArgumentParser(description="Ultimate Novelai Launcher Backend Server")
     parser.add_argument(
         "--host",
         default="127.0.0.1",
@@ -32,7 +32,7 @@ def main():
 
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║           NovelAI Web UI Backend Server v2.0                 ║
+║        Ultimate Novelai Launcher Backend Server v2.0         ║
 ║                                                              ║
 ║  独立运行版 - 内置图片生成队列                               ║
 ║                                                              ║

@@ -259,9 +259,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
         {/* 标题 */}
         <h1
           onClick={handleDevClick}
-          className="text-2xl sm:text-3xl font-bold text-center mb-1 text-nai-accent flex items-center justify-center gap-2 select-none cursor-default"
+          className="text-lg sm:text-2xl font-bold text-center mb-1 text-nai-accent flex flex-wrap items-center justify-center gap-2 select-none cursor-default"
         >
-          NovelAI Web UI
+          Ultimate Novelai Launcher
           <span className="text-[10px] sm:text-xs font-bold bg-nai-accent/20 text-nai-accent px-1.5 sm:px-2 py-0.5 rounded-full border border-nai-accent/30 uppercase tracking-wider leading-none">
             Beta
           </span>

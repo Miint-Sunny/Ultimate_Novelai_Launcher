@@ -1,3 +1,4 @@
+// IndexedDB 按库名找数据:沿用旧项目名是故意的,改名等于另开一个空库,用户存的东西就都找不到了。
 export const DB_NAME = 'NovelAI_Web_UI_DB';
 export const STORE_NAME = 'vibes';
 export const DB_VERSION = 8;

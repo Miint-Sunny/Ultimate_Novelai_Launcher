@@ -197,7 +197,7 @@ class LiteResponse(BaseModel):
 
 class AgentResult(BaseModel):
     """
-    Web 端前端期望的响应格式 —— 与 novelai_web_ui/src/services/agentService.ts:21 AgentResult 兼容。
+    Web 端前端期望的响应格式 —— 与 src/services/agentService.ts 的 AgentResult 兼容。
 
     生成路径：
       Web 路由 /api/agent/web/generate-prompt 内部跑 chat_agent（与 Bot 同一套），
