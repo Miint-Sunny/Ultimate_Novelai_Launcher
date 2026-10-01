@@ -86,7 +86,7 @@ export const PublishGuidelinesDialog: React.FC<Props> = ({
           </button>
           <button
             onClick={onConfirm}
-            className="px-5 py-2.5 text-[0.84375rem] font-bold bg-nai-accent text-[#1a1410] rounded-lg hover:bg-nai-accent-hover flex items-center gap-2 shadow-[0_4px_14px_-4px_rgba(252,237,164,0.45)] transition-colors cursor-pointer"
+            className="px-5 py-2.5 text-[0.84375rem] font-bold bg-nai-accent text-[#1a1410] rounded-lg hover:bg-nai-accent-hover flex items-center gap-2 shadow-[0_4px_14px_-4px_rgb(var(--nai-accent)_/_0.45)] transition-colors cursor-pointer"
           >
             {confirmLabel}
           </button>

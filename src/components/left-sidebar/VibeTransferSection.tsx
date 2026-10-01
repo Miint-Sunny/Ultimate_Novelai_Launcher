@@ -283,7 +283,7 @@ function VibeValueInput({ value, isCompatible, isEnabled, onChange, title }: {
         onChange={onChange}
         style={{
           backgroundImage: isCompatible
-            ? `linear-gradient(to right, rgba(252, 237, 164, 0.5) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
+            ? `linear-gradient(to right, rgb(var(--nai-accent) / 0.5) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
             : `linear-gradient(to right, rgba(239, 68, 68, 0.3) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
         }}
         className={`w-full border rounded px-1 py-1 text-[0.625rem] text-center focus:border-nai-accent outline-none appearance-none ${isCompatible

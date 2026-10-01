@@ -68,7 +68,7 @@ export function PromptEditorStyles() {
       }
       
       .prompt-editor-wrapper .ProseMirror-selectednode .collapsible-tag-wrapper > span {
-        outline: 2px solid #fceda4;
+        outline: 2px solid rgb(var(--nai-accent));
         outline-offset: 1px;
       }
       

@@ -151,7 +151,7 @@ export const CRManagerModal: React.FC<CRManagerModalProps> = ({
             </button>
             <button
               onClick={onConfirmSelection}
-              className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-[#ebd576] transition-colors"
+              className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-nai-accent-hover transition-colors"
             >
               确认选择 ({m.selectedCRs.length})
             </button>

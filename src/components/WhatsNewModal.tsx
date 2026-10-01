@@ -72,7 +72,7 @@ const WikiPreviewMock: React.FC = () => {
         }
         @keyframes wikiHoverRow {
           0%, 24%, 86%, 100% { background: transparent; box-shadow: none; }
-          36%, 76% { background: rgba(252, 237, 164, 0.1); box-shadow: inset 0 0 0 1px rgba(252, 237, 164, 0.14); }
+          36%, 76% { background: rgb(var(--nai-accent) / 0.1); box-shadow: inset 0 0 0 1px rgb(var(--nai-accent) / 0.14); }
         }
         @keyframes wikiCardReveal {
           0%, 32%, 88%, 100% { opacity: 0; transform: translateX(-10px) scale(0.97); filter: blur(2px); }
@@ -88,7 +88,7 @@ const WikiPreviewMock: React.FC = () => {
         }
       `}</style>
 
-      <div className="relative w-[200px] shrink-0 bg-[#0f0f0f] rounded-md border border-[#fceda4]/10 overflow-hidden">
+      <div className="relative w-[200px] shrink-0 bg-[#0f0f0f] rounded-md border border-nai-accent/10 overflow-hidden">
         {tags.map(s => (
           <div
             key={s.tag}
@@ -127,30 +127,30 @@ const WikiPreviewMock: React.FC = () => {
       </div>
 
       <div
-        className="w-[260px] shrink-0 rounded-lg bg-[#111315] overflow-hidden border border-[#fceda4]/22 shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
+        className="w-[260px] shrink-0 rounded-lg bg-[#111315] overflow-hidden border border-nai-accent/22 shadow-[0_18px_50px_rgba(0,0,0,0.35)]"
         style={{ animation: 'wikiCardReveal 4.2s ease-in-out infinite' }}
       >
         <div className="relative h-[120px] bg-black/40 flex items-center justify-center">
-          <div className="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_35%_35%,rgba(252,237,164,0.22),transparent_38%),linear-gradient(135deg,rgba(125,211,252,0.16),rgba(240,171,252,0.12))]" />
+          <div className="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_35%_35%,rgb(var(--nai-accent)_/_0.22),transparent_38%),linear-gradient(135deg,rgba(125,211,252,0.16),rgba(240,171,252,0.12))]" />
           <div className="relative flex flex-col items-center gap-1 text-white/30 text-[0.6875rem]" style={{ animation: 'wikiImageSwap 4.2s ease-in-out infinite' }}>
             <BookOpen className="w-7 h-7 opacity-70" strokeWidth={1.5} />
             <span>示例图轮播</span>
           </div>
           <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1">
-            <span className="h-1.5 w-4 rounded-full bg-[#fceda4]" />
+            <span className="h-1.5 w-4 rounded-full bg-nai-accent" />
             <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
             <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
           </div>
         </div>
         <div className="p-2.5">
-          <div className="font-tag text-[0.8125rem] leading-tight text-[#fceda4]">long_hair</div>
+          <div className="font-tag text-[0.8125rem] leading-tight text-nai-accent">long_hair</div>
           <div className="mt-0.5 text-[0.625rem] leading-snug text-white/42">长发 / hair_long</div>
           <p className="mt-1.5 text-[0.6875rem] leading-relaxed text-white/72 line-clamp-3">
             指角色头发垂至肩部以下的长度。Danbooru 上常见发型标签之一，通常和 very_long_hair 等标签联用。
           </p>
           <div className="mt-2 flex items-center justify-between text-[0.625rem] text-white/35">
             <span>#7234156</span>
-            <span className="inline-flex items-center gap-1 text-[#fceda4]/70">
+            <span className="inline-flex items-center gap-1 text-nai-accent/70">
               <span>Wiki</span>
               <ExternalLink className="h-3 w-3" strokeWidth={1.8} />
             </span>
@@ -164,7 +164,7 @@ const WikiPreviewMock: React.FC = () => {
 const WikiPreviewMockStatic: React.FC = () => (
     <div className="relative h-full w-full flex items-center justify-center gap-2 px-4">
     {/* 左侧：补全列表（高亮其中一项） */}
-    <div className="w-[200px] shrink-0 bg-[#0f0f0f] rounded-md border border-[#fceda4]/10 overflow-hidden">
+    <div className="w-[200px] shrink-0 bg-[#0f0f0f] rounded-md border border-nai-accent/10 overflow-hidden">
       {[
         { tag: '1girl', cn: '少女', count: '4.5M', sel: false, color: '#fcd34d' },
         { tag: 'long_hair', cn: '长发', count: '3.1M', sel: true, color: '#fcd34d' },
@@ -189,13 +189,13 @@ const WikiPreviewMockStatic: React.FC = () => (
     </div>
 
     {/* 提示箭头 */}
-    <div className="flex flex-col items-center text-[#fceda4]/55">
+    <div className="flex flex-col items-center text-nai-accent/55">
       <span className="text-[0.625rem] mb-0.5">悬停</span>
       <ChevronRight className="w-4 h-4" strokeWidth={2} />
     </div>
 
     {/* 右侧：Wiki 预览卡 */}
-    <div className="w-[260px] shrink-0 rounded-lg bg-[#111315] overflow-hidden border border-[#fceda4]/22">
+    <div className="w-[260px] shrink-0 rounded-lg bg-[#111315] overflow-hidden border border-nai-accent/22">
       {/* 顶部图区 */}
       <div className="relative h-[120px] bg-black/40 flex items-center justify-center">
         <div className="w-full h-full flex items-center justify-center text-white/15 text-[0.6875rem]">
@@ -206,21 +206,21 @@ const WikiPreviewMockStatic: React.FC = () => (
         </div>
         {/* 指示点 */}
         <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1">
-          <span className="h-1.5 w-4 rounded-full bg-[#fceda4]" />
+          <span className="h-1.5 w-4 rounded-full bg-nai-accent" />
           <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
           <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
         </div>
       </div>
       {/* 文本区 */}
       <div className="p-2.5">
-        <div className="font-tag text-[0.8125rem] leading-tight text-[#fceda4]">long_hair</div>
+        <div className="font-tag text-[0.8125rem] leading-tight text-nai-accent">long_hair</div>
         <div className="mt-0.5 text-[0.625rem] leading-snug text-white/42">长发 / hair_long</div>
         <p className="mt-1.5 text-[0.6875rem] leading-relaxed text-white/72 line-clamp-3">
           指角色头发垂至肩部以下的长度。Danbooru 上最常见的发型标签之一，常与 hair_between_eyes、very_long_hair 联用。
         </p>
         <div className="mt-2 flex items-center justify-between text-[0.625rem] text-white/35">
           <span>#7234156</span>
-          <span className="inline-flex items-center gap-1 text-[#fceda4]/70">
+          <span className="inline-flex items-center gap-1 text-nai-accent/70">
             <span>Wiki</span>
             <ExternalLink className="h-3 w-3" strokeWidth={1.8} />
           </span>
@@ -264,8 +264,8 @@ const RelatedTagsMock: React.FC = () => {
           90%, 100% { transform: translateX(-132px); }
         }
         @keyframes relatedArrowClick {
-          0%, 72%, 92%, 100% { background: transparent; color: rgba(252, 237, 164, 0.6); transform: scale(1); }
-          80%, 86% { background: rgba(252, 237, 164, 0.12); color: #fceda4; transform: scale(0.92); }
+          0%, 72%, 92%, 100% { background: transparent; color: rgb(var(--nai-accent) / 0.6); transform: scale(1); }
+          80%, 86% { background: rgb(var(--nai-accent) / 0.12); color: rgb(var(--nai-accent)); transform: scale(0.92); }
         }
         @keyframes relatedSkeletonFade {
           0%, 18% { opacity: 0; }
@@ -280,12 +280,12 @@ const RelatedTagsMock: React.FC = () => {
 
       <div className="relative w-[430px] h-[235px]">
         <div
-          className="absolute left-1/2 top-1/2 w-[330px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-[#0f0f0f] shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden"
+          className="absolute left-1/2 top-1/2 w-[330px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-[#0f0f0f] shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden"
           style={{ animation: 'relatedPanelPop 4.8s ease-in-out infinite' }}
         >
           <div className="flex items-start gap-2 px-3 py-2.5">
             <div className="min-w-0 flex-1">
-              <div className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate">black_long_thighhighs</div>
+              <div className="font-tag text-[0.875rem] leading-tight text-nai-accent truncate">black_long_thighhighs</div>
               <div className="text-[0.6875rem] leading-tight text-white/50 mt-1">黑色长过膝袜</div>
             </div>
             <button className="shrink-0 w-6 h-6 flex items-center justify-center text-white/40 rounded-md">
@@ -354,7 +354,7 @@ const RelatedTagsMock: React.FC = () => {
             </div>
             <button
               type="button"
-              className="shrink-0 w-5 h-6 flex items-center justify-center rounded text-[#fceda4]/60"
+              className="shrink-0 w-5 h-6 flex items-center justify-center rounded text-nai-accent/60"
               style={{ animation: 'relatedArrowClick 4.8s ease-in-out infinite' }}
             >
               <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
@@ -402,27 +402,27 @@ const RelatedTagsMockStatic: React.FC = () => (
       <ChevronRight className="w-3 h-3 text-white/30" />
       <span
         className="px-2 py-0.5 rounded text-[0.75rem] font-tag border"
-        style={{ background: '#fceda41a', borderColor: '#fceda44d', color: '#fceda4' }}
+        style={{ background: 'rgb(var(--nai-accent) / 0.1)', borderColor: 'rgb(var(--nai-accent) / 0.3)', color: 'rgb(var(--nai-accent))' }}
       >
         1girl
       </span>
     </div>
 
     {/* 标签面板模拟 */}
-    <div className="w-[420px] max-w-full bg-[#0f0f0f] rounded-lg border border-[#fceda4]/20 overflow-hidden">
+    <div className="w-[420px] max-w-full bg-[#0f0f0f] rounded-lg border border-nai-accent/20 overflow-hidden">
       {/* 标题区 */}
       <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
         <div>
-          <div className="font-tag text-[0.8125rem] leading-tight text-[#fceda4]">1girl</div>
+          <div className="font-tag text-[0.8125rem] leading-tight text-nai-accent">1girl</div>
           <div className="mt-0.5 text-[0.625rem] text-white/40">少女</div>
         </div>
-        <Link2 className="w-3.5 h-3.5 text-[#fceda4]/55" strokeWidth={1.8} />
+        <Link2 className="w-3.5 h-3.5 text-nai-accent/55" strokeWidth={1.8} />
       </div>
 
       {/* 关联推荐行 */}
-      <div className="px-3 py-2 border-t border-[#fceda4]/8">
+      <div className="px-3 py-2 border-t border-nai-accent/8">
         <div className="text-[0.625rem] text-white/40 mb-1.5 flex items-center gap-1">
-          <Sparkles className="w-3 h-3 text-[#fceda4]/60" strokeWidth={2} />
+          <Sparkles className="w-3 h-3 text-nai-accent/60" strokeWidth={2} />
           <span>关联推荐 · Danbooru 共现</span>
         </div>
         <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap">
@@ -440,7 +440,7 @@ const RelatedTagsMockStatic: React.FC = () => (
                   r.added
                     ? 'text-white/25 line-through'
                     : r.strong
-                      ? 'text-[#fceda4]'
+                      ? 'text-nai-accent'
                       : 'text-white/80'
                 }`}
               >
@@ -448,7 +448,7 @@ const RelatedTagsMockStatic: React.FC = () => (
               </span>
               <span
                 className={`text-[0.625rem] ${
-                  r.added ? 'text-white/15' : r.strong ? 'text-[#fceda4]/55' : 'text-white/40'
+                  r.added ? 'text-white/15' : r.strong ? 'text-nai-accent/55' : 'text-white/40'
                 }`}
               >
                 {r.cn}
@@ -461,7 +461,7 @@ const RelatedTagsMockStatic: React.FC = () => (
 
     <div className="flex items-center gap-3 text-[0.625rem] text-white/45">
       <span className="flex items-center gap-1">
-        <span className="w-2 h-2 rounded-full bg-[#fceda4]" /> 强相关
+        <span className="w-2 h-2 rounded-full bg-nai-accent" /> 强相关
       </span>
       <span className="flex items-center gap-1">
         <span className="w-2 h-2 rounded-full bg-white/45" /> 普通
@@ -499,26 +499,26 @@ const ChineseHitMock: React.FC = () => {
         }
         @keyframes chineseCountGlow {
           0%, 42% { color: rgba(255,255,255,0.45); }
-          56%, 100% { color: #fceda4; }
+          56%, 100% { color: rgb(var(--nai-accent)); }
         }
       `}</style>
 
       <div className="w-[430px] max-w-full">
-        <div className="px-3 py-2 rounded-md border border-[#fceda4]/30 bg-black/40 flex items-center gap-2">
+        <div className="px-3 py-2 rounded-md border border-nai-accent/30 bg-black/40 flex items-center gap-2">
           <span className="text-[0.625rem] text-white/40 font-mono">输入</span>
           <span
             className="inline-flex items-center font-tag text-[0.875rem] text-white overflow-hidden whitespace-nowrap"
             style={{ animation: 'chineseTyping 4.6s steps(7, end) infinite' }}
           >
             <span>长发校服少女</span>
-            <span className="ml-1 inline-block w-px h-4 bg-[#fceda4] animate-pulse" />
+            <span className="ml-1 inline-block w-px h-4 bg-nai-accent animate-pulse" />
           </span>
         </div>
       </div>
 
-      <div className="w-[430px] max-w-full bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden">
+      <div className="w-[430px] max-w-full bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden">
         <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
-          <span className="text-[0.6875rem] text-[#fceda4]/80">中文语义匹配</span>
+          <span className="text-[0.6875rem] text-nai-accent/80">中文语义匹配</span>
           <span className="text-[0.625rem] tabular-nums" style={{ animation: 'chineseCountGlow 4.6s ease-in-out infinite' }}>
             命中 8 条
           </span>
@@ -551,10 +551,10 @@ const ChineseHitMockStatic: React.FC = () => (
   <div className="h-full w-full flex flex-col items-center justify-center gap-3 px-4">
     {/* 输入框模拟 */}
     <div className="w-[420px] max-w-full">
-      <div className="px-3 py-2 rounded-md border border-[#fceda4]/30 bg-black/40 flex items-center gap-2">
+      <div className="px-3 py-2 rounded-md border border-nai-accent/30 bg-black/40 flex items-center gap-2">
         <span className="text-[0.625rem] text-white/40 font-mono">输入</span>
         <span className="font-tag text-[0.875rem] text-white">长发校服</span>
-        <span className="ml-auto inline-block w-px h-4 bg-[#fceda4] animate-pulse" />
+        <span className="ml-auto inline-block w-px h-4 bg-nai-accent animate-pulse" />
       </div>
     </div>
 
@@ -571,8 +571,8 @@ const ChineseHitMockStatic: React.FC = () => (
         </div>
       </div>
       {/* 新版 */}
-      <div className="relative bg-[#0f0f0f] rounded-md border border-[#fceda4]/20 overflow-hidden">
-        <div className="px-2 py-1 text-[0.625rem] text-[#fceda4]/80 border-b border-[#fceda4]/10 flex items-center justify-between">
+      <div className="relative bg-[#0f0f0f] rounded-md border border-nai-accent/20 overflow-hidden">
+        <div className="px-2 py-1 text-[0.625rem] text-nai-accent/80 border-b border-nai-accent/10 flex items-center justify-between">
           <span>新版 · DanbooruSearch</span>
           <span>命中 4 条</span>
         </div>
@@ -653,7 +653,7 @@ const SectionedListMock: React.FC = () => {
         }
       `}</style>
 
-      <div className="w-[320px] max-w-full bg-[#0f0f0f] rounded-md border border-[#fceda4]/10 overflow-hidden shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85)]">
+      <div className="w-[320px] max-w-full bg-[#0f0f0f] rounded-md border border-nai-accent/10 overflow-hidden shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85)]">
         {sections.map(sec => {
           const SecIcon = sec.Icon;
           return (
@@ -728,7 +728,7 @@ const SectionedListMockStatic: React.FC = () => {
 
   return (
     <div className="h-full w-full flex items-center justify-center px-4">
-      <div className="w-[280px] bg-[#0f0f0f] rounded-md border border-[#fceda4]/10 overflow-hidden flex flex-col">
+      <div className="w-[280px] bg-[#0f0f0f] rounded-md border border-nai-accent/10 overflow-hidden flex flex-col">
         {sections.map((sec, si) => {
           const SecIcon = sec.Icon;
           return (
@@ -807,9 +807,9 @@ const TagManagerOverviewMock: React.FC = () => (
         94%, 100% { opacity: 0; transform: scale(0.3); }
       }
       @keyframes tmNewIconGlow {
-        0%, 46%, 100% { box-shadow: 0 0 0 0 rgba(252,237,164,0); }
-        54%, 66% { box-shadow: 0 0 0 6px rgba(252,237,164,0.2), 0 0 22px 6px rgba(252,237,164,0.4); }
-        74%, 86% { box-shadow: 0 0 0 0 rgba(252,237,164,0); }
+        0%, 46%, 100% { box-shadow: 0 0 0 0 rgb(var(--nai-accent) / 0); }
+        54%, 66% { box-shadow: 0 0 0 6px rgb(var(--nai-accent) / 0.2), 0 0 22px 6px rgb(var(--nai-accent) / 0.4); }
+        74%, 86% { box-shadow: 0 0 0 0 rgb(var(--nai-accent) / 0); }
       }
       @keyframes tmTooltipIn {
         0%, 66% { opacity: 0; transform: translate(-50%, 6px); }
@@ -824,7 +824,7 @@ const TagManagerOverviewMock: React.FC = () => (
       <div className="bg-nai-panel rounded-lg border border-gray-700/60 px-3 py-2.5 flex items-center gap-2 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]">
         {/* 左侧 提示/排除 Tab pill */}
         <div className="inline-flex items-center gap-0.5 p-0.5 rounded-full bg-nai-input border border-gray-700">
-          <span className="inline-flex items-center gap-1 px-2.5 h-6 rounded-full bg-[#fceda4] text-black text-[0.625rem] font-bold">
+          <span className="inline-flex items-center gap-1 px-2.5 h-6 rounded-full bg-nai-accent text-black text-[0.625rem] font-bold">
             <Sparkles className="w-3 h-3" /> 提示
           </span>
           <span className="inline-flex items-center gap-1 px-2.5 h-6 text-[0.625rem] font-bold text-white/55">
@@ -853,7 +853,7 @@ const TagManagerOverviewMock: React.FC = () => (
               className="w-7 h-7 rounded-md grid place-items-center"
               style={{ animation: 'tmNewIconIn 7s ease-in-out infinite, tmNewIconGlow 7s ease-in-out infinite' }}
             >
-              <Tags className="w-5 h-5 text-[#fceda4]" />
+              <Tags className="w-5 h-5 text-nai-accent" />
             </div>
             <div
               className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 px-2 py-1 rounded bg-black/90 border border-white/15 text-[0.625rem] text-white whitespace-nowrap z-10"
@@ -1116,7 +1116,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
         {/* 头部：版本徽章 + 当前章节 + 关闭 */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-700/50">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="shrink-0 px-2 py-0.5 rounded bg-[#fceda4]/12 border border-[#fceda4]/30 text-[0.6875rem] font-mono text-[#fceda4]">
+            <span className="shrink-0 px-2 py-0.5 rounded bg-nai-accent/12 border border-nai-accent/30 text-[0.6875rem] font-mono text-nai-accent">
               {headerVersion}
             </span>
           </div>
@@ -1133,7 +1133,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 pt-5 pb-3">
             <div className="flex items-center gap-2.5">
-              <span className="shrink-0 text-base font-mono font-semibold text-[#fceda4]">
+              <span className="shrink-0 text-base font-mono font-semibold text-nai-accent">
                 {step + 1}.
               </span>
               <h3 className="text-base font-semibold text-white leading-tight">{current.title}</h3>
@@ -1169,7 +1169,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
                   key={s.key}
                   onClick={() => setStep(i)}
                   className={`h-1.5 rounded-full transition-all duration-200 ${
-                    active ? 'w-5 bg-[#fceda4]' : 'w-1.5 bg-white/25 hover:bg-white/40'
+                    active ? 'w-5 bg-nai-accent' : 'w-1.5 bg-white/25 hover:bg-white/40'
                   }`}
                   title={s.badgeText}
                 />

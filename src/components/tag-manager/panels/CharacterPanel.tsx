@@ -830,7 +830,7 @@ export const PrimaryButton: React.FC<{
     onClick={onClick}
     disabled={disabled}
     title={title}
-    className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md text-[0.8125rem] font-bold bg-nai-accent text-[#1a1410] shadow-[0_4px_12px_-4px_rgba(252,237,164,0.4)] hover:bg-nai-accent-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-nai-accent whitespace-nowrap"
+    className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md text-[0.8125rem] font-bold bg-nai-accent text-[#1a1410] shadow-[0_4px_12px_-4px_rgb(var(--nai-accent)_/_0.4)] hover:bg-nai-accent-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-nai-accent whitespace-nowrap"
   >
     {children}
   </button>

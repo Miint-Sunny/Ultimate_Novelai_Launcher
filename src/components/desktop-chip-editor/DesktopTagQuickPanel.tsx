@@ -83,7 +83,7 @@ export function DesktopTagQuickPanel({
     return createPortal(
       <div
         ref={tagPanelRef}
-        className="fixed z-[99999] chip-tag-quick-panel bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85)] border border-[#fceda4]/20 overflow-hidden"
+        className="fixed z-[99999] chip-tag-quick-panel bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85)] border border-nai-accent/20 overflow-hidden"
         style={{ top: tagPanel.screenY, left: tagPanel.screenX, minWidth: 220, maxWidth: 340 }}
         onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
       >
@@ -131,7 +131,7 @@ export function DesktopTagQuickPanel({
       style={{ top: tagPanel.screenY, left: tagPanel.screenX, minWidth: 300, maxWidth: 420 }}
       onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
     >
-      <div className="bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden">
+      <div className="bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden">
         <div className="flex items-start gap-2 px-3 py-2.5">
           <div
             className="min-w-0 flex-1 cursor-text"
@@ -145,7 +145,7 @@ export function DesktopTagQuickPanel({
             }}
           >
             <div className="flex items-baseline gap-1.5 min-w-0">
-              <span className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate hover:text-[#fceda4]/85 transition-colors" title={tagPanel.tag}>
+              <span className="font-tag text-[0.875rem] leading-tight text-nai-accent truncate hover:text-nai-accent/85 transition-colors" title={tagPanel.tag}>
                 {tagPanel.tag.replace(/ /g, '_')}
               </span>
               {tagPanelPostCount != null && tagPanelPostCount > 0 && (
@@ -201,7 +201,7 @@ export function DesktopTagQuickPanel({
               return (
                 <button
                   key={weight}
-                  className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
+                  className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-nai-accent/60' : ''}`}
                   onClick={() => { setNumWeight(weight); panelActions.setNumericWeight(weight); }}
                   title={`${weight}::tag::`}
                 >

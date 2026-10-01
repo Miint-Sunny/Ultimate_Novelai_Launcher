@@ -62,7 +62,7 @@ export function HoverTagTranslationOverlay({
     const isMultiLine = Math.abs(startCoords.top - endCoords.top) > 5;
     const underlineStyle: CSSProperties = {
       height: 0,
-      borderBottom: '1.5px dashed rgba(252, 237, 164, 0.6)',
+      borderBottom: '1.5px dashed rgb(var(--nai-accent) / 0.6)',
       pointerEvents: 'none',
       position: 'absolute',
     };
@@ -70,12 +70,12 @@ export function HoverTagTranslationOverlay({
     const renderTooltip = (anchorLeft: number, anchorBottom: number) => (
       tagTooltip ? (
         <div className="absolute pointer-events-none z-30" style={{ left: anchorLeft, top: anchorBottom + 4 }}>
-          <div className="px-2 py-1 bg-[#1a1a2e]/95 text-[#fceda4]/90 text-xs rounded shadow-md whitespace-nowrap border border-[#fceda4]/15">{tagTooltip.translation}</div>
+          <div className="px-2 py-1 bg-[#1a1a2e]/95 text-nai-accent/90 text-xs rounded shadow-md whitespace-nowrap border border-nai-accent/15">{tagTooltip.translation}</div>
         </div>
       ) : isLoadingTranslation ? (
         <div className="absolute pointer-events-none z-30" style={{ left: anchorLeft, top: anchorBottom + 4 }}>
-          <div className="px-2 py-1 bg-[#1a1a2e]/95 text-[#fceda4]/90 text-xs rounded shadow-md whitespace-nowrap flex items-center border border-[#fceda4]/15">
-            <span className="inline-block w-3 h-3 border-2 border-[#fceda4]/25 border-t-[#fceda4]/70 rounded-full animate-spin" />
+          <div className="px-2 py-1 bg-[#1a1a2e]/95 text-nai-accent/90 text-xs rounded shadow-md whitespace-nowrap flex items-center border border-nai-accent/15">
+            <span className="inline-block w-3 h-3 border-2 border-nai-accent/25 border-t-nai-accent/70 rounded-full animate-spin" />
           </div>
         </div>
       ) : null
@@ -135,8 +135,8 @@ export function SelectedTagHighlight({
 
     const isMultiLine = Math.abs(startCoords.top - endCoords.top) > 5;
     const selectedBg: CSSProperties = {
-      backgroundColor: 'rgba(252, 237, 164, 0.12)',
-      borderBottom: '2px solid rgba(252, 237, 164, 0.8)',
+      backgroundColor: 'rgb(var(--nai-accent) / 0.12)',
+      borderBottom: '2px solid rgb(var(--nai-accent) / 0.8)',
       pointerEvents: 'none',
       position: 'absolute',
       borderRadius: '2px 2px 0 0',

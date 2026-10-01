@@ -50,7 +50,7 @@ function getTypeInfo(suggestion: TagSuggestion) {
   if (suggestion.isOC) return { color: '#86efac', Icon: Users };
   if (suggestion.isOrigin) return { color: '#67e8f9', Icon: Dices };
   if (suggestion.source === 'local') return { color: '#7dd3fc', Icon: User };
-  if (suggestion.verified && !suggestion.postCount) return { color: '#fceda4', Icon: Sparkles };
+  if (suggestion.verified && !suggestion.postCount) return { color: 'rgb(var(--nai-accent))', Icon: Sparkles };
   return { color: '#fcd34d', Icon: Tag };
 }
 
@@ -83,7 +83,7 @@ export function SuggestionDropdown({
   return createPortal(
     <div
       ref={suggestionsRef}
-      className="suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden flex flex-col"
+      className="suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden flex flex-col"
       style={computeDropdownStyle(cursorPosition, suggestions.length, sections, isMulti)}
     >
       {sections.map((sec) => (
@@ -163,7 +163,7 @@ function SuggestionRow({
   if (suggestion.isAiLoading) {
     return (
       <div key="__ai_loading__" data-sugg-idx={index} className="px-3 py-2 flex items-center gap-2 text-[#8b949e] border-l-2 border-transparent">
-        <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
+        <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-nai-accent/20 border-t-nai-accent/60 rounded-full animate-spin" />
         <span className="text-[0.6875rem]">AI 推荐加载中…</span>
       </div>
     );
@@ -221,7 +221,7 @@ function SuggestionRow({
         ) : (
           <button
             type="button"
-            className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681] hover:text-[#fceda4] hover:bg-white/[0.08] transition-colors inline-flex items-center justify-center`}
+            className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681] hover:text-nai-accent hover:bg-white/[0.08] transition-colors inline-flex items-center justify-center`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => e.stopPropagation()}
             onMouseEnter={(e) => {

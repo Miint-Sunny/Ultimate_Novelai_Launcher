@@ -248,7 +248,7 @@ export function TokenMeter({
   return (
     <div className="flex-1 relative cursor-help h-[24px] bg-gray-800/80 rounded-full shadow-inner border border-gray-700/50 flex items-center justify-end px-3 overflow-hidden">
       <div
-        className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ease-out ${totalTokenCount > maxTokens ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse' : 'bg-nai-accent shadow-[0_0_8px_rgba(252,237,164,0.4)]'}`}
+        className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ease-out ${totalTokenCount > maxTokens ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse' : 'bg-nai-accent shadow-[0_0_8px_rgb(var(--nai-accent)_/_0.4)]'}`}
         style={{ width: `${Math.min((totalTokenCount / maxTokens) * 100, 100)}%` }}
       />
       <div className={`relative z-10 text-xs font-mono tracking-wide drop-shadow-sm ${totalTokenCount > maxTokens ? 'text-white font-bold drop-shadow' : 'text-gray-500 font-semibold'}`}>
@@ -303,14 +303,14 @@ export function FloatingAgentButton({
   return (
     <button
       aria-label={disabled ? `AI 助手不可用：${disabledReason || '当前后端不支持'}` : 'AI 助手'}
-      className={`relative p-1.5 -mr-1.5 rounded-lg transition-colors shrink-0 flex items-center justify-center ${disabled ? 'text-gray-600 cursor-not-allowed' : isOpen ? 'bg-nai-accent/20 text-nai-accent' : isGenerating ? 'text-nai-accent bg-nai-accent/10 shadow-[0_0_0_1px_rgba(252,237,164,0.18)]' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+      className={`relative p-1.5 -mr-1.5 rounded-lg transition-colors shrink-0 flex items-center justify-center ${disabled ? 'text-gray-600 cursor-not-allowed' : isOpen ? 'bg-nai-accent/20 text-nai-accent' : isGenerating ? 'text-nai-accent bg-nai-accent/10 shadow-[0_0_0_1px_rgb(var(--nai-accent)_/_0.18)]' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
       disabled={disabled}
       onClick={onClick}
       title={disabled ? disabledReason : isOpen ? '关闭AI助手' : isGenerating ? 'AI 正在思考，点击查看' : '唤起AI助手'}
     >
       <Bot className="w-[22px] h-[22px]" />
       {isGenerating && !isOpen && (
-        <span className="absolute -right-1 -top-1 w-4 h-4 rounded-full bg-nai-panel border border-nai-accent/50 flex items-center justify-center shadow-[0_0_10px_rgba(252,237,164,0.35)]">
+        <span className="absolute -right-1 -top-1 w-4 h-4 rounded-full bg-nai-panel border border-nai-accent/50 flex items-center justify-center shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.35)]">
           <Loader2 className="w-2.5 h-2.5 text-nai-accent animate-spin" />
         </span>
       )}

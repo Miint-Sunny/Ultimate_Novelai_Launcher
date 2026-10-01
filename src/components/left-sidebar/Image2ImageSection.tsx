@@ -138,7 +138,7 @@ export function Image2ImageSection({
                   step="0.01"
                   value={strength}
                   onChange={(event) => onStrengthChange(Number(event.target.value))}
-                  className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-nai-accent hover:accent-[#ebd576]"
+                  className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-nai-accent hover:accent-nai-accent-hover"
                 />
               </div>
 
@@ -157,7 +157,7 @@ export function Image2ImageSection({
                     step="0.01"
                     value={noise}
                     onChange={(event) => onNoiseChange(Number(event.target.value))}
-                    className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-nai-accent hover:accent-[#ebd576]"
+                    className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-nai-accent hover:accent-nai-accent-hover"
                   />
                 </div>
               )}

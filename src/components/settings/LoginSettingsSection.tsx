@@ -144,7 +144,7 @@ export const LoginSettingsSection: React.FC<LoginSettingsSectionProps> = ({
               <button
                 onClick={handleGenerateAuthCode}
                 disabled={isGeneratingCode}
-                className="w-full py-3 bg-nai-accent text-black font-bold rounded-lg hover:bg-[#ebd576] disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                className="w-full py-3 bg-nai-accent text-black font-bold rounded-lg hover:bg-nai-accent-hover disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
               >
                 {isGeneratingCode ? (
                   <>

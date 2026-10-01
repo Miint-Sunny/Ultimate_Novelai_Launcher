@@ -104,7 +104,7 @@ export function VibeTagSettingsDialog({
                 <button
                   onClick={submitNewTagSetting}
                   disabled={!canCreateTagSetting}
-                  className="px-3 py-1.5 bg-nai-accent hover:bg-[#ebd576] text-black text-xs font-bold rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                  className="px-3 py-1.5 bg-nai-accent hover:bg-nai-accent-hover text-black text-xs font-bold rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
                 >
                   <Check className="w-3.5 h-3.5" />
                   创建

@@ -58,13 +58,13 @@ export function TagQuickPanel({
   return createPortal(
     <div
       ref={panelRef}
-      className="fixed z-[99999] tag-quick-panel bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden"
+      className="fixed z-[99999] tag-quick-panel bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden"
       style={{ top: panel.screenY, left: panel.screenX, minWidth: 300, maxWidth: 420 }}
       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
       <div className="flex items-start gap-2 px-3 py-2.5">
         <div className="min-w-0 flex-1">
-          <div className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate" title={panel.tag}>
+          <div className="font-tag text-[0.875rem] leading-tight text-nai-accent truncate" title={panel.tag}>
             {panel.tag.replace(/ /g, '_')}
           </div>
           <div className="text-[0.6875rem] leading-tight text-white/50 mt-1 relative">
@@ -100,7 +100,7 @@ export function TagQuickPanel({
             return (
               <button
                 key={w}
-                className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
+                className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-nai-accent/60' : ''}`}
                 onClick={() => { setNumWeight(w); actions.setNumericWeight(w); }}
                 title={`${w}::tag::`}
               >

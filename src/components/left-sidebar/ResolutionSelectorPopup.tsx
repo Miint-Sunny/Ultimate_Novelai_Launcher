@@ -202,7 +202,7 @@ export function ResolutionSelectorPopup({
             />
 
             <button
-              className="ml-auto bg-nai-accent hover:bg-[#ebd576] text-black p-1 rounded transition-colors"
+              className="ml-auto bg-nai-accent hover:bg-nai-accent-hover text-black p-1 rounded transition-colors"
               onClick={() => {
                 const matchedPreset = [...RESOLUTIONS, ...LARGE_RESOLUTIONS, ...WALLPAPER_RESOLUTIONS]
                   .find((preset) => preset.width === customWidth && preset.height === customHeight);

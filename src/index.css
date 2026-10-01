@@ -314,8 +314,8 @@ input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
   background: linear-gradient(
     to right,
-    #fceda4 0,
-    #fceda4 var(--range-pct, 50%),
+    rgb(var(--nai-accent)) 0,
+    rgb(var(--nai-accent)) var(--range-pct, 50%),
     rgb(var(--scroll-thumb)) var(--range-pct, 50%),
     rgb(var(--scroll-thumb)) 100%
   );
@@ -333,7 +333,7 @@ input[type="range"]::-moz-range-track {
 /* Firefox 已填充的部分（thumb 左侧黄色） */
 input[type="range"]::-moz-range-progress {
   height: 4px;
-  background: #fceda4;
+  background: rgb(var(--nai-accent));
   border-radius: 9999px;
 }
 
@@ -344,7 +344,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fceda4;
+  background: rgb(var(--nai-accent));
   margin-top: -5px; /* 让 thumb 居中于 4px 轨道 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   cursor: pointer;
@@ -357,7 +357,7 @@ input[type="range"]::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fceda4;
+  background: rgb(var(--nai-accent));
   border: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   cursor: pointer;
@@ -376,10 +376,10 @@ input[type="range"]:hover::-moz-range-thumb {
 
 /* focus 时柔和外圈 */
 input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(252, 237, 164, 0.25), 0 1px 3px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 4px rgb(var(--nai-accent) / 0.25), 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 input[type="range"]:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 4px rgba(252, 237, 164, 0.25), 0 1px 3px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 4px rgb(var(--nai-accent) / 0.25), 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 /* 禁用态 */
@@ -1066,11 +1066,11 @@ body,
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .aa-input-box:focus-within {
-  border-color: rgba(252, 237, 164, 0.55) !important;
+  border-color: rgb(var(--nai-accent) / 0.55) !important;
   /* focus 态：克制的 3px 光环 + 一点偏下的柔光 + 保留默认底部投影 */
   box-shadow:
-    0 0 0 3px rgba(252, 237, 164, 0.08),
-    0 4px 18px -8px rgba(252, 237, 164, 0.18),
+    0 0 0 3px rgb(var(--nai-accent) / 0.08),
+    0 4px 18px -8px rgb(var(--nai-accent) / 0.18),
     0 10px 28px -8px rgba(0, 0, 0, 0.65),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -1100,7 +1100,7 @@ body,
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #fceda4;
+  background: rgb(var(--nai-accent));
   animation: aa-pulse-dot 1.4s ease-in-out infinite;
 }
 

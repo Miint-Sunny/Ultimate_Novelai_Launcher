@@ -20,7 +20,7 @@ interface CropSelectionOverlayProps {
 
 type ResizeMode = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-const ACCENT = '#fceda4';
+const ACCENT = 'rgb(var(--nai-accent))';
 const CORNER_LEN = 28;
 const CORNER_W = 5;
 const EDGE_LEN = 44;
@@ -244,10 +244,10 @@ export function CropSelectionOverlay({
           }}
         />
       )}
-      <div style={{ position: 'absolute', top: `${ry}px`, left: `${rx + rw / 3}px`, width: '1px', height: `${rh}px`, background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', top: `${ry}px`, left: `${rx + rw * 2 / 3}px`, width: '1px', height: `${rh}px`, background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', top: `${ry + rh / 3}px`, left: `${rx}px`, width: `${rw}px`, height: '1px', background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', top: `${ry + rh * 2 / 3}px`, left: `${rx}px`, width: `${rw}px`, height: '1px', background: 'rgba(252, 237, 164, 0.18)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: `${ry}px`, left: `${rx + rw / 3}px`, width: '1px', height: `${rh}px`, background: 'rgb(var(--nai-accent) / 0.18)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: `${ry}px`, left: `${rx + rw * 2 / 3}px`, width: '1px', height: `${rh}px`, background: 'rgb(var(--nai-accent) / 0.18)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: `${ry + rh / 3}px`, left: `${rx}px`, width: `${rw}px`, height: '1px', background: 'rgb(var(--nai-accent) / 0.18)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: `${ry + rh * 2 / 3}px`, left: `${rx}px`, width: `${rw}px`, height: '1px', background: 'rgb(var(--nai-accent) / 0.18)', pointerEvents: 'none' }} />
       {cornerHandle('nw', 'nwse-resize', rx, ry)}
       {cornerHandle('ne', 'nesw-resize', rx + rw, ry)}
       {cornerHandle('sw', 'nesw-resize', rx, ry + rh)}
@@ -261,7 +261,7 @@ export function CropSelectionOverlay({
           position: 'absolute',
           top: `${ry - 24}px`,
           left: `${rx}px`,
-          background: 'rgba(252, 237, 164, 0.95)',
+          background: 'rgb(var(--nai-accent) / 0.95)',
           color: 'black',
           fontSize: '0.6875rem',
           fontWeight: 600,

@@ -468,7 +468,7 @@ export const HistoryDock: React.FC = () => {
   const generatingTile = (isGenerating || isQueuing) && (
     <div
       className={`aspect-square h-full shrink-0 bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative transition-all ${!viewingHistory
-        ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+        ? 'border-nai-accent shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]'
         : 'border-transparent hover:border-gray-600'
         }`}
       onClick={() => setViewingHistory(false)}
@@ -517,7 +517,7 @@ export const HistoryDock: React.FC = () => {
       <div
         key={item.id}
         className={`aspect-square ${inGrid ? '' : 'h-full shrink-0'} bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative group transition-all ${isActive
-          ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+          ? 'border-nai-accent shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]'
           : 'border-transparent hover:border-gray-600'
           }`}
         onClick={() => (selectable ? toggleSelect(item.id) : selectHistoryItem(item.id))}
@@ -782,7 +782,7 @@ export const HistoryDock: React.FC = () => {
                 {history.map((item) => (
                   <div
                     key={item.id}
-                    className={`aspect-square bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative group transition-all ${selectedItems.has(item.id) ? 'border-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]' : 'border-transparent hover:border-gray-600'
+                    className={`aspect-square bg-gray-800 rounded-lg border-2 cursor-pointer overflow-hidden relative group transition-all ${selectedItems.has(item.id) ? 'border-nai-accent shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]' : 'border-transparent hover:border-gray-600'
                       }`}
                     onClick={() => {
                       if (isSelectMode) {

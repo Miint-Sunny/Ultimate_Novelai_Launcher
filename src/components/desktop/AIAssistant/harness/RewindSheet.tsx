@@ -53,7 +53,7 @@ export const RewindSheet: React.FC<Props> = ({ checkpoints, busy, onBack, onConf
             <div key={cp.userItemId} role="option" aria-selected={on}
               onClick={() => setSelected(cp.userItemId)} onDoubleClick={() => { setSelected(cp.userItemId); confirm(cp.userItemId); }}
               style={{ padding: 10, borderRadius: 'var(--nai-agent-radius-lg)', cursor: 'pointer',
-                background: on ? 'rgba(252,237,164,0.10)' : 'var(--nai-agent-card-bg)',
+                background: on ? 'rgb(var(--nai-accent) / 0.10)' : 'var(--nai-agent-card-bg)',
                 border: `1px solid ${on ? C.accent : 'var(--nai-agent-chip-border)'}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '0.65625rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: on ? 'var(--nai-agent-primary-fill)' : 'var(--nai-agent-chip-bg)', color: on ? 'var(--nai-agent-on-primary)' : C.text }}>#{cp.index}</span>

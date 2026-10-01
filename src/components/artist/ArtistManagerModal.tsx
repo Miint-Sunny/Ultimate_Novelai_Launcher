@@ -104,7 +104,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
             </button>
             <button
               onClick={m.openCreateArtist}
-              className="h-8 px-3 bg-nai-accent hover:bg-[#ebd576] text-black text-sm font-bold rounded flex items-center justify-center gap-1.5 transition-colors shadow-sm whitespace-nowrap"
+              className="h-8 px-3 bg-nai-accent hover:bg-nai-accent-hover text-black text-sm font-bold rounded flex items-center justify-center gap-1.5 transition-colors shadow-sm whitespace-nowrap"
               title="新建配置"
             >
               <Plus className="w-4 h-4" />
@@ -411,7 +411,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
           </button>
           <button
             onClick={onConfirmSelection}
-            className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-[#ebd576] transition-colors shadow-sm"
+            className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-nai-accent-hover transition-colors shadow-sm"
           >
             确认选择
           </button>
@@ -559,7 +559,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
                         m.saveArtistTagPool(merged);
                         setTagSettingsNewName(''); setTagSettingsCreating(false);
                       }} disabled={!canCreate}
-                        className="px-3 py-1.5 bg-nai-accent hover:bg-[#ebd576] text-black text-xs font-bold rounded-md disabled:opacity-30 flex items-center gap-1">
+                        className="px-3 py-1.5 bg-nai-accent hover:bg-nai-accent-hover text-black text-xs font-bold rounded-md disabled:opacity-30 flex items-center gap-1">
                         <Check className="w-3.5 h-3.5" /> 创建
                       </button>
                     </div>
@@ -987,7 +987,7 @@ const ArtistCreateEditOverlay: React.FC<{ manager: UseArtistManagerReturn }> = (
                 <button
                   onClick={m.handleGenerateSingleArtistPreview}
                   disabled={!m.newArtistPrompt || m.isGeneratingArtistPreviews || m.newArtistPreviews.length >= 4}
-                  className="flex-1 py-2 bg-nai-accent hover:bg-[#ebd576] disabled:opacity-50 disabled:cursor-not-allowed text-black text-sm font-bold rounded flex items-center justify-center gap-2 transition-colors"
+                  className="flex-1 py-2 bg-nai-accent hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-black text-sm font-bold rounded flex items-center justify-center gap-2 transition-colors"
                 >
                   <Wand2 className="w-4 h-4" />
                   {m.newArtistPreviews.length >= 4 ? '当前槽位已满' : '使用预设生成一张'}
@@ -1074,7 +1074,7 @@ const ArtistCreateEditOverlay: React.FC<{ manager: UseArtistManagerReturn }> = (
               <button
                 onClick={() => m.handleSaveArtist()}
                 disabled={!m.newArtistName || m.newArtistPreviews.length === 0 || m.isSavingArtist}
-                className="px-4 py-1.5 bg-nai-accent hover:bg-[#ebd576] disabled:opacity-50 disabled:cursor-not-allowed text-black text-sm font-bold rounded flex items-center gap-1.5 shadow-lg hover:shadow-xl transition-all"
+                className="px-4 py-1.5 bg-nai-accent hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-black text-sm font-bold rounded flex items-center gap-1.5 shadow-lg hover:shadow-xl transition-all"
                 title=""
               >
                 {m.isSavingArtist ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -1094,7 +1094,7 @@ const ArtistCreateEditOverlay: React.FC<{ manager: UseArtistManagerReturn }> = (
                 <button
                   onClick={() => m.handleSaveArtist('local')}
                   disabled={!m.newArtistName || m.newArtistPreviews.length === 0 || m.isSavingArtist}
-                  className="px-4 py-1.5 bg-nai-accent hover:bg-[#ebd576] disabled:opacity-50 disabled:cursor-not-allowed text-black text-sm font-bold rounded flex items-center gap-1.5 shadow-lg hover:shadow-xl transition-all"
+                  className="px-4 py-1.5 bg-nai-accent hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-black text-sm font-bold rounded flex items-center gap-1.5 shadow-lg hover:shadow-xl transition-all"
                   title=""
                 >
                   {m.isSavingArtist ? <Loader2 className="w-4 h-4 animate-spin" /> : <HardDrive className="w-4 h-4" />}

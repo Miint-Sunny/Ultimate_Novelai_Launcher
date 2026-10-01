@@ -61,7 +61,7 @@ function getTypeInfo(suggestion: TagSuggestion) {
   if (suggestion.isOC) return { color: '#86efac', Icon: Users };
   if (suggestion.isOrigin) return { color: '#67e8f9', Icon: Dices };
   if (suggestion.source === 'local') return { color: '#7dd3fc', Icon: User };
-  if (suggestion.verified && !suggestion.postCount) return { color: '#fceda4', Icon: Sparkles };
+  if (suggestion.verified && !suggestion.postCount) return { color: 'rgb(var(--nai-accent))', Icon: Sparkles };
   return { color: '#fcd34d', Icon: Tag };
 }
 
@@ -97,7 +97,7 @@ export function DesktopSuggestionDropdown({
   return createPortal(
     <div
       ref={suggestionsRef}
-      className="chip-suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden flex flex-col"
+      className="chip-suggestion-dropdown fixed z-[99999] bg-[#0f0f0f] rounded-md shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden flex flex-col"
       style={computeDropdownStyle(suggestionPos, suggestions.length, sections, isMulti, showSourceBar ? SOURCE_BAR_H : 0)}
     >
       {sections.map((section) => (
@@ -105,7 +105,7 @@ export function DesktopSuggestionDropdown({
           {section.key === 'danbooru' && showSourceBar && (
             <div
               className="flex items-center gap-1 px-2 shrink-0 select-none"
-              style={{ height: SOURCE_BAR_H, borderBottom: '1px solid rgba(252,237,164,0.08)' }}
+              style={{ height: SOURCE_BAR_H, borderBottom: '1px solid rgb(var(--nai-accent) / 0.08)' }}
               onMouseDown={(e) => e.preventDefault()}
             >
               <span className="text-[0.625rem] text-white/40 mr-1">标签来源</span>
@@ -120,7 +120,7 @@ export function DesktopSuggestionDropdown({
                     onClick={() => { if (!on) onChangeTagSource?.(opt.id); }}
                     className="text-[0.625rem] leading-none px-2 py-[3px] rounded-full transition-colors"
                     style={on
-                      ? { background: 'rgba(252,237,164,0.9)', color: '#1a1a1a', fontWeight: 700 }
+                      ? { background: 'rgb(var(--nai-accent) / 0.9)', color: '#1a1a1a', fontWeight: 700 }
                       : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)' }}
                   >
                     {opt.label}
@@ -206,7 +206,7 @@ function SuggestionRow({
   if (suggestion.isAiLoading) {
     return (
       <div key="__ai_loading__" data-sugg-idx={index} className="px-3 py-2 flex items-center gap-2 text-[#8b949e] border-l-2 border-transparent">
-        <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
+        <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-nai-accent/20 border-t-nai-accent/60 rounded-full animate-spin" />
         <span className="text-[0.6875rem]">AI 推荐加载中…</span>
       </div>
     );
@@ -267,7 +267,7 @@ function SuggestionRow({
         ) : (
           <button
             type="button"
-            className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681] hover:text-[#fceda4] hover:bg-white/[0.08] transition-colors inline-flex items-center justify-center`}
+            className={`shrink-0 ${countText ? '' : 'ml-auto'} p-2 rounded text-[#6e7681] hover:text-nai-accent hover:bg-white/[0.08] transition-colors inline-flex items-center justify-center`}
             onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => event.stopPropagation()}
             onMouseEnter={(event) => {

@@ -213,7 +213,7 @@ export function VibeImportDialog({
           <button
             onClick={confirmVibeImport}
             disabled={importItems.length === 0}
-            className="flex-1 py-2.5 bg-nai-accent hover:bg-[#ebd576] text-black text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
+            className="flex-1 py-2.5 bg-nai-accent hover:bg-nai-accent-hover text-black text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
           >
             确认导入{importItems.length > 1 ? ` (${importItems.length})` : ''}
           </button>

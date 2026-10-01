@@ -163,7 +163,7 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
                 取消
               </button>
               <button onClick={() => m.handleSaveOC('public')} disabled={!m.newOCName || !m.newOCPositive || m.isSavingOC}
-                className="px-4 py-1.5 bg-nai-accent hover:bg-[#ebd576] disabled:opacity-50 text-black text-sm font-bold rounded flex items-center gap-1">
+                className="px-4 py-1.5 bg-nai-accent hover:bg-nai-accent-hover disabled:opacity-50 text-black text-sm font-bold rounded flex items-center gap-1">
                 {m.isSavingOC ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 保存
               </button>
@@ -191,7 +191,7 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
               <Dices className="w-4 h-4" /> 随机
             </button>
             <button onClick={m.openCreateOC}
-              className="px-3 py-1.5 bg-nai-accent hover:bg-[#ebd576] text-black text-sm font-bold rounded flex items-center gap-1.5">
+              className="px-3 py-1.5 bg-nai-accent hover:bg-nai-accent-hover text-black text-sm font-bold rounded flex items-center gap-1.5">
               <Plus className="w-4 h-4" /> 新建OC
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-white">
@@ -269,7 +269,7 @@ export const OCManagerModal: React.FC<OCManagerModalProps> = ({
               </button>
               <button onClick={() => onConfirmSelection('character')}
                 disabled={m.selectedOCs.length === 0 || characterPromptsCount >= maxCharacters}
-                className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-[#ebd576] disabled:opacity-50 flex items-center gap-1.5">
+                className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-nai-accent-hover disabled:opacity-50 flex items-center gap-1.5">
                 <User className="w-4 h-4" /> 添加到角色提示词
               </button>
               <button onClick={() => onConfirmSelection('main')} disabled={m.selectedOCs.length === 0}
@@ -359,7 +359,7 @@ const HorizontalOCRow: React.FC<HorizontalOCRowProps> = ({
             <p className="text-sm">{emptyMessage}</p>
             {onCreateClick && (
               <button onClick={onCreateClick}
-                className="ml-3 px-3 py-1.5 bg-nai-accent hover:bg-[#ebd576] text-black text-sm font-bold rounded flex items-center gap-1.5">
+                className="ml-3 px-3 py-1.5 bg-nai-accent hover:bg-nai-accent-hover text-black text-sm font-bold rounded flex items-center gap-1.5">
                 <Plus className="w-4 h-4" /> 创建
               </button>
             )}

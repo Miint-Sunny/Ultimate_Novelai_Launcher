@@ -53,10 +53,10 @@ export function MultiSelectQuickPanel({
       style={{ top: panel.screenY, left: panel.screenX, minWidth: 300, maxWidth: 420 }}
       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
-      <div className="bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden">
+      <div className="bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgb(var(--nai-accent)_/_0.08)] overflow-hidden">
         <div className="flex items-start gap-2 px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <div className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate">已选 {panel.tagCount} 个标签</div>
+            <div className="font-tag text-[0.875rem] leading-tight text-nai-accent truncate">已选 {panel.tagCount} 个标签</div>
             <div className="text-[0.6875rem] leading-tight text-white/50 mt-1">批量操作</div>
           </div>
           <button className="shrink-0 w-6 h-6 flex items-center justify-center text-white/40 hover:text-white/90 rounded-md hover:bg-white/[0.08] transition-colors" onClick={onClose} title="关闭">
@@ -82,7 +82,7 @@ export function MultiSelectQuickPanel({
               const isOrange = w > 1;
               const base = isOrange ? 'bg-[#74270D]/35 hover:bg-[#74270D]/65 text-orange-200' : 'bg-blue-500/15 hover:bg-blue-500/30 text-blue-200';
               return (
-                <button key={w} className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
+                <button key={w} className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-nai-accent/60' : ''}`}
                   onClick={() => { setNumWeight(w); actions.setNumericWeight(w); }} title={`${w}::tags::`}>{w}</button>
               );
             })}

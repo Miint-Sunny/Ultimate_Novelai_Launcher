@@ -160,7 +160,7 @@ const RelatedTagsBody: React.FC<BodyProps> = ({ results, existingTagSet, onAdd, 
           onClick={() => scrollByDir('left')}
           disabled={!canLeft}
           className={`shrink-0 w-5 h-6 flex items-center justify-center transition-colors
-            ${canLeft ? 'text-[#fceda4]/60 hover:text-[#fceda4]' : 'text-white/15 cursor-not-allowed'}`}
+            ${canLeft ? 'text-nai-accent/60 hover:text-nai-accent' : 'text-white/15 cursor-not-allowed'}`}
           title="向左滚动"
         >
           <ChevronLeft className="w-3.5 h-3.5" strokeWidth={2.5} />
@@ -191,12 +191,12 @@ const RelatedTagsBody: React.FC<BodyProps> = ({ results, existingTagSet, onAdd, 
                 <span className={`font-tag text-[0.75rem] leading-tight transition-colors
                   ${added
                     ? 'text-white/25 line-through'
-                    : 'text-white/80 group-hover:text-[#fceda4] group-hover:underline underline-offset-2 decoration-[#fceda4]/60'}`}>
+                    : 'text-white/80 group-hover:text-nai-accent group-hover:underline underline-offset-2 decoration-nai-accent/60'}`}>
                   {r.tag}
                 </span>
                 {cn && (
                   <span className={`text-[0.625rem] leading-tight transition-colors
-                    ${added ? 'text-white/15' : 'text-white/40 group-hover:text-[#fceda4]/55'}`}>
+                    ${added ? 'text-white/15' : 'text-white/40 group-hover:text-nai-accent/55'}`}>
                     {cn}
                   </span>
                 )}
@@ -212,7 +212,7 @@ const RelatedTagsBody: React.FC<BodyProps> = ({ results, existingTagSet, onAdd, 
           onClick={() => scrollByDir('right')}
           disabled={!canRight}
           className={`shrink-0 w-5 h-6 flex items-center justify-center transition-colors
-            ${canRight ? 'text-[#fceda4]/60 hover:text-[#fceda4]' : 'text-white/15 cursor-not-allowed'}`}
+            ${canRight ? 'text-nai-accent/60 hover:text-nai-accent' : 'text-white/15 cursor-not-allowed'}`}
           title="向右滚动"
         >
           <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />

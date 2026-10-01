@@ -138,7 +138,7 @@ export const AlphabetRail: React.FC<Props> = ({
             transform: 'translateY(-50%)',
           }}
         >
-          <div className="w-11 h-11 rounded-xl bg-nai-accent text-[#1a1410] font-black text-xl flex items-center justify-center shadow-[0_4px_20px_rgba(252,237,164,0.4)]">
+          <div className="w-11 h-11 rounded-xl bg-nai-accent text-[#1a1410] font-black text-xl flex items-center justify-center shadow-[0_4px_20px_rgb(var(--nai-accent)_/_0.4)]">
             {dragLetter}
           </div>
         </div>

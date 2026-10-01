@@ -25,14 +25,14 @@ export function SuggestionWikiPreviewCard({
 
   return createPortal(
     <div
-      className={`wiki-preview-floating ${preview.closing ? 'is-closing' : ''} fixed z-[100000] w-[320px] max-w-[calc(100vw-16px)] overflow-x-hidden rounded-lg bg-[#111315] shadow-[0_20px_50px_-14px_rgba(0,0,0,0.9),0_0_0_1px_rgba(252,237,164,0.22)]`}
+      className={`wiki-preview-floating ${preview.closing ? 'is-closing' : ''} fixed z-[100000] w-[320px] max-w-[calc(100vw-16px)] overflow-x-hidden rounded-lg bg-[#111315] shadow-[0_20px_50px_-14px_rgba(0,0,0,0.9),0_0_0_1px_rgb(var(--nai-accent)_/_0.22)]`}
       style={computePreviewStyle(preview, height)}
       onMouseEnter={onKeepVisible}
       onMouseLeave={onHide}
     >
       {preview.loading ? (
-        <div ref={contentRef} key={`loading-${preview.tag}`} className="wiki-preview-content h-28 flex items-center justify-center gap-2 text-[#fceda4]/75">
-          <span className="inline-block w-4 h-4 border-2 border-[#fceda4]/20 border-t-[#fceda4] rounded-full animate-spin" />
+        <div ref={contentRef} key={`loading-${preview.tag}`} className="wiki-preview-content h-28 flex items-center justify-center gap-2 text-nai-accent/75">
+          <span className="inline-block w-4 h-4 border-2 border-nai-accent/20 border-t-nai-accent rounded-full animate-spin" />
           <span className="text-xs">加载 Wiki...</span>
         </div>
       ) : preview.data ? (
@@ -119,7 +119,7 @@ function SuggestionWikiPreviewContent({
               {imageExamples.map((example, idx) => (
                 <span
                   key={`${example.type}-${example.id}`}
-                  className={`h-1.5 rounded-full transition-all duration-200 ${idx === activeImageIndex ? 'w-4 bg-[#fceda4]' : 'w-1.5 bg-white/25'}`}
+                  className={`h-1.5 rounded-full transition-all duration-200 ${idx === activeImageIndex ? 'w-4 bg-nai-accent' : 'w-1.5 bg-white/25'}`}
                 />
               ))}
             </div>
@@ -127,7 +127,7 @@ function SuggestionWikiPreviewContent({
         </div>
       )}
       <div className="p-3">
-        <div className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate" title={preview.data!.title}>
+        <div className="font-tag text-[0.875rem] leading-tight text-nai-accent truncate" title={preview.data!.title}>
           {preview.data!.title}
         </div>
         {preview.data!.otherNames.length > 0 && (

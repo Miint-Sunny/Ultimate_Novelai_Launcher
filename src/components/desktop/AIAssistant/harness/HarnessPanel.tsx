@@ -120,7 +120,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         </div>
       )}
       {!h.available && (
-        <div style={{ margin: '4px 12px 0', padding: '6px 10px', borderRadius: 'var(--nai-agent-radius-sm)', background: 'rgba(252,237,164,0.06)', fontSize: '0.6875rem', color: 'var(--nai-agent-ink-muted)' }}>
+        <div style={{ margin: '4px 12px 0', padding: '6px 10px', borderRadius: 'var(--nai-agent-radius-sm)', background: 'rgb(var(--nai-accent) / 0.06)', fontSize: '0.6875rem', color: 'var(--nai-agent-ink-muted)' }}>
           {h.unavailableReason ?? '正在读取 sidecar 设置…'}
         </div>
       )}
@@ -177,6 +177,6 @@ function iconBtn(active: boolean): React.CSSProperties {
   return {
     width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     borderRadius: 'var(--nai-agent-radius-xs)', border: '1px solid var(--nai-agent-chip-border)',
-    background: active ? 'rgba(252,237,164,0.16)' : 'var(--nai-agent-chip-bg)', color: active ? C.accent : C.text2, cursor: 'pointer',
+    background: active ? 'rgb(var(--nai-accent) / 0.16)' : 'var(--nai-agent-chip-bg)', color: active ? C.accent : C.text2, cursor: 'pointer',
   };
 }

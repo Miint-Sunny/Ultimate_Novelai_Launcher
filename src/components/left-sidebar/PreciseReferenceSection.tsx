@@ -218,7 +218,7 @@ function PreciseValueInput({
         value={value}
         onChange={onChange}
         style={{
-          backgroundImage: `linear-gradient(to right, rgba(252, 237, 164, 0.5) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
+          backgroundImage: `linear-gradient(to right, rgb(var(--nai-accent) / 0.5) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
         }}
         className="w-full bg-black/20 border border-gray-700 rounded px-1 py-1 text-[0.625rem] text-center text-white focus:border-nai-accent outline-none appearance-none cursor-ew-resize"
         title={title}

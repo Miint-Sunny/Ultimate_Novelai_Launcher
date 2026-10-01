@@ -151,7 +151,7 @@ export function CharacterPromptsSection({
                       event.stopPropagation();
                       updateCharacterPrompt(char.id, 'enabled', !char.enabled);
                     }}
-                    className={`p-1 transition-colors rounded hover:bg-white/10 shrink-0 ${char.enabled ? 'text-nai-accent hover:text-[#ebd576]' : 'text-gray-600 hover:text-gray-400'}`}
+                    className={`p-1 transition-colors rounded hover:bg-white/10 shrink-0 ${char.enabled ? 'text-nai-accent hover:text-nai-accent-hover' : 'text-gray-600 hover:text-gray-400'}`}
                     title={char.enabled ? '禁用角色' : '启用角色'}
                   >
                     <Power className="w-4 h-4" />

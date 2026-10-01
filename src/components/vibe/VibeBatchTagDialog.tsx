@@ -110,7 +110,7 @@ export function VibeBatchTagDialog({
                   <button
                     onClick={submitNewBatchTag}
                     disabled={!canCreateBatchNewTag}
-                    className="px-2.5 py-1 bg-nai-accent hover:bg-[#ebd576] text-black text-[0.6875rem] font-bold rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                    className="px-2.5 py-1 bg-nai-accent hover:bg-nai-accent-hover text-black text-[0.6875rem] font-bold rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
                   >
                     <Check className="w-3 h-3" />
                     创建

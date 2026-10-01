@@ -122,9 +122,9 @@ export function DesktopTagChip({
     : abnormalWeight
     ? { backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: 'rgba(248, 113, 113, 0.5)' }
     : isSelected
-      ? { backgroundColor: 'rgba(252, 237, 164, 0.15)', borderColor: 'rgba(252, 237, 164, 0.5)' }
+      ? { backgroundColor: 'rgb(var(--nai-accent) / 0.15)', borderColor: 'rgb(var(--nai-accent) / 0.5)' }
       : isGroupSelected
-        ? { backgroundColor: 'rgba(252, 237, 164, 0.08)', borderColor: 'rgba(252, 237, 164, 0.25)' }
+        ? { backgroundColor: 'rgb(var(--nai-accent) / 0.08)', borderColor: 'rgb(var(--nai-accent) / 0.25)' }
         : isSDFormat
           ? { backgroundColor: 'rgba(245, 158, 11, 0.25)', borderColor: 'rgba(251, 191, 36, 0.4)' }
           : weightStyle;
@@ -151,14 +151,14 @@ export function DesktopTagChip({
         <span className="flex items-center gap-1">
           {abnormalWeight && <span className="text-[0.625rem] text-red-400" title={abnormalTip}>⚠️</span>}
           {isSDFormat && !abnormalWeight && <span className="text-[0.625rem] text-amber-300" title="SD WebUI 格式">SD</span>}
-          <span className={`font-tag text-sm leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-[#fceda4]' : isSDFormat ? 'text-amber-200' : chunkLabel ? 'text-teal-200' : 'text-white/85'}`}>{chunkLabel ? `@${chunkLabel}` : rawTag.trim()}</span>
+          <span className={`font-tag text-sm leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-nai-accent' : isSDFormat ? 'text-amber-200' : chunkLabel ? 'text-teal-200' : 'text-white/85'}`}>{chunkLabel ? `@${chunkLabel}` : rawTag.trim()}</span>
         </span>
         {abnormalWeight ? (<>
           <span className="text-[0.625rem] leading-tight text-red-400/70">{abnormalWeight.message}</span>
           {abnormalWeight.suggestion && <span className="text-[0.625rem] leading-tight text-red-300/60">{abnormalWeight.suggestion}</span>}
         </>)
           : chunkLabel ? (<span className="text-[0.625rem] leading-tight text-teal-200/50">片段</span>)
-          : translation ? (<span className={`text-[0.625rem] leading-tight ${isSelected ? 'text-[#fceda4]/50' : 'text-white/35'}`}>{translation}</span>)
+          : translation ? (<span className={`text-[0.625rem] leading-tight ${isSelected ? 'text-nai-accent/50' : 'text-white/35'}`}>{translation}</span>)
             : isTranslating ? (<span className="text-[0.625rem] leading-tight text-white/20 animate-pulse">翻译中…</span>)
               : needsTranslation ? (<span className="text-[0.625rem] leading-tight text-white/15">…</span>) : <span className="text-[0.625rem] leading-tight">&nbsp;</span>}
       </span>

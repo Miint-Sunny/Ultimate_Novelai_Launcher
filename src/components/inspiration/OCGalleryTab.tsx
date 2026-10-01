@@ -496,7 +496,7 @@ const OCGalleryCard = React.memo<OCGalleryCardProps>(({
 }) => {
   return (
     <div
-      className="group relative aspect-[832/1216] rounded-xl overflow-hidden bg-gray-800 cursor-pointer border-2 border-gray-800 hover:border-nai-accent/40 transition-all duration-300 hover:shadow-[0_0_10px_rgba(252,237,164,0.3)] hover:scale-[1.02]"
+      className="group relative aspect-[832/1216] rounded-xl overflow-hidden bg-gray-800 cursor-pointer border-2 border-gray-800 hover:border-nai-accent/40 transition-all duration-300 hover:shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)] hover:scale-[1.02]"
       onClick={onPreview}
     >
       {oc.preview ? (
@@ -668,7 +668,7 @@ const OCPreviewModal: React.FC<OCPreviewModalProps> = ({
           </button>
           <button
             onClick={onAdd}
-            className="flex-1 py-2.5 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-[0_0_10px_rgba(252,237,164,0.3)] active:scale-95"
+            className="flex-1 py-2.5 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)] active:scale-95"
           >
             <Plus className="w-4 h-4" />
             添加到提示词

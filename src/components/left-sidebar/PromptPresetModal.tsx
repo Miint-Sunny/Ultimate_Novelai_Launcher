@@ -170,7 +170,7 @@ export const PromptPresetModal: React.FC<PromptPresetModalProps> = ({
       <div className="p-3 border-t border-gray-700 bg-gray-900/30 rounded-b-lg flex justify-end">
         <button
           onClick={onClose}
-          className="px-4 py-1.5 bg-nai-accent text-black font-bold rounded hover:bg-[#ebd576] transition-colors text-sm"
+          className="px-4 py-1.5 bg-nai-accent text-black font-bold rounded hover:bg-nai-accent-hover transition-colors text-sm"
         >
           完成
         </button>

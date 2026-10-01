@@ -94,7 +94,7 @@ export function DesktopInlineTagEditor({
   };
 
   return (
-    <div className="inline-flex items-center rounded border border-[#fceda4]/50 bg-[#fceda4]/10" style={{ width: editingTag.width, height: editingTag.height }}>
+    <div className="inline-flex items-center rounded border border-nai-accent/50 bg-nai-accent/10" style={{ width: editingTag.width, height: editingTag.height }}>
       <input
         ref={editInputRef}
         type="text"
@@ -124,7 +124,7 @@ export function DesktopInlineTagEditor({
           }, 150);
         }}
         onClick={(event) => event.stopPropagation()}
-        className="bg-transparent text-[#fceda4] text-sm font-tag outline-none px-1.5 py-0.5 w-full"
+        className="bg-transparent text-nai-accent text-sm font-tag outline-none px-1.5 py-0.5 w-full"
         autoFocus
       />
     </div>

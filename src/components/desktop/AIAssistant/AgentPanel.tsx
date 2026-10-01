@@ -226,7 +226,7 @@ export const AgentPanel: React.FC = () => {
       {!agentAvailable && (
         <div
           className="shrink-0 px-3 py-1.5 text-[0.6875rem]"
-          style={{ background: 'rgba(252,237,164,0.06)', color: C.textDim, borderBottom: `1px solid ${C.line}` }}
+          style={{ background: 'rgb(var(--nai-accent) / 0.06)', color: C.textDim, borderBottom: `1px solid ${C.line}` }}
           title={agentUnavailableReason}
         >
           Plana LLM 未配置，仅固定指令可用（kkt / 生成图片 / 生成视频）

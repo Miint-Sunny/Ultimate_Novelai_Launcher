@@ -336,7 +336,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
               </button>
               <button
                 onClick={() => inputRef.current?.click()}
-                className="h-8 px-3 bg-nai-accent hover:bg-[#ebd576] text-black text-sm font-bold rounded flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                className="h-8 px-3 bg-nai-accent hover:bg-nai-accent-hover text-black text-sm font-bold rounded flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                 title="添加文件（支持多选）"
               >
                 <Plus className="w-4 h-4" />
@@ -480,7 +480,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
               </button>
               <button
                 onClick={handleConfirmSelection}
-                className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-[#ebd576] transition-colors"
+                className="px-4 py-1.5 text-sm font-bold bg-nai-accent text-black rounded hover:bg-nai-accent-hover transition-colors"
               >
                 确认选择 ({selectedVibes.length})
               </button>
@@ -589,7 +589,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
                     placeholder="新建标签..."
                     className="flex-1 bg-nai-dark text-white text-xs rounded px-2 py-1.5 border border-gray-700 focus:border-nai-accent focus:outline-none" />
                   <button onClick={() => addTagToEditingDefaults()} disabled={!tagEditorNewName.trim()}
-                    className="px-2.5 py-1.5 bg-nai-accent hover:bg-[#ebd576] text-black text-xs font-bold rounded disabled:opacity-30 flex items-center gap-1">
+                    className="px-2.5 py-1.5 bg-nai-accent hover:bg-nai-accent-hover text-black text-xs font-bold rounded disabled:opacity-30 flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> 添加
                   </button>
                 </div>

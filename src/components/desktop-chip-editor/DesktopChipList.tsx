@@ -118,10 +118,10 @@ export function DesktopChipList({
           }
           const showDropIndicator = dragIndex !== null && dragOverIndex === index && dragIndex !== index && dragOverIndex !== dragIndex + 1;
           const dropPlaceholder = showDropIndicator && dragGhostInfo ? (
-            <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border-2 border-dashed border-[#fceda4]/40 bg-[#fceda4]/8">
+            <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border-2 border-dashed border-nai-accent/40 bg-nai-accent/8">
               <span className="flex flex-col items-start">
-                <span className="font-tag text-xs leading-tight text-[#fceda4]/40">{dragGhostInfo.text}</span>
-                {dragGhostInfo.sub && <span className="text-[0.625rem] leading-tight text-[#fceda4]/20">{dragGhostInfo.sub}</span>}
+                <span className="font-tag text-xs leading-tight text-nai-accent/40">{dragGhostInfo.text}</span>
+                {dragGhostInfo.sub && <span className="text-[0.625rem] leading-tight text-nai-accent/20">{dragGhostInfo.sub}</span>}
               </span>
             </div>
           ) : null;
@@ -129,7 +129,7 @@ export function DesktopChipList({
           const insertBtn = (
             <button
               key={`ins-${index}`}
-              className={`chip-insert-btn inline-flex items-center justify-center w-0 h-5 rounded text-[#fceda4]/60${canInsert ? '' : ' !opacity-0 pointer-events-none'}`}
+              className={`chip-insert-btn inline-flex items-center justify-center w-0 h-5 rounded text-nai-accent/60${canInsert ? '' : ' !opacity-0 pointer-events-none'}`}
               onClick={canInsert ? (event: React.MouseEvent) => {
                 event.stopPropagation();
                 const tags = [...parsedTags];

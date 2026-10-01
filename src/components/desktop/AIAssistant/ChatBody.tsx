@@ -288,7 +288,7 @@ const UserMsg: React.FC<{ m: VMsg }> = ({ m }) => (
           fontSize: '0.78125rem',
           fontWeight: 500,
           lineHeight: 1.5,
-          boxShadow: '0 4px 12px -4px rgba(252, 237, 164, 0.4)',
+          boxShadow: '0 4px 12px -4px rgb(var(--nai-accent) / 0.4)',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
         }}
@@ -610,7 +610,7 @@ const ThinkingMsg: React.FC<{ text?: string }> = ({ text }) => {
           borderRadius: '4px 12px 12px 12px',
           background: C.surface,
           border: `1px solid ${C.accentLine}`,
-          boxShadow: '0 0 0 4px rgba(252, 237, 164, 0.03)',
+          boxShadow: '0 0 0 4px rgb(var(--nai-accent) / 0.03)',
         }}
       >
         <span className="aa-pulse-dot" style={{ animationDelay: '0s' }} />

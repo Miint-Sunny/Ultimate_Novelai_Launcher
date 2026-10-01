@@ -169,7 +169,7 @@ export const CloudSyncOnboardingModal: React.FC<CloudSyncOnboardingModalProps> =
           <button
             onClick={handleConfirm}
             disabled={running}
-            className="px-4 py-2 bg-nai-accent hover:bg-[#ebd576] text-black text-sm font-bold rounded-md transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-nai-accent hover:bg-nai-accent-hover text-black text-sm font-bold rounded-md transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {running ? (
               <>

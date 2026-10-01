@@ -63,7 +63,7 @@ export const TranslationOverlay: React.FC<TranslationOverlayProps> = ({
           <React.Fragment key={i}>
             {leadingSpaceSpan}
             <span
-              className={`cursor-pointer hover:bg-[#fceda4]/15 hover:text-white rounded px-0.5 -mx-0.5 transition-colors ${hasTranslation ? 'text-[#fceda4]/90' : 'text-gray-300'}`}
+              className={`cursor-pointer hover:bg-nai-accent/15 hover:text-white rounded px-0.5 -mx-0.5 transition-colors ${hasTranslation ? 'text-nai-accent/90' : 'text-gray-300'}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onTagClick(actualOffset, actualLength, type);

@@ -358,7 +358,7 @@ const KktMasonryGrid: React.FC<KktMasonryGridProps> = ({
                 <div
                   key={item.name}
                   style={{ width, height: rowHeight, flexShrink: 0 }}
-                  className="group relative rounded-xl overflow-hidden bg-gray-800 cursor-pointer border border-gray-800 hover:border-nai-accent transition-all hover:shadow-[0_0_10px_rgba(252,237,164,0.3)]"
+                  className="group relative rounded-xl overflow-hidden bg-gray-800 cursor-pointer border border-gray-800 hover:border-nai-accent transition-all hover:shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]"
                   onClick={() => onItemClick(item)}
                 >
                   {imageUrl ? (
@@ -1117,7 +1117,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               </button>
               <button
                 onClick={handleConfirmRandomAdd}
-                className="flex-1 py-2.5 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-[0_0_10px_rgba(252,237,164,0.3)] active:scale-95"
+                className="flex-1 py-2.5 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)] active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 添加到提示词
@@ -1560,7 +1560,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
               </button>
               <button
                 onClick={() => { setIsKktFilterOpen(false); loadKktData(1, true); }}
-                className="px-6 py-2 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg font-bold transition-all shadow-[0_0_10px_rgba(252,237,164,0.3)]"
+                className="px-6 py-2 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg font-bold transition-all shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]"
               >
                 确认筛选
               </button>
@@ -1619,7 +1619,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
             <button
               onClick={handleRandomCodex}
               title={`基于当前筛选设置随机 (${externalFilteredCodex.length} 条可选)`}
-              className="w-full py-3 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-lg hover:shadow-[0_0_10px_rgba(252,237,164,0.3)] active:scale-95 group"
+              className="w-full py-3 bg-nai-accent hover:bg-nai-accent-hover text-black rounded-lg transition-all flex items-center justify-center gap-2 font-bold shadow-lg hover:shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)] active:scale-95 group"
             >
               <Dice5 className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
               随机灵感
@@ -2001,7 +2001,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                           loadKktData(1, true);
                         }}
                         className={`h-7 px-2.5 rounded-full text-[0.6875rem] font-bold transition-all duration-300 active:scale-90 ${kktTimeRange === opt.value
-                          ? 'bg-nai-accent/10 text-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+                          ? 'bg-nai-accent/10 text-nai-accent shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]'
                           : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                           }`}
                       >
@@ -2063,7 +2063,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                       <button
                         onClick={() => toggleKktTag(tag)}
                         className={`shrink-0 h-8 px-3.5 rounded-full border text-[0.6875rem] font-bold transition-all duration-300 active:scale-95 flex items-center gap-2 pr-8 ${kktSelectedTags.includes(tag)
-                          ? 'bg-nai-accent/10 border-nai-accent text-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+                          ? 'bg-nai-accent/10 border-nai-accent text-nai-accent shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]'
                           : 'border-gray-800 bg-gray-900/50 text-gray-400 hover:text-white hover:border-gray-600'
                           }`}
                       >
@@ -2355,7 +2355,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                         {ocData.filter(oc => favoriteOCIds.includes(oc.id)).map(oc => (
                           <div
                             key={oc.id}
-                            className="group relative aspect-[832/1216] rounded-xl overflow-hidden bg-gray-800 cursor-pointer border-2 border-gray-800 hover:border-nai-accent/40 transition-all duration-300 hover:shadow-[0_0_10px_rgba(252,237,164,0.3)]"
+                            className="group relative aspect-[832/1216] rounded-xl overflow-hidden bg-gray-800 cursor-pointer border-2 border-gray-800 hover:border-nai-accent/40 transition-all duration-300 hover:shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]"
                           >
                             {oc.preview ? (
                               <img
@@ -2453,7 +2453,7 @@ const NavButton = ({ active, onClick, icon, label, desc }: { active: boolean, on
   <button
     onClick={onClick}
     className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all duration-300 text-left group hover:translate-x-1 ${active
-      ? 'bg-gradient-to-r from-nai-accent/10 to-nai-accent/5 border border-nai-accent/40 shadow-[0_0_10px_rgba(252,237,164,0.3)]'
+      ? 'bg-gradient-to-r from-nai-accent/10 to-nai-accent/5 border border-nai-accent/40 shadow-[0_0_10px_rgb(var(--nai-accent)_/_0.3)]'
       : 'hover:bg-white/5 border border-transparent'
       }`}
   >

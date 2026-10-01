@@ -160,7 +160,7 @@ function PermissionCard({ item, onDecide }: { item: Extract<TranscriptItem, { ki
   return (
     <div style={{ borderRadius: R.lg, background: CARD_BG, border: `1px solid ${CHIP_BORDER}`, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: '0.625rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: request.permissionClass === 'P' ? 'rgba(252,237,164,0.18)' : CHIP_BG, color: request.permissionClass === 'P' ? C.accent : INK_MUTED }}>{cls}</span>
+        <span style={{ fontSize: '0.625rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: request.permissionClass === 'P' ? 'rgb(var(--nai-accent) / 0.18)' : CHIP_BG, color: request.permissionClass === 'P' ? C.accent : INK_MUTED }}>{cls}</span>
         <span style={{ fontSize: '0.78125rem', fontWeight: 700, color: C.text }}>{request.toolLabel}</span>
         <span style={{ fontSize: '0.65625rem', color: INK_FAINT, marginLeft: 'auto' }}>{request.toolName}</span>
       </div>

@@ -710,33 +710,33 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
             const totalW = displayWidth + pLeft + pRight;
             const totalH = displayHeight + pTop + pBottom;
             // 拖拽条样式
-            const gripH = `repeating-linear-gradient(0deg, rgba(252,237,164,0.6) 0px, rgba(252,237,164,0.6) 1.5px, transparent 1.5px, transparent 5px)`;
-            const gripV = `repeating-linear-gradient(90deg, rgba(252,237,164,0.6) 0px, rgba(252,237,164,0.6) 1.5px, transparent 1.5px, transparent 5px)`;
-            const barStyle = { background: 'rgba(252,237,164,0.08)', border: '1px solid rgba(252,237,164,0.2)' } as const;
+            const gripH = `repeating-linear-gradient(0deg, rgb(var(--nai-accent) / 0.6) 0px, rgb(var(--nai-accent) / 0.6) 1.5px, transparent 1.5px, transparent 5px)`;
+            const gripV = `repeating-linear-gradient(90deg, rgb(var(--nai-accent) / 0.6) 0px, rgb(var(--nai-accent) / 0.6) 1.5px, transparent 1.5px, transparent 5px)`;
+            const barStyle = { background: 'rgb(var(--nai-accent) / 0.08)', border: '1px solid rgb(var(--nai-accent) / 0.2)' } as const;
             return (
               <>
                 {/* 拓宽区域 — 棋盘格纹理 */}
                 {hasExpand && (
                   <>
                     {expandPadding.top > 0 && (
-                      <div style={{ position: 'absolute', left: `${-pLeft}px`, top: `${-pTop}px`, width: `${totalW}px`, height: `${pTop}px`, background: 'repeating-conic-gradient(rgba(252,237,164,0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', left: `${-pLeft}px`, top: `${-pTop}px`, width: `${totalW}px`, height: `${pTop}px`, background: 'repeating-conic-gradient(rgb(var(--nai-accent) / 0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
                     )}
                     {expandPadding.bottom > 0 && (
-                      <div style={{ position: 'absolute', left: `${-pLeft}px`, top: `${displayHeight}px`, width: `${totalW}px`, height: `${pBottom}px`, background: 'repeating-conic-gradient(rgba(252,237,164,0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', left: `${-pLeft}px`, top: `${displayHeight}px`, width: `${totalW}px`, height: `${pBottom}px`, background: 'repeating-conic-gradient(rgb(var(--nai-accent) / 0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
                     )}
                     {expandPadding.left > 0 && (
-                      <div style={{ position: 'absolute', left: `${-pLeft}px`, top: '0px', width: `${pLeft}px`, height: `${displayHeight}px`, background: 'repeating-conic-gradient(rgba(252,237,164,0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', left: `${-pLeft}px`, top: '0px', width: `${pLeft}px`, height: `${displayHeight}px`, background: 'repeating-conic-gradient(rgb(var(--nai-accent) / 0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
                     )}
                     {expandPadding.right > 0 && (
-                      <div style={{ position: 'absolute', left: `${displayWidth}px`, top: '0px', width: `${pRight}px`, height: `${displayHeight}px`, background: 'repeating-conic-gradient(rgba(252,237,164,0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', left: `${displayWidth}px`, top: '0px', width: `${pRight}px`, height: `${displayHeight}px`, background: 'repeating-conic-gradient(rgb(var(--nai-accent) / 0.08) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px', pointerEvents: 'none' }} />
                     )}
                     {/* 外边框 */}
                     <div style={{
                       position: 'absolute',
                       left: `${-pLeft}px`, top: `${-pTop}px`,
                       width: `${totalW}px`, height: `${totalH}px`,
-                      border: '2px dashed rgba(252,237,164,0.7)',
-                      boxShadow: '0 0 12px rgba(252,237,164,0.15)',
+                      border: '2px dashed rgb(var(--nai-accent) / 0.7)',
+                      boxShadow: '0 0 12px rgb(var(--nai-accent) / 0.15)',
                       borderRadius: '2px',
                       pointerEvents: 'none', zIndex: 10,
                     }} />
@@ -747,7 +747,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   <div style={{
                     position: 'absolute',
                     left: `${-pLeft}px`, top: `${-pTop - 26}px`,
-                    background: 'rgba(252,237,164,0.9)',
+                    background: 'rgb(var(--nai-accent) / 0.9)',
                     color: '#1a1a1a', fontSize: '0.6875rem', fontWeight: 700,
                     padding: '2px 8px', borderRadius: '4px',
                     zIndex: 11, pointerEvents: 'none',
@@ -762,9 +762,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   style={{ position: 'absolute', left: 0, top: `${-pTop - 26}px`, width: `${displayWidth}px`, height: 26, cursor: 'ns-resize', zIndex: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: '6px 6px 0 0', ...barStyle }}
                 >
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
-                  <ChevronsUp className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
+                  <ChevronsUp className="w-4 h-4" style={{ color: 'rgb(var(--nai-accent))', flexShrink: 0 }} />
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
-                  {expandPadding.top > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.top}</span>}
+                  {expandPadding.top > 0 && <span style={{ fontSize: '0.625rem', color: 'rgb(var(--nai-accent))', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.top}</span>}
                 </div>
                 {/* 下边拖拽条 */}
                 <div
@@ -772,9 +772,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   style={{ position: 'absolute', left: 0, top: `${displayHeight + pBottom}px`, width: `${displayWidth}px`, height: 26, cursor: 'ns-resize', zIndex: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: '0 0 6px 6px', ...barStyle }}
                 >
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
-                  <ChevronsDown className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
+                  <ChevronsDown className="w-4 h-4" style={{ color: 'rgb(var(--nai-accent))', flexShrink: 0 }} />
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
-                  {expandPadding.bottom > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.bottom}</span>}
+                  {expandPadding.bottom > 0 && <span style={{ fontSize: '0.625rem', color: 'rgb(var(--nai-accent))', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.bottom}</span>}
                 </div>
                 {/* 左边拖拽条 */}
                 <div
@@ -782,9 +782,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   style={{ position: 'absolute', left: `${-pLeft - 26}px`, top: 0, width: 26, height: `${displayHeight}px`, cursor: 'ew-resize', zIndex: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: '6px 0 0 6px', ...barStyle }}
                 >
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
-                  <ChevronsLeft className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
+                  <ChevronsLeft className="w-4 h-4" style={{ color: 'rgb(var(--nai-accent))', flexShrink: 0 }} />
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
-                  {expandPadding.left > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.left}</span>}
+                  {expandPadding.left > 0 && <span style={{ fontSize: '0.625rem', color: 'rgb(var(--nai-accent))', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.left}</span>}
                 </div>
                 {/* 右边拖拽条 */}
                 <div
@@ -792,9 +792,9 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   style={{ position: 'absolute', left: `${displayWidth + pRight}px`, top: 0, width: 26, height: `${displayHeight}px`, cursor: 'ew-resize', zIndex: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: '0 6px 6px 0', ...barStyle }}
                 >
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
-                  <ChevronsRight className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
+                  <ChevronsRight className="w-4 h-4" style={{ color: 'rgb(var(--nai-accent))', flexShrink: 0 }} />
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
-                  {expandPadding.right > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.right}</span>}
+                  {expandPadding.right > 0 && <span style={{ fontSize: '0.625rem', color: 'rgb(var(--nai-accent))', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.right}</span>}
                 </div>
               </>
             );

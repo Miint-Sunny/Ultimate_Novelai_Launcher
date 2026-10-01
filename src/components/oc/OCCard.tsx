@@ -79,7 +79,7 @@ export const OCCard: React.FC<OCCardProps> = ({
         )}
         {onEdit && (
           <button
-            className="bg-nai-accent hover:bg-[#ebd576] text-black rounded p-1.5 shadow-lg border border-black/20"
+            className="bg-nai-accent hover:bg-nai-accent-hover text-black rounded p-1.5 shadow-lg border border-black/20"
             onClick={(e) => { e.stopPropagation(); onEdit(file); }}
             title="查看详情 / 编辑"
           >

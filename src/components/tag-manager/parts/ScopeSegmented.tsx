@@ -50,7 +50,7 @@ const Tab: React.FC<{
     onClick={onClick}
     className={`inline-flex items-center gap-1.5 px-3 rounded text-[0.78125rem] font-bold transition-colors cursor-pointer ${
       active
-        ? 'bg-nai-accent/20 text-nai-accent shadow-[inset_0_1px_0_rgba(252,237,164,0.10)]'
+        ? 'bg-nai-accent/20 text-nai-accent shadow-[inset_0_1px_0_rgb(var(--nai-accent)_/_0.10)]'
         : 'text-nai-text-dim hover:text-white'
     }`}
   >
