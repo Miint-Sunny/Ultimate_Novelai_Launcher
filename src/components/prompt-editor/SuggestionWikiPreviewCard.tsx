@@ -127,18 +127,18 @@ function SuggestionWikiPreviewContent({
         </div>
       )}
       <div className="p-3">
-        <div className="font-tag text-[14px] leading-tight text-[#fceda4] truncate" title={preview.data!.title}>
+        <div className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate" title={preview.data!.title}>
           {preview.data!.title}
         </div>
         {preview.data!.otherNames.length > 0 && (
-          <div className="mt-1 text-[11px] leading-snug text-white/42 line-clamp-1" title={preview.data!.otherNames.join(' / ')}>
+          <div className="mt-1 text-[0.6875rem] leading-snug text-white/42 line-clamp-1" title={preview.data!.otherNames.join(' / ')}>
             {preview.data!.otherNames.slice(0, 4).join(' / ')}
           </div>
         )}
         {summaryText && (
           <p
             key={wikiPreviewData.summaryZh ? 'zh' : 'raw'}
-            className={`mt-2 text-[12px] leading-relaxed text-white/72 line-clamp-4 break-words ${isPendingZhSummary ? 'animate-wiki-summary-pending' : 'animate-wiki-summary-swap'}`}
+            className={`mt-2 text-[0.75rem] leading-relaxed text-white/72 line-clamp-4 break-words ${isPendingZhSummary ? 'animate-wiki-summary-pending' : 'animate-wiki-summary-swap'}`}
           >
             {summaryText}
           </p>
@@ -147,7 +147,7 @@ function SuggestionWikiPreviewContent({
           href={`https://danbooru.donmai.us/wiki_pages/${encodeURIComponent(preview.data!.title)}`}
           target="_blank"
           rel="noreferrer"
-          className="mt-2 flex items-center justify-center gap-1.5 w-full rounded-md px-3 py-2 text-[12px] font-medium text-nai-accent bg-nai-accent/10 hover:bg-nai-accent/20 border border-nai-accent/20 hover:border-nai-accent/40 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nai-accent/40"
+          className="mt-2 flex items-center justify-center gap-1.5 w-full rounded-md px-3 py-2 text-[0.75rem] font-medium text-nai-accent bg-nai-accent/10 hover:bg-nai-accent/20 border border-nai-accent/20 hover:border-nai-accent/40 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nai-accent/40"
           onClick={(e) => e.stopPropagation()}
           title={`打开 ${preview.data!.title} Wiki`}
         >

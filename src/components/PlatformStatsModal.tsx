@@ -291,7 +291,7 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                         <div className="flex items-center gap-2 mb-1">
                             <Clock className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-300">每日负载时段</span>
-                            <span className="text-[10px] text-gray-500 ml-auto">基于 {heatmapDays} 天有效数据</span>
+                            <span className="text-[0.625rem] text-gray-500 ml-auto">基于 {heatmapDays} 天有效数据</span>
                         </div>
 
                         {/* Peak Hours Highlight */}
@@ -320,10 +320,10 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                                     style={{ aspectRatio: '1' }}
                                 >
                                     <div className="absolute inset-0 flex items-center justify-center">
-                                        <span className="text-[10px] font-mono text-white/70">{slot.hour}</span>
+                                        <span className="text-[0.625rem] font-mono text-white/70">{slot.hour}</span>
                                     </div>
                                     {/* Tooltip */}
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-lg">
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-gray-900 text-white text-[0.625rem] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-lg">
                                         <div className="font-medium">{slot.label}–{String(slot.hour + 1).padStart(2, '0')}:00</div>
                                         <div>日均 {slot.avg_calls} 次 / 总计 {slot.total_calls} 次</div>
                                     </div>
@@ -333,14 +333,14 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
 
                         {/* Legend */}
                         <div className="flex items-center justify-end gap-1 mt-2">
-                            <span className="text-[10px] text-gray-500">低</span>
+                            <span className="text-[0.625rem] text-gray-500">低</span>
                             <div className="w-3 h-3 rounded bg-gray-800/60" />
                             <div className="w-3 h-3 rounded bg-emerald-900/60" />
                             <div className="w-3 h-3 rounded bg-emerald-700/70" />
                             <div className="w-3 h-3 rounded bg-yellow-600/70" />
                             <div className="w-3 h-3 rounded bg-orange-600/80" />
                             <div className="w-3 h-3 rounded bg-red-500/80" />
-                            <span className="text-[10px] text-gray-500">高</span>
+                            <span className="text-[0.625rem] text-gray-500">高</span>
                         </div>
                     </div>
 
@@ -349,7 +349,7 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                         <div className="flex items-center gap-2 mb-1">
                             <Users className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-300">活跃用户时段分布</span>
-                            <span className="text-[10px] text-gray-500 ml-auto">基于 {userHeatmapDays} 天有效数据</span>
+                            <span className="text-[0.625rem] text-gray-500 ml-auto">基于 {userHeatmapDays} 天有效数据</span>
                         </div>
 
                         {/* Peak User Hours Highlight */}
@@ -378,10 +378,10 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                                     style={{ aspectRatio: '1' }}
                                 >
                                     <div className="absolute inset-0 flex items-center justify-center">
-                                        <span className="text-[10px] font-mono text-white/70">{slot.hour}</span>
+                                        <span className="text-[0.625rem] font-mono text-white/70">{slot.hour}</span>
                                     </div>
                                     {/* Tooltip */}
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-lg">
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-gray-900 text-white text-[0.625rem] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-lg">
                                         <div className="font-medium">{slot.label}–{String(slot.hour + 1).padStart(2, '0')}:00</div>
                                         <div>日均 {slot.avg_users} 人 / 总计 {slot.total_users} 人</div>
                                     </div>
@@ -391,14 +391,14 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
 
                         {/* Legend */}
                         <div className="flex items-center justify-end gap-1 mt-2">
-                            <span className="text-[10px] text-gray-500">少</span>
+                            <span className="text-[0.625rem] text-gray-500">少</span>
                             <div className="w-3 h-3 rounded bg-gray-800/60" />
                             <div className="w-3 h-3 rounded bg-emerald-900/60" />
                             <div className="w-3 h-3 rounded bg-emerald-700/70" />
                             <div className="w-3 h-3 rounded bg-yellow-600/70" />
                             <div className="w-3 h-3 rounded bg-orange-600/80" />
                             <div className="w-3 h-3 rounded bg-red-500/80" />
-                            <span className="text-[10px] text-gray-500">多</span>
+                            <span className="text-[0.625rem] text-gray-500">多</span>
                         </div>
                     </div>
 
@@ -407,7 +407,7 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                         <div className="flex items-center gap-2 mb-1">
                             <Clock className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-300">平均生成耗时</span>
-                            <span className="text-[10px] text-gray-500 ml-auto">基于 {durationHeatmapDays} 天有效数据</span>
+                            <span className="text-[0.625rem] text-gray-500 ml-auto">基于 {durationHeatmapDays} 天有效数据</span>
                         </div>
 
                         {/* Peak Duration Hours */}
@@ -436,10 +436,10 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                                     style={{ aspectRatio: '1' }}
                                 >
                                     <div className="absolute inset-0 flex items-center justify-center">
-                                        <span className="text-[10px] font-mono text-white/70">{slot.hour}</span>
+                                        <span className="text-[0.625rem] font-mono text-white/70">{slot.hour}</span>
                                     </div>
                                     {/* Tooltip */}
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-lg">
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-gray-900 text-white text-[0.625rem] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none shadow-lg">
                                         <div className="font-medium">{slot.label}–{String(slot.hour + 1).padStart(2, '0')}:00</div>
                                         <div>平均 {slot.avg_duration}s / {slot.count} 次</div>
                                     </div>
@@ -449,14 +449,14 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
 
                         {/* Legend */}
                         <div className="flex items-center justify-end gap-1 mt-2">
-                            <span className="text-[10px] text-gray-500">快</span>
+                            <span className="text-[0.625rem] text-gray-500">快</span>
                             <div className="w-3 h-3 rounded bg-gray-800/60" />
                             <div className="w-3 h-3 rounded bg-emerald-900/60" />
                             <div className="w-3 h-3 rounded bg-emerald-700/70" />
                             <div className="w-3 h-3 rounded bg-yellow-600/70" />
                             <div className="w-3 h-3 rounded bg-orange-600/80" />
                             <div className="w-3 h-3 rounded bg-red-500/80" />
-                            <span className="text-[10px] text-gray-500">慢</span>
+                            <span className="text-[0.625rem] text-gray-500">慢</span>
                         </div>
                     </div>
 
@@ -466,25 +466,25 @@ export const PlatformStatsModal: React.FC<PlatformStatsModalProps> = ({ isOpen, 
                             <Calendar className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-300">历史全量统计</span>
                             {historyRange && (
-                                <span className="text-[10px] text-gray-500 ml-auto font-mono">{historyRange}</span>
+                                <span className="text-[0.625rem] text-gray-500 ml-auto font-mono">{historyRange}</span>
                             )}
                         </div>
                         <div className="grid grid-cols-4 gap-3">
                             <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
                                 <div className="text-lg font-bold text-blue-300">{allTime?.image_calls?.toLocaleString() ?? '-'}</div>
-                                <div className="text-[10px] text-gray-500">总生图</div>
+                                <div className="text-[0.625rem] text-gray-500">总生图</div>
                             </div>
                             <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
                                 <div className="text-lg font-bold text-green-300">{allTime?.ai_calls?.toLocaleString() ?? '-'}</div>
-                                <div className="text-[10px] text-gray-500">总对话</div>
+                                <div className="text-[0.625rem] text-gray-500">总对话</div>
                             </div>
                             <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
                                 <div className="text-lg font-bold text-orange-300">{allTime?.points_spent?.toLocaleString() ?? '-'}</div>
-                                <div className="text-[10px] text-gray-500">总消耗</div>
+                                <div className="text-[0.625rem] text-gray-500">总消耗</div>
                             </div>
                             <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
                                 <div className="text-lg font-bold text-purple-300">{allTime?.total_users?.toLocaleString() ?? '-'}</div>
-                                <div className="text-[10px] text-gray-500">总用户</div>
+                                <div className="text-[0.625rem] text-gray-500">总用户</div>
                             </div>
                         </div>
                     </div>

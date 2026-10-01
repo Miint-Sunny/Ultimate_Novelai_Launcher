@@ -67,7 +67,7 @@ interface ChipProps {
 }
 
 const Chip: React.FC<ChipProps> = ({ active, variant = 'default', onClick, children }) => {
-  const base = 'shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-bold leading-tight border whitespace-nowrap transition-colors cursor-pointer';
+  const base = 'shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[0.8125rem] font-bold leading-tight border whitespace-nowrap transition-colors cursor-pointer';
   let cls: string;
   if (active) {
     cls = 'bg-nai-accent text-[#1a1410] border-nai-accent';

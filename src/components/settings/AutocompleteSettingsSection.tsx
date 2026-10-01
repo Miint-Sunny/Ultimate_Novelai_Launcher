@@ -83,7 +83,7 @@ export const AutocompleteSettingsSection: React.FC<AutocompleteSettingsSectionPr
         <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">
           Danbooru 结果排序
         </label>
-        <p className="text-[10px] text-gray-500 mb-3">仅影响英文查询时 Danbooru 标签的内部顺序</p>
+        <p className="text-[0.625rem] text-gray-500 mb-3">仅影响英文查询时 Danbooru 标签的内部顺序</p>
         <div className="grid grid-cols-2 gap-2">
           {[
             { id: 'prefix-first', name: '首字母匹配优先' },

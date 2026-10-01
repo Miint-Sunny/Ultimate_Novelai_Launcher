@@ -573,7 +573,7 @@ export const VibeManagerModal: React.FC<VibeManagerModalProps> = ({
                         if (next.has(tag)) next.delete(tag); else next.add(tag);
                         return { ...prev, tags: next };
                       })}
-                        className={`px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors ${active ? 'bg-nai-accent text-black border-nai-accent' : 'bg-gray-800 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:bg-gray-700'}`}
+                        className={`px-2.5 py-1 text-[0.6875rem] font-bold rounded-full border transition-colors ${active ? 'bg-nai-accent text-black border-nai-accent' : 'bg-gray-800 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:bg-gray-700'}`}
                       >{tag}</button>
                     );
                   })}

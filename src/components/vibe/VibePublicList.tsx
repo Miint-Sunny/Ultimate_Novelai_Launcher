@@ -69,7 +69,7 @@ export function VibePublicList({
         <button
           onClick={() => setPublicVibeManagerOpen(true)}
           disabled={!currentBotUserId}
-          className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-md bg-gray-800 border border-gray-700 text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-300 disabled:hover:border-gray-700 disabled:hover:bg-gray-800"
+          className="flex items-center gap-1 px-2 py-1 text-[0.6875rem] font-bold rounded-md bg-gray-800 border border-gray-700 text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-300 disabled:hover:border-gray-700 disabled:hover:bg-gray-800"
           title={currentBotUserId ? '管理我上传到公共库的 Vibe' : '需 Bot 授权'}
         >
           <Settings className="w-3 h-3" />

@@ -93,18 +93,18 @@ export const BatchTagModal: React.FC<Props> = ({
                     if (e.key === 'Escape') { setIsCreating(false); setNewTagInput(''); }
                   }}
                   placeholder="输入新标签名,回车确认"
-                  className="flex-1 min-w-0 h-8 px-2.5 text-[13px] text-white bg-gray-800/60 border border-gray-700 rounded focus:border-nai-accent outline-none"
+                  className="flex-1 min-w-0 h-8 px-2.5 text-[0.8125rem] text-white bg-gray-800/60 border border-gray-700 rounded focus:border-nai-accent outline-none"
                 />
                 <button
                   onClick={handleCreate}
                   disabled={!newTagInput.trim() || tagPool.includes(newTagInput.trim())}
-                  className="h-8 px-2.5 text-[12px] font-bold bg-nai-accent text-[#1a1410] rounded hover:bg-nai-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className="h-8 px-2.5 text-[0.75rem] font-bold bg-nai-accent text-[#1a1410] rounded hover:bg-nai-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                 >
                   添加
                 </button>
                 <button
                   onClick={() => { setIsCreating(false); setNewTagInput(''); }}
-                  className="h-8 px-2 text-[12px] text-gray-400 hover:text-white transition-colors cursor-pointer"
+                  className="h-8 px-2 text-[0.75rem] text-gray-400 hover:text-white transition-colors cursor-pointer"
                 >
                   取消
                 </button>
@@ -112,7 +112,7 @@ export const BatchTagModal: React.FC<Props> = ({
             ) : (
               <button
                 onClick={() => setIsCreating(true)}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-md border border-dashed border-gray-700 hover:border-nai-accent/40 text-gray-400 hover:text-nai-accent hover:bg-nai-accent/[0.04] text-[12.5px] font-semibold transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-md border border-dashed border-gray-700 hover:border-nai-accent/40 text-gray-400 hover:text-nai-accent hover:bg-nai-accent/[0.04] text-[0.78125rem] font-semibold transition-colors cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 新建标签

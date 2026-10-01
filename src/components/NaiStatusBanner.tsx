@@ -162,7 +162,7 @@ export const NaiStatusBanner: React.FC = () => {
       <AlertTriangle className="w-4 h-4 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-medium flex items-center gap-2 min-w-0">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-black/30 text-[11px] font-semibold whitespace-nowrap shrink-0 tracking-wide">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-black/30 text-[0.6875rem] font-semibold whitespace-nowrap shrink-0 tracking-wide">
             {leader}
           </span>
           <span className="truncate min-w-0">{title}</span>

@@ -36,7 +36,7 @@ export function BlindWatermarkRow({ url }: { url: string }) {
         {state.kind === 'none' && <span>没有检测到盲水印</span>}
         {state.kind === 'error' && <span className="text-red-400">提取失败:{state.message}</span>}
         {state.kind === 'text' && (
-          <code className="block break-all select-all font-mono text-[11px] text-emerald-300 bg-black/30 rounded px-1.5 py-1">{state.text}</code>
+          <code className="block break-all select-all font-mono text-[0.6875rem] text-emerald-300 bg-black/30 rounded px-1.5 py-1">{state.text}</code>
         )}
       </div>
     </div>

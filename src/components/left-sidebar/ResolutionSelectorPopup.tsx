@@ -119,7 +119,7 @@ export function ResolutionSelectorPopup({
           <div className="flex items-center justify-between mb-2 min-h-[16px]">
             <div className="text-xs text-gray-400">自定义尺寸</div>
             <span
-              className={`text-[10px] text-gray-500 hover:text-gray-300 underline cursor-pointer transition-opacity duration-150 ${customWidth * customHeight > 1048576 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              className={`text-[0.625rem] text-gray-500 hover:text-gray-300 underline cursor-pointer transition-opacity duration-150 ${customWidth * customHeight > 1048576 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
               onClick={() => {
                 const ratio = customWidth / customHeight;
                 const maxPixels = 1048576;

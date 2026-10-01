@@ -51,7 +51,7 @@ export const HarnessThread = React.forwardRef<HTMLDivElement, Props>(({ items, b
           }
         })}
         {busy && items.at(-1)?.kind !== 'assistant' && (
-          <div style={{ fontSize: 11, color: INK_FAINT, paddingLeft: 2 }}>思考中…</div>
+          <div style={{ fontSize: '0.6875rem', color: INK_FAINT, paddingLeft: 2 }}>思考中…</div>
         )}
       </div>
     </div>
@@ -64,8 +64,8 @@ const SUGGESTIONS = ['帮我把当前提示词改成一张雨夜街头的双人�
 function EmptyState({ onPick }: { onPick: (t: string) => void }) {
   return (
     <div style={{ padding: '28px 6px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>直接说要画什么</div>
-      <div style={{ fontSize: 12, color: INK_MUTED, lineHeight: 1.6 }}>
+      <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: C.text }}>直接说要画什么</div>
+      <div style={{ fontSize: '0.75rem', color: INK_MUTED, lineHeight: 1.6 }}>
         助手会自己改左栏参数、摆角色、出图、看图再改。写类改动默认自动应用并可撤销,花钱和删除会先问你。
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
@@ -80,7 +80,7 @@ function EmptyState({ onPick }: { onPick: (t: string) => void }) {
 function UserMsg({ text, image }: { text: string; image?: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <div style={{ maxWidth: '86%', padding: '8px 12px', borderRadius: R.lg, background: CHIP_BG, border: `1px solid ${CHIP_BORDER}`, boxShadow: CHIP_SHADOW, fontSize: 13, lineHeight: 1.55, color: C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+      <div style={{ maxWidth: '86%', padding: '8px 12px', borderRadius: R.lg, background: CHIP_BG, border: `1px solid ${CHIP_BORDER}`, boxShadow: CHIP_SHADOW, fontSize: '0.8125rem', lineHeight: 1.55, color: C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         {image && <img src={image} alt="" style={{ display: 'block', maxWidth: '100%', maxHeight: 160, borderRadius: R.sm, marginBottom: text ? 8 : 0 }} />}
         {text}
       </div>
@@ -97,20 +97,20 @@ function AssistantMsg({ content, thoughts, streaming, model, usage }: { content:
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 2 }}>
       {thoughts && (
-        <button onClick={() => setOpen((v) => !v)} style={{ ...bareButton, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: INK_FAINT }}>
+        <button onClick={() => setOpen((v) => !v)} style={{ ...bareButton, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', color: INK_FAINT }}>
           {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           思考过程{streaming && !content ? '…' : ''}
         </button>
       )}
       {thoughts && open && (
-        <div style={{ fontSize: 11.5, lineHeight: 1.55, color: INK_MUTED, whiteSpace: 'pre-wrap', wordBreak: 'break-word', padding: '6px 10px', borderRadius: R.sm, background: CARD_BG }}>{thoughts}</div>
+        <div style={{ fontSize: '0.71875rem', lineHeight: 1.55, color: INK_MUTED, whiteSpace: 'pre-wrap', wordBreak: 'break-word', padding: '6px 10px', borderRadius: R.sm, background: CARD_BG }}>{thoughts}</div>
       )}
       {(content || streaming) && (
-        <div style={{ fontSize: 13, lineHeight: 1.6, color: C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {content}{streaming && <span style={{ display: 'inline-block', width: 6, height: 13, marginLeft: 2, verticalAlign: '-2px', background: C.accent, opacity: 0.7, borderRadius: 1 }} />}
+        <div style={{ fontSize: '0.8125rem', lineHeight: 1.6, color: C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {content}{streaming && <span style={{ display: 'inline-block', width: 6, height: '0.8125rem', marginLeft: 2, verticalAlign: '-2px', background: C.accent, opacity: 0.7, borderRadius: 1 }} />}
         </div>
       )}
-      {footer && <div style={{ fontSize: 10, color: INK_FAINT }}>{footer}</div>}
+      {footer && <div style={{ fontSize: '0.625rem', color: INK_FAINT }}>{footer}</div>}
     </div>
   );
 }
@@ -128,12 +128,12 @@ function ToolRow({ item }: { item: Extract<TranscriptItem, { kind: 'tool_call' }
     <div style={{ borderRadius: R.md, background: CARD_BG, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
       <button onClick={() => setOpen((v) => !v)} style={{ ...bareButton, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, textAlign: 'left' }}>
         <Wrench size={12} style={{ color: failed ? C.err : pending ? INK_FAINT : C.accent, flexShrink: 0 }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: C.text, flexShrink: 0 }}>{item.call.name}</span>
-        <span style={{ fontSize: 11, color: INK_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{argsText}</span>
-        <span style={{ fontSize: 10, color: failed ? C.err : INK_FAINT, flexShrink: 0 }}>{pending ? '执行中' : failed ? '失败' : '完成'}</span>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: C.text, flexShrink: 0 }}>{item.call.name}</span>
+        <span style={{ fontSize: '0.6875rem', color: INK_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{argsText}</span>
+        <span style={{ fontSize: '0.625rem', color: failed ? C.err : INK_FAINT, flexShrink: 0 }}>{pending ? '执行中' : failed ? '失败' : '完成'}</span>
       </button>
       {open && item.result && (
-        <div style={{ fontSize: 11.5, lineHeight: 1.5, color: INK_MUTED, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 220, overflowY: 'auto' }}>
+        <div style={{ fontSize: '0.71875rem', lineHeight: 1.5, color: INK_MUTED, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 220, overflowY: 'auto' }}>
           {item.result.imageBase64 && <img src={`data:${item.result.imageMimeType ?? 'image/png'};base64,${item.result.imageBase64}`} alt="" style={{ display: 'block', maxWidth: '100%', maxHeight: 200, borderRadius: R.sm, marginBottom: 6 }} />}
           {item.result.content}
         </div>
@@ -146,7 +146,7 @@ function Notice({ level, text }: { level: 'info' | 'warn' | 'error'; text: strin
   const color = level === 'error' ? C.err : level === 'warn' ? '#f5c451' : INK_MUTED;
   const Icon = level === 'info' ? Info : AlertTriangle;
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11.5, lineHeight: 1.5, color, padding: '2px 2px' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.71875rem', lineHeight: 1.5, color, padding: '2px 2px' }}>
       <Icon size={13} style={{ flexShrink: 0, marginTop: 2 }} />
       <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</span>
     </div>
@@ -160,18 +160,18 @@ function PermissionCard({ item, onDecide }: { item: Extract<TranscriptItem, { ki
   return (
     <div style={{ borderRadius: R.lg, background: CARD_BG, border: `1px solid ${CHIP_BORDER}`, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: request.permissionClass === 'P' ? 'rgba(252,237,164,0.18)' : CHIP_BG, color: request.permissionClass === 'P' ? C.accent : INK_MUTED }}>{cls}</span>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{request.toolLabel}</span>
-        <span style={{ fontSize: 10.5, color: INK_FAINT, marginLeft: 'auto' }}>{request.toolName}</span>
+        <span style={{ fontSize: '0.625rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: request.permissionClass === 'P' ? 'rgba(252,237,164,0.18)' : CHIP_BG, color: request.permissionClass === 'P' ? C.accent : INK_MUTED }}>{cls}</span>
+        <span style={{ fontSize: '0.78125rem', fontWeight: 700, color: C.text }}>{request.toolLabel}</span>
+        <span style={{ fontSize: '0.65625rem', color: INK_FAINT, marginLeft: 'auto' }}>{request.toolName}</span>
       </div>
-      <div style={{ fontSize: 12, lineHeight: 1.55, color: INK_MUTED, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{request.summary}</div>
+      <div style={{ fontSize: '0.75rem', lineHeight: 1.55, color: INK_MUTED, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{request.summary}</div>
       {request.cost && (
-        <div style={{ fontSize: 11.5, color: request.cost.free ? INK_MUTED : C.accent }}>
+        <div style={{ fontSize: '0.71875rem', color: request.cost.free ? INK_MUTED : C.accent }}>
           {request.cost.free ? '预计免费' : `预计消耗 ${request.cost.anlas} Anlas`}{request.cost.note ? ` · ${request.cost.note}` : ''}
         </div>
       )}
       {decision ? (
-        <div style={{ fontSize: 11, color: INK_FAINT }}>
+        <div style={{ fontSize: '0.6875rem', color: INK_FAINT }}>
           {decision.kind === 'deny' ? `已拒绝${decision.reason ? `:${decision.reason}` : ''}` : decision.kind === 'allow-class' ? '已允许(本轮同类都放行)' : '已允许一次'}
         </div>
       ) : (
@@ -180,7 +180,7 @@ function PermissionCard({ item, onDecide }: { item: Extract<TranscriptItem, { ki
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="拒绝理由(可空)"
-            style={{ fontSize: 12, padding: '7px 10px', borderRadius: R.sm, border: `1px solid ${CHIP_BORDER}`, background: 'rgba(0,0,0,0.18)', color: C.text, outline: 'none' }}
+            style={{ fontSize: '0.75rem', padding: '7px 10px', borderRadius: R.sm, border: `1px solid ${CHIP_BORDER}`, background: 'rgba(0,0,0,0.18)', color: C.text, outline: 'none' }}
           />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button onClick={() => onDecide({ kind: 'allow' })} style={chipButton({ primary: true })}>允许一次</button>
@@ -213,8 +213,8 @@ function AskCard({ questions, answers, onAnswer }: { questions: AgentQuestion[];
     <div style={{ borderRadius: R.lg, background: CARD_BG, border: `1px solid ${CHIP_BORDER}`, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {questions.map((q, qi) => (
         <div key={qi} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {q.header && <div style={{ fontSize: 10.5, fontWeight: 700, color: INK_FAINT, letterSpacing: 0.4 }}>{q.header}</div>}
-          <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>{q.question}</div>
+          {q.header && <div style={{ fontSize: '0.65625rem', fontWeight: 700, color: INK_FAINT, letterSpacing: 0.4 }}>{q.header}</div>}
+          <div style={{ fontSize: '0.78125rem', color: C.text, lineHeight: 1.5 }}>{q.question}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {q.options.map((o) => {
               const on = done ? (answers?.[qi] ?? '').includes(o.label) : picked[qi]?.has(o.label);
@@ -225,12 +225,12 @@ function AskCard({ questions, answers, onAnswer }: { questions: AgentQuestion[];
           </div>
           {!done && q.allowCustomInput && (
             <input value={custom[qi] ?? ''} onChange={(e) => setCustom((p) => ({ ...p, [qi]: e.target.value }))} placeholder="或者自己写"
-              style={{ fontSize: 12, padding: '6px 10px', borderRadius: R.sm, border: `1px solid ${CHIP_BORDER}`, background: 'rgba(0,0,0,0.18)', color: C.text, outline: 'none' }} />
+              style={{ fontSize: '0.75rem', padding: '6px 10px', borderRadius: R.sm, border: `1px solid ${CHIP_BORDER}`, background: 'rgba(0,0,0,0.18)', color: C.text, outline: 'none' }} />
           )}
         </div>
       ))}
       {done ? (
-        <div style={{ fontSize: 11, color: INK_FAINT }}>{answers === null ? '已取消' : '已回答'}</div>
+        <div style={{ fontSize: '0.6875rem', color: INK_FAINT }}>{answers === null ? '已取消' : '已回答'}</div>
       ) : (
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => onAnswer(compose())} style={chipButton({ primary: true })}>提交</button>
@@ -247,7 +247,7 @@ export function chipButton({ primary = false, align = 'center' }: { primary?: bo
   return {
     padding: '7px 12px',
     borderRadius: 999,
-    fontSize: 12,
+    fontSize: '0.75rem',
     fontWeight: 700,
     lineHeight: 1.2,
     textAlign: align,

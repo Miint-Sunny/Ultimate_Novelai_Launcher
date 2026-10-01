@@ -77,7 +77,7 @@ export const DockPanelFrame: React.FC<Props> = ({
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: C.textDim }} />
-      <span className="text-[12px] font-semibold truncate flex-1 min-w-0">{title}</span>
+      <span className="text-[0.75rem] font-semibold truncate flex-1 min-w-0">{title}</span>
       {actions}
       <button
         style={{ ...iconButton, opacity: canMoveUp ? 1 : 0.3, cursor: canMoveUp ? 'pointer' : 'default' }}

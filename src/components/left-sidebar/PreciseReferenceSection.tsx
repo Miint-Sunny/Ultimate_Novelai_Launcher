@@ -46,7 +46,7 @@ export function PreciseReferenceSection({
           </div>
         </div>
         {disabledDetail && (
-          <p className="mt-1 text-[11px] leading-4 text-gray-500">{disabledDetail}</p>
+          <p className="mt-1 text-[0.6875rem] leading-4 text-gray-500">{disabledDetail}</p>
         )}
       </div>
     );
@@ -109,9 +109,9 @@ export function PreciseReferenceSection({
         <div className="mt-3 pt-3 border-t border-gray-700/50">
           <div className="flex items-center gap-2 mb-1.5 px-1">
             <div className="w-6" />
-            <div className="flex-1 text-[10px] text-gray-500 font-medium">名称</div>
-            <div className="w-16 text-[10px] text-gray-500 font-medium text-center flex items-center justify-center">Strength<HelpTip title="参考强度 (Strength)" body={"控制角色 / 风格参考对画面的整体影响力。\n· 值越高 → 越严格还原参考图特征\n· 值越低 → 参考图仅作弱引导\n💡 每张图额外消耗 5 Anlas，多个 PR 累加\n💡 过高时面部表情 / 角度 / 姿势会过度贴近参考图\n💡 点击数字框可输入负值（用作反向参考）"} /></div>
-            <div className="w-16 text-[10px] text-gray-500 font-medium text-center flex items-center justify-center">Fidelity<HelpTip title="还原度 (Fidelity)" body={"控制 prompt 能否压过参考图。\n· 值越高 → 参考图占主导，prompt 难以改变它\n· 值越低 → prompt 占主导，更易调整画面\n💡 实际效果可能因图而异，建议多尝试\n💡 点击数字框可输入负值"} /></div>
+            <div className="flex-1 text-[0.625rem] text-gray-500 font-medium">名称</div>
+            <div className="w-16 text-[0.625rem] text-gray-500 font-medium text-center flex items-center justify-center">Strength<HelpTip title="参考强度 (Strength)" body={"控制角色 / 风格参考对画面的整体影响力。\n· 值越高 → 越严格还原参考图特征\n· 值越低 → 参考图仅作弱引导\n💡 每张图额外消耗 5 Anlas，多个 PR 累加\n💡 过高时面部表情 / 角度 / 姿势会过度贴近参考图\n💡 点击数字框可输入负值（用作反向参考）"} /></div>
+            <div className="w-16 text-[0.625rem] text-gray-500 font-medium text-center flex items-center justify-center">Fidelity<HelpTip title="还原度 (Fidelity)" body={"控制 prompt 能否压过参考图。\n· 值越高 → 参考图占主导，prompt 难以改变它\n· 值越低 → prompt 占主导，更易调整画面\n💡 实际效果可能因图而异，建议多尝试\n💡 点击数字框可输入负值"} /></div>
             <div className="w-6" />
           </div>
 
@@ -167,7 +167,7 @@ function PreciseReferenceRow({
           <select
             value={reference.mode}
             onChange={(event) => onUpdate(reference.id, { mode: event.target.value as ActivePreciseRef['mode'] })}
-            className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-[10px] text-gray-300 focus:border-nai-accent outline-none cursor-pointer appearance-none"
+            className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-[0.625rem] text-gray-300 focus:border-nai-accent outline-none cursor-pointer appearance-none"
             style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 4px center', paddingRight: '20px' }}
           >
             <option value="character&style">Char & Style</option>
@@ -220,7 +220,7 @@ function PreciseValueInput({
         style={{
           backgroundImage: `linear-gradient(to right, rgba(252, 237, 164, 0.5) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
         }}
-        className="w-full bg-black/20 border border-gray-700 rounded px-1 py-1 text-[10px] text-center text-white focus:border-nai-accent outline-none appearance-none cursor-ew-resize"
+        className="w-full bg-black/20 border border-gray-700 rounded px-1 py-1 text-[0.625rem] text-center text-white focus:border-nai-accent outline-none appearance-none cursor-ew-resize"
         title={title}
       />
     </div>

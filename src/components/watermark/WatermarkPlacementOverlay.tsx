@@ -162,7 +162,7 @@ export const WatermarkPlacementOverlay: React.FC<Props> = ({ imageRef, imageUrl 
     : placement && (
       <div className="fixed z-[129]" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height, cursor: 'default' }}>
         {config.autoPosition && (
-          <div className="absolute left-2 top-2 px-2 py-0.5 rounded bg-black/70 text-[10px] text-amber-300">智能选位开着:这是算法在这张图上选的位置;拖动会改成手动。</div>
+          <div className="absolute left-2 top-2 px-2 py-0.5 rounded bg-black/70 text-[0.625rem] text-amber-300">智能选位开着:这是算法在这张图上选的位置;拖动会改成手动。</div>
         )}
         <div
           className="absolute border border-nai-accent/90 shadow-[0_0_0_1px_rgba(0,0,0,0.6)] cursor-move"

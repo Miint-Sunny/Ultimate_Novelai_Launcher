@@ -67,7 +67,7 @@ export function DesktopMarkerChip({
       <MarkerIcon className="w-3.5 h-3.5 shrink-0 text-white/90" strokeWidth={2} />
       <span className="flex flex-col items-start">
         <span className="text-xs font-medium leading-tight text-white/90">{markerInfo.name}</span>
-        <span className="text-[10px] leading-tight text-white/40">{tagCount} 个标签</span>
+        <span className="text-[0.625rem] leading-tight text-white/40">{tagCount} 个标签</span>
       </span>
     </button>
   );
@@ -149,18 +149,18 @@ export function DesktopTagChip({
     >
       <span className="flex flex-col items-start">
         <span className="flex items-center gap-1">
-          {abnormalWeight && <span className="text-[9px] text-red-400" title={abnormalTip}>⚠️</span>}
-          {isSDFormat && !abnormalWeight && <span className="text-[9px] text-amber-300" title="SD WebUI 格式">SD</span>}
+          {abnormalWeight && <span className="text-[0.625rem] text-red-400" title={abnormalTip}>⚠️</span>}
+          {isSDFormat && !abnormalWeight && <span className="text-[0.625rem] text-amber-300" title="SD WebUI 格式">SD</span>}
           <span className={`font-tag text-sm leading-tight ${isHidden ? 'text-white/25 line-through' : abnormalWeight ? 'text-red-300' : isSelected ? 'text-[#fceda4]' : isSDFormat ? 'text-amber-200' : chunkLabel ? 'text-teal-200' : 'text-white/85'}`}>{chunkLabel ? `@${chunkLabel}` : rawTag.trim()}</span>
         </span>
         {abnormalWeight ? (<>
-          <span className="text-[10px] leading-tight text-red-400/70">{abnormalWeight.message}</span>
-          {abnormalWeight.suggestion && <span className="text-[10px] leading-tight text-red-300/60">{abnormalWeight.suggestion}</span>}
+          <span className="text-[0.625rem] leading-tight text-red-400/70">{abnormalWeight.message}</span>
+          {abnormalWeight.suggestion && <span className="text-[0.625rem] leading-tight text-red-300/60">{abnormalWeight.suggestion}</span>}
         </>)
-          : chunkLabel ? (<span className="text-[10px] leading-tight text-teal-200/50">片段</span>)
-          : translation ? (<span className={`text-[10px] leading-tight ${isSelected ? 'text-[#fceda4]/50' : 'text-white/35'}`}>{translation}</span>)
-            : isTranslating ? (<span className="text-[10px] leading-tight text-white/20 animate-pulse">翻译中…</span>)
-              : needsTranslation ? (<span className="text-[10px] leading-tight text-white/15">…</span>) : <span className="text-[10px] leading-tight">&nbsp;</span>}
+          : chunkLabel ? (<span className="text-[0.625rem] leading-tight text-teal-200/50">片段</span>)
+          : translation ? (<span className={`text-[0.625rem] leading-tight ${isSelected ? 'text-[#fceda4]/50' : 'text-white/35'}`}>{translation}</span>)
+            : isTranslating ? (<span className="text-[0.625rem] leading-tight text-white/20 animate-pulse">翻译中…</span>)
+              : needsTranslation ? (<span className="text-[0.625rem] leading-tight text-white/15">…</span>) : <span className="text-[0.625rem] leading-tight">&nbsp;</span>}
       </span>
     </button>
   );

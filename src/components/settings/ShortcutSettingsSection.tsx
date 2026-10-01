@@ -52,7 +52,7 @@ export const ShortcutSettingsSection: React.FC<ShortcutSettingsSectionProps> = (
           </label>
           <button
             onClick={() => updateSettingsImmediate({ weightPresets: [-1, 0.5, 0.8, 1.5, 2.0] })}
-            className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-[0.6875rem] text-gray-500 hover:text-gray-300 transition-colors"
           >恢复默认</button>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -91,11 +91,11 @@ export const ShortcutSettingsSection: React.FC<ShortcutSettingsSectionProps> = (
           {(settings.weightPresets || [-1, 0.5, 0.8, 1.5, 2.0]).length < 6 && (
             <button
               onClick={() => updateSettingsImmediate({ weightPresets: [...(settings.weightPresets || [-1, 0.5, 0.8, 1.5, 2.0]), 1.0] })}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-gray-600 text-[11px] text-gray-500 hover:border-gray-400 hover:text-gray-300 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-gray-600 text-[0.6875rem] text-gray-500 hover:border-gray-400 hover:text-gray-300 transition-colors"
             ><Plus className="w-3 h-3" />添加</button>
           )}
         </div>
-        <p className="text-[11px] text-gray-600 mt-2.5">点击芯片面板中的预设按钮可快速设置标签权重</p>
+        <p className="text-[0.6875rem] text-gray-600 mt-2.5">点击芯片面板中的预设按钮可快速设置标签权重</p>
       </div>
     </div>
   );

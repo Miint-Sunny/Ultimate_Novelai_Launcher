@@ -13,7 +13,7 @@ export const AssistantSwitch: React.FC = () => {
   if (ui === 'legacy') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <button onClick={() => setAssistantUi('harness')} style={{ alignSelf: 'flex-end', margin: '6px 10px 0', fontSize: 11, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--nai-agent-chip-border)', background: 'var(--nai-agent-chip-bg)', color: 'inherit', cursor: 'pointer' }}>
+        <button onClick={() => setAssistantUi('harness')} style={{ alignSelf: 'flex-end', margin: '6px 10px 0', fontSize: '0.6875rem', padding: '3px 10px', borderRadius: 999, border: '1px solid var(--nai-agent-chip-border)', background: 'var(--nai-agent-chip-bg)', color: 'inherit', cursor: 'pointer' }}>
           切到新版助手
         </button>
         <AgentPanel />

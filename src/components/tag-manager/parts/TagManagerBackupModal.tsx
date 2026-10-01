@@ -461,7 +461,7 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
             <Cloud className="w-[22px] h-[22px]" strokeWidth={1.75} />
           </span>
           <div className="flex flex-col leading-tight flex-1 min-w-0">
-            <span className="text-[16px] font-bold text-white whitespace-nowrap tracking-wide">数据备份</span>
+            <span className="text-[1rem] font-bold text-white whitespace-nowrap tracking-wide">数据备份</span>
           </div>
           <button
             onClick={onClose}
@@ -490,8 +490,8 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
                 <Cloud className="w-[20px] h-[20px]" strokeWidth={1.75} />
               </span>
               <div className="flex flex-col leading-tight flex-1 min-w-0">
-                <span className="text-[14px] font-bold text-white">云端备份</span>
-                <span className="text-[11px] text-nai-text-dim tabular-nums">
+                <span className="text-[0.875rem] font-bold text-white">云端备份</span>
+                <span className="text-[0.6875rem] text-nai-text-dim tabular-nums">
                   {isAuthed
                     ? (cloudUpdatedAt > 0 ? `上次备份: ${formatBackupTime(cloudUpdatedAt)}` : '尚未备份')
                     : '需要 Bot 授权'}
@@ -507,7 +507,7 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
                 onClick={handleCloudBackup}
                 disabled={!isAuthed || !!cloudBusy || !!busyCategory}
                 title={isAuthed ? '把本地 4 类数据整体备份到云端' : '需要 Bot 授权'}
-                className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md bg-nai-accent text-[#1a1410] text-[13px] font-bold hover:bg-nai-accent-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md bg-nai-accent text-[#1a1410] text-[0.8125rem] font-bold hover:bg-nai-accent-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
               >
                 <Upload className="w-4 h-4" />
                 备份到云端
@@ -517,7 +517,7 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
                 onClick={handleCloudRestore}
                 disabled={!isAuthed || !!cloudBusy || !!busyCategory}
                 title={isAuthed ? '从云端拉取备份恢复到本地 (4 类)' : '需要 Bot 授权'}
-                className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md bg-gray-700/70 border border-gray-600 text-white text-[13px] font-bold hover:bg-gray-600/85 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md bg-gray-700/70 border border-gray-600 text-white text-[0.8125rem] font-bold hover:bg-gray-600/85 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" />
                 从云端恢复
@@ -527,7 +527,7 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
 
           {/* 分类导出/导入 - 每类独立 JSON 文件 */}
           <div className="flex items-center gap-2 mt-1 mb-0.5">
-            <span className="text-[12px] font-bold text-nai-text-dim">按分类导出 / 导入</span>
+            <span className="text-[0.75rem] font-bold text-nai-text-dim">按分类导出 / 导入</span>
             <span className="flex-1 h-px bg-white/[0.04]" />
           </div>
           {CATEGORIES.map(cfg => {
@@ -543,8 +543,8 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
                   <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
                 </span>
                 <div className="flex flex-col leading-tight min-w-0 flex-1">
-                  <span className="text-[13.5px] font-bold text-white">{cfg.label}</span>
-                  <span className="text-[11px] text-nai-text-dim tabular-nums">
+                  <span className="text-[0.84375rem] font-bold text-white">{cfg.label}</span>
+                  <span className="text-[0.6875rem] text-nai-text-dim tabular-nums">
                     本地 {s.localCount}
                     {s.cloudCount !== null && ` · 云端 ${s.cloudCount}`}
                   </span>
@@ -555,7 +555,7 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
                   onClick={() => handleExport(cfg.id)}
                   disabled={!!busyCategory || s.localCount === 0}
                   title="导出为 JSON 文件"
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-gray-800/60 border border-gray-700 text-gray-200 text-[12px] font-bold hover:bg-gray-700 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-gray-800/60 border border-gray-700 text-gray-200 text-[0.75rem] font-bold hover:bg-gray-700 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                 >
                   <Download className="w-3.5 h-3.5" />
                   导出
@@ -565,7 +565,7 @@ export const TagManagerBackupModal: React.FC<Props> = ({ isOpen, onClose, onData
                   onClick={() => triggerImport(cfg.id)}
                   disabled={!!busyCategory}
                   title="从 JSON 文件导入"
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-gray-800/60 border border-gray-700 text-gray-200 text-[12px] font-bold hover:bg-gray-700 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-gray-800/60 border border-gray-700 text-gray-200 text-[0.75rem] font-bold hover:bg-gray-700 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   导入

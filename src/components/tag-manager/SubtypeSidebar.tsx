@@ -51,11 +51,11 @@ export const SubtypeSidebar: React.FC<Props> = ({
               >
                 {Icon && <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />}
               </span>
-              <span className="flex-1 min-w-0 text-[13px] font-semibold truncate text-left">
+              <span className="flex-1 min-w-0 text-[0.8125rem] font-semibold truncate text-left">
                 {s.label}
               </span>
               {typeof count === 'number' && count > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1.5 rounded-full text-[10.5px] font-extrabold tabular-nums inline-flex items-center justify-center bg-nai-accent text-[#1a1410]">
+                <span className="min-w-[18px] h-[18px] px-1.5 rounded-full text-[0.65625rem] font-extrabold tabular-nums inline-flex items-center justify-center bg-nai-accent text-[#1a1410]">
                   {count}
                 </span>
               )}

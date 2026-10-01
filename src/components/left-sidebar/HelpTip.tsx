@@ -44,7 +44,7 @@ export const HelpTip: React.FC<HelpTipProps> = ({ text, title, body, bright }) =
       const rest = trimmed.slice(1).trim();
       return (
         <div key={idx} className="flex gap-1.5 items-start text-gray-300">
-          <span className="text-gray-500 mt-[2px] text-[8px]">●</span>
+          <span className="text-gray-500 mt-[2px] text-[0.625rem]">●</span>
           <span className="flex-1">{rest}</span>
         </div>
       );
@@ -63,11 +63,11 @@ export const HelpTip: React.FC<HelpTipProps> = ({ text, title, body, bright }) =
       />
       {show && pos && createPortal(
         <div
-          className="fixed w-[260px] px-3 py-2.5 text-[11px] leading-relaxed bg-gray-900/95 backdrop-blur-sm border border-gray-700/80 rounded-lg shadow-2xl ring-1 ring-black/30 z-[9999] pointer-events-none"
+          className="fixed w-[260px] px-3 py-2.5 text-[0.6875rem] leading-relaxed bg-gray-900/95 backdrop-blur-sm border border-gray-700/80 rounded-lg shadow-2xl ring-1 ring-black/30 z-[9999] pointer-events-none"
           style={{ top: pos.top, left: pos.left, transform: 'translateY(-100%)' }}
         >
           {title && (
-            <div className="text-[12px] font-semibold text-nai-accent pb-1.5 mb-1.5 border-b border-nai-accent/25">
+            <div className="text-[0.75rem] font-semibold text-nai-accent pb-1.5 mb-1.5 border-b border-nai-accent/25">
               {title}
             </div>
           )}
@@ -78,14 +78,14 @@ export const HelpTip: React.FC<HelpTipProps> = ({ text, title, body, bright }) =
           )}
           {tipLines.length > 0 && (
             <div className={`${mainLines.length > 0 ? 'mt-2.5' : ''} px-2 py-1.5 bg-nai-accent/10 border-l-2 border-nai-accent/50 rounded-r`}>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-nai-accent mb-1">
+              <div className="flex items-center gap-1 text-[0.625rem] font-semibold text-nai-accent mb-1">
                 <span className="leading-none">💡</span>
                 <span className="tracking-wide">使用提示</span>
               </div>
               <div className="space-y-0.5">
                 {tipLines.map((line, idx) => (
                   <div key={idx} className="flex gap-1.5 items-start text-gray-300/95 leading-snug">
-                    <span className="text-nai-accent/50 mt-[2px] text-[8px]">●</span>
+                    <span className="text-nai-accent/50 mt-[2px] text-[0.625rem]">●</span>
                     <span className="flex-1">{line}</span>
                   </div>
                 ))}

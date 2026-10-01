@@ -118,10 +118,10 @@ export const AlphabetRail: React.FC<Props> = ({
               key={letter}
               className={`w-full flex items-center justify-center cursor-pointer transition-all duration-100 ${
                 isActive
-                  ? 'text-nai-accent font-black text-[12px]'
+                  ? 'text-nai-accent font-black text-[0.75rem]'
                   : isAvailable
-                    ? 'text-gray-300 font-bold text-[10px]'
-                    : 'text-gray-700/40 text-[9px]'
+                    ? 'text-gray-300 font-bold text-[0.625rem]'
+                    : 'text-gray-700/40 text-[0.625rem]'
               }`}
               style={{ flex: '1 1 0', minHeight: 0 }}
             >

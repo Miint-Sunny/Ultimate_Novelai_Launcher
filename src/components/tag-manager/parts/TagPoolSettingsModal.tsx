@@ -113,7 +113,7 @@ export const TagPoolSettingsModal: React.FC<Props> = ({
                   className="flex-1 bg-nai-dark text-white text-sm rounded-md px-3 py-2 border border-gray-700 focus:border-nai-accent focus:outline-none"
                 />
               </div>
-              {dup && <p className="text-[11px] text-red-400 pl-6">标签 "{trimmed}" 已存在</p>}
+              {dup && <p className="text-[0.6875rem] text-red-400 pl-6">标签 "{trimmed}" 已存在</p>}
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   onClick={() => { setCreating(false); setNewName(''); }}
@@ -153,7 +153,7 @@ export const TagPoolSettingsModal: React.FC<Props> = ({
                 {usage !== null && (
                   <span
                     title={`${usage} 个项目使用此标签`}
-                    className={`text-[11px] tabular-nums px-1.5 py-0.5 rounded ${
+                    className={`text-[0.6875rem] tabular-nums px-1.5 py-0.5 rounded ${
                       usage > 0
                         ? 'text-nai-accent/90 bg-nai-accent/10'
                         : 'text-gray-500 bg-gray-700/40'
@@ -163,7 +163,7 @@ export const TagPoolSettingsModal: React.FC<Props> = ({
                   </span>
                 )}
                 {isProtected ? (
-                  <span className="text-[10px] text-gray-500 px-1.5 py-0.5 rounded bg-gray-700/50">系统</span>
+                  <span className="text-[0.625rem] text-gray-500 px-1.5 py-0.5 rounded bg-gray-700/50">系统</span>
                 ) : (
                   <button
                     onClick={() => handleDelete(tag)}

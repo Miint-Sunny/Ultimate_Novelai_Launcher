@@ -96,23 +96,23 @@ export const WorkshopTaskFloat: React.FC<WorkshopTaskFloatProps> = ({ onView, bo
                                                 style={{ width: `${progress}%` }}
                                             />
                                         </div>
-                                        <span className="text-[10px] text-gray-400 tabular-nums shrink-0">
+                                        <span className="text-[0.625rem] text-gray-400 tabular-nums shrink-0">
                                             {remaining > 0 ? `${remaining}s` : '…'}
                                         </span>
                                     </div>
                                 )}
                                 {isSuccess && (
                                     <div className="flex flex-col">
-                                        <span className="text-[11px] text-emerald-400 font-medium leading-tight">完成</span>
-                                        <span className="text-[10px] text-gray-500 truncate leading-tight">{task.prompt || '无提示词'}</span>
+                                        <span className="text-[0.6875rem] text-emerald-400 font-medium leading-tight">完成</span>
+                                        <span className="text-[0.625rem] text-gray-500 truncate leading-tight">{task.prompt || '无提示词'}</span>
                                     </div>
                                 )}
                                 {isError && (
                                     <div className="flex flex-col group/err relative">
-                                        <span className="text-[11px] text-red-400 font-medium leading-tight">失败</span>
-                                        <span className="text-[10px] text-gray-500 truncate leading-tight">{extractErrorSummary(task.error)}</span>
+                                        <span className="text-[0.6875rem] text-red-400 font-medium leading-tight">失败</span>
+                                        <span className="text-[0.625rem] text-gray-500 truncate leading-tight">{extractErrorSummary(task.error)}</span>
                                         {task.error && (
-                                            <div className="hidden group-hover/err:block absolute right-0 bottom-full mb-1.5 w-60 max-h-32 overflow-y-auto p-2 rounded-lg bg-gray-950/95 border border-white/10 text-[10px] text-red-300/90 leading-relaxed whitespace-pre-wrap break-all shadow-2xl z-10">
+                                            <div className="hidden group-hover/err:block absolute right-0 bottom-full mb-1.5 w-60 max-h-32 overflow-y-auto p-2 rounded-lg bg-gray-950/95 border border-white/10 text-[0.625rem] text-red-300/90 leading-relaxed whitespace-pre-wrap break-all shadow-2xl z-10">
                                                 {task.error}
                                             </div>
                                         )}

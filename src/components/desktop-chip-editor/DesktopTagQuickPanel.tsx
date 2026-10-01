@@ -93,7 +93,7 @@ export function DesktopTagQuickPanel({
               <MarkerIcon className="w-3.5 h-3.5 shrink-0 text-nai-accent" strokeWidth={2} />
               <span className="text-xs font-medium text-white/90 truncate">{markerData.name}</span>
             </div>
-            <div className="text-[10px] text-white/40 mt-0.5">{cfg.label} · {tagCount} 个标签</div>
+            <div className="text-[0.625rem] text-white/40 mt-0.5">{cfg.label} · {tagCount} 个标签</div>
           </div>
           <button className="shrink-0 w-6 h-6 flex items-center justify-center text-white/40 hover:text-white/80 rounded hover:bg-white/10 transition-colors" onClick={() => setTagPanel(null)}>
             <X className="w-4 h-4" />
@@ -101,7 +101,7 @@ export function DesktopTagQuickPanel({
         </div>
         <div className="px-2 py-1.5 flex items-center gap-2">
           <button
-            className="flex-1 h-6 text-[10px] bg-nai-accent/15 hover:bg-nai-accent/30 text-nai-accent rounded transition-colors"
+            className="flex-1 h-6 text-[0.625rem] bg-nai-accent/15 hover:bg-nai-accent/30 text-nai-accent rounded transition-colors"
             onClick={() => {
               const tags = [...parsedTags];
               tags.splice(tagPanel.index, 1, ...markerData.content.split(/[,，]/).map(tag => tag.trim()).filter(Boolean));
@@ -113,7 +113,7 @@ export function DesktopTagQuickPanel({
             展开为标签
           </button>
           <button
-            className="flex-1 h-6 text-[10px] bg-red-500/10 hover:bg-red-500/25 text-red-400/70 rounded transition-colors flex items-center justify-center gap-0.5"
+            className="flex-1 h-6 text-[0.625rem] bg-red-500/10 hover:bg-red-500/25 text-red-400/70 rounded transition-colors flex items-center justify-center gap-0.5"
             onClick={() => panelActions.deleteTag()}
           >
             <Trash2 className="w-3 h-3" /> 删除
@@ -145,16 +145,16 @@ export function DesktopTagQuickPanel({
             }}
           >
             <div className="flex items-baseline gap-1.5 min-w-0">
-              <span className="font-tag text-[14px] leading-tight text-[#fceda4] truncate hover:text-[#fceda4]/85 transition-colors" title={tagPanel.tag}>
+              <span className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate hover:text-[#fceda4]/85 transition-colors" title={tagPanel.tag}>
                 {tagPanel.tag.replace(/ /g, '_')}
               </span>
               {tagPanelPostCount != null && tagPanelPostCount > 0 && (
-                <span className="shrink-0 text-[11px] tabular-nums text-white/40" title={`Danbooru 引用数：${tagPanelPostCount}`}>
+                <span className="shrink-0 text-[0.6875rem] tabular-nums text-white/40" title={`Danbooru 引用数：${tagPanelPostCount}`}>
                   {tagPanelPostCount >= 1000 ? `${(tagPanelPostCount / 1000).toFixed(0)}k` : tagPanelPostCount}
                 </span>
               )}
             </div>
-            <div className="text-[11px] leading-tight text-white/50 mt-1 relative">
+            <div className="text-[0.6875rem] leading-tight text-white/50 mt-1 relative">
               <span className={tagPanel.translation ? '' : 'invisible'}>{tagPanel.translation || '\u00A0'}</span>
               {!tagPanel.translation && translationLoading && (
                 <span className="absolute inset-0 flex items-center gap-1">
@@ -174,10 +174,10 @@ export function DesktopTagQuickPanel({
           const sdInfo = parseSDWeight(tagPanel.rawTag);
           return (
             <div className="mx-2 mb-1.5 rounded-md bg-amber-500/10 ring-1 ring-amber-500/20 px-2.5 py-1.5 flex items-center gap-2">
-              <span className="text-[10px] text-amber-300 font-medium">SD WebUI</span>
-              <span className="text-[10px] text-amber-200/60">{sdInfo?.weight !== null ? `权重 ${sdInfo?.weight}` : '无权重'}</span>
+              <span className="text-[0.625rem] text-amber-300 font-medium">SD WebUI</span>
+              <span className="text-[0.625rem] text-amber-200/60">{sdInfo?.weight !== null ? `权重 ${sdInfo?.weight}` : '无权重'}</span>
               <div className="flex-1" />
-              <button className="px-2 py-0.5 text-[10px] bg-amber-500/25 hover:bg-amber-500/40 text-amber-100 rounded transition-colors" onClick={panelActions.convertSDToNAI} title="转换为 NAI 格式">
+              <button className="px-2 py-0.5 text-[0.625rem] bg-amber-500/25 hover:bg-amber-500/40 text-amber-100 rounded transition-colors" onClick={panelActions.convertSDToNAI} title="转换为 NAI 格式">
                 转 NAI
               </button>
             </div>
@@ -186,11 +186,11 @@ export function DesktopTagQuickPanel({
 
         <div className="px-2 pb-1.5">
           <div className="flex items-center gap-1 mb-1.5">
-            <button className="px-2 h-6 text-[11px] font-mono bg-[#74270D]/50 hover:bg-[#74270D]/80 text-orange-200 rounded transition-colors" onClick={panelActions.addWeight} title="增加权重 {tag}">{'{+}'}</button>
-            <button className="px-2 h-6 text-[11px] font-mono bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 rounded transition-colors" onClick={panelActions.reduceWeight} title="降低权重 [tag]">{'[−]'}</button>
+            <button className="px-2 h-6 text-[0.6875rem] font-mono bg-[#74270D]/50 hover:bg-[#74270D]/80 text-orange-200 rounded transition-colors" onClick={panelActions.addWeight} title="增加权重 {tag}">{'{+}'}</button>
+            <button className="px-2 h-6 text-[0.6875rem] font-mono bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 rounded transition-colors" onClick={panelActions.reduceWeight} title="降低权重 [tag]">{'[−]'}</button>
             <div className="flex-1" />
             <button className="w-6 h-6 flex items-center justify-center text-sm bg-blue-500/15 hover:bg-blue-500/35 text-blue-200 rounded transition-colors" onClick={() => { const value = stepNumericWeight(numWeight, -0.1); setNumWeight(value); panelActions.setNumericWeight(value); }} title="减少 0.1">−</button>
-            <span className={`w-11 text-center text-[12px] font-mono tabular-nums font-medium ${numWeight > 1 ? 'text-orange-200' : numWeight < 1 ? 'text-blue-200' : 'text-white/80'}`}>{numWeight.toFixed(1)}</span>
+            <span className={`w-11 text-center text-[0.75rem] font-mono tabular-nums font-medium ${numWeight > 1 ? 'text-orange-200' : numWeight < 1 ? 'text-blue-200' : 'text-white/80'}`}>{numWeight.toFixed(1)}</span>
             <button className="w-6 h-6 flex items-center justify-center text-sm bg-[#74270D]/40 hover:bg-[#74270D]/70 text-orange-200 rounded transition-colors" onClick={() => { const value = stepNumericWeight(numWeight, 0.1); setNumWeight(value); panelActions.setNumericWeight(value); }} title="增加 0.1">+</button>
           </div>
           <div className="flex items-center gap-1">
@@ -201,7 +201,7 @@ export function DesktopTagQuickPanel({
               return (
                 <button
                   key={weight}
-                  className={`flex-1 h-6 text-[11px] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
+                  className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded transition-colors ${base} ${active ? 'ring-1 ring-inset ring-[#fceda4]/60' : ''}`}
                   onClick={() => { setNumWeight(weight); panelActions.setNumericWeight(weight); }}
                   title={`${weight}::tag::`}
                 >
@@ -209,7 +209,7 @@ export function DesktopTagQuickPanel({
                 </button>
               );
             })}
-            <button className="px-2 h-6 text-[11px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.clearWeight} title="清除所有权重">清除</button>
+            <button className="px-2 h-6 text-[0.6875rem] text-white/50 hover:text-white/80 hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.clearWeight} title="清除所有权重">清除</button>
           </div>
         </div>
 
@@ -230,17 +230,17 @@ export function DesktopTagQuickPanel({
         <div className="mx-2 h-px bg-white/[0.08]" />
 
         <div className="px-2 py-1.5 flex items-center gap-0.5">
-          <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.openDanbooru} title="在 Danbooru 中查看">
+          <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.openDanbooru} title="在 Danbooru 中查看">
             <ExternalLink className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>Wiki</span>
           </button>
-          <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.moveToFront} title="移到最前">
+          <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.moveToFront} title="移到最前">
             <ArrowUp className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>置顶</span>
           </button>
-          <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.toggleHide} title={tagPanel.rawTag.trim().startsWith('~') ? '启用此标签' : '禁用此标签'}>
+          <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-white/60 hover:text-white hover:bg-white/[0.08] rounded transition-colors" onClick={panelActions.toggleHide} title={tagPanel.rawTag.trim().startsWith('~') ? '启用此标签' : '禁用此标签'}>
             {tagPanel.rawTag.trim().startsWith('~') ? <Eye className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /> : <EyeOff className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />}<span>{tagPanel.rawTag.trim().startsWith('~') ? '启用' : '禁用'}</span>
           </button>
           <div className="flex-1" />
-          <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-red-400/75 hover:text-red-300 hover:bg-red-500/15 rounded transition-colors" onClick={panelActions.deleteTag} title="删除标签">
+          <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-red-400/75 hover:text-red-300 hover:bg-red-500/15 rounded transition-colors" onClick={panelActions.deleteTag} title="删除标签">
             <Trash2 className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} /><span>删除</span>
           </button>
         </div>

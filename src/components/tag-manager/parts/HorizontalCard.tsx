@@ -99,7 +99,7 @@ export const HorizontalCard: React.FC<Props> = ({
       {/* 底部信息区 - 名称 + 操作按钮一行 */}
       <div className="flex items-center gap-2 px-3 py-2.5 h-[52px]">
         <span
-          className={`flex-1 min-w-0 truncate text-[15px] font-extrabold tracking-wide ${
+          className={`flex-1 min-w-0 truncate text-[0.9375rem] font-extrabold tracking-wide ${
             isSelected ? 'text-nai-accent' : 'text-gray-100'
           }`}
         >

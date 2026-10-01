@@ -30,7 +30,7 @@ export function LibraryTabView({
                 aria-selected={on}
                 data-pane={item.id}
                 onClick={() => onPaneChange(item.id)}
-                className={`px-3 h-7 rounded-full text-[12px] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}
+                className={`px-3 h-7 rounded-full text-[0.75rem] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}
               >
                 {item.label}
               </button>

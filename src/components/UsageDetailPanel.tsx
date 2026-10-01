@@ -148,15 +148,15 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
               <div className="flex gap-3 justify-center">
                 <div className="text-center">
                   <div className="text-sm font-bold text-blue-400">{data.total_image_calls.toLocaleString()}</div>
-                  <div className="text-[10px] text-gray-500">生图次数</div>
+                  <div className="text-[0.625rem] text-gray-500">生图次数</div>
                 </div>
                 <div className="text-center">
                   <div className="text-sm font-bold text-orange-400">{data.total_points.toLocaleString()}</div>
-                  <div className="text-[10px] text-gray-500">总消耗点数</div>
+                  <div className="text-[0.625rem] text-gray-500">总消耗点数</div>
                 </div>
                 <div className="text-center">
                   <div className="text-sm font-bold text-purple-400">{data.type_breakdown.length}</div>
-                  <div className="text-[10px] text-gray-500">消耗类型</div>
+                  <div className="text-[0.625rem] text-gray-500">消耗类型</div>
                 </div>
               </div>
 
@@ -170,7 +170,7 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] rounded-md transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[0.6875rem] rounded-md transition-colors ${
                       activeTab === tab.key
                         ? 'bg-gray-700/80 text-white'
                         : 'text-gray-500 hover:text-gray-300'
@@ -201,8 +201,8 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-[11px] text-gray-300 truncate">{t.reason || '未知'}</span>
-                              <span className="text-[10px] text-gray-500 ml-2 flex-shrink-0">{t.count}次</span>
+                              <span className="text-[0.6875rem] text-gray-300 truncate">{t.reason || '未知'}</span>
+                              <span className="text-[0.625rem] text-gray-500 ml-2 flex-shrink-0">{t.count}次</span>
                             </div>
                             <div className="h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
                               <div
@@ -211,7 +211,7 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
                               />
                             </div>
                           </div>
-                          <span className="text-[11px] font-mono text-gray-300 flex-shrink-0 w-14 text-right">
+                          <span className="text-[0.6875rem] font-mono text-gray-300 flex-shrink-0 w-14 text-right">
                             {t.total_points}点
                           </span>
                         </div>
@@ -237,13 +237,13 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
                       const ptsPct = Math.max((d.points_spent / maxDailyPts * 100), d.points_spent > 0 ? 8 : 0);
                       return (
                         <div key={i} className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-500 w-10 flex-shrink-0 text-right">{dateStr}</span>
+                          <span className="text-[0.625rem] text-gray-500 w-10 flex-shrink-0 text-right">{dateStr}</span>
                           <div className="flex-1 space-y-0.5">
                             <div className="flex items-center gap-1">
-                              <span className="text-[9px] text-gray-500 w-3">图</span>
-                              <div className="flex-1 h-2.5 bg-gray-700/30 rounded-full overflow-hidden">
+                              <span className="text-[0.625rem] text-gray-500 w-3">图</span>
+                              <div className="flex-1 h-3 bg-gray-700/30 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-blue-500/80 rounded-full flex items-center justify-end pr-1 text-[8px] text-white/80"
+                                  className="h-full bg-blue-500/80 rounded-full flex items-center justify-end pr-1 text-[0.625rem] leading-none text-white/80"
                                   style={{ width: `${imgPct}%`, minWidth: d.image_calls > 0 ? '16px' : 0 }}
                                 >
                                   {d.image_calls > 0 ? d.image_calls : ''}
@@ -251,10 +251,10 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="text-[9px] text-gray-500 w-3">点</span>
-                              <div className="flex-1 h-2.5 bg-gray-700/30 rounded-full overflow-hidden">
+                              <span className="text-[0.625rem] text-gray-500 w-3">点</span>
+                              <div className="flex-1 h-3 bg-gray-700/30 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-orange-500/80 rounded-full flex items-center justify-end pr-1 text-[8px] text-white/80"
+                                  className="h-full bg-orange-500/80 rounded-full flex items-center justify-end pr-1 text-[0.625rem] leading-none text-white/80"
                                   style={{ width: `${ptsPct}%`, minWidth: d.points_spent > 0 ? '16px' : 0 }}
                                 >
                                   {d.points_spent > 0 ? d.points_spent : ''}
@@ -280,15 +280,15 @@ export const UsageDetailPanel: React.FC<UsageDetailPanelProps> = ({
                       const style = getReasonStyle(r.reason);
                       return (
                         <div key={i} className="flex items-center gap-2 py-1 px-1.5 rounded hover:bg-gray-700/30">
-                          <span className="text-[10px] text-gray-500 w-28 flex-shrink-0">{timeStr}</span>
+                          <span className="text-[0.625rem] text-gray-500 w-28 flex-shrink-0">{timeStr}</span>
                           <span
-                            className="text-[10px] flex-1 truncate"
+                            className="text-[0.625rem] flex-1 truncate"
                             style={{ color: style.color }}
                             title={r.reason}
                           >
                             {r.reason || '未知'}
                           </span>
-                          <span className="text-[11px] font-mono text-gray-300 flex-shrink-0">{r.points}点</span>
+                          <span className="text-[0.6875rem] font-mono text-gray-300 flex-shrink-0">{r.points}点</span>
                         </div>
                       );
                     })

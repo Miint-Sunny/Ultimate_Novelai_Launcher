@@ -48,21 +48,21 @@ export const CardMsg: React.FC<{
           border: `1px solid ${C.border}`,
           borderRadius: 12,
           padding: '10px 12px',
-          fontSize: 12,
+          fontSize: '0.75rem',
           color: C.text2,
         }}
       >
         {/* 标题行 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
           <span style={{ color: C.accent, fontWeight: 700 }}>{card.title}</span>
-          <span style={{ marginLeft: 'auto', color: C.textMute, fontSize: 10 }}>{m.ts}</span>
+          <span style={{ marginLeft: 'auto', color: C.textMute, fontSize: '0.625rem' }}>{m.ts}</span>
         </div>
 
         {card.kind === 'info' && (
           <>
             {card.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{card.body}</div>}
             {card.hint && (
-              <div style={{ marginTop: 6, color: C.textMute, fontSize: 11 }}>{card.hint}</div>
+              <div style={{ marginTop: 6, color: C.textMute, fontSize: '0.6875rem' }}>{card.hint}</div>
             )}
           </>
         )}
@@ -89,11 +89,11 @@ export const CardMsg: React.FC<{
                       minWidth: 0,
                     }}
                   >
-                    <div style={{ color: C.textMute, fontSize: 10 }}>{k}</div>
+                    <div style={{ color: C.textMute, fontSize: '0.625rem' }}>{k}</div>
                     <div
                       style={{
                         color: C.text,
-                        fontSize: 11,
+                        fontSize: '0.6875rem',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
@@ -114,7 +114,7 @@ export const CardMsg: React.FC<{
                   <TagChip key={`${t}-${i}`}>{t}</TagChip>
                 ))}
                 {tags.length > 40 && (
-                  <span style={{ color: C.textMute, fontSize: 10, alignSelf: 'center' }}>
+                  <span style={{ color: C.textMute, fontSize: '0.625rem', alignSelf: 'center' }}>
                     +{tags.length - 40}
                   </span>
                 )}
@@ -126,7 +126,7 @@ export const CardMsg: React.FC<{
               <div style={{ marginBottom: 6 }}>
                 <button
                   className="aa-btn"
-                  style={{ color: C.textDim, fontSize: 11, padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}
+                  style={{ color: C.textDim, fontSize: '0.6875rem', padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}
                   onClick={() => setShowNegative(v => !v)}
                 >
                   {showNegative ? '▾ 负向提示词' : '▸ 负向提示词'}
@@ -139,7 +139,7 @@ export const CardMsg: React.FC<{
                       background: C.surface,
                       borderRadius: 6,
                       color: C.textDim,
-                      fontSize: 11,
+                      fontSize: '0.6875rem',
                       lineHeight: 1.5,
                       wordBreak: 'break-all',
                     }}
@@ -152,7 +152,7 @@ export const CardMsg: React.FC<{
 
             {/* 角色提示词 */}
             {meta.characterPrompts && meta.characterPrompts.length > 0 && (
-              <div style={{ marginBottom: 6, color: C.textDim, fontSize: 11 }}>
+              <div style={{ marginBottom: 6, color: C.textDim, fontSize: '0.6875rem' }}>
                 {meta.characterPrompts.length} 个角色提示词
               </div>
             )}
@@ -179,7 +179,7 @@ export const CardMsg: React.FC<{
 
 function actionBtnStyle(primary: boolean): React.CSSProperties {
   return {
-    fontSize: 11,
+    fontSize: '0.6875rem',
     padding: '4px 10px',
     borderRadius: 8,
     cursor: 'pointer',

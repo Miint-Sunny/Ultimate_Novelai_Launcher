@@ -210,24 +210,24 @@ const CardFooter: React.FC<{
         {children}
         <div className="flex flex-wrap items-center gap-2">
             {task.aspectRatio && task.aspectRatio !== 'auto' && (
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{task.aspectRatio}</span>
+                <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{task.aspectRatio}</span>
             )}
-            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{taskModelLabel(task)}</span>
-            <span className="text-[10px]" style={{ color: faint }}>{providerName}</span>
-            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: task.refImages?.length ? 'rgb(37 99 235 / 0.08)' : 'rgb(22 163 74 / 0.08)', color: task.refImages?.length ? '#2563eb' : '#16a34a' }}>{task.refImages?.length ? '图生图' : '文生图'}</span>
-            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>质量：{QUALITY_CN[quality]}</span>
+            <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{taskModelLabel(task)}</span>
+            <span className="text-[0.625rem]" style={{ color: faint }}>{providerName}</span>
+            <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: task.refImages?.length ? 'rgb(37 99 235 / 0.08)' : 'rgb(22 163 74 / 0.08)', color: task.refImages?.length ? '#2563eb' : '#16a34a' }}>{task.refImages?.length ? '图生图' : '文生图'}</span>
+            <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>质量：{QUALITY_CN[quality]}</span>
             {imageCount != null && imageCount > 0 && (
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{imageCount} 张</span>
+                <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{imageCount} 张</span>
             )}
             {error && onRetry && (
-                <button onClick={(e) => { e.stopPropagation(); onRetry(); }} className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[10px] font-medium transition-colors hover:opacity-90" style={{ background: '#d3482b', color: '#fff' }}>
+                <button onClick={(e) => { e.stopPropagation(); onRetry(); }} className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[0.625rem] font-medium transition-colors hover:opacity-90" style={{ background: '#d3482b', color: '#fff' }}>
                     <RotateCcw className="h-3 w-3" />重试
                 </button>
             )}
         </div>
         <div className="flex items-center justify-between">
-            <span className="text-[10px]" style={{ color: faint }}>{task.estimatedSeconds ? `约 ${formatSeconds(task.estimatedSeconds)}` : ''}</span>
-            <span className="text-[10px]" style={{ color: '#bfbfbf' }}>{formatTime(task.timestamp)}</span>
+            <span className="text-[0.625rem]" style={{ color: faint }}>{task.estimatedSeconds ? `约 ${formatSeconds(task.estimatedSeconds)}` : ''}</span>
+            <span className="text-[0.625rem]" style={{ color: '#bfbfbf' }}>{formatTime(task.timestamp)}</span>
         </div>
     </div>
 );
@@ -288,8 +288,8 @@ const SettingsModal: React.FC<{
                 <div className="space-y-4 overflow-y-auto p-5">
                     <button className="flex w-full items-center gap-2 rounded-xl border px-4 py-3 text-left transition-colors hover:opacity-90" style={{ background: 'rgb(52 106 234 / 0.06)', borderColor: 'rgb(52 106 234 / 0.25)' }}>
                         <CircleHelp className="h-4 w-4 shrink-0" style={{ color: blue }} />
-                        <span className="text-[13px] font-semibold" style={{ color: blue }}>使用方法</span>
-                        <span className="ml-auto text-[11px]" style={{ color: blue, opacity: 0.6 }}>服务器 / 自定义 Key →</span>
+                        <span className="text-[0.8125rem] font-semibold" style={{ color: blue }}>使用方法</span>
+                        <span className="ml-auto text-[0.6875rem]" style={{ color: blue, opacity: 0.6 }}>服务器 / 自定义 Key →</span>
                     </button>
 
                     <div className="space-y-2">
@@ -949,7 +949,7 @@ export const WorkshopInputBar: React.FC<WorkshopInputBarProps> = ({ isOpen, onCl
                                                 </button>
                                             )}
                                             {isDemo && (
-                                                <span className="absolute left-2 top-2 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium shadow-sm" style={{ color: muted }}>示例</span>
+                                                <span className="absolute left-2 top-2 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[0.625rem] font-medium shadow-sm" style={{ color: muted }}>示例</span>
                                             )}
                                             {task.imageUrl ? (
                                                 <>
@@ -1069,10 +1069,10 @@ export const WorkshopInputBar: React.FC<WorkshopInputBarProps> = ({ isOpen, onCl
                                     </div>
                                 )}
                                 <div className="flex flex-wrap gap-1.5">
-                                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>请求 {previewTask.aspectRatio || 'auto'}</span>
-                                    {previewImageSize && <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>实际 {previewImageSize.w}x{previewImageSize.h} ({ratioFromSize(previewImageSize.w, previewImageSize.h)})</span>}
-                                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>质量：{QUALITY_CN[quality]}</span>
-                                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{previewTask.refImages?.length ? '图生图' : '文生图'}</span>
+                                    <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>请求 {previewTask.aspectRatio || 'auto'}</span>
+                                    {previewImageSize && <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>实际 {previewImageSize.w}x{previewImageSize.h} ({ratioFromSize(previewImageSize.w, previewImageSize.h)})</span>}
+                                    <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>质量：{QUALITY_CN[quality]}</span>
+                                    <span className="rounded-full px-2 py-0.5 text-[0.625rem] font-medium" style={{ background: 'rgb(0 0 0 / 0.04)', color: muted }}>{previewTask.refImages?.length ? '图生图' : '文生图'}</span>
                                 </div>
                             </div>
                         </div>

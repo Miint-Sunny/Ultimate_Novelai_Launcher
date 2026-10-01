@@ -35,7 +35,7 @@ export function V5TogglePanel({ model, prompt, onPromptChange, touch = false }: 
     return V5_TOGGLE_GROUPS.filter((g) => !g.v5Only || caps.toggleWords);
   }, [model]);
   // 触屏下按钮要够大:桌面 20px 高的胶囊在手指下是点不准的。
-  const optionSize = touch ? 'px-3 py-1.5 text-xs' : 'px-2 py-0.5 text-[11px]';
+  const optionSize = touch ? 'px-3 py-1.5 text-xs' : 'px-2 py-0.5 text-[0.6875rem]';
 
   return (
     <div className="px-2 pb-1.5">
@@ -43,7 +43,7 @@ export function V5TogglePanel({ model, prompt, onPromptChange, touch = false }: 
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         title="V5 专有词条:写进提示词即生效,拼错不会报错,所以从这里点"
-        className="w-full flex items-center justify-between text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+        className="w-full flex items-center justify-between text-[0.6875rem] text-gray-500 hover:text-gray-300 transition-colors"
       >
         <span className="flex items-center gap-1.5">
           词条速查
@@ -65,14 +65,14 @@ export function V5TogglePanel({ model, prompt, onPromptChange, touch = false }: 
           {conflicts.map((conflict) => (
             <div
               key={conflict.groupId}
-              className="text-[11px] leading-snug text-red-400/90 bg-red-500/10 border border-red-500/30 rounded px-2 py-1"
+              className="text-[0.6875rem] leading-snug text-red-400/90 bg-red-500/10 border border-red-500/30 rounded px-2 py-1"
             >
               {conflict.message}
             </div>
           ))}
           {groups.map((group) => (
             <div key={group.id}>
-              <div className="text-[10px] text-gray-500 mb-1" title={group.hint}>
+              <div className="text-[0.625rem] text-gray-500 mb-1" title={group.hint}>
                 {group.title}
               </div>
               <div className="flex flex-wrap gap-1">

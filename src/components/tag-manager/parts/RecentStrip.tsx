@@ -33,13 +33,13 @@ export const RecentStrip: React.FC<Props> = ({
 
   return (
     <div className="rounded-lg border border-white/[0.06] bg-nai-dark/40 px-3 py-2.5 mb-3">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold text-nai-text-dim mb-2">
+      <div className="flex items-center gap-1.5 text-[0.6875rem] font-bold text-nai-text-dim mb-2">
         <Clock className="w-3 h-3" />
         <span>最近使用</span>
         {!isEmpty && onClear && (
           <button
             onClick={(e) => { e.stopPropagation(); onClear(); }}
-            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-nai-text-dim hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] text-nai-text-dim hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
           >
             <Trash2 className="w-2.5 h-2.5" />
             清空
@@ -48,7 +48,7 @@ export const RecentStrip: React.FC<Props> = ({
       </div>
       <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden py-0.5 scrollbar-hide">
         {isEmpty ? (
-          <span className="text-[11.5px] text-nai-text-dim/60 italic">暂无最近使用</span>
+          <span className="text-[0.71875rem] text-nai-text-dim/60 italic">暂无最近使用</span>
         ) : items.map(it => {
           const isSel = selectedSet.has(it.id);
           const thumb = it.preview || it.legacyPreviews?.[0] || '';
@@ -57,7 +57,7 @@ export const RecentStrip: React.FC<Props> = ({
               key={it.id}
               onClick={() => onToggle(it.id)}
               title={it.positive}
-              className={`shrink-0 inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full border text-[11.5px] font-semibold cursor-pointer transition-colors ${
+              className={`shrink-0 inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full border text-[0.71875rem] font-semibold cursor-pointer transition-colors ${
                 isSel
                   ? 'bg-nai-accent/15 text-nai-accent border-nai-accent'
                   : 'bg-gray-800/70 text-white border-gray-700 hover:bg-gray-700/85 hover:border-white/20'

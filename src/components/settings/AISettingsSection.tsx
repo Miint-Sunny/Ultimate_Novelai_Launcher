@@ -51,13 +51,13 @@ const BrowserAuthorizePanel: React.FC = () => {
       {challenge && (
         <div className="mt-3 space-y-2">
           <div>
-            <div className="text-[11px] text-gray-500 mb-1">sidecar 地址（填进浏览器的「浏览器直连 sidecar」）</div>
+            <div className="text-[0.6875rem] text-gray-500 mb-1">sidecar 地址（填进浏览器的「浏览器直连 sidecar」）</div>
             <code className="block bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-white break-all">
               {challenge.endpoint}
             </code>
           </div>
           <div>
-            <div className="text-[11px] text-gray-500 mb-1">
+            <div className="text-[0.6875rem] text-gray-500 mb-1">
               配对码（{challenge.expiresIn} 秒内有效，只能用一次）
             </div>
             <code className="block bg-gray-900 border border-gray-700 rounded px-3 py-2 text-center font-mono text-2xl tracking-[0.4em] text-nai-accent">

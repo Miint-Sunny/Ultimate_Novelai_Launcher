@@ -224,12 +224,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           className="text-lg sm:text-2xl font-bold text-center mb-6 sm:mb-8 text-nai-accent flex flex-wrap items-center justify-center gap-2 select-none cursor-default"
         >
           Ultimate Novelai Launcher
-          <span className="text-[10px] sm:text-xs font-bold bg-nai-accent/20 text-nai-accent px-1.5 sm:px-2 py-0.5 rounded-full border border-nai-accent/30 uppercase tracking-wider animate-pulse-subtle">
+          <span className="text-[0.625rem] sm:text-xs font-bold bg-nai-accent/20 text-nai-accent px-1.5 sm:px-2 py-0.5 rounded-full border border-nai-accent/30 uppercase tracking-wider animate-pulse-subtle">
             Beta
           </span>
           {/* 测试后门提示 */}
           {devClickCount > 0 && devClickCount < 5 && (
-            <span className="absolute -top-2 right-4 text-[10px] text-gray-500 animate-fade-in">
+            <span className="absolute -top-2 right-4 text-[0.625rem] text-gray-500 animate-fade-in">
               <FlaskConical className="w-3 h-3 inline mr-0.5" />
               {5 - devClickCount}
             </span>
@@ -311,7 +311,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <div className="text-xs space-y-2.5 sm:space-y-3 mt-3 sm:mt-4 px-1">
                 <div className="flex items-start gap-2 sm:gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-                  <p className="text-gray-300 leading-relaxed text-[11px] sm:text-xs">
+                  <p className="text-gray-300 leading-relaxed text-[0.6875rem] sm:text-xs">
                     通过代理服务器转发至NovelAI，不会存储您的Token
                   </p>
                 </div>
@@ -338,7 +338,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   />
                 </button>
               </div>
-              <p className="text-[11px] sm:text-xs text-gray-500 mt-2">
+              <p className="text-[0.6875rem] sm:text-xs text-gray-500 mt-2">
                 同一Token有多人使用该面板时启用，避免并发冲突
               </p>
             </div>

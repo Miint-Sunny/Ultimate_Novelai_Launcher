@@ -198,7 +198,7 @@ export const InputBar: React.FC<Props> = ({
             flex: 1,
             minWidth: 0,
             width: '100%',
-            fontSize: 13,
+            fontSize: '0.8125rem',
             color: C.text,
             background: 'transparent',
             border: 0,
@@ -206,8 +206,8 @@ export const InputBar: React.FC<Props> = ({
             resize: 'none',
             fontFamily: 'inherit',
             lineHeight: 1.45,
-            minHeight: 18,
-            maxHeight: 100,
+            minHeight: '1.125rem',
+            maxHeight: '6.25rem',
             outline: 'none',
           }}
         />

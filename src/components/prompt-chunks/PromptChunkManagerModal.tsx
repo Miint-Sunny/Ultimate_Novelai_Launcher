@@ -143,7 +143,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
               )}
               {grouped.map(([category, items]) => (
                 <div key={category || '__root'} className="mb-2">
-                  {category && <div className="text-[10px] uppercase tracking-wide text-gray-500 px-1 py-1">{category}</div>}
+                  {category && <div className="text-[0.625rem] uppercase tracking-wide text-gray-500 px-1 py-1">{category}</div>}
                   {items.map((chunk) => (
                     <button
                       key={chunk.id}
@@ -171,7 +171,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
           <div className="flex-1 flex flex-col p-4 gap-3 min-w-0">
             <div className={`flex gap-3 ${embedded ? 'flex-wrap' : ''}`}>
               <label className="flex-1 flex flex-col gap-1">
-                <span className="text-[11px] text-gray-500">名字(引用时区分大小写)</span>
+                <span className="text-[0.6875rem] text-gray-500">名字(引用时区分大小写)</span>
                 <input
                   value={draft.label}
                   onChange={(event) => setDraft({ ...draft, label: event.target.value })}
@@ -180,7 +180,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
                 />
               </label>
               <label className={`${embedded ? 'w-full' : 'w-[180px]'} flex flex-col gap-1`}>
-                <span className="text-[11px] text-gray-500">文件夹(可空)</span>
+                <span className="text-[0.6875rem] text-gray-500">文件夹(可空)</span>
                 <input
                   value={draft.category}
                   onChange={(event) => setDraft({ ...draft, category: event.target.value })}
@@ -190,7 +190,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
               </label>
             </div>
             <label className="flex-1 flex flex-col gap-1 min-h-0">
-              <span className="text-[11px] text-gray-500">正文(建议以逗号结尾;发送前重复逗号会自动去掉)</span>
+              <span className="text-[0.6875rem] text-gray-500">正文(建议以逗号结尾;发送前重复逗号会自动去掉)</span>
               <textarea
                 value={draft.expansion}
                 onChange={(event) => setDraft({ ...draft, expansion: event.target.value })}
@@ -199,7 +199,7 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
               />
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-500">颜色</span>
+              <span className="text-[0.6875rem] text-gray-500">颜色</span>
               {COLORS.map((color) => (
                 <button
                   key={color}
@@ -209,12 +209,12 @@ export const PromptChunkManagerModal: React.FC<PromptChunkManagerModalProps> = (
                   aria-label={color}
                 />
               ))}
-              <span className="ml-auto text-[11px] font-mono text-gray-500">{draft.label.trim() ? chunkReference(draft.label.trim()) : ''}</span>
+              <span className="ml-auto text-[0.6875rem] font-mono text-gray-500">{draft.label.trim() ? chunkReference(draft.label.trim()) : ''}</span>
             </div>
             {lints.length > 0 && (
               <div className="flex flex-col gap-1">
                 {lints.map((lint) => (
-                  <div key={lint.message} className={`flex items-start gap-1.5 text-[11px] ${lint.level === 'error' ? 'text-red-400' : 'text-amber-400/90'}`}>
+                  <div key={lint.message} className={`flex items-start gap-1.5 text-[0.6875rem] ${lint.level === 'error' ? 'text-red-400' : 'text-amber-400/90'}`}>
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
                     <span>{lint.message}</span>
                   </div>

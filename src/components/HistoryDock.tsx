@@ -492,7 +492,7 @@ export const HistoryDock: React.FC = () => {
               <div className="absolute inset-0 bg-nai-accent/40 rounded-full animate-ping" />
               <div className="absolute inset-0.5 bg-nai-accent rounded-full" />
             </div>
-            <span className="text-[10px] text-gray-300">排队 #{queuePosition > 0 ? queuePosition : '-'}</span>
+            <span className="text-[0.625rem] text-gray-300">排队 #{queuePosition > 0 ? queuePosition : '-'}</span>
           </div>
         ) : (
           <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -526,20 +526,20 @@ export const HistoryDock: React.FC = () => {
         <img src={item.imageUrl} alt={`Seed: ${item.seed}`} className="w-full h-full object-contain" />
         {/* 超分标记 */}
         {item.isUpscaled && !selectable && (
-          <div className="absolute top-1 left-1 px-1 py-0.5 bg-green-500/80 rounded text-[8px] text-white font-bold flex items-center gap-0.5" title="超分辨率">
+          <div className="absolute top-1 left-1 px-1 py-0.5 bg-green-500/80 rounded text-[0.625rem] text-white font-bold flex items-center gap-0.5" title="超分辨率">
             <Maximize2 className="w-2 h-2" />
             {item.upscaleScale || 4}x
           </div>
         )}
         {/* 局部重绘标记 */}
         {item.isInpainted && !item.isUpscaled && !selectable && (
-          <div className="absolute top-1 left-1 px-1 py-0.5 bg-blue-500/80 rounded text-[8px] text-white font-bold" title="局部重绘">
+          <div className="absolute top-1 left-1 px-1 py-0.5 bg-blue-500/80 rounded text-[0.625rem] text-white font-bold" title="局部重绘">
             重绘
           </div>
         )}
         {/* 香蕉重绘标记 */}
         {item.isBananaRepaint && !item.isUpscaled && !item.isInpainted && !selectable && (
-          <div className="absolute top-1 left-1 px-1 py-0.5 bg-yellow-500/80 rounded text-[8px] text-black font-bold" title="香蕉重绘">
+          <div className="absolute top-1 left-1 px-1 py-0.5 bg-yellow-500/80 rounded text-[0.625rem] text-black font-bold" title="香蕉重绘">
             🍌
           </div>
         )}
@@ -560,7 +560,7 @@ export const HistoryDock: React.FC = () => {
           </button>
         )}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-1.5 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="text-[10px] text-gray-200 flex justify-between drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+          <div className="text-[0.625rem] text-gray-200 flex justify-between drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
             <span>{item.width}×{item.height}</span>
             <span>{formatTime(item.timestamp)}</span>
           </div>
@@ -796,20 +796,20 @@ export const HistoryDock: React.FC = () => {
                     <img src={item.imageUrl} alt={`Seed: ${item.seed}`} className="w-full h-full object-contain" />
                     {/* 超分标记 */}
                     {item.isUpscaled && !isSelectMode && (
-                      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-green-500/80 rounded text-[10px] text-white font-bold flex items-center gap-1" title="超分辨率">
+                      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-green-500/80 rounded text-[0.625rem] text-white font-bold flex items-center gap-1" title="超分辨率">
                         <Maximize2 className="w-3 h-3" />
                         {item.upscaleScale || 4}x
                       </div>
                     )}
                     {/* 局部重绘标记 */}
                     {item.isInpainted && !item.isUpscaled && !isSelectMode && (
-                      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-blue-500/80 rounded text-[10px] text-white font-bold" title="局部重绘">
+                      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-blue-500/80 rounded text-[0.625rem] text-white font-bold" title="局部重绘">
                         重绘
                       </div>
                     )}
                     {/* 香蕉重绘标记 */}
                     {item.isBananaRepaint && !item.isUpscaled && !item.isInpainted && !isSelectMode && (
-                      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-yellow-500/80 rounded text-[10px] text-black font-bold" title="香蕉重绘">
+                      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-yellow-500/80 rounded text-[0.625rem] text-black font-bold" title="香蕉重绘">
                         🍌
                       </div>
                     )}
@@ -832,7 +832,7 @@ export const HistoryDock: React.FC = () => {
                     {/* 信息覆盖层 */}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="text-xs text-gray-300 font-mono truncate">{item.isUpscaled && item.originalSeed ? item.originalSeed : item.seed}</div>
-                      <div className="text-[10px] text-gray-500 flex justify-between">
+                      <div className="text-[0.625rem] text-gray-500 flex justify-between">
                         <span>{item.width}×{item.height}</span>
                         <span>{formatTime(item.timestamp)}</span>
                       </div>

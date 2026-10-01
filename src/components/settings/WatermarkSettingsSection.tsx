@@ -99,8 +99,8 @@ export const WatermarkSettingsSection: React.FC<Props> = ({ settings, updateSett
                   <button onClick={() => update({ imageDataUrl: null })} className="px-2 py-1 rounded text-xs border border-gray-700 bg-gray-800 text-gray-400 hover:text-red-300 hover:border-red-500/50 flex items-center gap-1"><Trash2 className="w-3 h-3" />清除</button>
                 )}
               </div>
-              <p className="text-[11px] text-gray-500">png / jpg / webp,带透明通道效果最好;存在设置里,约 1.5 MB 以内。</p>
-              {logoNote && <p className="text-[11px] text-amber-400">{logoNote}</p>}
+              <p className="text-[0.6875rem] text-gray-500">png / jpg / webp,带透明通道效果最好;存在设置里,约 1.5 MB 以内。</p>
+              {logoNote && <p className="text-[0.6875rem] text-amber-400">{logoNote}</p>}
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickLogo(f); if (fileRef.current) fileRef.current.value = ''; }} />
             </div>
           </div>
@@ -131,7 +131,7 @@ export const WatermarkSettingsSection: React.FC<Props> = ({ settings, updateSett
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs text-gray-200">自动对比度</div>
-              <p className="text-[11px] text-gray-500">按水印下方背景的亮度把 logo 压暗或提亮</p>
+              <p className="text-[0.6875rem] text-gray-500">按水印下方背景的亮度把 logo 压暗或提亮</p>
             </div>
             <Toggle on={wm.autoContrast} onChange={(v) => update({ autoContrast: v })} />
           </div>
@@ -139,8 +139,8 @@ export const WatermarkSettingsSection: React.FC<Props> = ({ settings, updateSett
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs text-gray-200">智能选位</div>
-              <p className="text-[11px] text-gray-500">每次导出时找画面里信息量最低的位置放,忽略上面的固定位置</p>
-              {smartNote && <p className="text-[11px] text-amber-300 mt-0.5">{smartNote}</p>}
+              <p className="text-[0.6875rem] text-gray-500">每次导出时找画面里信息量最低的位置放,忽略上面的固定位置</p>
+              {smartNote && <p className="text-[0.6875rem] text-amber-300 mt-0.5">{smartNote}</p>}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={pickSmart} className="px-2 py-1 rounded text-xs border border-gray-700 bg-gray-800 text-gray-200 hover:text-white hover:border-gray-500 flex items-center gap-1" title="用当前画板上的图算一次,把结果写进固定位置">
@@ -167,7 +167,7 @@ export const WatermarkSettingsSection: React.FC<Props> = ({ settings, updateSett
               className="flex-1 px-2.5 py-1.5 rounded bg-black/30 border border-gray-700 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-nai-accent" />
           </div>
           <Slider label="强度" value={wm.blindStrength} min={WATERMARK_LIMITS.blindStrength.min} max={WATERMARK_LIMITS.blindStrength.max} step={1} display={String(wm.blindStrength)} onChange={(v) => update({ blindStrength: v })} />
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[0.6875rem] text-gray-500">
             载荷 {new TextEncoder().encode(wm.blindText).length} / {WATERMARK_LIMITS.blindTextBytes} 字节 · 越高越抗压缩,画质扰动略增;jpg 导出时一律按 5 嵌。
           </p>
         </div>

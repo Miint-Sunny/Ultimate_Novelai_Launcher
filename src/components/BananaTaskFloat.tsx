@@ -98,14 +98,14 @@ export const BananaTaskFloat: React.FC<BananaTaskFloatProps> = ({
                         style={{ width: `${progress}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-gray-400 tabular-nums">
+                    <span className="text-[0.625rem] text-gray-400 tabular-nums">
                       {remaining > 0 ? `${remaining}s` : '...'}
                     </span>
                   </div>
                 ) : task.status === 'completed' ? (
-                  <span className="text-[11px] text-green-400">完成</span>
+                  <span className="text-[0.6875rem] text-green-400">完成</span>
                 ) : (
-                  <span className="text-[11px] text-red-400 truncate block">失败</span>
+                  <span className="text-[0.6875rem] text-red-400 truncate block">失败</span>
                 )}
               </div>
 

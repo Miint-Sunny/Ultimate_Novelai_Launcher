@@ -98,7 +98,7 @@ export function CharacterPromptsSection({
                         onPlaceOnCanvas?.();
                       }
                     }}
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-2 py-0.5 rounded-full text-[0.6875rem] font-bold transition-colors ${on ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white'}`}
                   >
                     {option.label}
                   </button>

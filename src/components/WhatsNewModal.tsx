@@ -100,10 +100,10 @@ const WikiPreviewMock: React.FC = () => {
           >
             <Tag className="shrink-0 w-3.5 h-3.5 text-[#fcd34d]/75" />
             <div className="flex flex-col min-w-0 flex-1 leading-tight gap-0.5">
-              <span className={`font-tag text-[13px] truncate ${s.active ? 'text-white' : 'text-[#d4d4d4]'}`}>{s.tag}</span>
-              <span className={`text-[10px] truncate ${s.active ? 'text-white/55' : 'text-[#6e7681]'}`}>{s.cn}</span>
+              <span className={`font-tag text-[0.8125rem] truncate ${s.active ? 'text-white' : 'text-[#d4d4d4]'}`}>{s.tag}</span>
+              <span className={`text-[0.625rem] truncate ${s.active ? 'text-white/55' : 'text-[#6e7681]'}`}>{s.cn}</span>
             </div>
-            <span className={`shrink-0 text-[10px] tabular-nums ${s.active ? 'text-white/60' : 'text-[#6e7681]'}`}>{s.count}</span>
+            <span className={`shrink-0 text-[0.625rem] tabular-nums ${s.active ? 'text-white/60' : 'text-[#6e7681]'}`}>{s.count}</span>
           </div>
         ))}
 
@@ -132,7 +132,7 @@ const WikiPreviewMock: React.FC = () => {
       >
         <div className="relative h-[120px] bg-black/40 flex items-center justify-center">
           <div className="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_35%_35%,rgba(252,237,164,0.22),transparent_38%),linear-gradient(135deg,rgba(125,211,252,0.16),rgba(240,171,252,0.12))]" />
-          <div className="relative flex flex-col items-center gap-1 text-white/30 text-[11px]" style={{ animation: 'wikiImageSwap 4.2s ease-in-out infinite' }}>
+          <div className="relative flex flex-col items-center gap-1 text-white/30 text-[0.6875rem]" style={{ animation: 'wikiImageSwap 4.2s ease-in-out infinite' }}>
             <BookOpen className="w-7 h-7 opacity-70" strokeWidth={1.5} />
             <span>示例图轮播</span>
           </div>
@@ -143,12 +143,12 @@ const WikiPreviewMock: React.FC = () => {
           </div>
         </div>
         <div className="p-2.5">
-          <div className="font-tag text-[13px] leading-tight text-[#fceda4]">long_hair</div>
-          <div className="mt-0.5 text-[10px] leading-snug text-white/42">长发 / hair_long</div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-white/72 line-clamp-3">
+          <div className="font-tag text-[0.8125rem] leading-tight text-[#fceda4]">long_hair</div>
+          <div className="mt-0.5 text-[0.625rem] leading-snug text-white/42">长发 / hair_long</div>
+          <p className="mt-1.5 text-[0.6875rem] leading-relaxed text-white/72 line-clamp-3">
             指角色头发垂至肩部以下的长度。Danbooru 上常见发型标签之一，通常和 very_long_hair 等标签联用。
           </p>
-          <div className="mt-2 flex items-center justify-between text-[10px] text-white/35">
+          <div className="mt-2 flex items-center justify-between text-[0.625rem] text-white/35">
             <span>#7234156</span>
             <span className="inline-flex items-center gap-1 text-[#fceda4]/70">
               <span>Wiki</span>
@@ -180,17 +180,17 @@ const WikiPreviewMockStatic: React.FC = () => (
         >
           <Tag className="shrink-0 w-3.5 h-3.5" style={{ color: s.color, opacity: s.sel ? 1 : 0.75 }} />
           <div className="flex flex-col min-w-0 flex-1 leading-tight gap-0.5">
-            <span className={`font-tag text-[13px] truncate ${s.sel ? 'text-white' : 'text-[#d4d4d4]'}`}>{s.tag}</span>
-            <span className={`text-[10px] truncate ${s.sel ? 'text-white/55' : 'text-[#6e7681]'}`}>{s.cn}</span>
+            <span className={`font-tag text-[0.8125rem] truncate ${s.sel ? 'text-white' : 'text-[#d4d4d4]'}`}>{s.tag}</span>
+            <span className={`text-[0.625rem] truncate ${s.sel ? 'text-white/55' : 'text-[#6e7681]'}`}>{s.cn}</span>
           </div>
-          <span className={`shrink-0 text-[10px] tabular-nums ${s.sel ? 'text-white/60' : 'text-[#6e7681]'}`}>{s.count}</span>
+          <span className={`shrink-0 text-[0.625rem] tabular-nums ${s.sel ? 'text-white/60' : 'text-[#6e7681]'}`}>{s.count}</span>
         </div>
       ))}
     </div>
 
     {/* 提示箭头 */}
     <div className="flex flex-col items-center text-[#fceda4]/55">
-      <span className="text-[10px] mb-0.5">悬停</span>
+      <span className="text-[0.625rem] mb-0.5">悬停</span>
       <ChevronRight className="w-4 h-4" strokeWidth={2} />
     </div>
 
@@ -198,7 +198,7 @@ const WikiPreviewMockStatic: React.FC = () => (
     <div className="w-[260px] shrink-0 rounded-lg bg-[#111315] overflow-hidden border border-[#fceda4]/22">
       {/* 顶部图区 */}
       <div className="relative h-[120px] bg-black/40 flex items-center justify-center">
-        <div className="w-full h-full flex items-center justify-center text-white/15 text-[11px]">
+        <div className="w-full h-full flex items-center justify-center text-white/15 text-[0.6875rem]">
           <div className="flex flex-col items-center gap-1">
             <BookOpen className="w-7 h-7 opacity-40" strokeWidth={1.5} />
             <span>示例图轮播</span>
@@ -213,12 +213,12 @@ const WikiPreviewMockStatic: React.FC = () => (
       </div>
       {/* 文本区 */}
       <div className="p-2.5">
-        <div className="font-tag text-[13px] leading-tight text-[#fceda4]">long_hair</div>
-        <div className="mt-0.5 text-[10px] leading-snug text-white/42">长发 / hair_long</div>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-white/72 line-clamp-3">
+        <div className="font-tag text-[0.8125rem] leading-tight text-[#fceda4]">long_hair</div>
+        <div className="mt-0.5 text-[0.625rem] leading-snug text-white/42">长发 / hair_long</div>
+        <p className="mt-1.5 text-[0.6875rem] leading-relaxed text-white/72 line-clamp-3">
           指角色头发垂至肩部以下的长度。Danbooru 上最常见的发型标签之一，常与 hair_between_eyes、very_long_hair 联用。
         </p>
-        <div className="mt-2 flex items-center justify-between text-[10px] text-white/35">
+        <div className="mt-2 flex items-center justify-between text-[0.625rem] text-white/35">
           <span>#7234156</span>
           <span className="inline-flex items-center gap-1 text-[#fceda4]/70">
             <span>Wiki</span>
@@ -285,8 +285,8 @@ const RelatedTagsMock: React.FC = () => {
         >
           <div className="flex items-start gap-2 px-3 py-2.5">
             <div className="min-w-0 flex-1">
-              <div className="font-tag text-[14px] leading-tight text-[#fceda4] truncate">black_long_thighhighs</div>
-              <div className="text-[11px] leading-tight text-white/50 mt-1">黑色长过膝袜</div>
+              <div className="font-tag text-[0.875rem] leading-tight text-[#fceda4] truncate">black_long_thighhighs</div>
+              <div className="text-[0.6875rem] leading-tight text-white/50 mt-1">黑色长过膝袜</div>
             </div>
             <button className="shrink-0 w-6 h-6 flex items-center justify-center text-white/40 rounded-md">
               <X className="w-3.5 h-3.5" strokeWidth={2} />
@@ -295,11 +295,11 @@ const RelatedTagsMock: React.FC = () => {
 
           <div className="px-2 pb-1.5">
             <div className="flex items-center gap-1 mb-1.5">
-              <button className="px-2 h-6 text-[11px] font-mono bg-[#74270D]/50 text-orange-200 rounded">{'{+}'}</button>
-              <button className="px-2 h-6 text-[11px] font-mono bg-blue-500/20 text-blue-200 rounded">{'[-]'}</button>
+              <button className="px-2 h-6 text-[0.6875rem] font-mono bg-[#74270D]/50 text-orange-200 rounded">{'{+}'}</button>
+              <button className="px-2 h-6 text-[0.6875rem] font-mono bg-blue-500/20 text-blue-200 rounded">{'[-]'}</button>
               <div className="flex-1" />
               <button className="w-6 h-6 flex items-center justify-center text-sm bg-blue-500/15 text-blue-200 rounded">-</button>
-              <span className="w-9 text-center text-[12px] font-mono tabular-nums font-medium text-white/80">1.0</span>
+              <span className="w-9 text-center text-[0.75rem] font-mono tabular-nums font-medium text-white/80">1.0</span>
               <button className="w-6 h-6 flex items-center justify-center text-sm bg-[#74270D]/40 text-orange-200 rounded">+</button>
             </div>
             <div className="flex items-center gap-1">
@@ -307,12 +307,12 @@ const RelatedTagsMock: React.FC = () => {
                 const isOrange = w > 1;
                 const base = isOrange ? 'bg-[#74270D]/35 text-orange-200' : 'bg-blue-500/15 text-blue-200';
                 return (
-                <button key={w} className={`flex-1 h-6 text-[11px] font-mono tabular-nums rounded ${base}`}>
+                <button key={w} className={`flex-1 h-6 text-[0.6875rem] font-mono tabular-nums rounded ${base}`}>
                   {w}
                 </button>
                 );
               })}
-              <button className="px-2 h-6 text-[11px] text-white/50 rounded bg-white/[0.04]">
+              <button className="px-2 h-6 text-[0.6875rem] text-white/50 rounded bg-white/[0.04]">
                 清除
               </button>
             </div>
@@ -340,12 +340,12 @@ const RelatedTagsMock: React.FC = () => {
                 {related.map((r, i) => (
                   <button key={r.tag} className="group shrink-0 inline-flex flex-col items-start text-left bg-transparent border-0 p-0">
                     <span
-                      className="font-tag text-[12px] leading-tight underline underline-offset-2"
+                      className="font-tag text-[0.75rem] leading-tight underline underline-offset-2"
                       style={{ color: 'rgba(255,255,255,0.8)', textDecorationColor: 'transparent' }}
                     >
                       {r.tag}
                     </span>
-                    <span className="text-[10px] leading-tight text-white/40">
+                    <span className="text-[0.625rem] leading-tight text-white/40">
                       {r.cn}
                     </span>
                   </button>
@@ -363,20 +363,20 @@ const RelatedTagsMock: React.FC = () => {
 
           <div className="mx-2 h-px bg-white/[0.08]" />
           <div className="px-2 py-1.5 flex items-center gap-0.5">
-            <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 rounded">
+            <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-white/60 rounded">
               <ExternalLink className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
               <span>Wiki</span>
             </button>
-            <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 rounded">
+            <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-white/60 rounded">
               <ArrowUp className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
               <span>置顶</span>
             </button>
-            <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-white/60 rounded">
+            <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-white/60 rounded">
               <EyeOff className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
               <span>禁用</span>
             </button>
             <div className="flex-1" />
-            <button className="flex items-center gap-1.5 px-2 h-7 text-[11px] text-red-400/75 rounded">
+            <button className="flex items-center gap-1.5 px-2 h-7 text-[0.6875rem] text-red-400/75 rounded">
               <Trash2 className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
               <span>删除</span>
             </button>
@@ -398,10 +398,10 @@ const RelatedTagsMockStatic: React.FC = () => (
   <div className="h-full w-full flex flex-col items-center justify-center gap-3 px-4">
     {/* 顶部：选中的 chip */}
     <div className="flex items-center gap-2">
-      <span className="text-[11px] text-white/45">点击芯片</span>
+      <span className="text-[0.6875rem] text-white/45">点击芯片</span>
       <ChevronRight className="w-3 h-3 text-white/30" />
       <span
-        className="px-2 py-0.5 rounded text-[12px] font-tag border"
+        className="px-2 py-0.5 rounded text-[0.75rem] font-tag border"
         style={{ background: '#fceda41a', borderColor: '#fceda44d', color: '#fceda4' }}
       >
         1girl
@@ -413,15 +413,15 @@ const RelatedTagsMockStatic: React.FC = () => (
       {/* 标题区 */}
       <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
         <div>
-          <div className="font-tag text-[13px] leading-tight text-[#fceda4]">1girl</div>
-          <div className="mt-0.5 text-[10px] text-white/40">少女</div>
+          <div className="font-tag text-[0.8125rem] leading-tight text-[#fceda4]">1girl</div>
+          <div className="mt-0.5 text-[0.625rem] text-white/40">少女</div>
         </div>
         <Link2 className="w-3.5 h-3.5 text-[#fceda4]/55" strokeWidth={1.8} />
       </div>
 
       {/* 关联推荐行 */}
       <div className="px-3 py-2 border-t border-[#fceda4]/8">
-        <div className="text-[10px] text-white/40 mb-1.5 flex items-center gap-1">
+        <div className="text-[0.625rem] text-white/40 mb-1.5 flex items-center gap-1">
           <Sparkles className="w-3 h-3 text-[#fceda4]/60" strokeWidth={2} />
           <span>关联推荐 · Danbooru 共现</span>
         </div>
@@ -436,7 +436,7 @@ const RelatedTagsMockStatic: React.FC = () => (
           ].map((r, i) => (
             <div key={i} className="flex flex-col items-start leading-tight">
               <span
-                className={`font-tag text-[12px] ${
+                className={`font-tag text-[0.75rem] ${
                   r.added
                     ? 'text-white/25 line-through'
                     : r.strong
@@ -447,7 +447,7 @@ const RelatedTagsMockStatic: React.FC = () => (
                 {r.tag}
               </span>
               <span
-                className={`text-[10px] ${
+                className={`text-[0.625rem] ${
                   r.added ? 'text-white/15' : r.strong ? 'text-[#fceda4]/55' : 'text-white/40'
                 }`}
               >
@@ -459,7 +459,7 @@ const RelatedTagsMockStatic: React.FC = () => (
       </div>
     </div>
 
-    <div className="flex items-center gap-3 text-[10px] text-white/45">
+    <div className="flex items-center gap-3 text-[0.625rem] text-white/45">
       <span className="flex items-center gap-1">
         <span className="w-2 h-2 rounded-full bg-[#fceda4]" /> 强相关
       </span>
@@ -505,9 +505,9 @@ const ChineseHitMock: React.FC = () => {
 
       <div className="w-[430px] max-w-full">
         <div className="px-3 py-2 rounded-md border border-[#fceda4]/30 bg-black/40 flex items-center gap-2">
-          <span className="text-[10px] text-white/40 font-mono">输入</span>
+          <span className="text-[0.625rem] text-white/40 font-mono">输入</span>
           <span
-            className="inline-flex items-center font-tag text-[14px] text-white overflow-hidden whitespace-nowrap"
+            className="inline-flex items-center font-tag text-[0.875rem] text-white overflow-hidden whitespace-nowrap"
             style={{ animation: 'chineseTyping 4.6s steps(7, end) infinite' }}
           >
             <span>长发校服少女</span>
@@ -518,8 +518,8 @@ const ChineseHitMock: React.FC = () => {
 
       <div className="w-[430px] max-w-full bg-[#0f0f0f] rounded-lg shadow-[0_16px_40px_-10px_rgba(0,0,0,0.85),0_0_0_1px_rgba(252,237,164,0.08)] overflow-hidden">
         <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
-          <span className="text-[11px] text-[#fceda4]/80">中文语义匹配</span>
-          <span className="text-[10px] tabular-nums" style={{ animation: 'chineseCountGlow 4.6s ease-in-out infinite' }}>
+          <span className="text-[0.6875rem] text-[#fceda4]/80">中文语义匹配</span>
+          <span className="text-[0.625rem] tabular-nums" style={{ animation: 'chineseCountGlow 4.6s ease-in-out infinite' }}>
             命中 8 条
           </span>
         </div>
@@ -536,8 +536,8 @@ const ChineseHitMock: React.FC = () => {
             >
               <Tag className="shrink-0 w-3 h-3 text-[#fcd34d]/75" />
               <div className="flex flex-col min-w-0 leading-tight">
-                <span className="font-tag text-[11px] text-[#d4d4d4] truncate">{s.tag}</span>
-                <span className="text-[9px] text-[#6e7681] truncate">{s.cn}</span>
+                <span className="font-tag text-[0.6875rem] text-[#d4d4d4] truncate">{s.tag}</span>
+                <span className="text-[0.625rem] text-[#6e7681] truncate">{s.cn}</span>
               </div>
             </div>
           ))}
@@ -552,8 +552,8 @@ const ChineseHitMockStatic: React.FC = () => (
     {/* 输入框模拟 */}
     <div className="w-[420px] max-w-full">
       <div className="px-3 py-2 rounded-md border border-[#fceda4]/30 bg-black/40 flex items-center gap-2">
-        <span className="text-[10px] text-white/40 font-mono">输入</span>
-        <span className="font-tag text-[14px] text-white">长发校服</span>
+        <span className="text-[0.625rem] text-white/40 font-mono">输入</span>
+        <span className="font-tag text-[0.875rem] text-white">长发校服</span>
         <span className="ml-auto inline-block w-px h-4 bg-[#fceda4] animate-pulse" />
       </div>
     </div>
@@ -562,17 +562,17 @@ const ChineseHitMockStatic: React.FC = () => (
     <div className="w-[460px] max-w-full grid grid-cols-2 gap-3">
       {/* 旧版 */}
       <div className="relative bg-[#0f0f0f] rounded-md border border-white/10 overflow-hidden">
-        <div className="px-2 py-1 text-[10px] text-white/40 border-b border-white/8 flex items-center justify-between">
+        <div className="px-2 py-1 text-[0.625rem] text-white/40 border-b border-white/8 flex items-center justify-between">
           <span>旧版 · 仅 autocomplete</span>
           <span className="text-red-400/60">未命中</span>
         </div>
-        <div className="px-2.5 py-3 text-center text-[10px] text-white/30">
+        <div className="px-2.5 py-3 text-center text-[0.625rem] text-white/30">
           无匹配结果
         </div>
       </div>
       {/* 新版 */}
       <div className="relative bg-[#0f0f0f] rounded-md border border-[#fceda4]/20 overflow-hidden">
-        <div className="px-2 py-1 text-[10px] text-[#fceda4]/80 border-b border-[#fceda4]/10 flex items-center justify-between">
+        <div className="px-2 py-1 text-[0.625rem] text-[#fceda4]/80 border-b border-[#fceda4]/10 flex items-center justify-between">
           <span>新版 · DanbooruSearch</span>
           <span>命中 4 条</span>
         </div>
@@ -589,15 +589,15 @@ const ChineseHitMockStatic: React.FC = () => (
           >
             <Tag className="shrink-0 w-3 h-3 text-[#fcd34d]/75" />
             <div className="flex flex-col min-w-0 leading-tight">
-              <span className="font-tag text-[11px] text-[#d4d4d4] truncate">{s.tag}</span>
-              <span className="text-[9px] text-[#6e7681] truncate">{s.cn}</span>
+              <span className="font-tag text-[0.6875rem] text-[#d4d4d4] truncate">{s.tag}</span>
+              <span className="text-[0.625rem] text-[#6e7681] truncate">{s.cn}</span>
             </div>
           </div>
         ))}
       </div>
     </div>
 
-    <div className="text-[10px] text-white/45 text-center max-w-[420px]">
+    <div className="text-[0.625rem] text-white/45 text-center max-w-[420px]">
       Danbooru autocomplete 与 DanbooruSearch HF Space 并行，统一去重合并
     </div>
   </div>
@@ -671,8 +671,8 @@ const SectionedListMock: React.FC = () => {
                     >
                       <SecIcon className="shrink-0 w-3 h-3" style={{ color: sec.color, opacity: 0.75 }} />
                       <div className="flex flex-col min-w-0 flex-1 leading-tight gap-0.5">
-                        <span className="font-tag text-[12px] text-[#d4d4d4] truncate">{s.tag}</span>
-                        <span className="text-[9px] text-[#6e7681] truncate">{s.cn}</span>
+                        <span className="font-tag text-[0.75rem] text-[#d4d4d4] truncate">{s.tag}</span>
+                        <span className="text-[0.625rem] text-[#6e7681] truncate">{s.cn}</span>
                       </div>
                     </div>
                   ))}
@@ -738,10 +738,10 @@ const SectionedListMockStatic: React.FC = () => {
               {/* 分组头 */}
               <div className="px-2 py-1 flex items-center gap-1.5 bg-white/[0.02]">
                 <SecIcon className="w-3 h-3" style={{ color: sec.color }} />
-                <span className="text-[10px]" style={{ color: `${sec.color}cc` }}>
+                <span className="text-[0.625rem]" style={{ color: `${sec.color}cc` }}>
                   {sec.label}
                 </span>
-                <span className="ml-auto text-[9px] text-white/30 tabular-nums">{sec.items.length}/20</span>
+                <span className="ml-auto text-[0.625rem] text-white/30 tabular-nums">{sec.items.length}/20</span>
               </div>
               {/* 分组内容 */}
               {sec.items.map((s, i) => (
@@ -752,8 +752,8 @@ const SectionedListMockStatic: React.FC = () => {
                 >
                   <SecIcon className="shrink-0 w-3 h-3" style={{ color: sec.color, opacity: 0.75 }} />
                   <div className="flex flex-col min-w-0 flex-1 leading-tight gap-0.5">
-                    <span className="font-tag text-[12px] text-[#d4d4d4] truncate">{s.tag}</span>
-                    <span className="text-[10px] text-[#6e7681] truncate">{s.cn}</span>
+                    <span className="font-tag text-[0.75rem] text-[#d4d4d4] truncate">{s.tag}</span>
+                    <span className="text-[0.625rem] text-[#6e7681] truncate">{s.cn}</span>
                   </div>
                 </div>
               ))}
@@ -824,10 +824,10 @@ const TagManagerOverviewMock: React.FC = () => (
       <div className="bg-nai-panel rounded-lg border border-gray-700/60 px-3 py-2.5 flex items-center gap-2 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]">
         {/* 左侧 提示/排除 Tab pill */}
         <div className="inline-flex items-center gap-0.5 p-0.5 rounded-full bg-nai-input border border-gray-700">
-          <span className="inline-flex items-center gap-1 px-2.5 h-6 rounded-full bg-[#fceda4] text-black text-[10px] font-bold">
+          <span className="inline-flex items-center gap-1 px-2.5 h-6 rounded-full bg-[#fceda4] text-black text-[0.625rem] font-bold">
             <Sparkles className="w-3 h-3" /> 提示
           </span>
-          <span className="inline-flex items-center gap-1 px-2.5 h-6 text-[10px] font-bold text-white/55">
+          <span className="inline-flex items-center gap-1 px-2.5 h-6 text-[0.625rem] font-bold text-white/55">
             <Ban className="w-3 h-3" />
             排除
           </span>
@@ -856,7 +856,7 @@ const TagManagerOverviewMock: React.FC = () => (
               <Tags className="w-5 h-5 text-[#fceda4]" />
             </div>
             <div
-              className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 px-2 py-1 rounded bg-black/90 border border-white/15 text-[10px] text-white whitespace-nowrap z-10"
+              className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 px-2 py-1 rounded bg-black/90 border border-white/15 text-[0.625rem] text-white whitespace-nowrap z-10"
               style={{ animation: 'tmTooltipIn 7s ease-in-out infinite' }}
             >
               Tag 管理器
@@ -874,29 +874,29 @@ const TagManagerOverviewMock: React.FC = () => (
       {/* === 片段 2: Character Prompts 按钮行 === */}
       <div className="bg-nai-panel rounded-lg border border-gray-700/60 px-3 py-2.5 flex items-end gap-2 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]">
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-bold text-white">Character Prompts</div>
-          <div className="text-[9px] text-white/40">为角色设置独立提示词</div>
+          <div className="text-[0.6875rem] font-bold text-white">Character Prompts</div>
+          <div className="text-[0.625rem] text-white/40">为角色设置独立提示词</div>
         </div>
         <div
           className="overflow-hidden inline-flex items-center"
           style={{ animation: 'tmOldFadeOut 7s ease-in-out infinite' }}
         >
           <div
-            className="inline-flex items-center gap-1 px-2 h-6 rounded text-[10px] font-bold border border-gray-700 bg-nai-input text-white/80 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 h-6 rounded text-[0.625rem] font-bold border border-gray-700 bg-nai-input text-white/80 whitespace-nowrap"
             style={{ animation: 'tmOldPulse 7s ease-in-out infinite' }}
           >
             <Users className="w-3 h-3" />
             OC管理
           </div>
         </div>
-        <div className="inline-flex items-center gap-1 px-2 h-6 rounded text-[10px] font-bold border border-gray-700 bg-nai-input text-white/80">
+        <div className="inline-flex items-center gap-1 px-2 h-6 rounded text-[0.625rem] font-bold border border-gray-700 bg-nai-input text-white/80">
           <PlusIcon /> 添加角色
         </div>
       </div>
 
       {/* === 提示条 === */}
       <div
-        className="flex items-center gap-1.5 text-[10px] pl-1"
+        className="flex items-center gap-1.5 text-[0.625rem] pl-1"
         style={{ animation: 'tmRedHintIn 7s ease-in-out infinite' }}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
@@ -908,7 +908,7 @@ const TagManagerOverviewMock: React.FC = () => (
 );
 
 const PlusIcon: React.FC = () => (
-  <span className="inline-block w-3 text-center leading-none text-[12px]">+</span>
+  <span className="inline-block w-3 text-center leading-none text-[0.75rem]">+</span>
 );
 
 // ==================== 幻灯片数据 ====================
@@ -1116,7 +1116,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
         {/* 头部：版本徽章 + 当前章节 + 关闭 */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-700/50">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="shrink-0 px-2 py-0.5 rounded bg-[#fceda4]/12 border border-[#fceda4]/30 text-[11px] font-mono text-[#fceda4]">
+            <span className="shrink-0 px-2 py-0.5 rounded bg-[#fceda4]/12 border border-[#fceda4]/30 text-[0.6875rem] font-mono text-[#fceda4]">
               {headerVersion}
             </span>
           </div>
@@ -1175,7 +1175,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
                 />
               );
             })}
-            <span className="ml-2 text-[10px] text-white/35 tabular-nums">
+            <span className="ml-2 text-[0.625rem] text-white/35 tabular-nums">
               {step + 1} / {total}
             </span>
           </div>
@@ -1185,7 +1185,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
             <button
               onClick={handlePrev}
               disabled={step === 0}
-              className={`h-8 px-3 rounded-md text-[12px] inline-flex items-center gap-1 transition-colors ${
+              className={`h-8 px-3 rounded-md text-[0.75rem] inline-flex items-center gap-1 transition-colors ${
                 step === 0
                   ? 'text-white/25 cursor-not-allowed'
                   : 'text-white/70 hover:text-white hover:bg-white/8'
@@ -1196,7 +1196,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ forceOpen, onClose
             </button>
             <button
               onClick={handleNext}
-              className="h-8 px-4 rounded-md bg-nai-accent text-black text-[12px] font-semibold hover:bg-nai-accent/90 transition-colors inline-flex items-center gap-1"
+              className="h-8 px-4 rounded-md bg-nai-accent text-black text-[0.75rem] font-semibold hover:bg-nai-accent/90 transition-colors inline-flex items-center gap-1"
             >
               {isLast ? '完成' : '下一页'}
               {!isLast && <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />}

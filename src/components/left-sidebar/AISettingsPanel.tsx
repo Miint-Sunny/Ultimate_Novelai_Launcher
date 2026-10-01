@@ -103,7 +103,7 @@ export function AISettingsPanel({
                 <span className="flex items-center gap-1">
                   <button
                     onClick={() => onVarietyPlusChange(!varietyPlus)}
-                    className={`px-1 py-0.5 text-[10px] rounded border flex items-center gap-1 transition-colors ${varietyPlus
+                    className={`px-1 py-0.5 text-[0.625rem] rounded border flex items-center gap-1 transition-colors ${varietyPlus
                       ? 'bg-nai-accent/20 text-nai-accent border-nai-accent'
                       : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
                     }`}

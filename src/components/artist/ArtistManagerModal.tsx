@@ -169,7 +169,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
                 <button
                   onClick={() => setPublicManagerOpen(true)}
                   disabled={!getCurrentBotUserId()}
-                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-md bg-gray-800 border border-gray-700 text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/5 transition-colors disabled:opacity-40"
+                  className="flex items-center gap-1 px-2 py-1 text-[0.6875rem] font-bold rounded-md bg-gray-800 border border-gray-700 text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/5 transition-colors disabled:opacity-40"
                   title="管理我上传到公共库的画师串"
                 >
                   <Settings className="w-3 h-3" />
@@ -265,7 +265,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
                               </div>
                             )}
                           </div>
-                          <div className={`text-[10px] mt-1 truncate text-center ${isSelected ? 'text-nai-accent font-bold' : 'text-gray-400'}`}>
+                          <div className={`text-[0.625rem] mt-1 truncate text-center ${isSelected ? 'text-nai-accent font-bold' : 'text-gray-400'}`}>
                             {file.name}
                           </div>
                         </div>
@@ -293,7 +293,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
               <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-gray-700">
                 <button
                   onClick={() => m.setSelectedTagFilter(new Set())}
-                  className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded-full transition-colors ${
+                  className={`shrink-0 px-2.5 py-1 text-[0.6875rem] font-bold rounded-full transition-colors ${
                     m.selectedTagFilter.size === 0 ? 'bg-nai-accent text-black' : 'bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700'
                   }`}
                 >
@@ -308,7 +308,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
                       else next.add(tag);
                       return next;
                     })}
-                    className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded-full transition-colors border ${
+                    className={`shrink-0 px-2.5 py-1 text-[0.6875rem] font-bold rounded-full transition-colors border ${
                       m.selectedTagFilter.has(tag)
                         ? 'bg-nai-accent text-black border-nai-accent'
                         : 'bg-gray-800 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:bg-gray-700'
@@ -549,7 +549,7 @@ export const ArtistManagerModal: React.FC<ArtistManagerModalProps> = ({
                         placeholder="输入新标签名"
                         className="flex-1 bg-nai-dark text-white text-sm rounded-md px-3 py-2 border border-gray-700 focus:border-nai-accent focus:outline-none" />
                     </div>
-                    {dup && <p className="text-[11px] text-red-400 pl-6">标签 "{trimmed}" 已存在</p>}
+                    {dup && <p className="text-[0.6875rem] text-red-400 pl-6">标签 "{trimmed}" 已存在</p>}
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button onClick={() => { setTagSettingsCreating(false); setTagSettingsNewName(''); }}
                         className="px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-md">取消</button>
@@ -815,10 +815,10 @@ const ArtistListWithAlphabet: React.FC<ArtistListWithAlphabetProps> = ({
                   key={letter}
                   className={`w-full flex items-center justify-center cursor-pointer transition-all duration-100 ${
                     isActive
-                      ? 'text-nai-accent font-black text-[12px]'
+                      ? 'text-nai-accent font-black text-[0.75rem]'
                       : isAvailable
-                        ? 'text-gray-300 font-bold text-[10px]'
-                        : 'text-gray-700/40 text-[9px]'
+                        ? 'text-gray-300 font-bold text-[0.625rem]'
+                        : 'text-gray-700/40 text-[0.625rem]'
                   }`}
                   style={{ flex: '1 1 0', minHeight: 0 }}
                 >
@@ -942,15 +942,15 @@ const ArtistCreateEditOverlay: React.FC<{ manager: UseArtistManagerReturn }> = (
                       {m.isGeneratingArtistPreviews && m.artistPreviewProgress?.current === idx + 1 && (
                         <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-10 text-white backdrop-blur-sm">
                           <Loader2 className="w-5 h-5 text-nai-accent animate-spin mb-1" />
-                          <span className="text-[10px]">生成中</span>
+                          <span className="text-[0.625rem]">生成中</span>
                         </div>
                       )}
                       {m.newArtistPreviews[idx] ? (
                         <>
                           <img src={m.newArtistPreviews[idx]} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">#{idx + 1}</div>
+                          <div className="absolute top-1 left-1 bg-black/60 text-white text-[0.625rem] px-1.5 py-0.5 rounded backdrop-blur-sm">#{idx + 1}</div>
                           {m.selectedArtistCoverIndex === idx && (
-                            <div className="absolute top-1 right-1 bg-nai-accent text-black text-[10px] px-1.5 py-0.5 rounded font-bold">封面</div>
+                            <div className="absolute top-1 right-1 bg-nai-accent text-black text-[0.625rem] px-1.5 py-0.5 rounded font-bold">封面</div>
                           )}
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/preview:opacity-100 transition-opacity flex items-center justify-center gap-3">
                             <button
@@ -976,7 +976,7 @@ const ArtistCreateEditOverlay: React.FC<{ manager: UseArtistManagerReturn }> = (
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 hover:bg-gray-700/50 transition-colors">
                           <Plus className="w-6 h-6 mb-1" />
-                          <span className="text-[10px]">点击上传</span>
+                          <span className="text-[0.625rem]">点击上传</span>
                         </div>
                       )}
                     </div>
@@ -1044,7 +1044,7 @@ const ArtistCreateEditOverlay: React.FC<{ manager: UseArtistManagerReturn }> = (
                         if (next.has(tag)) next.delete(tag); else next.add(tag);
                         return next;
                       })}
-                        className={`px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors ${active ? 'bg-nai-accent text-black border-nai-accent' : 'bg-gray-800 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:bg-gray-700'}`}
+                        className={`px-2.5 py-1 text-[0.6875rem] font-bold rounded-full border transition-colors ${active ? 'bg-nai-accent text-black border-nai-accent' : 'bg-gray-800 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:bg-gray-700'}`}
                       >{tag}</button>
                     );
                   })}

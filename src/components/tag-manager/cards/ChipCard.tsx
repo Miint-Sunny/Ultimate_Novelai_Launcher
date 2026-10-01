@@ -26,10 +26,10 @@ export const ChipCard: React.FC<Props> = ({ tag, isSelected, onToggleSelection, 
       }`}
     >
       {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-      <span className="font-bold text-[13px] truncate max-w-[14ch] leading-none">{tag.name}</span>
+      <span className="font-bold text-[0.8125rem] truncate max-w-[14ch] leading-none">{tag.name}</span>
       {text && (
         <span
-          className={`text-[11px] truncate max-w-[22ch] leading-none ${
+          className={`text-[0.6875rem] truncate max-w-[22ch] leading-none ${
             isSelected ? 'text-[#1a1410]/65' : 'text-nai-text-dim'
           }`}
         >

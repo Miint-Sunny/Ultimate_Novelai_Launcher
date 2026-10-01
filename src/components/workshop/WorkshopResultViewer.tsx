@@ -94,7 +94,7 @@ export const WorkshopResultViewer: React.FC<WorkshopResultViewerProps> = ({ task
                     </button>
                     <button
                         onClick={() => setScale(1)}
-                        className="px-2 py-1 rounded-lg hover:bg-white/10 text-[11px] text-gray-400 hover:text-white tabular-nums transition-all"
+                        className="px-2 py-1 rounded-lg hover:bg-white/10 text-[0.6875rem] text-gray-400 hover:text-white tabular-nums transition-all"
                     >
                         {Math.round(scale * 100)}%
                     </button>
@@ -130,7 +130,7 @@ export const WorkshopResultViewer: React.FC<WorkshopResultViewerProps> = ({ task
                     {onUsePrompt && (
                         <button
                             onClick={() => { onUsePrompt(task.prompt); onClose(); }}
-                            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/10 text-[11px] text-gray-400 hover:text-white transition-all"
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/10 text-[0.6875rem] text-gray-400 hover:text-white transition-all"
                             title="将提示词带入输入面板"
                         >
                             <Pencil className="w-3.5 h-3.5" />

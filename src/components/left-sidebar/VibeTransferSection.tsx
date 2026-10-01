@@ -94,7 +94,7 @@ export function VibeTransferSection({
       {activeVibes.length > 1 && (
         <div className="mt-2 pt-2 border-t border-gray-700/50 flex items-center justify-between px-1">
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-gray-400">均衡强度</span>
+            <span className="text-[0.6875rem] text-gray-400">均衡强度</span>
             <HelpTip title="均衡强度 (Normalize)" body={"开启 → 所有 Vibe 的强度按比例缩小，合计强度 ≤ 1\n关闭 → 每个 Vibe 的强度独立相加"} />
           </div>
           <button
@@ -108,7 +108,7 @@ export function VibeTransferSection({
 
       {activeVibes.length > 0 && (
         <div className="mt-2 pt-2 border-t border-gray-700/50">
-          <div className="flex items-center gap-2 mb-2 px-1 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+          <div className="flex items-center gap-2 mb-2 px-1 text-[0.625rem] text-gray-500 font-bold uppercase tracking-wider">
             <div className="w-6" />
             <div className="flex-1">Active Vibes</div>
             <div className="w-16 text-center flex items-center justify-center">强度<HelpTip title="风格强度 (Reference Strength)" body={"控制 Vibe 风格对画面的影响力度。\n· 值越高 → 越接近参考图的风格、配色等视觉线索\n· 值越低 → 仅作轻微风格指引\n💡 多个 Vibe 同时使用时，强度总和建议 ≤ 1\n💡 过高时 AI 会开始忽略文字 prompt"} /></div>
@@ -179,11 +179,11 @@ function ActiveVibeRow({ vibe, isCompatible, isLoading, isExporting, onUpdate, o
           {!isCompatible && (
             <div className="flex items-center gap-1 mt-0.5">
               <Ban className="w-3 h-3 text-red-400 shrink-0" />
-              <span className="text-[9px] text-red-400/80 truncate">不兼容当前模型</span>
+              <span className="text-[0.625rem] text-red-400/80 truncate">不兼容当前模型</span>
             </div>
           )}
           {isCompatible && !vibe.enabled && (
-            <span className="text-[9px] text-gray-600">已禁用</span>
+            <span className="text-[0.625rem] text-gray-600">已禁用</span>
           )}
         </div>
       </div>
@@ -207,7 +207,7 @@ function ActiveVibeRow({ vibe, isCompatible, isLoading, isExporting, onUpdate, o
           />
         ) : (
           <div
-            className="w-full border rounded px-1 py-1 text-[10px] text-center bg-gray-800/50 border-gray-700 text-gray-500 cursor-not-allowed"
+            className="w-full border rounded px-1 py-1 text-[0.625rem] text-center bg-gray-800/50 border-gray-700 text-gray-500 cursor-not-allowed"
             title="此 Vibe 只有编码数据，无法调整信息提取值"
           >
             {vibe.informationExtracted.toFixed(2)}
@@ -286,7 +286,7 @@ function VibeValueInput({ value, isCompatible, isEnabled, onChange, title }: {
             ? `linear-gradient(to right, rgba(252, 237, 164, 0.5) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
             : `linear-gradient(to right, rgba(239, 68, 68, 0.3) ${value * 100}%, rgba(0, 0, 0, 0.2) ${value * 100}%)`
         }}
-        className={`w-full border rounded px-1 py-1 text-[10px] text-center focus:border-nai-accent outline-none appearance-none ${isCompatible
+        className={`w-full border rounded px-1 py-1 text-[0.625rem] text-center focus:border-nai-accent outline-none appearance-none ${isCompatible
           ? 'bg-black/20 border-gray-700 text-white cursor-ew-resize'
           : 'bg-red-900/20 border-red-700/50 text-red-300 cursor-not-allowed'
         }`}

@@ -121,7 +121,7 @@ export function VibeLocalList({
                         </div>
                       )}
                     </div>
-                    <div className={`text-[10px] mt-1 truncate text-center ${isSelected ? 'text-nai-accent font-bold' : 'text-gray-400'}`}>
+                    <div className={`text-[0.625rem] mt-1 truncate text-center ${isSelected ? 'text-nai-accent font-bold' : 'text-gray-400'}`}>
                       {file.name}
                     </div>
                   </div>
@@ -151,7 +151,7 @@ export function VibeLocalList({
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-gray-700">
           <button
             onClick={() => setSelectedTagFilter(new Set())}
-            className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded-full transition-colors flex items-center gap-1 ${
+            className={`shrink-0 px-2.5 py-1 text-[0.6875rem] font-bold rounded-full transition-colors flex items-center gap-1 ${
               selectedTagFilter.size === 0
                 ? 'bg-nai-accent text-black'
                 : 'bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700'
@@ -172,7 +172,7 @@ export function VibeLocalList({
                     return next;
                   });
                 }}
-                className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded-full transition-colors flex items-center gap-1 ${
+                className={`shrink-0 px-2.5 py-1 text-[0.6875rem] font-bold rounded-full transition-colors flex items-center gap-1 ${
                   active
                     ? 'bg-nai-accent text-black'
                     : 'bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700'

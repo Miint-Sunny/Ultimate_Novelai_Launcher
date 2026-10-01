@@ -262,12 +262,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
           className="text-lg sm:text-2xl font-bold text-center mb-1 text-nai-accent flex flex-wrap items-center justify-center gap-2 select-none cursor-default"
         >
           Ultimate Novelai Launcher
-          <span className="text-[10px] sm:text-xs font-bold bg-nai-accent/20 text-nai-accent px-1.5 sm:px-2 py-0.5 rounded-full border border-nai-accent/30 uppercase tracking-wider leading-none">
+          <span className="text-[0.625rem] sm:text-xs font-bold bg-nai-accent/20 text-nai-accent px-1.5 sm:px-2 py-0.5 rounded-full border border-nai-accent/30 uppercase tracking-wider leading-none">
             Beta
           </span>
           {/* 测试后门提示 */}
           {devClickCount > 0 && devClickCount < 5 && (
-            <span className="absolute -top-2 right-4 text-[10px] text-gray-500 animate-fade-in">
+            <span className="absolute -top-2 right-4 text-[0.625rem] text-gray-500 animate-fade-in">
               <FlaskConical className="w-3 h-3 inline mr-0.5" />
               {5 - devClickCount}
             </span>
@@ -277,7 +277,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
         {/* 步骤指示器 */}
         <div className="flex items-center justify-center gap-2 mb-6 sm:mb-8">
           <div className={`flex items-center gap-1.5 text-xs ${step === 'bot-auth' ? 'text-nai-accent' : botAuthorized ? 'text-green-400' : 'text-gray-500'}`}>
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${step === 'bot-auth' ? 'border-nai-accent bg-nai-accent/20' : botAuthorized ? 'border-green-400 bg-green-400/20' : 'border-gray-600'
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.625rem] font-bold border ${step === 'bot-auth' ? 'border-nai-accent bg-nai-accent/20' : botAuthorized ? 'border-green-400 bg-green-400/20' : 'border-gray-600'
               }`}>
               {botAuthorized ? <Check className="w-3 h-3" /> : '1'}
             </div>
@@ -285,7 +285,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
           </div>
           <div className={`w-6 h-px ${botAuthorized ? 'bg-green-400/50' : 'bg-gray-600'}`} />
           <div className={`flex items-center gap-1.5 text-xs ${step === 'select-gen' || step === 'token-input' ? 'text-nai-accent' : 'text-gray-500'}`}>
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border ${step === 'select-gen' || step === 'token-input' ? 'border-nai-accent bg-nai-accent/20' : 'border-gray-600'
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.625rem] font-bold border ${step === 'select-gen' || step === 'token-input' ? 'border-nai-accent bg-nai-accent/20' : 'border-gray-600'
               }`}>
               2
             </div>
@@ -360,19 +360,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                       <p className="text-xs sm:text-sm text-amber-200/90 font-medium">未授权将无法使用以下功能：</p>
                     </div>
                     <div className="space-y-1.5 pl-6">
-                      <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-[0.6875rem] sm:text-xs text-gray-400">
                         <Database className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                         <span>公共 OC 角色库</span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-[0.6875rem] sm:text-xs text-gray-400">
                         <Palette className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                         <span>公共画师串库</span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-[0.6875rem] sm:text-xs text-gray-400">
                         <Image className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                         <span>公共 Vibe 库</span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-[0.6875rem] sm:text-xs text-gray-400">
                         <Sparkles className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                         <span>Bot 代理生成图片</span>
                       </div>
@@ -421,7 +421,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
               <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
               <div>
                 <p className="text-sm font-medium text-green-300">Bot 授权成功</p>
-                <p className="text-[11px] text-green-400/60">公共库访问权限已解锁</p>
+                <p className="text-[0.6875rem] text-green-400/60">公共库访问权限已解锁</p>
               </div>
             </div>
 
@@ -511,7 +511,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
               {!botAuthorized && (
                 <div className="flex items-start gap-2 mt-2 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2.5">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-[11px] sm:text-xs text-amber-200/80 leading-relaxed">
+                  <p className="text-[0.6875rem] sm:text-xs text-amber-200/80 leading-relaxed">
                     未完成 Bot 授权，将无法访问公共 OC / Vibe / 画师串库，也无法使用 Bot 代理生成
                   </p>
                 </div>
@@ -520,7 +520,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
               <div className="text-xs space-y-2.5 sm:space-y-3 mt-3 sm:mt-4 px-1">
                 <div className="flex items-start gap-2 sm:gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-                  <p className="text-gray-300 leading-relaxed text-[11px] sm:text-xs">
+                  <p className="text-gray-300 leading-relaxed text-[0.6875rem] sm:text-xs">
                     通过代理服务器转发至NovelAI，不会存储您的Token
                   </p>
                 </div>
@@ -547,7 +547,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
                   />
                 </button>
               </div>
-              <p className="text-[11px] sm:text-xs text-gray-500 mt-2">
+              <p className="text-[0.6875rem] sm:text-xs text-gray-500 mt-2">
                 同一Token有多人使用该面板时启用，避免并发冲突
               </p>
             </div>

@@ -119,7 +119,7 @@ export function DirectorBar({ isOpen, onClose, imageUrl, width, height, seed, on
                 aria-selected={item.id === tool}
                 onClick={() => setTool(item.id)}
                 title={item.hint}
-                className={`h-7 px-2.5 rounded-full text-[12px] font-bold transition-colors ${
+                className={`h-7 px-2.5 rounded-full text-[0.75rem] font-bold transition-colors ${
                   item.id === tool ? 'bg-nai-accent text-black' : 'text-gray-400 hover:text-white bg-black/30'
                 }`}
               >
@@ -138,9 +138,9 @@ export function DirectorBar({ isOpen, onClose, imageUrl, width, height, seed, on
               value={prompt}
               onChange={(e) => { setPrompt(e.target.value); setArmed(false); }}
               placeholder={tool === 'colorize' ? '想要的颜色 / 风格' : '想要的情绪'}
-              className="flex-1 min-w-0 h-8 px-2 rounded-md bg-black/40 border border-gray-700 text-[13px] text-white placeholder:text-gray-600"
+              className="flex-1 min-w-0 h-8 px-2 rounded-md bg-black/40 border border-gray-700 text-[0.8125rem] text-white placeholder:text-gray-600"
             />
-            <label className="flex items-center gap-1 text-[11px] text-gray-400 shrink-0" title="defry:官方的「去油」强度,0–5">
+            <label className="flex items-center gap-1 text-[0.6875rem] text-gray-400 shrink-0" title="defry:官方的「去油」强度,0–5">
               defry
               <input
                 type="number"
@@ -148,23 +148,23 @@ export function DirectorBar({ isOpen, onClose, imageUrl, width, height, seed, on
                 max={5}
                 value={defry}
                 onChange={(e) => { setDefry(clampDefry(Number(e.target.value))); setArmed(false); }}
-                className="w-12 h-8 px-1 rounded-md bg-black/40 border border-gray-700 text-[13px] text-white text-center"
+                className="w-12 h-8 px-1 rounded-md bg-black/40 border border-gray-700 text-[0.8125rem] text-white text-center"
               />
             </label>
           </div>
         )}
 
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-gray-400 flex-1 min-w-0 truncate" data-testid="director-cost">
+          <span className="text-[0.75rem] text-gray-400 flex-1 min-w-0 truncate" data-testid="director-cost">
             {problem ? PROBLEM_TEXT[problem] : `${width}×${height} · ${describeDirectorCost(cost)}`}
           </span>
-          {error && <span className="text-[11px] text-red-400 truncate max-w-[45%]" title={error}>{error}</span>}
+          {error && <span className="text-[0.6875rem] text-red-400 truncate max-w-[45%]" title={error}>{error}</span>}
           <button
             type="button"
             data-testid="director-run"
             disabled={disabled}
             onClick={run}
-            className={`h-8 px-4 rounded-md text-[13px] font-bold flex items-center gap-1.5 transition-colors ${
+            className={`h-8 px-4 rounded-md text-[0.8125rem] font-bold flex items-center gap-1.5 transition-colors ${
               disabled
                 ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
                 : armed

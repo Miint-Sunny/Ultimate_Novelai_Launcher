@@ -173,7 +173,7 @@ export function PromptComposerSection({
                   onContentHeightChange={(height) => onPromptContentHeightChange(height + STACKED_NEGATIVE_HEIGHT)}
                 />
               </div>
-              <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-t border-gray-700/50 text-[11px] font-bold text-red-400/80 select-none">
+              <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-t border-gray-700/50 text-[0.6875rem] font-bold text-red-400/80 select-none">
                 <Ban className="w-3.5 h-3.5" />
                 排除
               </div>

@@ -238,14 +238,14 @@ export const ArtistPanel: React.FC<Props> = ({
         {scope === 'pub' && visible.length > 0 && (
           <div className="flex items-center gap-2.5 mb-3 pl-0.5">
             <Globe className="w-5 h-5 text-nai-text-dim shrink-0" />
-            <span className="text-[15px] font-bold text-white truncate">公共库</span>
-            <span className="text-[13px] font-bold text-nai-text-dim tabular-nums shrink-0">{pubAll.length}</span>
+            <span className="text-[0.9375rem] font-bold text-white truncate">公共库</span>
+            <span className="text-[0.8125rem] font-bold text-nai-text-dim tabular-nums shrink-0">{pubAll.length}</span>
             <span className="flex-1 h-px bg-white/[0.06] mx-1" />
             <button
               onClick={() => setPublicManagerOpen(true)}
               disabled={!currentUserId}
               title="管理我上传到公共库的画师串"
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-md border border-gray-700 bg-gray-800/60 text-[12.5px] font-bold text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/[0.05] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-800/60 disabled:hover:text-gray-300 disabled:hover:border-gray-700"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-md border border-gray-700 bg-gray-800/60 text-[0.78125rem] font-bold text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/[0.05] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-800/60 disabled:hover:text-gray-300 disabled:hover:border-gray-700"
             >
               <Settings className="w-3.5 h-3.5" />
               管理上传
@@ -374,8 +374,8 @@ export const ArtistPanel: React.FC<Props> = ({
             ) => (
               <div className="flex items-center gap-2.5 mb-3 pl-0.5">
                 {icon}
-                <span className={`text-[15px] font-bold shrink-0 ${accent ? 'text-nai-accent' : 'text-white'}`}>{label}</span>
-                <span className={`text-[13px] font-bold tabular-nums shrink-0 ${accent ? 'text-nai-accent' : 'text-nai-text-dim'}`}>{count}</span>
+                <span className={`text-[0.9375rem] font-bold shrink-0 ${accent ? 'text-nai-accent' : 'text-white'}`}>{label}</span>
+                <span className={`text-[0.8125rem] font-bold tabular-nums shrink-0 ${accent ? 'text-nai-accent' : 'text-nai-text-dim'}`}>{count}</span>
                 <span className="flex-1 h-px bg-white/[0.06] ml-1" />
               </div>
             );

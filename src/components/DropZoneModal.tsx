@@ -427,7 +427,7 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
                       </>
                     )}
                   </button>
-                  <div className="text-[10px] text-gray-500 mt-1.5 text-center">
+                  <div className="text-[0.625rem] text-gray-500 mt-1.5 text-center">
                     使用 WD Tagger 模型反推图片标签
                   </div>
                 </div>
@@ -556,38 +556,38 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
             {/* 参数标签 */}
             <div className="flex flex-wrap gap-1.5 mt-2">
               {metadata.seed && (
-                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] text-gray-300">
+                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[0.625rem] text-gray-300">
                   Seed: {metadata.seed}
                 </span>
               )}
               {metadata.steps && (
-                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] text-gray-300">
+                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[0.625rem] text-gray-300">
                   Steps: {metadata.steps}
                 </span>
               )}
               {metadata.scale && (
-                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] text-gray-300">
+                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[0.625rem] text-gray-300">
                   CFG: {metadata.scale}
                 </span>
               )}
               {metadata.sampler && (
-                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] text-gray-300">
+                <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[0.625rem] text-gray-300">
                   {/* 元数据里是 API id;认识的就显示 UI 名,不认识的原样给出,和「不支持」提示对得上 */}
                   {samplerIdToLabel(metadata.sampler) ?? metadata.sampler}
                 </span>
               )}
               {metadata.characterPrompts && metadata.characterPrompts.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-nai-accent/20 rounded text-[10px] text-nai-accent">
+                <span className="px-1.5 py-0.5 bg-nai-accent/20 rounded text-[0.625rem] text-nai-accent">
                   {metadata.characterPrompts.length} 角色
                 </span>
               )}
               {metadata.vibes && metadata.vibes.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-cyan-500/15 rounded text-[10px] text-cyan-300">
+                <span className="px-1.5 py-0.5 bg-cyan-500/15 rounded text-[0.625rem] text-cyan-300">
                   {metadata.vibes.length} Vibe
                 </span>
               )}
               {metadata.loras && metadata.loras.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-orange-500/20 rounded text-[10px] text-orange-400">
+                <span className="px-1.5 py-0.5 bg-orange-500/20 rounded text-[0.625rem] text-orange-400">
                   {metadata.loras.length} Lora
                 </span>
               )}
@@ -596,12 +596,12 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
             {/* Lora 列表 */}
             {metadata.loras && metadata.loras.length > 0 && (
               <div className="mt-2 p-2 bg-gray-800/50 rounded-lg">
-                <div className="text-[10px] text-gray-500 mb-1">Lora</div>
+                <div className="text-[0.625rem] text-gray-500 mb-1">Lora</div>
                 <div className="flex flex-wrap gap-1">
                   {metadata.loras.map((lora, idx) => (
                     <span
                       key={idx}
-                      className="px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/30 rounded text-[10px] text-orange-300"
+                      className="px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/30 rounded text-[0.625rem] text-orange-300"
                     >
                       {lora.name}:{lora.weight}
                     </span>
@@ -611,12 +611,12 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
             )}            {/* 提示词预览 */}
             {metadata.prompt && (
               <div className="mt-2">
-                <div className="text-[11px] text-gray-400 leading-relaxed break-all line-clamp-2">
+                <div className="text-[0.6875rem] text-gray-400 leading-relaxed break-all line-clamp-2">
                   {metadata.prompt}
                 </div>
                 <button
                   onClick={() => setShowFullMetadata(true)}
-                  className="text-[10px] text-nai-accent hover:underline mt-0.5"
+                  className="text-[0.625rem] text-nai-accent hover:underline mt-0.5"
                 >
                   查看完整元数据
                 </button>
@@ -625,7 +625,7 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
             {!metadata.prompt && (
               <button
                 onClick={() => setShowFullMetadata(true)}
-                className="text-[10px] text-nai-accent hover:underline mt-2"
+                className="text-[0.625rem] text-nai-accent hover:underline mt-2"
               >
                 查看完整元数据
               </button>
@@ -637,7 +637,7 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-gray-400">导入选项</span>
-            <label className="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer hover:text-white">
+            <label className="flex items-center gap-1.5 text-[0.6875rem] text-gray-400 cursor-pointer hover:text-white">
               <input
                 type="checkbox"
                 checked={importOptions.cleanImports}
@@ -680,7 +680,7 @@ export const DropZoneModal: React.FC<DropZoneModalProps> = ({
                   />
                   {label}
                   {disabled && reason ? (
-                    <span className="text-[10px] text-amber-500/80">不支持: {reason}</span>
+                    <span className="text-[0.625rem] text-amber-500/80">不支持: {reason}</span>
                   ) : null}
                 </label>
               ))}

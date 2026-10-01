@@ -172,7 +172,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
 
           {/* 水印状态(在设置 → 水印导出里改) */}
           {watermarkParts.length > 0 && (
-            <div className="px-5 py-2 border-b border-gray-700/50 text-[11px] text-gray-400">
+            <div className="px-5 py-2 border-b border-gray-700/50 text-[0.6875rem] text-gray-400">
               导出时会加上 <span className="text-nai-accent">{watermarkParts.join(' + ')}</span>
               ;原图模式也会重新编码(元数据保留)。在「设置 → 水印导出」里修改。
             </div>
@@ -192,7 +192,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
               >
                 <FileImage className="w-3.5 h-3.5" />
                 PNG
-                <span className={`text-[10px] ${format === 'png' ? 'text-black/60' : 'text-gray-500'}`}>无损</span>
+                <span className={`text-[0.625rem] ${format === 'png' ? 'text-black/60' : 'text-gray-500'}`}>无损</span>
               </button>
               <button
                 onClick={() => setFormat('jpg')}
@@ -204,7 +204,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
               >
                 <FileType2 className="w-3.5 h-3.5" />
                 JPG
-                <span className={`text-[10px] ${format === 'jpg' ? 'text-black/60' : 'text-gray-500'}`}>有损</span>
+                <span className={`text-[0.625rem] ${format === 'jpg' ? 'text-black/60' : 'text-gray-500'}`}>有损</span>
               </button>
             </div>
 
@@ -223,7 +223,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
                   onChange={(e) => setQuality(Number(e.target.value) / 100)}
                   className="w-full h-1.5 accent-nai-accent"
                 />
-                <p className="text-[11px] text-gray-500 mt-1.5">
+                <p className="text-[0.6875rem] text-gray-500 mt-1.5">
                   JPG 不保留元数据，自定义提示词在 JPG 下不会写入
                 </p>
               </div>
@@ -258,7 +258,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
               <Download className="w-4 h-4 text-nai-accent shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-white font-medium leading-tight">保留原始元数据</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">保留 NovelAI 全部元数据</div>
+                <div className="text-[0.6875rem] text-gray-400 mt-0.5">保留 NovelAI 全部元数据</div>
               </div>
             </label>
 
@@ -283,7 +283,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
               <FileX className="w-4 h-4 text-orange-400 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-white font-medium leading-tight">清除元数据</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">移除所有元数据，保存纯净图片</div>
+                <div className="text-[0.6875rem] text-gray-400 mt-0.5">移除所有元数据，保存纯净图片</div>
               </div>
             </label>
 
@@ -308,14 +308,14 @@ export const SaveModal: React.FC<SaveModalProps> = ({
               <FileEdit className="w-4 h-4 text-blue-400 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-white font-medium leading-tight">自定义提示词</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">保持 NAI 格式，替换为自定义提示词</div>
+                <div className="text-[0.6875rem] text-gray-400 mt-0.5">保持 NAI 格式，替换为自定义提示词</div>
               </div>
             </label>
 
             {/* 自定义提示词输入 */}
             {mode === 'custom' && (
               <div className="mt-2 bg-gray-800/50 rounded-lg p-2.5">
-                <label className="text-[11px] text-gray-400 block mb-1">正向提示词</label>
+                <label className="text-[0.6875rem] text-gray-400 block mb-1">正向提示词</label>
                 <textarea
                   value={customPrompt}
                   onChange={(e) => saveCustomPrompt(e.target.value)}
@@ -324,7 +324,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({
                   disabled={metaDisabled}
                   className="w-full px-2.5 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:border-nai-accent focus:outline-none resize-none disabled:cursor-not-allowed"
                 />
-                <div className="text-[11px] text-gray-500 mt-1">
+                <div className="text-[0.6875rem] text-gray-500 mt-1">
                   其他参数将被清除，提示词会自动保存
                 </div>
               </div>

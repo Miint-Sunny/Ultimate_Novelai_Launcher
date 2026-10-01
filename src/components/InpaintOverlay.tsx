@@ -748,7 +748,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                     position: 'absolute',
                     left: `${-pLeft}px`, top: `${-pTop - 26}px`,
                     background: 'rgba(252,237,164,0.9)',
-                    color: '#1a1a1a', fontSize: '11px', fontWeight: 700,
+                    color: '#1a1a1a', fontSize: '0.6875rem', fontWeight: 700,
                     padding: '2px 8px', borderRadius: '4px',
                     zIndex: 11, pointerEvents: 'none',
                     whiteSpace: 'nowrap', letterSpacing: '0.02em',
@@ -764,7 +764,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
                   <ChevronsUp className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
-                  {expandPadding.top > 0 && <span style={{ fontSize: 10, color: '#fceda4', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.top}</span>}
+                  {expandPadding.top > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.top}</span>}
                 </div>
                 {/* 下边拖拽条 */}
                 <div
@@ -774,7 +774,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
                   <ChevronsDown className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
                   <div style={{ width: 32, height: 14, backgroundImage: gripH, backgroundSize: '100% 14px' }} />
-                  {expandPadding.bottom > 0 && <span style={{ fontSize: 10, color: '#fceda4', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.bottom}</span>}
+                  {expandPadding.bottom > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginLeft: 4 }}>{expandPadding.bottom}</span>}
                 </div>
                 {/* 左边拖拽条 */}
                 <div
@@ -784,7 +784,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
                   <ChevronsLeft className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
-                  {expandPadding.left > 0 && <span style={{ fontSize: 10, color: '#fceda4', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.left}</span>}
+                  {expandPadding.left > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.left}</span>}
                 </div>
                 {/* 右边拖拽条 */}
                 <div
@@ -794,7 +794,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
                   <ChevronsRight className="w-4 h-4" style={{ color: '#fceda4', flexShrink: 0 }} />
                   <div style={{ width: 14, height: 32, backgroundImage: gripV, backgroundSize: '14px 100%' }} />
-                  {expandPadding.right > 0 && <span style={{ fontSize: 10, color: '#fceda4', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.right}</span>}
+                  {expandPadding.right > 0 && <span style={{ fontSize: '0.625rem', color: '#fceda4', fontFamily: 'monospace', marginTop: 4 }}>{expandPadding.right}</span>}
                 </div>
               </>
             );
@@ -1273,7 +1273,7 @@ export const InpaintOverlay: React.FC<InpaintOverlayProps> = ({
                   <Play className="w-4 h-4" />
                   {isGenerating ? '生成中...' : isExpandMode ? '开始扩图' : '开始重绘'}
                   {!isGenerating && (
-                    <span className="flex items-center gap-0.5 bg-black/15 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold">
+                    <span className="flex items-center gap-0.5 bg-black/15 px-1.5 py-0.5 rounded text-[0.6875rem] font-mono font-bold">
                       {costInfo.total}<span>💎</span>
                     </span>
                   )}

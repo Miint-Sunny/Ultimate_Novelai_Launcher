@@ -348,7 +348,7 @@ export const OCGalleryTab: React.FC<OCGalleryTabProps> = ({
             >
               我的
               {myOCCount > 0 && (
-                <span className={`text-[10px] px-1 rounded ${activeSource === 'mine' ? 'bg-white/20' : 'bg-nai-accent/10 text-nai-accent'}`}>
+                <span className={`text-[0.625rem] px-1 rounded ${activeSource === 'mine' ? 'bg-white/20' : 'bg-nai-accent/10 text-nai-accent'}`}>
                   {myOCCount}
                 </span>
               )}
@@ -448,7 +448,7 @@ const OCGroupCard = React.memo<OCGroupCardProps>(({
             <p className="text-sm font-bold text-white truncate" title={namesDisplay}>
               {namesDisplay}
             </p>
-            <span className="px-2 py-0.5 bg-nai-accent/10 text-nai-accent text-[10px] font-bold rounded-full shrink-0">
+            <span className="px-2 py-0.5 bg-nai-accent/10 text-nai-accent text-[0.625rem] font-bold rounded-full shrink-0">
               {group.files.length}
             </span>
           </div>
@@ -515,7 +515,7 @@ const OCGalleryCard = React.memo<OCGalleryCardProps>(({
       )}
 
       {/* Token数量 - 左上角, hover显示 */}
-      <span className="absolute top-2 left-2 text-[10px] text-nai-accent bg-nai-accent/10 px-1.5 py-0.5 rounded backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all">
+      <span className="absolute top-2 left-2 text-[0.625rem] text-nai-accent bg-nai-accent/10 px-1.5 py-0.5 rounded backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all">
         {countTokens(oc.positive)} tokens
       </span>
 
@@ -539,7 +539,7 @@ const OCGalleryCard = React.memo<OCGalleryCardProps>(({
         <div className="flex gap-1.5">
           <button
             onClick={(e) => { e.stopPropagation(); onCopy(); }}
-            className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors flex items-center justify-center gap-1 ${
+            className={`flex-1 py-1 rounded text-[0.625rem] font-bold transition-colors flex items-center justify-center gap-1 ${
               isCopied
                 ? 'bg-green-600 text-white'
                 : 'bg-white/10 hover:bg-white/20 text-gray-200'
@@ -550,7 +550,7 @@ const OCGalleryCard = React.memo<OCGalleryCardProps>(({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onAdd(); }}
-            className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors flex items-center justify-center gap-1 ${
+            className={`flex-1 py-1 rounded text-[0.625rem] font-bold transition-colors flex items-center justify-center gap-1 ${
               isAdded
                 ? 'bg-green-600 text-white'
                 : 'bg-nai-accent hover:bg-nai-accent-hover text-black'

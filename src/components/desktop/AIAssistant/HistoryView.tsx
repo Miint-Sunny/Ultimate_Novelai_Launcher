@@ -80,7 +80,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
           placeholder="搜索会话(标题 / 内容)"
           spellCheck={false}
           style={{
-            flex: 1, minWidth: 0, height: 26, padding: '0 8px', fontSize: 11.5, color: C.text,
+            flex: 1, minWidth: 0, height: '1.625rem', padding: '0 8px', fontSize: '0.71875rem', color: C.text,
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, outline: 'none',
           }}
         />
@@ -94,7 +94,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
         </button>
       </div>
       {selecting && (
-        <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 0', fontSize: 11.5, color: C.textDim }}>
+        <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 0', fontSize: '0.71875rem', color: C.textDim }}>
           {confirming ? (
             <>
               <span style={{ flex: 1, color: C.text }}>删除选中的 {picked.length} 个会话?此操作无法撤销。</span>
@@ -141,13 +141,13 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
             padding: 24,
           }}
         >
-          <div style={{ fontSize: 32, opacity: 0.4 }}>📭</div>
-          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8, color: C.text }}>
+          <div style={{ fontSize: '2rem', opacity: 0.4 }}>📭</div>
+          <div style={{ fontSize: '0.8125rem', fontWeight: 700, marginTop: 8, color: C.text }}>
             {q ? '没有匹配的会话' : '还没有历史会话'}
           </div>
           <div
             style={{
-              fontSize: 11,
+              fontSize: '0.6875rem',
               color: C.textDim,
               marginTop: 4,
               textAlign: 'center',
@@ -203,7 +203,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
               <span
                 style={{
                   fontWeight: 700,
-                  fontSize: 12.5,
+                  fontSize: '0.78125rem',
                   flex: 1,
                   color: s.err ? C.textDim : C.text,
                   overflow: 'hidden',
@@ -216,7 +216,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
               {s.current ? (
                 <span
                   style={{
-                    fontSize: 10,
+                    fontSize: '0.625rem',
                     fontWeight: 700,
                     padding: '1px 6px',
                     color: C.accent,
@@ -228,7 +228,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
                   当前
                 </span>
               ) : (
-                <span style={{ fontFamily: MONO, fontSize: 10, color: C.textDim }}>
+                <span style={{ fontFamily: MONO, fontSize: '0.625rem', color: C.textDim }}>
                   {s.date}
                 </span>
               )}
@@ -236,7 +236,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
             {/* 第二行:预览 */}
             <div
               style={{
-                fontSize: 11.5,
+                fontSize: '0.71875rem',
                 color: C.textDim,
                 marginTop: 6,
                 lineHeight: 1.5,
@@ -303,7 +303,7 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
                       alignItems: 'center',
                       gap: 3,
                       padding: '3px 8px',
-                      fontSize: 11,
+                      fontSize: '0.6875rem',
                       fontWeight: 700,
                       color: C.accent,
                       background: C.accentSoft,
@@ -337,9 +337,9 @@ export const HistoryView: React.FC<Props> = ({ entries, onResume, onDelete, onDe
 };
 
 const smallBtn: React.CSSProperties = {
-  height: 26,
+  height: '1.625rem',
   padding: '0 9px',
-  fontSize: 11,
+  fontSize: '0.6875rem',
   fontWeight: 700,
   color: C.text2,
   background: C.surfaceHover,
@@ -358,7 +358,7 @@ const MetaChip: React.FC<{ children: React.ReactNode; danger?: boolean; accent?:
       display: 'inline-flex',
       alignItems: 'center',
       padding: '2px 6px',
-      fontSize: 10.5,
+      fontSize: '0.65625rem',
       fontWeight: 600,
       color: danger ? C.err : accent ? C.accent : C.textDim,
       background: accent ? C.accentSoft : 'rgba(0,0,0,0.3)',

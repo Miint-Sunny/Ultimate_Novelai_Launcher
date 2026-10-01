@@ -41,14 +41,14 @@ const PARAM_LABEL: Record<(typeof PARAM_KEYS)[number], string> = {
 const CLASS_LABEL: Record<string, string> = { R: '读', W: '写', D: '删', P: '付费', A: '问' };
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: '6px 9px', fontSize: 12, lineHeight: 1.5, color: C.text,
+  width: '100%', boxSizing: 'border-box', padding: '6px 9px', fontSize: '0.75rem', lineHeight: 1.5, color: C.text,
   background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)', borderRadius: 'var(--nai-agent-radius-sm)', outline: 'none',
 };
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-      <span style={{ width: 48, flexShrink: 0, fontSize: 11, color: INK_MUTED, lineHeight: '28px' }}>{label}</span>
+      <span style={{ width: 48, flexShrink: 0, fontSize: '0.6875rem', color: INK_MUTED, lineHeight: '28px' }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', paddingTop: 2 }}>{children}</div>
     </div>
   );
@@ -190,8 +190,8 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 4px' }}>
         <button className="aa-btn" title="返回对话" onClick={onBack} style={iconBtn}><ArrowLeft size={13} /></button>
         <SlidersHorizontal size={13} color={C.accent} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>预设与技能</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: INK_FAINT, padding: '2px 8px', borderRadius: 999, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)' }}>改动即时保存</span>
+        <span style={{ fontSize: '0.78125rem', fontWeight: 700, color: C.text }}>预设与技能</span>
+        <span style={{ marginLeft: 'auto', fontSize: '0.625rem', color: INK_FAINT, padding: '2px 8px', borderRadius: 999, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)' }}>改动即时保存</span>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -223,15 +223,15 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
                 : <button title="删除当前预设" onClick={() => onChange(removePreset(library, active.id))} style={miniBtn}><Trash2 size={12} /></button>}
             </Row>
             {transferNote && (
-              <div style={{ fontSize: 11, lineHeight: 1.5, color: transferNote.level === 'error' ? C.err : INK_MUTED, padding: '4px 0 0 56px' }}>{transferNote.text}</div>
+              <div style={{ fontSize: '0.6875rem', lineHeight: 1.5, color: transferNote.level === 'error' ? C.err : INK_MUTED, padding: '4px 0 0 56px' }}>{transferNote.text}</div>
             )}
             <Row label="名称">
               <input value={active.name} onChange={(e) => update({ name: e.target.value })} style={inputStyle} />
             </Row>
             <Row label="系统提示词">
               <textarea value={active.systemPrompt} onChange={(e) => update({ systemPrompt: e.target.value })} rows={8} spellCheck={false}
-                style={{ ...inputStyle, resize: 'vertical', fontFamily: MONO, fontSize: 11.5 }} />
-              <div style={{ width: '100%', fontSize: 10.5, color: INK_FAINT }}>技能目录会自动附在后面;留空则只有技能目录与工具说明。</div>
+                style={{ ...inputStyle, resize: 'vertical', fontFamily: MONO, fontSize: '0.71875rem' }} />
+              <div style={{ width: '100%', fontSize: '0.65625rem', color: INK_FAINT }}>技能目录会自动附在后面;留空则只有技能目录与工具说明。</div>
             </Row>
             <Row label="技能">
               {skills.map((s) => {
@@ -243,7 +243,7 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
                   <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                     <button title={`${s.description}${resources ? `\n技能包:${resources} 个配套资源` : ''}${inherited ? '\n(随父技能启用)' : ''}`} disabled={inherited}
                       onClick={() => update({ enabledSkillIds: toggleId(active.enabledSkillIds, s.id, !on) })}
-                      style={{ ...chipButton({ primary: on }), opacity: inherited ? 0.6 : 1 }}>{s.name}{resources ? <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>📦</span> : null}</button>
+                      style={{ ...chipButton({ primary: on }), opacity: inherited ? 0.6 : 1 }}>{s.name}{resources ? <span style={{ marginLeft: 4, fontSize: '0.625rem', opacity: 0.7 }}>📦</span> : null}</button>
                     {mine && <button title="编辑" disabled={busy} onClick={() => { setSkillNote(null); setEditor({ skill: s, mode: 'edit' }); }} style={miniBtn}><Pencil size={11} /></button>}
                     {mine && <button title={s.packageId ? '导出技能包(.skill,含配套资源)' : '导出 SKILL.md'} disabled={busy} onClick={() => { void exportSkill(s); }} style={miniBtn}><Download size={11} /></button>}
                     {mine && <button title="删除技能(只清托管副本,不动你的源文件)" disabled={busy} onClick={() => deleteSkill(s)} style={miniBtn}><Trash2 size={11} /></button>}
@@ -262,7 +262,7 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
                 if (e.target.files?.length) void importSkillFolder(e.target.files);
                 if (folderRef.current) folderRef.current.value = '';
               }} />
-              {skillNote && <div style={{ width: '100%', fontSize: 10.5, lineHeight: 1.5, color: skillNote.level === 'error' ? C.err : INK_MUTED }}>{skillNote.text}</div>}
+              {skillNote && <div style={{ width: '100%', fontSize: '0.65625rem', lineHeight: 1.5, color: skillNote.level === 'error' ? C.err : INK_MUTED }}>{skillNote.text}</div>}
             </Row>
             <Row label="工具">
               {tools.map((t) => {
@@ -282,7 +282,7 @@ export const PresetSheet: React.FC<Props> = ({ library, skills, tools, onChange,
                     style={chipButton({ primary: on })}>{PARAM_LABEL[k]}</button>
                 );
               })}
-              <div style={{ width: '100%', fontSize: 10.5, color: INK_FAINT }}>没勾的字段,助手改了也不会生效;和「锁定字段」不同,这是按预设固定的。</div>
+              <div style={{ width: '100%', fontSize: '0.65625rem', color: INK_FAINT }}>没勾的字段,助手改了也不会生效;和「锁定字段」不同,这是按预设固定的。</div>
             </Row>
           </>
         )}
@@ -306,24 +306,24 @@ function SkillEditor({ state, busy, note, onCancel, onSave }: { state: EditorSta
   const title = state.mode === 'edit' ? '编辑技能' : state.mode === 'install' ? (resources.length ? '安装技能包' : '导入技能') : '新建技能';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{title}</div>
+      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: C.text }}>{title}</div>
       <Row label="名称"><input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={inputStyle} placeholder="模型看到的技能名" /></Row>
       <Row label="标识">
         <input value={draft.id} disabled={existing} onChange={(e) => setDraft({ ...draft, id: e.target.value })} style={{ ...inputStyle, opacity: existing ? 0.6 : 1, borderColor: idOk ? undefined : C.err }} placeholder={strict ? '小写字母、数字与连字符' : (id || '留空按名称生成')} />
-        {!idOk && <div style={{ width: '100%', fontSize: 10.5, color: C.err }}>标准技能包的标识只能是 1–64 位小写字母、数字与连字符,不能以连字符开头或结尾。</div>}
+        {!idOk && <div style={{ width: '100%', fontSize: '0.65625rem', color: C.err }}>标准技能包的标识只能是 1–64 位小写字母、数字与连字符,不能以连字符开头或结尾。</div>}
       </Row>
       <Row label="描述"><input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} style={inputStyle} placeholder="一句话说明什么时候该加载它(进系统提示词目录)" /></Row>
       <Row label="正文">
         <textarea value={draft.systemPrompt} onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })} rows={12} spellCheck={false}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: MONO, fontSize: 11.5 }} placeholder="Markdown 正文;load_skill 时整段给模型" />
+          style={{ ...inputStyle, resize: 'vertical', fontFamily: MONO, fontSize: '0.71875rem' }} placeholder="Markdown 正文;load_skill 时整段给模型" />
       </Row>
       {(resources.length > 0 || extra.length > 0) && (
         <Row label="资源">
-          <div style={{ width: '100%', fontSize: 10.5, lineHeight: 1.6, color: INK_MUTED }}>
+          <div style={{ width: '100%', fontSize: '0.65625rem', lineHeight: 1.6, color: INK_MUTED }}>
             {resources.length > 0 && (
               <>
                 <div>{resources.length} 个配套资源,模型可用 load_skill 按需读取;脚本只读不执行。</div>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: INK_FAINT, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                <div style={{ fontFamily: MONO, fontSize: '0.625rem', color: INK_FAINT, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                   {resources.slice(0, MAX_LISTED_RESOURCES).join('\n')}{resources.length > MAX_LISTED_RESOURCES ? `\n…共 ${resources.length} 个` : ''}
                 </div>
               </>
@@ -332,7 +332,7 @@ function SkillEditor({ state, busy, note, onCancel, onSave }: { state: EditorSta
           </div>
         </Row>
       )}
-      {note && <div style={{ fontSize: 10.5, lineHeight: 1.5, color: note.level === 'error' ? C.err : INK_MUTED, paddingLeft: 56 }}>{note.text}</div>}
+      {note && <div style={{ fontSize: '0.65625rem', lineHeight: 1.5, color: note.level === 'error' ? C.err : INK_MUTED, paddingLeft: 56 }}>{note.text}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button disabled={busy} onClick={onCancel} style={chipButton({})}>取消</button>
         <button disabled={!valid || busy} onClick={() => onSave({ ...draft, id, name: draft.name.trim(), description: draft.description.trim() })}

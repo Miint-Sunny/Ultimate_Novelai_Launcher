@@ -101,7 +101,7 @@ export const Header: React.FC<Props> = ({
             style={{
               display: 'flex',
               alignItems: 'center',
-              fontSize: 13,
+              fontSize: '0.8125rem',
               fontWeight: 800,
               color: C.text,
               lineHeight: 1.1,
@@ -179,8 +179,8 @@ const LocalModelStatus: React.FC<{ model: string }> = ({ model }) => {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        height: 28,
-        maxWidth: 156,
+        height: '1.75rem',
+        maxWidth: '9.75rem',
         padding: '0 12px',
         overflow: 'hidden',
         color: C.text,
@@ -188,7 +188,7 @@ const LocalModelStatus: React.FC<{ model: string }> = ({ model }) => {
         border: `1px solid ${C.borderStrong}`,
         borderRadius: 999,
         boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.25)',
-        fontSize: 11.5,
+        fontSize: '0.71875rem',
         fontWeight: 800,
         letterSpacing: 0.2,
         lineHeight: 1,
@@ -227,10 +227,10 @@ const ModelSelect: React.FC<{
         value={model}
         onChange={(e) => onChange(e.target.value)}
         style={{
-          height: 28,
-          minWidth: 96,
+          height: '1.75rem',
+          minWidth: '6rem',
           padding: '0 26px 0 12px',
-          fontSize: 11.5,
+          fontSize: '0.71875rem',
           fontWeight: 800,
           letterSpacing: 0.3,
           color: C.text,

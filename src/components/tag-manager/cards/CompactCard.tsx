@@ -83,7 +83,7 @@ export const CompactCard: React.FC<Props> = ({ tag, subtype, isSelected, onToggl
           {tag.name}
         </div>
         {tag.tags && tag.tags.length > 0 && (
-          <div className="mt-0.5 flex gap-1 truncate text-[10px] text-white/55">
+          <div className="mt-0.5 flex gap-1 truncate text-[0.625rem] text-white/55">
             {tag.tags.slice(0, 3).map(t => <span key={t}>#{t}</span>)}
             {tag.tags.length > 3 && <span>+{tag.tags.length - 3}</span>}
           </div>

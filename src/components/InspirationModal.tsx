@@ -376,7 +376,7 @@ const KktMasonryGrid: React.FC<KktMasonryGridProps> = ({
                       />
                       {/* 异形图片裁剪标记 */}
                       {isOdd && (
-                        <div className="absolute top-2 right-2 z-20 px-1.5 py-0.5 bg-amber-500/80 text-white text-[9px] font-bold rounded">
+                        <div className="absolute top-2 right-2 z-20 px-1.5 py-0.5 bg-amber-500/80 text-white text-[0.625rem] font-bold rounded">
                           裁剪
                         </div>
                       )}
@@ -390,16 +390,16 @@ const KktMasonryGrid: React.FC<KktMasonryGridProps> = ({
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3 flex flex-col justify-end translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pt-10 z-20">
                     <p className="font-bold text-white text-xs mb-0.5 truncate">{item.name}</p>
                     <div className="flex justify-between items-center mb-2">
-                      <p className="text-[10px] text-gray-400">{item.user_name}</p>
+                      <p className="text-[0.625rem] text-gray-400">{item.user_name}</p>
                       {item.model_name && (
-                        <span className="text-[9px] bg-white/10 text-gray-300 px-1.5 py-0.5 rounded">
+                        <span className="text-[0.625rem] bg-white/10 text-gray-300 px-1.5 py-0.5 rounded">
                           {resolveModelName(item.model_name)}
                         </span>
                       )}
                     </div>
                     <div className="flex gap-1.5">
                       <button
-                        className={`flex-1 py-1.5 text-black text-[10px] font-bold rounded flex items-center justify-center gap-1 ${downloadingId === item.name
+                        className={`flex-1 py-1.5 text-black text-[0.625rem] font-bold rounded flex items-center justify-center gap-1 ${downloadingId === item.name
                           ? 'bg-nai-accent/70 cursor-wait'
                           : 'bg-nai-accent hover:bg-nai-accent-hover'
                           }`}
@@ -1218,7 +1218,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                   {kktDetailItem.model_name && (
                     <div className="bg-black/30 p-3 rounded-lg border border-gray-800 shadow-sm">
-                      <p className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider flex items-center justify-between">Model</p>
+                      <p className="text-[0.625rem] text-gray-500 font-bold mb-1 uppercase tracking-wider flex items-center justify-between">Model</p>
                       <p className="text-xs text-nai-accent font-mono truncate" title={resolveModelName(kktDetailItem.model_name) || kktDetailItem.model_name}>
                         {resolveModelName(kktDetailItem.model_name)}
                       </p>
@@ -1226,13 +1226,13 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                   )}
                   {kktDetailItem.image_size && (
                     <div className="bg-black/30 p-3 rounded-lg border border-gray-800 shadow-sm">
-                      <p className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider">Size</p>
+                      <p className="text-[0.625rem] text-gray-500 font-bold mb-1 uppercase tracking-wider">Size</p>
                       <p className="text-xs text-gray-300 font-mono">{kktDetailItem.image_size}</p>
                     </div>
                   )}
                   {kktDetailItem.seed != null && (
                     <div className="bg-black/30 p-3 rounded-lg border border-gray-800 shadow-sm">
-                      <p className="text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider">Seed</p>
+                      <p className="text-[0.625rem] text-gray-500 font-bold mb-1 uppercase tracking-wider">Seed</p>
                       <p className="text-xs text-green-400 font-mono">{kktDetailItem.seed}</p>
                     </div>
                   )}
@@ -1284,11 +1284,11 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
 
                 {/* Extended Content / JSON Source */}
                 <div className="pt-4 border-t border-gray-800">
-                  <h4 className="text-[10px] text-gray-500 font-bold mb-2 uppercase tracking-wider flex items-center justify-between">
+                  <h4 className="text-[0.625rem] text-gray-500 font-bold mb-2 uppercase tracking-wider flex items-center justify-between">
                     Raw Info
                     <span className="text-gray-600 font-normal normal-case">API 返回的原始数据</span>
                   </h4>
-                  <div className="p-3 bg-black/20 rounded-lg whitespace-pre-wrap text-[10px] text-gray-600 font-mono max-h-32 overflow-y-auto custom-scrollbar border border-gray-800">
+                  <div className="p-3 bg-black/20 rounded-lg whitespace-pre-wrap text-[0.625rem] text-gray-600 font-mono max-h-32 overflow-y-auto custom-scrollbar border border-gray-800">
                     {kktDetailItem.content}
                   </div>
                 </div>
@@ -1721,7 +1721,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                       <Filter className="w-4 h-4" />
                       <span className="text-xs font-bold">筛选分类</span>
                       {selectedCategories.length > 0 && (
-                        <span className="bg-nai-accent text-black text-[10px] px-1.5 py-0.5 rounded-full min-w-[1.2em] text-center font-bold">
+                        <span className="bg-nai-accent text-black text-[0.625rem] px-1.5 py-0.5 rounded-full min-w-[1.2em] text-center font-bold">
                           {selectedCategories.length}
                         </span>
                       )}
@@ -2000,7 +2000,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                           setKktTimeRange(opt.value);
                           loadKktData(1, true);
                         }}
-                        className={`h-7 px-2.5 rounded-full text-[11px] font-bold transition-all duration-300 active:scale-90 ${kktTimeRange === opt.value
+                        className={`h-7 px-2.5 rounded-full text-[0.6875rem] font-bold transition-all duration-300 active:scale-90 ${kktTimeRange === opt.value
                           ? 'bg-nai-accent/10 text-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
                           : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                           }`}
@@ -2024,7 +2024,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                           onKeyDown={handleAddKktTag}
                           onBlur={() => { if (!kktTagInput) setIsAddingTag(false); }}
                           placeholder="输入标签..."
-                          className="w-16 bg-transparent text-[10px] text-white outline-none placeholder:text-gray-600"
+                          className="w-16 bg-transparent text-[0.625rem] text-white outline-none placeholder:text-gray-600"
                         />
                         <button
                           onClick={() => {
@@ -2062,7 +2062,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                     <div key={tag} className="relative group/tag">
                       <button
                         onClick={() => toggleKktTag(tag)}
-                        className={`shrink-0 h-8 px-3.5 rounded-full border text-[11px] font-bold transition-all duration-300 active:scale-95 flex items-center gap-2 pr-8 ${kktSelectedTags.includes(tag)
+                        className={`shrink-0 h-8 px-3.5 rounded-full border text-[0.6875rem] font-bold transition-all duration-300 active:scale-95 flex items-center gap-2 pr-8 ${kktSelectedTags.includes(tag)
                           ? 'bg-nai-accent/10 border-nai-accent text-nai-accent shadow-[0_0_10px_rgba(252,237,164,0.3)]'
                           : 'border-gray-800 bg-gray-900/50 text-gray-400 hover:text-white hover:border-gray-600'
                           }`}
@@ -2204,7 +2204,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                 <span className="text-xs text-nai-accent font-bold mb-0.5">{item.category}</span>
                                 <h3 className="font-bold text-white">{getCodexDisplayTitle(item)}</h3>
                               </div>
-                              {item.isR18 && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[10px] rounded border border-red-500/20 font-bold">R18</span>}
+                              {item.isR18 && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[0.625rem] rounded border border-red-500/20 font-bold">R18</span>}
                             </div>
                             <p className="text-sm text-gray-400 line-clamp-3 mb-4 font-mono bg-black/30 p-2 rounded-lg border border-white/5">
                               {item.content}
@@ -2297,13 +2297,13 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3 z-20">
                                 <p className="text-white font-bold text-xs truncate mb-1">{item.name}</p>
                                 {item.model_name && (
-                                  <p className="text-[9px] text-gray-300 mb-1.5 truncate" title={`Seed: ${item.seed || '未知'}`}>
+                                  <p className="text-[0.625rem] text-gray-300 mb-1.5 truncate" title={`Seed: ${item.seed || '未知'}`}>
                                     {resolveModelName(item.model_name)}
                                   </p>
                                 )}
                                 <div className="flex gap-1.5">
                                   <button
-                                    className={`flex-1 py-1.5 text-black text-[10px] font-bold rounded flex items-center justify-center gap-1 ${downloadingKktId === item.name
+                                    className={`flex-1 py-1.5 text-black text-[0.625rem] font-bold rounded flex items-center justify-center gap-1 ${downloadingKktId === item.name
                                       ? 'bg-nai-accent/70 cursor-wait'
                                       : 'bg-nai-accent hover:bg-nai-accent-hover'
                                       }`}
@@ -2371,7 +2371,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                             )}
 
                             {/* Token数量 - 左上角, hover显示 */}
-                            <span className="absolute top-2 left-2 text-[10px] text-nai-accent bg-nai-accent/10 px-1.5 py-0.5 rounded backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all">
+                            <span className="absolute top-2 left-2 text-[0.625rem] text-nai-accent bg-nai-accent/10 px-1.5 py-0.5 rounded backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all">
                               {countTokens(oc.positive)} tokens
                             </span>
 
@@ -2394,7 +2394,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                     setCopiedItemId(oc.id);
                                     setTimeout(() => setCopiedItemId(null), 1500);
                                   }}
-                                  className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors flex items-center justify-center gap-1 ${copiedItemId === oc.id
+                                  className={`flex-1 py-1 rounded text-[0.625rem] font-bold transition-colors flex items-center justify-center gap-1 ${copiedItemId === oc.id
                                     ? 'bg-green-600 text-white'
                                     : 'bg-white/10 hover:bg-white/20 text-gray-200'
                                     }`}
@@ -2418,7 +2418,7 @@ export const InspirationModal: React.FC<InspirationModalProps> = ({ isOpen, onCl
                                       onClose();
                                     }
                                   }}
-                                  className={`flex-1 py-1 rounded text-[10px] font-bold transition-colors flex items-center justify-center gap-1 ${addedItemId === oc.id
+                                  className={`flex-1 py-1 rounded text-[0.625rem] font-bold transition-colors flex items-center justify-center gap-1 ${addedItemId === oc.id
                                     ? 'bg-green-600 text-white'
                                     : 'bg-nai-accent hover:bg-nai-accent-hover text-black'
                                     }`}
@@ -2462,7 +2462,7 @@ const NavButton = ({ active, onClick, icon, label, desc }: { active: boolean, on
     </div>
     <div>
       <div className={`font-bold text-sm ${active ? 'text-white' : 'text-gray-300 group-hover:text-white'} transition-colors`}>{label}</div>
-      <div className="text-[10px] text-gray-500 group-hover:text-gray-400 transition-colors">{desc}</div>
+      <div className="text-[0.625rem] text-gray-500 group-hover:text-gray-400 transition-colors">{desc}</div>
     </div>
   </button>
 );

@@ -124,7 +124,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({
           <div className="flex h-full w-full items-center justify-center text-gray-500">
             <div className="flex flex-col items-center gap-1.5">
               <ImageIcon className="h-6 w-6" />
-              <span className="text-[10px]">暂无预览图</span>
+              <span className="text-[0.625rem]">暂无预览图</span>
             </div>
           </div>
         )}
@@ -135,7 +135,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <div className={`truncate text-[14px] font-extrabold tracking-wide transition-colors ${isSelected ? 'text-nai-accent drop-shadow-[0_0_8px_rgba(242,211,107,0.3)]' : 'text-gray-100 group-hover:text-white'}`}>
+              <div className={`truncate text-[0.875rem] font-extrabold tracking-wide transition-colors ${isSelected ? 'text-nai-accent drop-shadow-[0_0_8px_rgba(242,211,107,0.3)]' : 'text-gray-100 group-hover:text-white'}`}>
                 {file.name}
               </div>
             </div>
@@ -148,7 +148,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({
                   {visibleTags.map(tag => (
                     <span
                       key={tag}
-                      className="inline-flex items-center gap-0.5 rounded-full py-0.5 px-1.5 text-[9.5px] font-bold bg-nai-accent/10 text-nai-accent/80 border border-nai-accent/20"
+                      className="inline-flex items-center gap-0.5 rounded-full py-0.5 px-1.5 text-[0.625rem] font-bold bg-nai-accent/10 text-nai-accent/80 border border-nai-accent/20"
                     >
                       {tag}
                     </span>
@@ -320,7 +320,7 @@ export const ArtistCard: React.FC<ArtistCardProps> = ({
           {artistTags.map((tag, i) => (
             <span
               key={i}
-              className="inline-flex items-center px-1.5 py-[3px] border border-gray-700/80 bg-gray-800/50 rounded text-[9.5px] font-medium leading-none whitespace-nowrap transition-all outline outline-1 outline-transparent hover:outline-nai-accent/30 hover:border-nai-accent text-gray-300 hover:text-white hover:bg-gray-800/80 hover:shadow-sm cursor-pointer"
+              className="inline-flex items-center px-1.5 py-[3px] border border-gray-700/80 bg-gray-800/50 rounded text-[0.625rem] font-medium leading-none whitespace-nowrap transition-all outline outline-1 outline-transparent hover:outline-nai-accent/30 hover:border-nai-accent text-gray-300 hover:text-white hover:bg-gray-800/80 hover:shadow-sm cursor-pointer"
               title={`复制 ${tag}`}
               onClick={(e) => {
                 e.stopPropagation();

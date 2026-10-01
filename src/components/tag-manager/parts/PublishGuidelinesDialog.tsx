@@ -41,9 +41,9 @@ export const PublishGuidelinesDialog: React.FC<Props> = ({
             <Info className="w-[22px] h-[22px]" strokeWidth={2} />
           </span>
           <div className="flex flex-col leading-tight flex-1 min-w-0 pt-0.5">
-            <h2 className="text-[17px] font-bold text-white tracking-wide">{title}</h2>
+            <h2 className="text-[1.0625rem] font-bold text-white tracking-wide">{title}</h2>
             {subtitle && (
-              <p className="text-[12.5px] text-nai-text-dim mt-1.5">{subtitle}</p>
+              <p className="text-[0.78125rem] text-nai-text-dim mt-1.5">{subtitle}</p>
             )}
           </div>
           <button
@@ -62,7 +62,7 @@ export const PublishGuidelinesDialog: React.FC<Props> = ({
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 custom-scrollbar">
           <ul className="flex flex-col gap-3.5">
             {bullets.map((line, i) => (
-              <li key={i} className="flex items-start gap-3 text-[13.5px] text-gray-200 leading-[1.65]">
+              <li key={i} className="flex items-start gap-3 text-[0.84375rem] text-gray-200 leading-[1.65]">
                 <span className="inline-flex w-5 h-5 rounded-full bg-nai-accent/15 items-center justify-center shrink-0 mt-[2px] ring-1 ring-nai-accent/30">
                   <Check className="w-3 h-3 text-nai-accent" strokeWidth={3} />
                 </span>
@@ -75,18 +75,18 @@ export const PublishGuidelinesDialog: React.FC<Props> = ({
         {/* Footer */}
         <footer className="flex items-center gap-3 px-6 py-4 border-t border-white/[0.06] bg-nai-dark/40 shrink-0">
           <div className="flex-1 min-w-0">
-            <div className="text-[10.5px] text-nai-text-dim uppercase tracking-[0.08em] font-bold">即将发布</div>
-            <div className="text-[13.5px] font-bold text-white truncate mt-0.5">{itemName || '—'}</div>
+            <div className="text-[0.65625rem] text-nai-text-dim uppercase tracking-[0.08em] font-bold">即将发布</div>
+            <div className="text-[0.84375rem] font-bold text-white truncate mt-0.5">{itemName || '—'}</div>
           </div>
           <button
             onClick={onCancel}
-            className="px-4 py-2.5 text-[13.5px] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
+            className="px-4 py-2.5 text-[0.84375rem] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
           >
             取消
           </button>
           <button
             onClick={onConfirm}
-            className="px-5 py-2.5 text-[13.5px] font-bold bg-nai-accent text-[#1a1410] rounded-lg hover:bg-nai-accent-hover flex items-center gap-2 shadow-[0_4px_14px_-4px_rgba(252,237,164,0.45)] transition-colors cursor-pointer"
+            className="px-5 py-2.5 text-[0.84375rem] font-bold bg-nai-accent text-[#1a1410] rounded-lg hover:bg-nai-accent-hover flex items-center gap-2 shadow-[0_4px_14px_-4px_rgba(252,237,164,0.45)] transition-colors cursor-pointer"
           >
             {confirmLabel}
           </button>

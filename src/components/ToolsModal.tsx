@@ -91,7 +91,7 @@ const PromptBlock: React.FC<{ label: string; text: string; field: string; copied
       <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
       <CopyBtn text={text} field={field} copiedField={copiedField} onCopy={onCopy} />
     </div>
-    <div className="text-[13px] text-gray-200 bg-gray-900/50 rounded-xl p-4 max-h-36 overflow-y-auto leading-relaxed whitespace-pre-wrap break-all">
+    <div className="text-[0.8125rem] text-gray-200 bg-gray-900/50 rounded-xl p-4 max-h-36 overflow-y-auto leading-relaxed whitespace-pre-wrap break-all">
       {text}
     </div>
   </div>
@@ -161,8 +161,8 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                         </span>
                         <CopyBtn text={cp.prompt} field={`char_${i}`} copiedField={copiedField} onCopy={handleCopy} />
                       </div>
-                      <div className="text-[13px] text-gray-200 whitespace-pre-wrap break-all">{cp.prompt}</div>
-                      {cp.uc && <div className="text-[13px] text-red-400/70 mt-1.5 whitespace-pre-wrap break-all">UC: {cp.uc}</div>}
+                      <div className="text-[0.8125rem] text-gray-200 whitespace-pre-wrap break-all">{cp.prompt}</div>
+                      {cp.uc && <div className="text-[0.8125rem] text-red-400/70 mt-1.5 whitespace-pre-wrap break-all">UC: {cp.uc}</div>}
                     </div>
                   ))}
                 </div>
@@ -179,9 +179,9 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                 <div className="flex flex-wrap gap-1.5">
                   {charMatches.map((ch, i) => (
                     <span key={i} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs ${ch.isOC ? 'bg-cyan-500/15 text-cyan-300' : 'bg-nai-accent/15 text-nai-accent'}`}>
-                      {ch.isOC && <span className="text-[9px] font-bold bg-cyan-500/30 rounded px-1 py-0.5 mr-0.5">OC</span>}
+                      {ch.isOC && <span className="text-[0.625rem] font-bold bg-cyan-500/30 rounded px-1 py-0.5 mr-0.5">OC</span>}
                       <span className="font-medium">{ch.zhName}</span>
-                      <span className={`text-[10px] ${ch.isOC ? 'text-cyan-300/60' : 'text-nai-accent/60'}`}>[{ch.enTag}]</span>
+                      <span className={`text-[0.625rem] ${ch.isOC ? 'text-cyan-300/60' : 'text-nai-accent/60'}`}>[{ch.enTag}]</span>
                     </span>
                   ))}
                 </div>
@@ -201,7 +201,7 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                   { label: 'CFG Rescale', value: m.cfgRescale },
                 ].filter(p => p.value !== undefined && p.value !== null && p.value !== '').map((p) => (
                   <div key={p.label} className="bg-gray-900/50 rounded-lg px-3 py-2.5">
-                    <div className="text-[10px] text-gray-500 uppercase">{p.label}</div>
+                    <div className="text-[0.625rem] text-gray-500 uppercase">{p.label}</div>
                     <div className="text-xs text-white mt-0.5 truncate">{String(p.value)}</div>
                   </div>
                 ))}
@@ -227,7 +227,7 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                   <div className="grid grid-cols-3 gap-2 mt-2">
                     {sdParams.map((p) => (
                       <div key={p.label} className="bg-gray-900/50 rounded-lg px-3 py-2.5">
-                        <div className="text-[10px] text-gray-500 uppercase">{p.label}</div>
+                        <div className="text-[0.625rem] text-gray-500 uppercase">{p.label}</div>
                         <div className="text-xs text-white mt-0.5 truncate">{String(p.value)}</div>
                       </div>
                     ))}
@@ -258,7 +258,7 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {m.vibes.map((v, i) => (
                     <div key={i} className="bg-gray-900/50 rounded-lg px-3 py-2.5">
-                      <div className="text-[10px] text-gray-500">Vibe {i + 1}</div>
+                      <div className="text-[0.625rem] text-gray-500">Vibe {i + 1}</div>
                       <div className="text-xs text-white">强度: {v.strength}</div>
                       {v.informationExtracted !== undefined && <div className="text-xs text-gray-400">提取: {v.informationExtracted}</div>}
                     </div>
@@ -274,7 +274,7 @@ export const MetadataDetailPanel: React.FC<{ file: MetadataFile; onImport?: (met
                   <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">原始数据</span>
                   <CopyBtn text={JSON.stringify(m.raw, null, 2)} field="raw" copiedField={copiedField} onCopy={handleCopy} />
                 </div>
-                <pre className="text-[11px] text-gray-400 bg-gray-900/50 rounded-xl p-4 max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
+                <pre className="text-[0.6875rem] text-gray-400 bg-gray-900/50 rounded-xl p-4 max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
                   {JSON.stringify(m.raw, null, 2)}
                 </pre>
               </div>
@@ -670,14 +670,14 @@ export const ToolsModal: React.FC<ToolsModalProps> = ({ isOpen, onClose }) => {
 
                       {/* 元数据标记 */}
                       {file.metadata && (
-                        <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-nai-accent text-[10px] font-bold text-black" title="包含元数据">
+                        <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-nai-accent text-[0.625rem] font-bold text-black" title="包含元数据">
                           META
                         </div>
                       )}
 
                       {/* 文件名 hover 提示 */}
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="text-[11px] text-white truncate">{file.name}</div>
+                        <div className="text-[0.6875rem] text-white truncate">{file.name}</div>
                       </div>
                     </div>
                   ))}

@@ -188,14 +188,14 @@ const RelatedTagsBody: React.FC<BodyProps> = ({ results, existingTagSet, onAdd, 
                   ${added ? 'cursor-default' : 'cursor-pointer'}`}
                 title={r.wiki ? `${r.tag}\n${r.wiki}` : r.tag}
               >
-                <span className={`font-tag text-[12px] leading-tight transition-colors
+                <span className={`font-tag text-[0.75rem] leading-tight transition-colors
                   ${added
                     ? 'text-white/25 line-through'
                     : 'text-white/80 group-hover:text-[#fceda4] group-hover:underline underline-offset-2 decoration-[#fceda4]/60'}`}>
                   {r.tag}
                 </span>
                 {cn && (
-                  <span className={`text-[10px] leading-tight transition-colors
+                  <span className={`text-[0.625rem] leading-tight transition-colors
                     ${added ? 'text-white/15' : 'text-white/40 group-hover:text-[#fceda4]/55'}`}>
                     {cn}
                   </span>

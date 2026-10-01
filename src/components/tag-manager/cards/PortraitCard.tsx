@@ -55,7 +55,7 @@ export const PortraitCard: React.FC<Props> = ({
           style={{ backgroundImage: `url("${imgUrl}")` }}
         />
       ) : (
-        <div className="absolute inset-0 bg-gray-800 flex items-center justify-center text-gray-500 text-[10px]">
+        <div className="absolute inset-0 bg-gray-800 flex items-center justify-center text-gray-500 text-[0.625rem]">
           暂无预览图
         </div>
       )}

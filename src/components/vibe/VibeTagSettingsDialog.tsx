@@ -92,7 +92,7 @@ export function VibeTagSettingsDialog({
                 />
               </div>
               {tagSettingsDuplicate && (
-                <p className="text-[11px] text-red-400 pl-6">标签 "{tagSettingsTrimmedNewName}" 已存在</p>
+                <p className="text-[0.6875rem] text-red-400 pl-6">标签 "{tagSettingsTrimmedNewName}" 已存在</p>
               )}
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button

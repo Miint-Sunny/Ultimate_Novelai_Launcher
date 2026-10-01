@@ -141,7 +141,7 @@ export function GenerationFooterControls({
               else setSeed('');
             }}
           >
-            <div className="text-gray-500 text-[10px] leading-none">种子</div>
+            <div className="text-gray-500 text-[0.625rem] leading-none">种子</div>
             <div className="font-bold text-white text-sm leading-tight truncate tabular-nums" title={seed || 'N/A'}>{seed || 'N/A'}</div>
           </div>
           <div className="relative h-full">
@@ -153,7 +153,7 @@ export function GenerationFooterControls({
                 handleResolutionChange(nextResolution);
               }}
             >
-              <div className="text-gray-500 text-[10px] leading-none">比例</div>
+              <div className="text-gray-500 text-[0.625rem] leading-none">比例</div>
               <div className="font-bold text-white text-sm leading-tight truncate" title={`${customWidth} x ${customHeight}`}>
                 {currentResolutionLabel}
               </div>
@@ -280,7 +280,7 @@ function QuickNumberCell({
       onPointerCancel={handlePointerUp}
       onWheel={(event) => onWheel(event.deltaY)}
     >
-      <div className="text-gray-500 text-[10px] leading-none">{label}</div>
+      <div className="text-gray-500 text-[0.625rem] leading-none">{label}</div>
       <div className="font-bold text-white text-sm leading-tight tabular-nums">{value}</div>
     </div>
   );

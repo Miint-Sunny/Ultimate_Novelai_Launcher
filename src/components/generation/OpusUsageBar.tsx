@@ -47,20 +47,20 @@ export function OpusUsageBar({ usage }: { usage: OpusUsage }) {
               后面那串说明只是它的注脚。整行同号同色时,数字会被文字淹没。 */}
           <span className="flex items-baseline gap-1.5 min-w-0">
             {exhausted ? (
-              <span className="text-[13px] font-bold leading-none text-red-400">已用尽</span>
+              <span className="text-[0.8125rem] font-bold leading-none text-red-400">已用尽</span>
             ) : (
-              <span className={`text-[15px] font-bold leading-none tabular-nums ${textAccent}`}>
+              <span className={`text-[0.9375rem] font-bold leading-none tabular-nums ${textAccent}`}>
                 {usage.percent}%
               </span>
             )}
-            <span className={`text-[11px] leading-none truncate ${exhausted ? 'text-red-400/80' : 'text-gray-400'}`}>
+            <span className={`text-[0.6875rem] leading-none truncate ${exhausted ? 'text-red-400/80' : 'text-gray-400'}`}>
               {exhausted ? '继续生成将消耗 Anlas' : 'Opus 免费生成额度'}
             </span>
           </span>
           <button
             onClick={() => setIsDetailOpen(true)}
             title="查看 Opus 免费额度说明"
-            className="text-[11px] leading-none shrink-0 text-gray-400 hover:text-white underline underline-offset-2 transition-colors"
+            className="text-[0.6875rem] leading-none shrink-0 text-gray-400 hover:text-white underline underline-offset-2 transition-colors"
           >
             更多信息
           </button>

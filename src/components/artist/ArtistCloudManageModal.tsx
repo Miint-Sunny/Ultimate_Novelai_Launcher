@@ -274,7 +274,7 @@ export const ArtistCloudManageModal: React.FC<Props> = ({ isOpen, onClose, onDat
                 {backupLog.map((entry, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
                     <span className="text-gray-600 shrink-0 tabular-nums">{formatLogTime(entry.time)}</span>
-                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${entry.action === 'backup' ? 'bg-blue-500/15 text-blue-400' : 'bg-green-500/15 text-green-400'}`}>
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[0.625rem] font-bold ${entry.action === 'backup' ? 'bg-blue-500/15 text-blue-400' : 'bg-green-500/15 text-green-400'}`}>
                       {entry.action === 'backup' ? '备份' : '恢复'}
                     </span>
                     <span className="text-gray-400 truncate">{entry.device}</span>

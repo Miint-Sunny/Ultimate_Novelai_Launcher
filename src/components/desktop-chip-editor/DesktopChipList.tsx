@@ -121,7 +121,7 @@ export function DesktopChipList({
             <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border-2 border-dashed border-[#fceda4]/40 bg-[#fceda4]/8">
               <span className="flex flex-col items-start">
                 <span className="font-tag text-xs leading-tight text-[#fceda4]/40">{dragGhostInfo.text}</span>
-                {dragGhostInfo.sub && <span className="text-[10px] leading-tight text-[#fceda4]/20">{dragGhostInfo.sub}</span>}
+                {dragGhostInfo.sub && <span className="text-[0.625rem] leading-tight text-[#fceda4]/20">{dragGhostInfo.sub}</span>}
               </span>
             </div>
           ) : null;
@@ -231,7 +231,7 @@ export function DesktopChipList({
           {nlTranslating && (
             <div className="absolute left-0 top-full mt-1 flex items-center gap-1.5 px-2.5 py-1 bg-[#1a1a1a]/90 backdrop-blur-md rounded-lg shadow-lg border border-cyan-500/20 z-50">
               <span className="inline-block w-3 h-3 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-              <span className="text-[11px] text-cyan-200/80">翻译中...</span>
+              <span className="text-[0.6875rem] text-cyan-200/80">翻译中...</span>
             </div>
           )}
         </div>

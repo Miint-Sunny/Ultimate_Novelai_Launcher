@@ -14,7 +14,7 @@ export function Segmented<T extends string>({ value, options, onChange, ariaLabe
         const on = value === o.id;
         return (
           <button key={o.id} role="radio" aria-checked={on} title={o.hint} onClick={() => onChange(o.id)}
-            style={{ padding: '4px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+            style={{ padding: '4px 10px', borderRadius: 999, fontSize: '0.71875rem', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
               background: on ? 'var(--nai-agent-primary-fill)' : 'transparent', color: on ? 'var(--nai-agent-on-primary)' : C.text }}>
             {o.label}
           </button>

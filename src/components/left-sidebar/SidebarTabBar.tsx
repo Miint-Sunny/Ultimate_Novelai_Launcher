@@ -29,7 +29,7 @@ export function SidebarTabBar({
               data-attention={lit ? 'true' : undefined}
               title={`${tab.hint}(⌥${index + 1})`}
               onClick={() => onChange(tab.id)}
-              className={`relative flex-1 h-8 rounded-full text-[13px] font-bold transition-colors ${
+              className={`relative flex-1 h-8 rounded-full text-[0.8125rem] font-bold transition-colors ${
                 on ? 'bg-nai-accent text-black shadow-[0_0_8px_rgba(235,213,118,0.35)]' : 'text-gray-400 hover:text-white'
               }`}
             >

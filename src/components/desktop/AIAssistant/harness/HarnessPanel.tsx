@@ -84,9 +84,9 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', color: C.text }}>
       {/* 参数行:模式 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, rowGap: 4, flexWrap: 'wrap', padding: '8px 12px 4px' }}>
-        <span style={{ width: 48, fontSize: 11, color: 'var(--nai-agent-ink-muted)', lineHeight: '28px', flexShrink: 0 }}>模式</span>
+        <span style={{ width: 48, fontSize: '0.6875rem', color: 'var(--nai-agent-ink-muted)', lineHeight: '28px', flexShrink: 0 }}>模式</span>
         <Segmented value={h.mode} options={MODES} onChange={h.setMode} ariaLabel="工作台权限模式" />
-        {h.mode === 'yolo' && <span style={{ fontSize: 10, fontWeight: 700, color: '#f5c451' }}>YOLO</span>}
+        {h.mode === 'yolo' && <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#f5c451' }}>YOLO</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <button className="aa-btn" title={h.lockedFields.size ? `锁定字段与硬上限(已锁定 ${h.lockedFields.size} 项)` : '锁定字段与硬上限'} onClick={() => setLocksOpen((v) => !v)} style={iconBtn(h.lockedFields.size > 0 || locksOpen)}><Lock size={13} /></button>
           <button className="aa-btn" title="回溯到某一轮" disabled={rewindDisabled} onClick={() => toggleSheet('rewind')} style={{ ...iconBtn(sheet === 'rewind'), opacity: rewindDisabled ? 0.45 : 1 }}><History size={13} /></button>
@@ -98,7 +98,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
       </div>
       {locksOpen && (
         <div style={{ margin: '4px 12px 6px', padding: '8px 10px', borderRadius: 'var(--nai-agent-radius-md)', background: 'var(--nai-agent-card-bg)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          <div style={{ width: '100%', fontSize: 11, color: 'var(--nai-agent-ink-muted)' }}>锁定的字段在任何模式下都拒绝 AI 修改</div>
+          <div style={{ width: '100%', fontSize: '0.6875rem', color: 'var(--nai-agent-ink-muted)' }}>锁定的字段在任何模式下都拒绝 AI 修改</div>
           {LOCKABLE_FIELDS.map((f) => (
             <button key={f.id} onClick={() => h.toggleLockedField(f.id)} style={chipButton({ primary: h.lockedFields.has(f.id) })}>{f.label}</button>
           ))}
@@ -109,7 +109,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         </div>
       )}
       {h.contextUsage && h.items.length > 0 && sheet === 'none' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px 2px', fontSize: 10.5, color: h.contextUsage.error ? C.err : 'var(--nai-agent-ink-faint)' }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px 2px', fontSize: '0.65625rem', color: h.contextUsage.error ? C.err : 'var(--nai-agent-ink-faint)' }}
           title={h.contextUsage.error ?? '当前请求上下文的估算用量;过了七成会在后台先压缩,到顶才等它'}>
           <span>上下文 ~{formatTokens(h.contextUsage.tokens)} / {formatTokens(h.contextUsage.window)}</span>
           {h.contextUsage.noteCount > 0 && <span>· 笔记 {h.contextUsage.noteCount}</span>}
@@ -120,7 +120,7 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
         </div>
       )}
       {!h.available && (
-        <div style={{ margin: '4px 12px 0', padding: '6px 10px', borderRadius: 'var(--nai-agent-radius-sm)', background: 'rgba(252,237,164,0.06)', fontSize: 11, color: 'var(--nai-agent-ink-muted)' }}>
+        <div style={{ margin: '4px 12px 0', padding: '6px 10px', borderRadius: 'var(--nai-agent-radius-sm)', background: 'rgba(252,237,164,0.06)', fontSize: '0.6875rem', color: 'var(--nai-agent-ink-muted)' }}>
           {h.unavailableReason ?? '正在读取 sidecar 设置…'}
         </div>
       )}
@@ -164,11 +164,11 @@ export const HarnessPanel: React.FC<Props> = ({ onSwitchToLegacy }) => {
 
 function LimitField({ label, title, value, min = 0, max, onChange }: { label: string; title: string; value: number; min?: number; max: number; onChange: (v: number) => void }) {
   return (
-    <label title={title} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--nai-agent-ink-muted)' }}>
+    <label title={title} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: 'var(--nai-agent-ink-muted)' }}>
       {label}
       <input type="number" min={min} max={max} step={1} value={value} aria-label={label}
         onChange={(e) => { const n = Math.round(Number(e.target.value)); if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n))); }}
-        style={{ width: 58, padding: '3px 6px', fontSize: 11.5, color: C.text, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)', borderRadius: 'var(--nai-agent-radius-xs)', outline: 'none' }} />
+        style={{ width: 58, padding: '3px 6px', fontSize: '0.71875rem', color: C.text, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)', borderRadius: 'var(--nai-agent-radius-xs)', outline: 'none' }} />
     </label>
   );
 }

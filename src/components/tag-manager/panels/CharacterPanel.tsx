@@ -408,14 +408,14 @@ export const CharacterPanel: React.FC<Props> = ({
             {scope === 'pub' && (
               <div className="flex items-center gap-2.5 mb-3 pl-0.5">
                 <Globe className="w-5 h-5 text-nai-text-dim shrink-0" />
-                <span className="text-[15px] font-bold text-white truncate">公共角色</span>
-                <span className="text-[13px] font-bold text-nai-text-dim tabular-nums shrink-0">{visible.length}</span>
+                <span className="text-[0.9375rem] font-bold text-white truncate">公共角色</span>
+                <span className="text-[0.8125rem] font-bold text-nai-text-dim tabular-nums shrink-0">{visible.length}</span>
                 <span className="flex-1 h-px bg-white/[0.06] mx-1" />
                 <button
                   onClick={() => setPublicManagerOpen(true)}
                   disabled={!currentUserId}
                   title="管理我上传到公共库的角色"
-                  className="shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-md border border-gray-700 bg-gray-800/60 text-[12.5px] font-bold text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/[0.05] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-800/60 disabled:hover:text-gray-300 disabled:hover:border-gray-700"
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-md border border-gray-700 bg-gray-800/60 text-[0.78125rem] font-bold text-gray-300 hover:text-nai-accent hover:border-nai-accent/50 hover:bg-nai-accent/[0.05] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-800/60 disabled:hover:text-gray-300 disabled:hover:border-gray-700"
                 >
                   <Settings className="w-3.5 h-3.5" />
                   管理上传
@@ -440,7 +440,7 @@ export const CharacterPanel: React.FC<Props> = ({
                 />
               ))}
               {displayedGroupCount < allGroups.length && (
-                <div className="flex justify-center py-2 text-[12px] text-nai-text-dim">
+                <div className="flex justify-center py-2 text-[0.75rem] text-nai-text-dim">
                   显示 {displayedGroupCount} / {allGroups.length} 组,下滑加载更多
                 </div>
               )}
@@ -752,17 +752,17 @@ const AuthorGroupCard: React.FC<{
         )}
         {isMine ? (
           <>
-            <span className="text-[15px] font-bold text-nai-accent shrink-0">{label}</span>
-            <span className="text-[12.5px] text-nai-text-dim truncate" title={namesDisplay}>
+            <span className="text-[0.9375rem] font-bold text-nai-accent shrink-0">{label}</span>
+            <span className="text-[0.78125rem] text-nai-text-dim truncate" title={namesDisplay}>
               · {namesDisplay}
             </span>
           </>
         ) : (
-          <span className="text-[15px] font-bold text-white truncate" title={`作者: ${label}`}>
+          <span className="text-[0.9375rem] font-bold text-white truncate" title={`作者: ${label}`}>
             {namesDisplay}
           </span>
         )}
-        <span className={`text-[13px] font-bold tabular-nums shrink-0 ${isMine ? 'text-nai-accent' : 'text-nai-text-dim'}`}>{files.length}</span>
+        <span className={`text-[0.8125rem] font-bold tabular-nums shrink-0 ${isMine ? 'text-nai-accent' : 'text-nai-text-dim'}`}>{files.length}</span>
         <span className="flex-1 h-px bg-white/[0.06] ml-1" />
       </div>
       <div
@@ -791,7 +791,7 @@ export const SearchInput: React.FC<{
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="flex-1 min-w-0 h-full bg-transparent border-0 text-[13px] text-white placeholder:text-nai-text-dim outline-none"
+      className="flex-1 min-w-0 h-full bg-transparent border-0 text-[0.8125rem] text-white placeholder:text-nai-text-dim outline-none"
     />
     {value && (
       <button
@@ -814,7 +814,7 @@ export const SoftButton: React.FC<{
     onClick={onClick}
     disabled={disabled}
     title={title}
-    className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md text-[13px] font-bold bg-gray-700/70 text-white hover:bg-gray-600/85 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700/70 whitespace-nowrap"
+    className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md text-[0.8125rem] font-bold bg-gray-700/70 text-white hover:bg-gray-600/85 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700/70 whitespace-nowrap"
   >
     {children}
   </button>
@@ -830,7 +830,7 @@ export const PrimaryButton: React.FC<{
     onClick={onClick}
     disabled={disabled}
     title={title}
-    className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md text-[13px] font-bold bg-nai-accent text-[#1a1410] shadow-[0_4px_12px_-4px_rgba(252,237,164,0.4)] hover:bg-nai-accent-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-nai-accent whitespace-nowrap"
+    className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md text-[0.8125rem] font-bold bg-nai-accent text-[#1a1410] shadow-[0_4px_12px_-4px_rgba(252,237,164,0.4)] hover:bg-nai-accent-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-nai-accent whitespace-nowrap"
   >
     {children}
   </button>
@@ -849,7 +849,7 @@ export const EmptyState: React.FC<{
     <div className={`w-[60px] h-[60px] mb-3.5 rounded-2xl grid place-items-center ${iconBg} ${iconColor}`}>
       {icon}
     </div>
-    <div className="text-[14px] font-bold text-white mb-1">{title}</div>
-    <div className="text-[12px] text-nai-text-dim">{sub}</div>
+    <div className="text-[0.875rem] font-bold text-white mb-1">{title}</div>
+    <div className="text-[0.75rem] text-nai-text-dim">{sub}</div>
   </div>
 );

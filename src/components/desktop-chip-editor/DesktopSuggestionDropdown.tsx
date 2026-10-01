@@ -108,7 +108,7 @@ export function DesktopSuggestionDropdown({
               style={{ height: SOURCE_BAR_H, borderBottom: '1px solid rgba(252,237,164,0.08)' }}
               onMouseDown={(e) => e.preventDefault()}
             >
-              <span className="text-[10px] text-white/40 mr-1">标签来源</span>
+              <span className="text-[0.625rem] text-white/40 mr-1">标签来源</span>
               {TAG_SOURCE_OPTIONS.map((opt) => {
                 const on = (tagSource ?? 'danbooru') === opt.id;
                 return (
@@ -118,7 +118,7 @@ export function DesktopSuggestionDropdown({
                     title={opt.hint}
                     aria-pressed={on}
                     onClick={() => { if (!on) onChangeTagSource?.(opt.id); }}
-                    className="text-[10px] leading-none px-2 py-[3px] rounded-full transition-colors"
+                    className="text-[0.625rem] leading-none px-2 py-[3px] rounded-full transition-colors"
                     style={on
                       ? { background: 'rgba(252,237,164,0.9)', color: '#1a1a1a', fontWeight: 700 }
                       : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.65)' }}
@@ -207,7 +207,7 @@ function SuggestionRow({
     return (
       <div key="__ai_loading__" data-sugg-idx={index} className="px-3 py-2 flex items-center gap-2 text-[#8b949e] border-l-2 border-transparent">
         <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
-        <span className="text-[11px]">AI 推荐加载中…</span>
+        <span className="text-[0.6875rem]">AI 推荐加载中…</span>
       </div>
     );
   }
@@ -241,17 +241,17 @@ function SuggestionRow({
     >
       <Icon className="shrink-0 w-3.5 h-3.5 transition-opacity duration-150" style={{ color: typeInfo.color, opacity: isSelected ? 1 : 0.75 }} />
       <div className="flex flex-col min-w-0 flex-1 overflow-hidden leading-tight gap-0.5">
-        <span className={`${suggestion.isNaturalLanguage ? 'text-[14px]' : 'font-tag text-[14px]'} truncate transition-colors duration-150 ${isSelected ? 'text-white' : 'text-[#d4d4d4]'}`} title={mainText}>
+        <span className={`${suggestion.isNaturalLanguage ? 'text-[0.875rem]' : 'font-tag text-[0.875rem]'} truncate transition-colors duration-150 ${isSelected ? 'text-white' : 'text-[#d4d4d4]'}`} title={mainText}>
           {mainText}
         </span>
         {subtitle && (
-          <span className={`chip-chinese-name-fade text-[11px] truncate transition-colors duration-150 ${isSelected ? 'text-white/55' : 'text-[#6e7681]'}`} title={subtitle}>
+          <span className={`chip-chinese-name-fade text-[0.6875rem] truncate transition-colors duration-150 ${isSelected ? 'text-white/55' : 'text-[#6e7681]'}`} title={subtitle}>
             {subtitle}
           </span>
         )}
       </div>
       {countText && (
-        <span className={`shrink-0 ml-auto text-right text-[10px] tabular-nums transition-colors duration-150 ${isSelected ? 'text-white/60' : 'text-[#6e7681]'}`}>
+        <span className={`shrink-0 ml-auto text-right text-[0.625rem] tabular-nums transition-colors duration-150 ${isSelected ? 'text-white/60' : 'text-[#6e7681]'}`}>
           {countText}
         </span>
       )}

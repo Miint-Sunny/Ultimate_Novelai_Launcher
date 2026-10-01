@@ -1255,11 +1255,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
             <div className="bg-nai-input/50 rounded p-2.5 border border-gray-800">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-400">Vibe Transfer</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">
+                <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">
                   {selectedModel.name} 暂不支持
                 </span>
               </div>
-              <p className="mt-1 text-[11px] leading-4 text-gray-500">
+              <p className="mt-1 text-[0.6875rem] leading-4 text-gray-500">
                 官方说仍在训练中。上线后这里会自动恢复,已保存的 Vibe 不会丢。
               </p>
             </div>

@@ -90,7 +90,7 @@ export function SidebarHeader({
                   <button
                     key={provider.id}
                     disabled={provider.id === 'sd'}
-                    className={`flex-1 px-2 py-1 text-[11px] font-semibold rounded whitespace-nowrap transition-all duration-150 ${provider.id === 'sd'
+                    className={`flex-1 px-2 py-1 text-[0.6875rem] font-semibold rounded whitespace-nowrap transition-all duration-150 ${provider.id === 'sd'
                       ? 'text-gray-600 cursor-not-allowed'
                       : modelProvider === provider.id
                         ? 'bg-nai-accent/15 text-nai-accent'
@@ -122,7 +122,7 @@ export function SidebarHeader({
                   return (
                     <div key={model.id}>
                       {groupLabel && (
-                        <div className="px-2 pt-1.5 pb-0.5 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                        <div className="px-2 pt-1.5 pb-0.5 text-[0.625rem] text-gray-500 font-bold uppercase tracking-wider">
                           {groupLabel}
                         </div>
                       )}
@@ -138,8 +138,8 @@ export function SidebarHeader({
                         <span className="absolute left-0.5 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-nai-accent rounded-full" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-semibold truncate leading-tight">{model.name}</div>
-                        <div className={`text-[11px] truncate mt-0.5 leading-tight ${isSelected ? 'text-nai-accent/70' : 'text-gray-400'}`}>
+                        <div className="text-[0.8125rem] font-semibold truncate leading-tight">{model.name}</div>
+                        <div className={`text-[0.6875rem] truncate mt-0.5 leading-tight ${isSelected ? 'text-nai-accent/70' : 'text-gray-400'}`}>
                           {model.desc}
                         </div>
                       </div>
@@ -159,7 +159,7 @@ export function SidebarHeader({
           title="点击刷新"
         >
           <div className="flex flex-col items-start justify-center h-full">
-            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-none mb-0.5 group-hover:text-yellow-500/70 transition-colors">Anlas</span>
+            <span className="text-[0.625rem] text-gray-500 font-bold uppercase tracking-wider leading-none mb-0.5 group-hover:text-yellow-500/70 transition-colors">Anlas</span>
             <span className={`font-mono font-bold text-sm tabular-nums group-hover:text-yellow-400 transition-colors leading-none ${isLoadingAnlas ? 'text-gray-500' : 'text-gray-300'}`}>
               {anlasInfo ? (anlasInfo.fixedTrainingStepsLeft + anlasInfo.purchasedTrainingSteps).toLocaleString() : '—'}
             </span>

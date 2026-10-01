@@ -98,19 +98,19 @@ export function VibeBatchTagDialog({
                   />
                 </div>
                 {batchNewTagDuplicate && (
-                  <p className="text-[11px] text-red-400 pl-5">标签 "{batchTrimmedNewTagName}" 已存在</p>
+                  <p className="text-[0.6875rem] text-red-400 pl-5">标签 "{batchTrimmedNewTagName}" 已存在</p>
                 )}
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => { setBatchNewTagCreating(false); setBatchNewTagName(''); }}
-                    className="px-2.5 py-1 text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
+                    className="px-2.5 py-1 text-[0.6875rem] font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
                   >
                     取消
                   </button>
                   <button
                     onClick={submitNewBatchTag}
                     disabled={!canCreateBatchNewTag}
-                    className="px-2.5 py-1 bg-nai-accent hover:bg-[#ebd576] text-black text-[11px] font-bold rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                    className="px-2.5 py-1 bg-nai-accent hover:bg-[#ebd576] text-black text-[0.6875rem] font-bold rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
                   >
                     <Check className="w-3 h-3" />
                     创建

@@ -450,7 +450,7 @@ export const CreateTagModal: React.FC<Props> = ({
             {Icon ? <Icon className="w-[22px] h-[22px]" strokeWidth={1.75} /> : <Plus className="w-[22px] h-[22px]" />}
           </span>
           <div className="flex flex-col leading-tight flex-1 min-w-0">
-            <span className="text-[16px] font-bold text-white whitespace-nowrap tracking-wide">
+            <span className="text-[1rem] font-bold text-white whitespace-nowrap tracking-wide">
               {isEdit ? `编辑 ${subtype.label}` : `新建 ${subtype.label}`}
             </span>
           </div>
@@ -465,7 +465,7 @@ export const CreateTagModal: React.FC<Props> = ({
 
         {/* Banner - 编辑模式下按 origin 提示;走 fork 流程的 subtype 不需要 banner (改由保存前 confirm 提示) */}
         {isEdit && editing && editing.origin === 'favorited' && !forkOnSave && (
-          <div className="px-5 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[12px] text-amber-200">
+          <div className="px-5 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[0.75rem] text-amber-200">
             这是从公共库收藏的副本,只能改你的<strong>私有标签</strong>。要改 prompt / 预览图,请在卡片菜单点「创建本地副本」转为本地版本。
           </div>
         )}
@@ -555,7 +555,7 @@ export const CreateTagModal: React.FC<Props> = ({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isLocked}
                   title={isLocked ? '收藏的副本不可改图' : '从本地上传图片'}
-                  className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-md bg-gray-700/70 hover:bg-gray-600/85 text-white text-[13.5px] font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-md bg-gray-700/70 hover:bg-gray-600/85 text-white text-[0.84375rem] font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Upload className="w-4 h-4" />
                   上传
@@ -566,7 +566,7 @@ export const CreateTagModal: React.FC<Props> = ({
                     onClick={() => setHistoryPickerOpen(true)}
                     disabled={isLocked}
                     title={isLocked ? '收藏的副本不可改图' : '从主页生成历史中选一张'}
-                    className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-md bg-gray-700/70 hover:bg-gray-600/85 text-white text-[13.5px] font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-md bg-gray-700/70 hover:bg-gray-600/85 text-white text-[0.84375rem] font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <History className="w-4 h-4" />
                     历史
@@ -578,7 +578,7 @@ export const CreateTagModal: React.FC<Props> = ({
                     onClick={handleGenerate}
                     disabled={isLocked || !positive.trim() || isGenerating}
                     title={isLocked ? '收藏的副本不可改图' : !positive.trim() ? '先填正向提示词' : '用 prompt 自动生成预览'}
-                    className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-md bg-nai-accent hover:bg-nai-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-[#1a1410] text-[13.5px] font-bold transition-colors cursor-pointer shadow-sm"
+                    className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-md bg-nai-accent hover:bg-nai-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-[#1a1410] text-[0.84375rem] font-bold transition-colors cursor-pointer shadow-sm"
                   >
                     {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                     {isGenerating
@@ -590,7 +590,7 @@ export const CreateTagModal: React.FC<Props> = ({
               {(() => {
                 const hint = getPreviewHint(subtype);
                 return hint ? (
-                  <p className="text-[11.5px] text-nai-text-dim text-center leading-snug px-1">
+                  <p className="text-[0.71875rem] text-nai-text-dim text-center leading-snug px-1">
                     {hint}
                   </p>
                 ) : null;
@@ -609,7 +609,7 @@ export const CreateTagModal: React.FC<Props> = ({
                   placeholder={`给${subtype.label}起个名字`}
                   autoFocus={!isLocked}
                   disabled={isLocked}
-                  className={`h-10 ${onSuggestName && !isLocked ? 'pr-[110px]' : 'pr-3.5'} pl-3.5 rounded-md bg-gray-800/60 border border-gray-700 text-[14px] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full disabled:opacity-60 disabled:cursor-not-allowed`}
+                  className={`h-10 ${onSuggestName && !isLocked ? 'pr-[110px]' : 'pr-3.5'} pl-3.5 rounded-md bg-gray-800/60 border border-gray-700 text-[0.875rem] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full disabled:opacity-60 disabled:cursor-not-allowed`}
                 />
                 {onSuggestName && !isLocked && (
                   <button
@@ -619,7 +619,7 @@ export const CreateTagModal: React.FC<Props> = ({
                       if (suggested) setName(suggested);
                     }}
                     title="按现有编号自动取下一个"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 inline-flex items-center gap-1 px-2 rounded text-[11px] font-bold text-gray-300 bg-gray-700/70 border border-gray-600 hover:text-white hover:bg-gray-600 transition-colors cursor-pointer"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 inline-flex items-center gap-1 px-2 rounded text-[0.6875rem] font-bold text-gray-300 bg-gray-700/70 border border-gray-600 hover:text-white hover:bg-gray-600 transition-colors cursor-pointer"
                   >
                     <Sparkles className="w-3 h-3" />
                     获取编号
@@ -635,7 +635,7 @@ export const CreateTagModal: React.FC<Props> = ({
                 <div className="flex items-center gap-2">
                   <span
                     title="估算 token 数(基于 NovelAI CLIP tokenizer)"
-                    className="text-[11px] text-nai-text-dim tabular-nums px-2 py-0.5 rounded bg-gray-800/60 border border-gray-700/60"
+                    className="text-[0.6875rem] text-nai-text-dim tabular-nums px-2 py-0.5 rounded bg-gray-800/60 border border-gray-700/60"
                   >
                     {positiveTokens} tokens
                   </span>
@@ -644,7 +644,7 @@ export const CreateTagModal: React.FC<Props> = ({
                       type="button"
                       onClick={handleImport}
                       title={importTitle}
-                      className="text-[12px] inline-flex items-center gap-1 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors cursor-pointer"
+                      className="text-[0.75rem] inline-flex items-center gap-1 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       {importLabel}
@@ -653,7 +653,7 @@ export const CreateTagModal: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={handlePastePrompt}
-                    className="text-[12px] inline-flex items-center gap-1 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors cursor-pointer"
+                    className="text-[0.75rem] inline-flex items-center gap-1 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors cursor-pointer"
                   >
                     <ClipboardIcon className="w-3.5 h-3.5" />
                     粘贴
@@ -667,7 +667,7 @@ export const CreateTagModal: React.FC<Props> = ({
                 placeholder="例如:wlop, rurudo"
                 rows={5}
                 disabled={isLocked}
-                className="px-3.5 py-2.5 rounded-md bg-gray-800/60 border border-gray-700 text-[14px] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full resize-y leading-relaxed font-mono disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-3.5 py-2.5 rounded-md bg-gray-800/60 border border-gray-700 text-[0.875rem] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full resize-y leading-relaxed font-mono disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </Field>
 
@@ -676,19 +676,19 @@ export const CreateTagModal: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setShowNegative(v => !v)}
-                  className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-[0.8125rem] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
                 >
                   <ChevronDown className={`w-4 h-4 transition-transform ${showNegative ? '' : '-rotate-90'}`} />
                   负面提示词
                   {!negative.trim() && (
-                    <span className="text-nai-text-dim font-normal ml-1 text-[12px]">(可选)</span>
+                    <span className="text-nai-text-dim font-normal ml-1 text-[0.75rem]">(可选)</span>
                   )}
                 </button>
                 <div className="flex items-center gap-2">
                   {negative.trim() && (
                     <span
                       title="估算 token 数(基于 NovelAI CLIP tokenizer)"
-                      className="text-[11px] text-nai-text-dim tabular-nums px-2 py-0.5 rounded bg-gray-800/60 border border-gray-700/60"
+                      className="text-[0.6875rem] text-nai-text-dim tabular-nums px-2 py-0.5 rounded bg-gray-800/60 border border-gray-700/60"
                     >
                       {negativeTokens} tokens
                     </span>
@@ -697,7 +697,7 @@ export const CreateTagModal: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={handlePasteNegative}
-                      className="text-[12px] inline-flex items-center gap-1 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors cursor-pointer"
+                      className="text-[0.75rem] inline-flex items-center gap-1 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors cursor-pointer"
                     >
                       <ClipboardIcon className="w-3.5 h-3.5" />
                       粘贴
@@ -713,7 +713,7 @@ export const CreateTagModal: React.FC<Props> = ({
                   rows={3}
                   autoFocus={!isLocked}
                   disabled={isLocked}
-                  className="px-3.5 py-2.5 rounded-md bg-gray-800/60 border border-gray-700 text-[14px] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full resize-y leading-relaxed font-mono disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-3.5 py-2.5 rounded-md bg-gray-800/60 border border-gray-700 text-[0.875rem] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full resize-y leading-relaxed font-mono disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               )}
             </div>
@@ -723,11 +723,11 @@ export const CreateTagModal: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setShowAliasesField(v => !v)}
-                  className="self-start inline-flex items-center gap-1.5 text-[13px] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
+                  className="self-start inline-flex items-center gap-1.5 text-[0.8125rem] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
                 >
                   <ChevronDown className={`w-4 h-4 transition-transform ${showAliasesField ? '' : '-rotate-90'}`} />
                   别名
-                  <span className="text-nai-text-dim font-normal ml-1 text-[12px]">
+                  <span className="text-nai-text-dim font-normal ml-1 text-[0.75rem]">
                     {aliases.length > 0 ? `(已加 ${aliases.length} 个)` : '(可选)'}
                   </span>
                 </button>
@@ -744,7 +744,7 @@ export const CreateTagModal: React.FC<Props> = ({
             <Field
               label="标签"
               actionRight={
-                <span className="text-[12px] text-nai-text-dim tabular-nums">
+                <span className="text-[0.75rem] text-nai-text-dim tabular-nums">
                   {tags.length} 已选
                 </span>
               }
@@ -768,7 +768,7 @@ export const CreateTagModal: React.FC<Props> = ({
               onClick={handleUnpublish}
               disabled={isUnpublishing || isPublishing}
               title="撤回公共发布,本地保留一份私人副本"
-              className="px-4 py-2.5 text-[14px] font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
+              className="px-4 py-2.5 text-[0.875rem] font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
             >
               {isUnpublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Undo2 className="w-4 h-4" />}
               {isUnpublishing ? '撤回中…' : '取消发布'}
@@ -780,7 +780,7 @@ export const CreateTagModal: React.FC<Props> = ({
               onClick={() => { setTransferInput(''); setTransferOpen(true); }}
               disabled={isUnpublishing || isPublishing || isTransferring}
               title="把此条目转让给其他用户(自己将失去管理权)"
-              className="px-4 py-2.5 text-[14px] font-bold text-gray-300 hover:text-white hover:bg-white/[0.06] rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
+              className="px-4 py-2.5 text-[0.875rem] font-bold text-gray-300 hover:text-white hover:bg-white/[0.06] rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
             >
               <UserCog className="w-4 h-4" />
               转让所有者
@@ -789,7 +789,7 @@ export const CreateTagModal: React.FC<Props> = ({
           <div className="flex-1" />
           <button
             onClick={onClose}
-            className="px-4 py-2 text-[14px] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
+            className="px-4 py-2 text-[0.875rem] font-bold text-gray-300 hover:text-white transition-colors cursor-pointer"
           >
             取消
           </button>
@@ -800,7 +800,7 @@ export const CreateTagModal: React.FC<Props> = ({
               <button
                 onClick={handleSave}
                 disabled={!canSave || isPublishing}
-                className="px-5 py-2.5 text-[14px] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
+                className="px-5 py-2.5 text-[0.875rem] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 {cfg.showPublicUpload ? '保存到本地' : '保存'}
@@ -809,7 +809,7 @@ export const CreateTagModal: React.FC<Props> = ({
                 <button
                   onClick={handlePublishPublic}
                   disabled={!canSave || isPublishing}
-                  className="px-5 py-2.5 text-[14px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                  className="px-5 py-2.5 text-[0.875rem] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
                 >
                   {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
                   {isPublishing ? '发布中…' : '保存并发布'}
@@ -826,8 +826,8 @@ export const CreateTagModal: React.FC<Props> = ({
                 disabled={!canSave || isPublishing}
                 className={
                   cfg.showPublicUpload && onUploadPublic
-                    ? 'px-5 py-2.5 text-[14px] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer'
-                    : 'px-5 py-2.5 text-[14px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer'
+                    ? 'px-5 py-2.5 text-[0.875rem] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer'
+                    : 'px-5 py-2.5 text-[0.875rem] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer'
                 }
               >
                 <Save className="w-4 h-4" />
@@ -837,7 +837,7 @@ export const CreateTagModal: React.FC<Props> = ({
                 <button
                   onClick={handlePublishPublic}
                   disabled={!canSave || isPublishing}
-                  className="px-5 py-2.5 text-[14px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                  className="px-5 py-2.5 text-[0.875rem] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
                 >
                   {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
                   {isPublishing ? '发布中…' : '保存并发布'}
@@ -849,7 +849,7 @@ export const CreateTagModal: React.FC<Props> = ({
             <button
               onClick={handleSave}
               disabled={forkOnSave ? !canSave : false}
-              className="px-5 py-2.5 text-[14px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+              className="px-5 py-2.5 text-[0.875rem] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
             >
               <Save className="w-4 h-4" />
               {forkOnSave ? '保存为本地副本' : '保存私有标签'}
@@ -860,7 +860,7 @@ export const CreateTagModal: React.FC<Props> = ({
               onClick={handleSaveAsCopy}
               disabled={!canSave}
               title="基于当前编辑内容另存一份独立本地副本,不修改公共数据"
-              className="px-5 py-2.5 text-[14px] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
+              className="px-5 py-2.5 text-[0.875rem] font-bold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors cursor-pointer"
             >
               <Save className="w-4 h-4" />
               保存为本地副本
@@ -870,7 +870,7 @@ export const CreateTagModal: React.FC<Props> = ({
             <button
               onClick={handlePublishPublic}
               disabled={!canSave || isPublishing}
-              className="px-5 py-2.5 text-[14px] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+              className="px-5 py-2.5 text-[0.875rem] font-bold bg-nai-accent text-[#1a1410] rounded-md hover:bg-nai-accent-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
             >
               {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
               {isPublishing ? '同步中…' : '保存并同步公共'}
@@ -894,8 +894,8 @@ export const CreateTagModal: React.FC<Props> = ({
                 <History className="w-[22px] h-[22px]" strokeWidth={1.75} />
               </span>
               <div className="flex flex-col leading-tight flex-1 min-w-0">
-                <span className="text-[16px] font-bold text-white whitespace-nowrap tracking-wide">从历史选取预览图</span>
-                <span className="text-[11.5px] text-nai-text-dim">共 {imageHistory.length} 张,点击选用</span>
+                <span className="text-[1rem] font-bold text-white whitespace-nowrap tracking-wide">从历史选取预览图</span>
+                <span className="text-[0.71875rem] text-nai-text-dim">共 {imageHistory.length} 张,点击选用</span>
               </div>
               <button
                 onClick={() => setHistoryPickerOpen(false)}
@@ -916,7 +916,7 @@ export const CreateTagModal: React.FC<Props> = ({
                     className="group relative aspect-square rounded-md overflow-hidden border border-gray-700 hover:border-nai-accent transition-colors bg-black/30 cursor-pointer"
                   >
                     <img src={it.imageUrl} alt="" className="w-full h-full object-cover" />
-                    <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity tabular-nums text-center">
+                    <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm px-2 py-1 text-[0.625rem] text-white opacity-0 group-hover:opacity-100 transition-opacity tabular-nums text-center">
                       {it.width}×{it.height}
                     </div>
                   </button>
@@ -942,10 +942,10 @@ export const CreateTagModal: React.FC<Props> = ({
               <span className="font-bold text-white text-base">转让所有者</span>
             </div>
             <div className="px-5 py-4 flex flex-col gap-3">
-              <p className="text-[13px] text-gray-300 leading-relaxed">
+              <p className="text-[0.8125rem] text-gray-300 leading-relaxed">
                 把「{name}」的所有权转让给其他用户。转让后你将<strong className="text-red-400">失去管理权</strong> (不能再编辑/撤回此条目)。
               </p>
-              <label className="text-[12px] font-bold text-gray-400">新主人 ID (QQ 号)</label>
+              <label className="text-[0.75rem] font-bold text-gray-400">新主人 ID (QQ 号)</label>
               <input
                 type="text"
                 autoFocus
@@ -957,21 +957,21 @@ export const CreateTagModal: React.FC<Props> = ({
                 }}
                 placeholder="输入 QQ 号"
                 inputMode="numeric"
-                className="h-10 px-3.5 rounded-md bg-gray-800 border border-gray-700 text-[14px] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full"
+                className="h-10 px-3.5 rounded-md bg-gray-800 border border-gray-700 text-[0.875rem] text-white placeholder:text-nai-text-dim outline-none focus:border-nai-accent transition-colors w-full"
               />
             </div>
             <div className="px-5 py-3 border-t border-gray-800 flex items-center justify-end gap-2 bg-nai-dark/30">
               <button
                 onClick={() => setTransferOpen(false)}
                 disabled={isTransferring}
-                className="px-3.5 py-1.5 text-[13px] font-bold text-gray-300 hover:text-white hover:bg-white/[0.06] rounded-md transition-colors cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-1.5 text-[0.8125rem] font-bold text-gray-300 hover:text-white hover:bg-white/[0.06] rounded-md transition-colors cursor-pointer disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 onClick={handleTransferConfirm}
                 disabled={!transferInput.trim() || isTransferring}
-                className="px-3.5 py-1.5 text-[13px] font-bold bg-red-500/85 text-white rounded-md hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-[0.8125rem] font-bold bg-red-500/85 text-white rounded-md hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 {isTransferring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCog className="w-3.5 h-3.5" />}
                 {isTransferring ? '转让中…' : '确认转让'}
@@ -998,14 +998,14 @@ const Field: React.FC<{
 }> = ({ label, required, hint, actionRight, children }) => (
   <div className="flex flex-col gap-2">
     <div className="flex items-center justify-between">
-      <label className="text-[13px] font-bold text-gray-300 inline-flex items-center gap-1">
+      <label className="text-[0.8125rem] font-bold text-gray-300 inline-flex items-center gap-1">
         {label}
         {required && <span className="text-red-400">*</span>}
       </label>
       {actionRight}
     </div>
     {children}
-    {hint && <span className="text-[11.5px] text-nai-text-dim">{hint}</span>}
+    {hint && <span className="text-[0.71875rem] text-nai-text-dim">{hint}</span>}
   </div>
 );
 
@@ -1041,7 +1041,7 @@ const PreviewSlot: React.FC<{
                 style={{ width: `${Math.min(100, Math.round((progress.step / progress.total) * 100))}%` }}
               />
             </div>
-            <span className="text-[11px] tabular-nums text-nai-accent font-bold">
+            <span className="text-[0.6875rem] tabular-nums text-nai-accent font-bold">
               {progress.step} / {progress.total}
             </span>
           </div>
@@ -1054,7 +1054,7 @@ const PreviewSlot: React.FC<{
       <>
         <img src={src} alt="" className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
         {showCoverBadge && isCover && (
-          <div className="absolute top-1 right-1 bg-nai-accent text-black text-[10px] px-1.5 py-0.5 rounded font-bold z-[5]">封面</div>
+          <div className="absolute top-1 right-1 bg-nai-accent text-black text-[0.625rem] px-1.5 py-0.5 rounded font-bold z-[5]">封面</div>
         )}
         {/* 右下角悬浮按钮组: 无遮罩,hover 才显示 */}
         <div className="absolute bottom-2 right-2 flex items-center gap-2 opacity-0 group-hover/preview:opacity-100 transition-opacity z-[5]">
@@ -1083,7 +1083,7 @@ const PreviewSlot: React.FC<{
       <div className="w-full h-full grid place-items-center text-gray-500">
         <div className="flex flex-col items-center gap-1">
           <Plus className="w-6 h-6" />
-          <span className="text-[10px]">点击上传</span>
+          <span className="text-[0.625rem]">点击上传</span>
         </div>
       </div>
     )}
@@ -1135,7 +1135,7 @@ const ChipPicker: React.FC<{
           type="button"
           onClick={() => remove(t)}
           title="点击移除"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-nai-accent text-[#1a1410] text-[12.5px] font-bold border border-nai-accent shadow-sm hover:bg-nai-accent-hover transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-nai-accent text-[#1a1410] text-[0.78125rem] font-bold border border-nai-accent shadow-sm hover:bg-nai-accent-hover transition-colors cursor-pointer"
         >
           {chipPrefix}{t}
           <X className="w-3.5 h-3.5" />
@@ -1148,7 +1148,7 @@ const ChipPicker: React.FC<{
           key={`av-${t}`}
           type="button"
           onClick={() => add(t)}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gray-800/60 text-gray-300 text-[12.5px] font-bold border border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gray-800/60 text-gray-300 text-[0.78125rem] font-bold border border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500 transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           {chipPrefix}{t}
@@ -1169,7 +1169,7 @@ const ChipPicker: React.FC<{
             }}
             onBlur={() => { if (!trimmed) cancelCreate(); }}
             placeholder={placeholder}
-            className="w-[140px] h-6 bg-transparent text-[12.5px] font-bold text-white placeholder:text-nai-text-dim outline-none"
+            className="w-[140px] h-6 bg-transparent text-[0.78125rem] font-bold text-white placeholder:text-nai-text-dim outline-none"
           />
           <button
             type="button"
@@ -1186,7 +1186,7 @@ const ChipPicker: React.FC<{
         <button
           type="button"
           onClick={startCreate}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-gray-600 text-gray-400 text-[12.5px] font-bold hover:border-nai-accent/60 hover:text-nai-accent hover:bg-nai-accent/5 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-gray-600 text-gray-400 text-[0.78125rem] font-bold hover:border-nai-accent/60 hover:text-nai-accent hover:bg-nai-accent/5 transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           新建
@@ -1223,7 +1223,7 @@ const InlineChipInput: React.FC<{
       {selected.map(t => (
         <span
           key={t}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-nai-accent text-[#1a1410] text-[12px] font-bold border border-nai-accent"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-nai-accent text-[#1a1410] text-[0.75rem] font-bold border border-nai-accent"
         >
           {chipPrefix}{t}
           <button
@@ -1247,7 +1247,7 @@ const InlineChipInput: React.FC<{
           }
         }}
         placeholder={selected.length === 0 ? placeholder : ''}
-        className="flex-1 min-w-[120px] h-6 bg-transparent text-[13px] text-white placeholder:text-nai-text-dim outline-none"
+        className="flex-1 min-w-[120px] h-6 bg-transparent text-[0.8125rem] text-white placeholder:text-nai-text-dim outline-none"
       />
     </div>
   );

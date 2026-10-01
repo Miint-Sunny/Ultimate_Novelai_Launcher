@@ -146,7 +146,7 @@ export function CharacterPlacementOverlay({
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-[11px] font-bold text-black transition-shadow touch-none ${
+              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-[0.6875rem] font-bold text-black transition-shadow touch-none ${
                 isActive ? 'w-8 h-8 ring-2 ring-white shadow-lg' : 'w-6 h-6 opacity-80 hover:opacity-100'
               }`}
               style={{
@@ -162,7 +162,7 @@ export function CharacterPlacementOverlay({
         })}
 
         {/* 框自己报出这次的尺寸,免得以为是贴着显示中的图摆的 */}
-        <div className="absolute -top-7 left-0 flex items-center gap-2 text-[11px]">
+        <div className="absolute -top-7 left-0 flex items-center gap-2 text-[0.6875rem]">
           <span className="px-2 py-0.5 rounded bg-black/70 text-gray-200">
             取景框 {targetWidth}×{targetHeight}
           </span>

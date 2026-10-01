@@ -153,12 +153,12 @@ const EmptyState: React.FC<{ onPick: (s: string) => void; suggestions: string[] 
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
       <NekoAvatar size={48} status="online" />
       <div style={{ flex: 1, paddingTop: 4 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: C.text }}>
           {greeting}
         </div>
         <div
           style={{
-            fontSize: 11.5,
+            fontSize: '0.71875rem',
             color: C.textDim,
             marginTop: 4,
             lineHeight: 1.55,
@@ -179,7 +179,7 @@ const EmptyState: React.FC<{ onPick: (s: string) => void; suggestions: string[] 
       <span style={{ flex: 1, height: 1, background: C.line2 }} />
       <span
         style={{
-          fontSize: 10,
+          fontSize: '0.625rem',
           color: C.textDim,
           fontWeight: 700,
           letterSpacing: 1,
@@ -204,18 +204,18 @@ const EmptyState: React.FC<{ onPick: (s: string) => void; suggestions: string[] 
             border: `1px solid ${C.borderStrong}`,
             borderRadius: 8,
             color: C.text,
-            fontSize: 12.5,
+            fontSize: '0.78125rem',
             textAlign: 'left',
           }}
         >
           <span
             style={{
-              width: 18,
-              height: 18,
+              width: '1.125rem',
+              height: '1.125rem',
               display: 'grid',
               placeItems: 'center',
               fontFamily: MONO,
-              fontSize: 10,
+              fontSize: '0.625rem',
               color: C.accent,
               background: C.accentSoft,
               border: `1px solid ${C.accentLine}`,
@@ -226,7 +226,7 @@ const EmptyState: React.FC<{ onPick: (s: string) => void; suggestions: string[] 
             {i + 1}
           </span>
           <span style={{ flex: 1 }}>{s}</span>
-          <span style={{ color: C.textDim, fontFamily: MONO, fontSize: 10 }}>⏎</span>
+          <span style={{ color: C.textDim, fontFamily: MONO, fontSize: '0.625rem' }}>⏎</span>
         </button>
       ))}
     </div>
@@ -253,7 +253,7 @@ const SummaryRefLine: React.FC<{ summary?: VMsg['summary'] }> = ({ summary }) =>
         marginTop: 6,
         paddingTop: 6,
         borderTop: `1px dashed ${C.border}`,
-        fontSize: 10.5,
+        fontSize: '0.65625rem',
         lineHeight: 1.5,
         color: C.textDim,
         wordBreak: 'break-word',
@@ -285,7 +285,7 @@ const UserMsg: React.FC<{ m: VMsg }> = ({ m }) => (
           borderRadius: '12px 12px 4px 12px',
           background: C.accent,
           color: C.bgDeep,
-          fontSize: 12.5,
+          fontSize: '0.78125rem',
           fontWeight: 500,
           lineHeight: 1.5,
           boxShadow: '0 4px 12px -4px rgba(252, 237, 164, 0.4)',
@@ -368,7 +368,7 @@ const AIMsg: React.FC<AIMsgProps> = ({
         }}
       >
         <NekoAvatar size={18} status={isError ? 'err' : 'online'} />
-        <span style={{ fontWeight: 700, fontSize: 11.5, color: C.text }}>Plana</span>
+        <span style={{ fontWeight: 700, fontSize: '0.71875rem', color: C.text }}>Plana</span>
       </div>
       <div
         style={{
@@ -384,8 +384,8 @@ const AIMsg: React.FC<AIMsgProps> = ({
         {isError ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 13 }}>😿</span>
-              <span style={{ fontWeight: 700, color: C.err, fontSize: 11.5 }}>
+              <span style={{ fontSize: '0.8125rem' }}>😿</span>
+              <span style={{ fontWeight: 700, color: C.err, fontSize: '0.71875rem' }}>
                 呜...这次没成功
               </span>
             </div>
@@ -397,7 +397,7 @@ const AIMsg: React.FC<AIMsgProps> = ({
                 border: '1px solid rgba(240, 130, 130, 0.15)',
                 borderRadius: 4,
                 fontFamily: MONO,
-                fontSize: 10.5,
+                fontSize: '0.65625rem',
                 color: C.err,
                 lineHeight: 1.45,
                 wordBreak: 'break-word',
@@ -409,7 +409,7 @@ const AIMsg: React.FC<AIMsgProps> = ({
         ) : (
           <div
             style={{
-              fontSize: 12.5,
+              fontSize: '0.78125rem',
               lineHeight: 1.55,
               wordBreak: 'break-word',
             }}
@@ -590,10 +590,10 @@ const ThinkingMsg: React.FC<{ text?: string }> = ({ text }) => {
         }}
       >
         <NekoAvatar size={18} status="thinking" />
-        <span style={{ fontWeight: 700, fontSize: 11.5, color: C.text }}>Plana</span>
+        <span style={{ fontWeight: 700, fontSize: '0.71875rem', color: C.text }}>Plana</span>
         <span
           style={{
-            fontSize: 10.5,
+            fontSize: '0.65625rem',
             color: C.textDim,
             marginLeft: 'auto',
           }}
@@ -616,7 +616,7 @@ const ThinkingMsg: React.FC<{ text?: string }> = ({ text }) => {
         <span className="aa-pulse-dot" style={{ animationDelay: '0s' }} />
         <span className="aa-pulse-dot" style={{ animationDelay: '0.16s' }} />
         <span className="aa-pulse-dot" style={{ animationDelay: '0.32s' }} />
-        <span style={{ fontSize: 12.5, color: C.text2 }}>{display}</span>
+        <span style={{ fontSize: '0.78125rem', color: C.text2 }}>{display}</span>
       </div>
     </div>
   );
@@ -670,11 +670,11 @@ const DiffCard: React.FC<{ added: string[]; removed: string[] }> = ({
               background: C.accent,
             }}
           />
-          <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>
+          <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: C.text }}>
             这次跟原提示词比
           </span>
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: C.text2 }}>
+        <span style={{ fontFamily: MONO, fontSize: '0.625rem', color: C.text2 }}>
           +{added.length} −{removed.length}
         </span>
       </div>
@@ -712,7 +712,7 @@ function actBtn(): React.CSSProperties {
     alignItems: 'center',
     gap: 4,
     padding: '3px 7px',
-    fontSize: 11,
+    fontSize: '0.6875rem',
     fontWeight: 500,
     color: C.textDim,
     background: 'transparent',
@@ -726,7 +726,7 @@ function actBtnHot(): React.CSSProperties {
     alignItems: 'center',
     gap: 4,
     padding: '4px 10px',
-    fontSize: 11,
+    fontSize: '0.6875rem',
     fontWeight: 700,
     color: C.accent,
     background: C.accentSoft,

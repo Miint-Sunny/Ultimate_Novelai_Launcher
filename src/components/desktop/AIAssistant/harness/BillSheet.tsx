@@ -46,24 +46,24 @@ export const BillSheet: React.FC<Props> = ({ sessionUsage, onBack }) => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 4px' }}>
         <button className="aa-btn" title="返回对话" onClick={onBack} style={iconBtn}><ArrowLeft size={13} /></button>
         <Receipt size={13} color={C.accent} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>用量账单</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: INK_FAINT, padding: '2px 8px', borderRadius: 999, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)' }}>ESC 退出</span>
+        <span style={{ fontSize: '0.78125rem', fontWeight: 700, color: C.text }}>用量账单</span>
+        <span style={{ marginLeft: 'auto', fontSize: '0.625rem', color: INK_FAINT, padding: '2px 8px', borderRadius: 999, background: 'var(--nai-agent-chip-bg)', border: '1px solid var(--nai-agent-chip-border)' }}>ESC 退出</span>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 4 }}>
-          <span style={{ width: 48, fontSize: 11, color: INK_MUTED, lineHeight: '28px', flexShrink: 0 }}>周期</span>
+          <span style={{ width: 48, fontSize: '0.6875rem', color: INK_MUTED, lineHeight: '28px', flexShrink: 0 }}>周期</span>
           <Segmented value={period} options={PERIODS} onChange={setPeriod} ariaLabel="账单周期" />
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: INK_MUTED, whiteSpace: 'nowrap' }}>
+          <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: INK_MUTED, whiteSpace: 'nowrap' }}>
             {summary.requests} 次请求 · {formatTokens(usageTotal(summary.usage))} tokens
           </span>
         </div>
 
         {summary.models.length === 0 ? (
-          <div style={{ padding: '28px 0', textAlign: 'center', fontSize: 12, color: INK_MUTED }}>这个周期还没有用量记录</div>
+          <div style={{ padding: '28px 0', textAlign: 'center', fontSize: '0.75rem', color: INK_MUTED }}>这个周期还没有用量记录</div>
         ) : (
           <div style={{ borderRadius: 'var(--nai-agent-radius-md)', border: '1px solid var(--nai-agent-chip-border)', overflow: 'hidden' }}>
             <div style={{ ...row, background: 'var(--nai-agent-chip-bg)' }}>
-              {HEAD.map((h, i) => <span key={h} style={{ ...cell, fontSize: 10.5, fontWeight: 700, color: INK_MUTED, textAlign: i === 0 ? 'left' : 'right' }}>{h}</span>)}
+              {HEAD.map((h, i) => <span key={h} style={{ ...cell, fontSize: '0.65625rem', fontWeight: 700, color: INK_MUTED, textAlign: i === 0 ? 'left' : 'right' }}>{h}</span>)}
             </div>
             {summary.models.map((m) => {
               const slash = m.name.indexOf('/');
@@ -73,7 +73,7 @@ export const BillSheet: React.FC<Props> = ({ sessionUsage, onBack }) => {
                 <div key={m.name} style={row} title={m.name}>
                   <span style={{ ...cell, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text, fontWeight: 600 }}>{model}</span>
-                    {provider && <span style={{ fontSize: 10, color: INK_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{provider}</span>}
+                    {provider && <span style={{ fontSize: '0.625rem', color: INK_FAINT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{provider}</span>}
                   </span>
                   <Num>{m.requests}</Num>
                   <Num>{formatTokens(m.usage.input)}</Num>
@@ -97,19 +97,19 @@ export const BillSheet: React.FC<Props> = ({ sessionUsage, onBack }) => {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: INK_MUTED }}>本会话</div>
+          <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: INK_MUTED }}>本会话</div>
           {sessionUsage.length === 0 ? (
-            <div style={{ fontSize: 11.5, color: INK_FAINT }}>这个对话还没有用量</div>
+            <div style={{ fontSize: '0.71875rem', color: INK_FAINT }}>这个对话还没有用量</div>
           ) : sessionUsage.map((s) => (
-            <div key={s.model} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 11.5, color: C.text, padding: '6px 10px', borderRadius: 'var(--nai-agent-radius-sm)', background: 'var(--nai-agent-card-bg)' }}>
+            <div key={s.model} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.71875rem', color: C.text, padding: '6px 10px', borderRadius: 'var(--nai-agent-radius-sm)', background: 'var(--nai-agent-card-bg)' }}>
               <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{s.model}</span>
-              <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 11, color: INK_MUTED, whiteSpace: 'nowrap' }}>
+              <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: '0.6875rem', color: INK_MUTED, whiteSpace: 'nowrap' }}>
                 {s.requests} 次 · ↑{formatTokens(s.usage.input)} ↓{formatTokens(s.usage.output)}{s.usage.cacheRead > 0 ? ` · 缓存 ${formatTokens(s.usage.cacheRead)}(${hitRate(s.usage)})` : ''} · 合计 {formatTokens(usageTotal(s.usage))}
               </span>
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 10.5, lineHeight: 1.5, color: INK_FAINT }}>
+        <div style={{ fontSize: '0.65625rem', lineHeight: 1.5, color: INK_FAINT }}>
           按模型的每次响应记账,只存在这台机器上;回溯或清空对话不会抹掉已经花掉的 token。缓存列是命中提示缓存的输入,命中率 = 缓存 / 输入。
         </div>
       </div>
@@ -118,10 +118,10 @@ export const BillSheet: React.FC<Props> = ({ sessionUsage, onBack }) => {
 };
 
 const row: React.CSSProperties = { display: 'grid', gridTemplateColumns: COLUMNS, alignItems: 'center', padding: '0 4px' };
-const cell: React.CSSProperties = { padding: '6px 4px', fontSize: 11.5, minWidth: 0 };
+const cell: React.CSSProperties = { padding: '6px 4px', fontSize: '0.71875rem', minWidth: 0 };
 
 function Num({ children, bold = false }: { children: React.ReactNode; bold?: boolean }) {
-  return <span style={{ ...cell, fontFamily: MONO, fontSize: 11, textAlign: 'right', color: C.text, fontWeight: bold ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>;
+  return <span style={{ ...cell, fontFamily: MONO, fontSize: '0.6875rem', textAlign: 'right', color: C.text, fontWeight: bold ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>;
 }
 
 const iconBtn: React.CSSProperties = {

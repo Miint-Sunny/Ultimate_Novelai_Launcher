@@ -56,7 +56,7 @@ export function VibeImportDialog({
                   )}
                 </div>
                 <div className="flex-1 min-w-0 pt-0.5">
-                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-semibold">名称</div>
+                  <div className="text-[0.625rem] text-gray-500 uppercase tracking-wider mb-1 font-semibold">名称</div>
                   <input
                     type="text"
                     value={item.name}
@@ -128,12 +128,12 @@ export function VibeImportDialog({
                     <span>标签</span>
                   </div>
                   {item.tags.size > 0 && (
-                    <span className="text-[10px] text-nai-accent">{item.tags.size} 个已选</span>
+                    <span className="text-[0.625rem] text-nai-accent">{item.tags.size} 个已选</span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {tagPool.length === 0 && (
-                    <span className="text-[11px] text-gray-600 italic">还没有标签，下方输入框创建第一个</span>
+                    <span className="text-[0.6875rem] text-gray-600 italic">还没有标签，下方输入框创建第一个</span>
                   )}
                   {tagPool.map(tag => {
                     const active = item.tags.has(tag);
@@ -141,7 +141,7 @@ export function VibeImportDialog({
                       <button
                         key={tag}
                         onClick={() => toggleItemTag(item.uid, tag)}
-                        className={`px-2.5 py-1 text-[11px] font-bold rounded-full transition-colors flex items-center gap-1 border ${
+                        className={`px-2.5 py-1 text-[0.6875rem] font-bold rounded-full transition-colors flex items-center gap-1 border ${
                           active
                             ? 'bg-nai-accent text-black border-nai-accent shadow-sm'
                             : 'bg-gray-800/80 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:border-gray-600 hover:bg-gray-700/60'
@@ -174,7 +174,7 @@ export function VibeImportDialog({
                           setImportItemNewTagDraft(prev => { const next = { ...prev }; delete next[item.uid]; return next; });
                         }}
                         placeholder="标签名"
-                        className="w-16 bg-transparent text-[11px] text-white focus:outline-none placeholder:text-gray-500 leading-none"
+                        className="w-16 bg-transparent text-[0.6875rem] text-white focus:outline-none placeholder:text-gray-500 leading-none"
                       />
                       <button
                         onMouseDown={(event) => {
@@ -191,7 +191,7 @@ export function VibeImportDialog({
                   ) : (
                     <button
                       onClick={() => setImportItemNewTagDraft(prev => ({ ...prev, [item.uid]: '' }))}
-                      className="px-2.5 py-1 text-[11px] rounded-full bg-gray-800/80 text-gray-400 border border-gray-700/50 hover:text-gray-200 hover:border-gray-600 transition-colors flex items-center gap-1"
+                      className="px-2.5 py-1 text-[0.6875rem] rounded-full bg-gray-800/80 text-gray-400 border border-gray-700/50 hover:text-gray-200 hover:border-gray-600 transition-colors flex items-center gap-1"
                     >
                       <Plus className="w-3 h-3" />
                       新建

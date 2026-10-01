@@ -132,11 +132,11 @@ function BillingSection({ sessionId }: { sessionId: string | null }) {
           <Wallet className="w-4 h-4 text-nai-accent" />
           <span className="text-sm font-medium text-gray-300">本月账单预估</span>
           {estimate?.estimate_mode === 'early' && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            <span className="px-1.5 py-0.5 rounded text-[0.625rem] bg-orange-500/20 text-orange-400 border border-orange-500/30">
               当前为参考上月
             </span>
           )}
-          <span className="ml-auto text-[10px] text-gray-500">
+          <span className="ml-auto text-[0.625rem] text-gray-500">
             {estimate?.billing_month || ''}
           </span>
         </div>
@@ -148,25 +148,25 @@ function BillingSection({ sessionId }: { sessionId: string | null }) {
               <div className="text-3xl font-extrabold" style={{ color: tierColor }}>
                 ~¥{me.total_fee}
               </div>
-              <div className="text-[10px] text-gray-500 mt-0.5">预估费用</div>
+              <div className="text-[0.625rem] text-gray-500 mt-0.5">预估费用</div>
             </div>
             {/* Breakdown */}
             <div className="flex-1 grid grid-cols-3 gap-2 text-center">
               <div>
                 <div className="text-lg font-bold text-blue-400">{me.image_calls.toLocaleString()}</div>
-                <div className="text-[10px] text-gray-500">生图数</div>
+                <div className="text-[0.625rem] text-gray-500">生图数</div>
               </div>
               <div>
                 <div className="text-lg font-bold text-orange-400">{me.anlas_used.toLocaleString()}</div>
-                <div className="text-[10px] text-gray-500">Anlas</div>
+                <div className="text-[0.625rem] text-gray-500">Anlas</div>
               </div>
               <div>
                 <div className="text-lg font-bold" style={{ color: tierColor }}>
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] ${TIER_BG[tierName] || 'bg-gray-600/20'}`}>
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[0.6875rem] ${TIER_BG[tierName] || 'bg-gray-600/20'}`}>
                     {tierName}
                   </span>
                 </div>
-                <div className="text-[10px] text-gray-500">阶梯</div>
+                <div className="text-[0.625rem] text-gray-500">阶梯</div>
               </div>
             </div>
           </div>
@@ -176,7 +176,7 @@ function BillingSection({ sessionId }: { sessionId: string | null }) {
 
         {/* Fee breakdown note */}
         {me && (me.image_fee > 0 || me.anlas_fee > 0) && (
-          <div className="mt-2 text-[11px] text-gray-500 text-center">
+          <div className="mt-2 text-[0.6875rem] text-gray-500 text-center">
             生图分摊 ¥{me.image_fee}
             {me.anlas_fee > 0 && <> + Anlas附加 ¥{me.anlas_fee}</>}
             {' · '}权重 {me.weight}
@@ -192,7 +192,7 @@ function BillingSection({ sessionId }: { sessionId: string | null }) {
           <div className="flex items-center gap-2 mb-2">
             <Layers className="w-3.5 h-3.5 text-gray-400" />
             <span className="text-xs font-medium text-gray-400">阶梯价目</span>
-            <span className="ml-auto text-[10px] text-gray-600">人均/月</span>
+            <span className="ml-auto text-[0.625rem] text-gray-600">人均/月</span>
           </div>
           <table className="w-full text-xs">
             <thead>
@@ -214,7 +214,7 @@ function BillingSection({ sessionId }: { sessionId: string | null }) {
             </tbody>
           </table>
           {/* Rules note */}
-          <div className="mt-2 text-[10px] text-gray-500">
+          <div className="mt-2 text-[0.625rem] text-gray-500">
             ≤{estimate?.free_threshold || 200}张免费 · 阶梯按用量动态划分
             {estimate && estimate.anlas_threshold > 0 && (
               <> · Anlas超{estimate.anlas_threshold}点+¥{estimate.anlas_surcharge}</>
@@ -440,7 +440,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                               style={{ height: `${heightPct}px` }}
                             />
                           </div>
-                          <span className="text-[10px] text-gray-500">{dateLabel}</span>
+                          <span className="text-[0.625rem] text-gray-500">{dateLabel}</span>
                         </div>
                       );
                     })}

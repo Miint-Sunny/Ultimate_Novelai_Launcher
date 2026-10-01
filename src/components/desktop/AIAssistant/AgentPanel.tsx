@@ -225,7 +225,7 @@ export const AgentPanel: React.FC = () => {
       />
       {!agentAvailable && (
         <div
-          className="shrink-0 px-3 py-1.5 text-[11px]"
+          className="shrink-0 px-3 py-1.5 text-[0.6875rem]"
           style={{ background: 'rgba(252,237,164,0.06)', color: C.textDim, borderBottom: `1px solid ${C.line}` }}
           title={agentUnavailableReason}
         >
@@ -281,8 +281,8 @@ export const AgentPanel: React.FC = () => {
                     window.setTimeout(() => inputRef.current?.focus(), 30);
                   }}
                 >
-                  <span style={{ color: C.accent, fontSize: 12, fontWeight: 700 }}>{spec.keywords[0]}</span>
-                  <span style={{ color: C.textDim, fontSize: 11, marginLeft: 8 }}>{spec.description}</span>
+                  <span style={{ color: C.accent, fontSize: '0.75rem', fontWeight: 700 }}>{spec.keywords[0]}</span>
+                  <span style={{ color: C.textDim, fontSize: '0.6875rem', marginLeft: 8 }}>{spec.description}</span>
                 </button>
               ))}
             </div>

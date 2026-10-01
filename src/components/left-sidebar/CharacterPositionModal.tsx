@@ -166,7 +166,7 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
                 title={char.name || `Char ${index + 1}`}
               >
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg transition-all ${
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[0.625rem] font-bold shadow-lg transition-all ${
                     isActive
                       ? 'bg-nai-accent text-black ring-2 ring-white scale-110'
                       : isCrowded
@@ -181,14 +181,14 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
           })}
 
           {aiChoice && (
-            <div className="absolute inset-x-0 bottom-0 py-1 text-center text-[10px] text-gray-400 bg-black/50 pointer-events-none">
+            <div className="absolute inset-x-0 bottom-0 py-1 text-center text-[0.625rem] text-gray-400 bg-black/50 pointer-events-none">
               AI 排版 · 点位仅为预览,实际构图交给模型;拖动即切到「用我摆的」
             </div>
           )}
         </div>
 
         {/* 纵轴是景深,不是单纯的上下——不写清楚没人猜得到 */}
-        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
+        <div className="mt-2 flex items-center justify-between text-[0.625rem] text-gray-500">
           <span>上 = 远(缩小)</span>
           <span className="font-mono text-gray-400">
             {`${Math.round(activeCenter.x * 100)} · ${Math.round(activeCenter.y * 100)} (${centerToLegacyCell(activeCenter)})`}
@@ -197,7 +197,7 @@ export const CharacterPositionModal: React.FC<CharacterPositionModalProps> = ({
         </div>
 
         {crowded.size > 0 && (
-          <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-400/90">
+          <div className="mt-2 flex items-start gap-1.5 text-[0.6875rem] text-amber-400/90">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
             <span>角色贴得太近容易坏图,建议拉开。完全重合不算——那是 cosplay 的正规用法。</span>
           </div>

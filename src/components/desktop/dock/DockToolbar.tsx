@@ -90,7 +90,7 @@ export const DockToolbar: React.FC = () => {
                   key={id}
                   role="menuitemcheckbox"
                   aria-checked={open}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[12px] hover:bg-white/5"
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[0.75rem] hover:bg-white/5"
                   style={{ background: 'transparent', border: 'none', color: C.text2, cursor: 'pointer' }}
                   onClick={() => dock.toggle(id)}
                 >
@@ -104,7 +104,7 @@ export const DockToolbar: React.FC = () => {
             <button
               role="menuitem"
               disabled={layout.open.length === 0}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[12px] hover:bg-white/5 disabled:opacity-40"
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[0.75rem] hover:bg-white/5 disabled:opacity-40"
               style={{ background: 'transparent', border: 'none', color: C.text2, cursor: layout.open.length ? 'pointer' : 'default' }}
               onClick={() => dock.setLayout({ ...layout, open: [], collapsed: [] })}
             >
@@ -152,7 +152,7 @@ const ImageActionBar: React.FC = () => {
           disabled={!hasImage}
           onClick={run[key]}
           title={hasImage ? label : `${label}(先出一张图)`}
-          className={`group flex items-center gap-1.5 h-6 px-2 rounded-md text-[12px] transition-colors ${
+          className={`group flex items-center gap-1.5 h-6 px-2 rounded-md text-[0.75rem] transition-colors ${
             hasImage ? 'text-gray-300 hover:text-white hover:bg-white/10' : 'text-gray-600 cursor-not-allowed'
           }`}
         >

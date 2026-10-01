@@ -85,7 +85,7 @@ export function PromptToolbar({
                   ? 'Furry 数据集(提示词最前面有 fur dataset)。点击切回 Anime'
                   : 'Anime 数据集。点击切到 Furry —— 会把 fur dataset 加到提示词最前面'
               }
-              className={`px-2.5 h-8 rounded-full text-[11px] font-bold border transition-colors shrink-0 ${
+              className={`px-2.5 h-8 rounded-full text-[0.6875rem] font-bold border transition-colors shrink-0 ${
                 furry.on
                   ? 'bg-nai-accent text-black border-nai-accent'
                   : 'bg-black/40 text-gray-400 border-gray-700/50 hover:text-white hover:border-gray-600'
@@ -252,7 +252,7 @@ export function TokenMeter({
         style={{ width: `${Math.min((totalTokenCount / maxTokens) * 100, 100)}%` }}
       />
       <div className={`relative z-10 text-xs font-mono tracking-wide drop-shadow-sm ${totalTokenCount > maxTokens ? 'text-white font-bold drop-shadow' : 'text-gray-500 font-semibold'}`}>
-        {totalTokenCount} <span className={`text-[10px] ${totalTokenCount > maxTokens ? 'text-gray-300' : 'text-gray-500'}`}>/ {maxTokens}</span>
+        {totalTokenCount} <span className={`text-[0.625rem] ${totalTokenCount > maxTokens ? 'text-gray-300' : 'text-gray-500'}`}>/ {maxTokens}</span>
       </div>
     </div>
   );

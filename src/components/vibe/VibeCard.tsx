@@ -73,7 +73,7 @@ const VibeModelTags: React.FC<{
         return (
           <span
             key={model}
-            className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${isCurrentModel
+            className={`px-1.5 py-0.5 text-[0.625rem] font-bold rounded ${isCurrentModel
               ? 'bg-nai-accent text-black'
               : 'bg-gray-700 text-gray-300'
               }`}

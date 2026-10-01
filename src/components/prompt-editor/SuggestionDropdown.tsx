@@ -164,7 +164,7 @@ function SuggestionRow({
     return (
       <div key="__ai_loading__" data-sugg-idx={index} className="px-3 py-2 flex items-center gap-2 text-[#8b949e] border-l-2 border-transparent">
         <span className="shrink-0 inline-block w-3.5 h-3.5 border-[1.5px] border-[#fceda4]/20 border-t-[#fceda4]/60 rounded-full animate-spin" />
-        <span className="text-[11px]">AI 推荐加载中…</span>
+        <span className="text-[0.6875rem]">AI 推荐加载中…</span>
       </div>
     );
   }
@@ -195,17 +195,17 @@ function SuggestionRow({
     >
       <Icon className="shrink-0 w-3.5 h-3.5 transition-opacity duration-150" style={{ color: typeInfo.color, opacity: isSelected ? 1 : 0.75 }} />
       <div className="flex flex-col min-w-0 flex-1 overflow-hidden leading-tight gap-0.5">
-        <span className={`${suggestion.isNaturalLanguage ? 'text-[14px]' : 'font-tag text-[14px]'} truncate transition-colors duration-150 ${isSelected ? 'text-white' : 'text-[#d4d4d4]'}`} title={mainText}>
+        <span className={`${suggestion.isNaturalLanguage ? 'text-[0.875rem]' : 'font-tag text-[0.875rem]'} truncate transition-colors duration-150 ${isSelected ? 'text-white' : 'text-[#d4d4d4]'}`} title={mainText}>
           {mainText}
         </span>
         {subtitle && (
-          <span className={`chinese-name-fade text-[11px] truncate transition-colors duration-150 ${isSelected ? 'text-white/55' : 'text-[#6e7681]'}`} title={subtitle}>
+          <span className={`chinese-name-fade text-[0.6875rem] truncate transition-colors duration-150 ${isSelected ? 'text-white/55' : 'text-[#6e7681]'}`} title={subtitle}>
             {subtitle}
           </span>
         )}
       </div>
       {countText && (
-        <span className={`shrink-0 ml-auto text-right text-[10px] tabular-nums transition-colors duration-150 ${isSelected ? 'text-white/60' : 'text-[#6e7681]'}`}>
+        <span className={`shrink-0 ml-auto text-right text-[0.625rem] tabular-nums transition-colors duration-150 ${isSelected ? 'text-white/60' : 'text-[#6e7681]'}`}>
           {countText}
         </span>
       )}

@@ -263,7 +263,7 @@ export function CropSelectionOverlay({
           left: `${rx}px`,
           background: 'rgba(252, 237, 164, 0.95)',
           color: 'black',
-          fontSize: '11px',
+          fontSize: '0.6875rem',
           fontWeight: 600,
           padding: '2px 6px',
           borderRadius: '4px',

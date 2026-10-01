@@ -234,24 +234,24 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                         <div className="text-3xl font-extrabold" style={{ color: tierColor }}>
                           ¥{me.total_fee}
                         </div>
-                        <div className="text-[10px] text-gray-500 mt-0.5">应付金额</div>
+                        <div className="text-[0.625rem] text-gray-500 mt-0.5">应付金额</div>
                       </div>
                       <div className="flex-1 grid grid-cols-3 gap-2 text-center">
                         <div>
                           <div className="text-lg font-bold text-blue-400">{me.image_calls.toLocaleString()}</div>
-                          <div className="text-[10px] text-gray-500">生图数</div>
+                          <div className="text-[0.625rem] text-gray-500">生图数</div>
                         </div>
                         <div>
                           <div className="text-lg font-bold text-orange-400">{me.anlas_used.toLocaleString()}</div>
-                          <div className="text-[10px] text-gray-500">Anlas</div>
+                          <div className="text-[0.625rem] text-gray-500">Anlas</div>
                         </div>
                         <div>
                           <div className="text-lg font-bold" style={{ color: tierColor }}>
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] ${TIER_BG[tierName] || 'bg-gray-600/20'}`}>
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[0.6875rem] ${TIER_BG[tierName] || 'bg-gray-600/20'}`}>
                               {tierName}
                             </span>
                           </div>
-                          <div className="text-[10px] text-gray-500">阶梯</div>
+                          <div className="text-[0.625rem] text-gray-500">阶梯</div>
                         </div>
                       </div>
                     </div>
@@ -267,7 +267,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                   <div className="flex items-center gap-2 mb-2">
                     <Layers className="w-3.5 h-3.5 text-gray-400" />
                     <span className="text-xs font-medium text-gray-400">阶梯结算明细</span>
-                    <span className="ml-auto text-[10px] text-gray-600">人均/期</span>
+                    <span className="ml-auto text-[0.625rem] text-gray-600">人均/期</span>
                   </div>
                   <table className="w-full text-xs">
                     <thead>
@@ -285,7 +285,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                             <span className="inline-block w-2 h-2 rounded-sm mr-1.5" style={{ background: TIER_COLORS[r.name] }} />
                             {r.name}
                           </td>
-                          <td className="py-1.5 text-right text-gray-500 text-[10px]">{r.range}</td>
+                          <td className="py-1.5 text-right text-gray-500 text-[0.625rem]">{r.range}</td>
                           <td className="py-1.5 text-right text-gray-400">{r.count}人</td>
                           <td className="py-1.5 text-right font-mono" style={{ color: TIER_COLORS[r.name] }}>{r.avgFee}</td>
                         </tr>
@@ -297,7 +297,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                       </tr>
                     </tbody>
                   </table>
-                  <div className="mt-2 text-[10px] text-gray-500">
+                  <div className="mt-2 text-[0.625rem] text-gray-500">
                     ≤{report.free_threshold}张免费 · 活跃用户 {report.active_user_count}人
                     {report.anlas_threshold > 0 && (
                       <> · Anlas超{report.anlas_threshold}点+¥{report.anlas_surcharge}</>
@@ -369,7 +369,7 @@ export const BillingSettlementModal: React.FC<BillingSettlementModalProps> = ({ 
                           a.target = '_blank';
                           a.click();
                         }}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-400 hover:text-gray-200 bg-gray-700/50 hover:bg-gray-700 rounded transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 text-[0.6875rem] text-gray-400 hover:text-gray-200 bg-gray-700/50 hover:bg-gray-700 rounded transition-colors"
                         title="保存收款码"
                       >
                         <Download className="w-3 h-3" />

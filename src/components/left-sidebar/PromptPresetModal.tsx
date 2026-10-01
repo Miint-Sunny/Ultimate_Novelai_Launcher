@@ -92,7 +92,7 @@ export const PromptPresetModal: React.FC<PromptPresetModalProps> = ({
               </div>
 
               <div className="flex items-center gap-1">
-                <div className="text-[10px] text-gray-500 font-mono bg-black/20 px-1.5 py-0.5 rounded">
+                <div className="text-[0.625rem] text-gray-500 font-mono bg-black/20 px-1.5 py-0.5 rounded">
                   {countTokens(preset.positive) + countTokens(preset.negative)} Tokens
                 </div>
                 <button

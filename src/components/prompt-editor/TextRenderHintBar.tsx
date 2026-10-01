@@ -8,7 +8,7 @@ export function TextRenderHintBar({ hints }: { hints: TextRenderHint[] }) {
   return (
     <div className="px-2 py-1.5 space-y-0.5 border-t border-white/5" title="V5 文字渲染提示">
       {hints.map((hint, index) => (
-        <p key={`${hint.kind}-${index}`} className="text-[11px] leading-tight text-amber-300/90">
+        <p key={`${hint.kind}-${index}`} className="text-[0.6875rem] leading-tight text-amber-300/90">
           <span className="text-amber-300">⚠️</span> {hint.message}
         </p>
       ))}
