@@ -176,7 +176,7 @@ const ImageActionBar: React.FC = () => {
 export const DockTopBar: React.FC = () => (
   <div
     className="shrink-0 flex items-center justify-between gap-2 px-2"
-    style={{ height: 30, background: C.bgDeep, borderBottom: `1px solid ${C.line}` }}
+    style={{ height: '1.875rem', background: C.bgDeep, borderBottom: `1px solid ${C.line}` }}
   >
     <ImageActionBar />
     <DockToolbar />

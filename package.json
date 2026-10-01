@@ -34,6 +34,7 @@
     "check:auto-text": "node --experimental-strip-types scripts/check-auto-text.mjs",
     "check:director-tools": "node --experimental-strip-types scripts/check-director-tools.mjs",
     "check:dock-layout": "node --experimental-strip-types scripts/check-dock-layout.mjs",
+    "check:shell-layout": "node --experimental-strip-types scripts/check-shell-layout.mjs",
     "check:character-position": "node --experimental-strip-types scripts/check-character-position.mjs",
     "check:watermark": "node --experimental-strip-types scripts/check-watermark.mjs",
     "check:prompt-chunks": "node --experimental-strip-types scripts/check-prompt-chunks.mjs",

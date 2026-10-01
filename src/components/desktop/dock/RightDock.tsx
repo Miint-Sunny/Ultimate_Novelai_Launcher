@@ -5,13 +5,9 @@ import { SessionsPanel } from '../AIAssistant/SessionsPanel';
 import { C } from '../AIAssistant/tokens';
 import { DockPanelFrame } from './DockPanelFrame';
 import { PANEL_META } from './DockToolbar';
-import {
-  DOCK_MAX_WIDTH,
-  DOCK_MIN_WIDTH,
-  isPanelCollapsed,
-  panelWeight,
-  type DockPanelId,
-} from './dockLayout';
+import { isPanelCollapsed, panelWeight, type DockPanelId } from './dockLayout';
+import { useShellLayout } from '../ShellLayoutContext';
+import { designPxToRem } from '../shellLayout';
 
 /**
  * 面板登记表:面板体。图标与名字在 DockToolbar 的 PANEL_META(顶栏也要用)。
@@ -36,17 +32,20 @@ const PANEL_BODIES: Record<DockPanelId, React.FC> = {
 export const RightDock: React.FC = () => {
   const { dock } = useAgentDock();
   const { layout } = dock;
+  // 实际宽度与摆法由 ShellLayoutContext 和左栏、视口一起分(设计 px);窄到两栏放不下时浮在画布上
+  const shell = useShellLayout();
   const panelRefs = useRef(new Map<DockPanelId, HTMLDivElement>());
 
   // ── 左缘拖宽 ──
   const widthDrag = useRef({ active: false, startX: 0, startWidth: 0 });
   const onWidthDown = (e: React.PointerEvent) => {
-    widthDrag.current = { active: true, startX: e.clientX, startWidth: layout.width };
+    // 从屏幕上实际的宽度起拖:空间不够时它可能比存着的窄
+    widthDrag.current = { active: true, startX: e.clientX, startWidth: shell.dock };
     try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* noop */ }
   };
   const onWidthMove = (e: React.PointerEvent) => {
     if (!widthDrag.current.active) return;
-    dock.setWidth(widthDrag.current.startWidth + (widthDrag.current.startX - e.clientX));
+    dock.setWidth(widthDrag.current.startWidth + (widthDrag.current.startX - e.clientX) / shell.scale);
   };
   const onWidthUp = (e: React.PointerEvent) => {
     if (!widthDrag.current.active) return;
@@ -91,11 +90,11 @@ export const RightDock: React.FC = () => {
 
   return (
     <div
-      className="relative shrink-0 flex flex-col z-10 overflow-hidden"
+      className={shell.dockPlacement === 'overlay'
+        ? 'absolute top-0 right-0 bottom-0 flex flex-col z-30 overflow-hidden shadow-2xl shadow-black/60'
+        : 'relative shrink-0 flex flex-col z-10 overflow-hidden'}
       style={{
-        width: layout.width,
-        minWidth: DOCK_MIN_WIDTH,
-        maxWidth: DOCK_MAX_WIDTH,
+        width: designPxToRem(shell.dock),
         background: C.panel,
         borderLeft: `1px solid ${C.border}`,
         color: C.text,

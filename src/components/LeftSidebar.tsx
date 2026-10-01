@@ -59,6 +59,7 @@ import { usePromptLibraryActions } from './left-sidebar/usePromptLibraryActions'
 import { usePromptTranslation } from './left-sidebar/usePromptTranslation';
 import { usePromptPresets } from './left-sidebar/usePromptPresets';
 import { useCharacterPromptResize, usePromptBoxResize, useSidebarResize } from './left-sidebar/useResizablePanels';
+import { designPxToRem } from './desktop/shellLayout';
 import { useToast } from './left-sidebar/useToast';
 import { useActiveVibes } from './left-sidebar/useActiveVibes';
 import { useVibeImportHandlers } from './left-sidebar/useVibeImportHandlers';
@@ -1070,7 +1071,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({ onLogout, onRegisterAp
   return (
     <div 
       className="bg-nai-panel flex flex-col border-r border-gray-800 shrink-0 overflow-hidden relative group/sidebar transition-[width] duration-0"
-      style={{ width: `${sidebarWidth}px`, minWidth: '400px', maxWidth: '680px' }}
+      style={{ width: designPxToRem(sidebarWidth) }}
     >
       {/* Toast 提示 */}
       {toastMessage && (

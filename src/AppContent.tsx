@@ -7,6 +7,7 @@ import { DockTopBar } from './components/desktop/dock/DockToolbar';
 import { ImageActionsProvider } from './components/desktop/imageActions';
 import { LoginModal } from './components/LoginModal';
 import { AgentDockProvider } from './contexts/AgentDockContext';
+import { ShellLayoutProvider } from './components/desktop/ShellLayoutContext';
 import { useAuth } from './contexts/AuthContext';
 import { useDragDrop } from './contexts/DragDropContext';
 import { DropZoneModal, type DropTarget } from './components/DropZoneModal';
@@ -127,6 +128,8 @@ const AppContent: React.FC = () => {
       onDrop={handleBackgroundDrop}
     >
       <AgentDockProvider>
+        {/* 左右两栏与视口一起分宽度;要读右栏的开合,所以挂在 AgentDockProvider 里面 */}
+        <ShellLayoutProvider>
         {/* 顶栏的画布动作与 MainContent 的覆盖层是兄弟节点,靠这层把开法接上 */}
         <ImageActionsProvider>
         <div className="flex flex-1 overflow-hidden relative">
@@ -138,7 +141,8 @@ const AppContent: React.FC = () => {
               而左栏说的是「下一张图的输入」，两者互不打断 */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <DockTopBar />
-            <div className="flex flex-1 overflow-hidden">
+            {/* relative:窄到两栏放不下时,右栏浮在画布右侧(shellLayout.ts) */}
+            <div className="flex flex-1 overflow-hidden relative">
               {/* 中央工作区：画布在上，历史条横放在下方展开 */}
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
                 <MainContent />
@@ -150,6 +154,7 @@ const AppContent: React.FC = () => {
           </div>
         </div>
         </ImageActionsProvider>
+        </ShellLayoutProvider>
       </AgentDockProvider>
 
       {/* Drop target selection modal - shown when dropping outside specific zones */}
