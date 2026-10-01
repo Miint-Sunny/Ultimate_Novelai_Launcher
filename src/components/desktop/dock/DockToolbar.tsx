@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bot, History, Maximize2, MoreVertical, Paintbrush, PanelRightClose, Sparkles, Wand2 } from 'lucide-react';
+import { Bot, History, Images, Maximize2, MoreVertical, Paintbrush, PanelRightClose, Sparkles, Wand2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAgentDock } from '../../../contexts/AgentDockContext';
 import { C } from '../AIAssistant/tokens';
@@ -10,6 +10,7 @@ import { useImageActions } from '../imageActions';
 export const PANEL_META: Record<DockPanelId, { title: string; Icon: LucideIcon }> = {
   assistant: { title: 'Plana 助手', Icon: Bot },
   sessions: { title: '会话历史', Icon: History },
+  history: { title: '生成历史', Icon: Images },
 };
 
 const iconButton = (active: boolean): React.CSSProperties => ({

@@ -4,6 +4,7 @@ import { AssistantSwitch } from '../AIAssistant/harness/AssistantSwitch';
 import { SessionsPanel } from '../AIAssistant/SessionsPanel';
 import { C } from '../AIAssistant/tokens';
 import { DockPanelFrame } from './DockPanelFrame';
+import { HistoryColumnSlot } from './HistoryColumnSlot';
 import { PANEL_META } from './DockToolbar';
 import { isPanelCollapsed, panelWeight, type DockPanelId } from './dockLayout';
 import { useShellLayout } from '../ShellLayoutContext';
@@ -17,6 +18,7 @@ import { designPxToRem } from '../shellLayout';
 const PANEL_BODIES: Record<DockPanelId, React.FC> = {
   assistant: AssistantSwitch,
   sessions: SessionsPanel,
+  history: HistoryColumnSlot,
 };
 
 /**

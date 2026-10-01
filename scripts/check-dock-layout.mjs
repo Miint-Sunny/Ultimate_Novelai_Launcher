@@ -159,6 +159,7 @@ check('登记表: 规范顺序覆盖全部已知面板,无重复', () => {
   assert.equal(new Set(DOCK_PANEL_ORDER).size, DOCK_PANEL_ORDER.length);
   assert.ok(DOCK_PANEL_ORDER.includes('assistant'));
   assert.ok(DOCK_PANEL_ORDER.includes('sessions'));
+  assert.ok(DOCK_PANEL_ORDER.includes('history'), '生成历史要能停到右栏(方案 §3.4)');
 });
 
 // ---- 5. 外壳重排的结构断言(2026-09-21,方案 §2 / §3.2 / §3.6)----
@@ -212,6 +213,17 @@ check('结构: 重绘那套状态仍在 MainContent,注册台不持有它', () =
   const bridge = readSrc('../src/components/desktop/imageActions.tsx');
   assert.equal(bridge.includes('isInpaintMode'), false, '注册台只转交开法,不许自己存重绘状态');
   assert.ok(bridge.includes('useRef'), '开法走 ref,照 workbenchBridge 的做法');
+});
+
+check('结构: 历史停右只换位置不复制逻辑,底部留一条把手', () => {
+  const historyDock = readSrc('../src/components/HistoryDock.tsx');
+  assert.ok(historyDock.includes('useHistorySlot()'), 'HistoryDock 要读右栏的插槽');
+  assert.ok(/createPortal\(\s*<div className="p-2">[\s\S]*?historySlot,/.test(historyDock), '停右时缩略图列要 portal 进插槽,而不是另写一份历史组件');
+  assert.ok(historyDock.includes("!dockedRight && dockMode === 'strip'"), '停右时底部不再画横条');
+  assert.ok(historyDock.includes('历史记录'), '标题栏(把手)要一直在,画布高度不能忽有忽无');
+  assert.ok(/document\.body,\s*\)\}\s*\{\/\* 全览模式弹窗/.test(historyDock), '右键菜单要 portal 到 body,否则在右栏会被盖住');
+  const slot = readSrc('../src/components/desktop/dock/HistoryColumnSlot.tsx');
+  assert.equal(slot.includes('useGeneration'), false, '插槽不许自己读历史,状态只在 HistoryDock');
 });
 
 console.log(`\n${checks} 项停靠布局校验全部通过。`);

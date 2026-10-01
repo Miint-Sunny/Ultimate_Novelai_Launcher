@@ -8,10 +8,12 @@
 // 顺序数组里混进重复 id、权重被拖成 0 让面板永远消失、
 // 存量用户升级后原本开着的助手栏变成空白右栏。所以模型层跟渲染层分开,单独钉住。
 
-export type DockPanelId = 'assistant' | 'sessions';
+// 'history':生成历史停到右栏时的竖排缩略图列(外壳重排方案 §3.4)。它的状态仍在底部的 HistoryDock,
+// 这块面板只提供一个插槽,HistoryDock 把缩略图列 portal 进来(见 HistoryColumnSlot)。
+export type DockPanelId = 'assistant' | 'sessions' | 'history';
 
 /** 全部面板的规范顺序;新开的面板按这个顺序插入,而不是一律追加到末尾。 */
-export const DOCK_PANEL_ORDER: readonly DockPanelId[] = ['assistant', 'sessions'];
+export const DOCK_PANEL_ORDER: readonly DockPanelId[] = ['assistant', 'sessions', 'history'];
 
 export const DOCK_MIN_WIDTH = 320;
 export const DOCK_MAX_WIDTH = 720;

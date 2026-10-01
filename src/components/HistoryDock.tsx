@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, ChevronUp, ChevronDown, Trash2, X, Copy, FileDigit, Maximize2, Check, CheckSquare, ChevronLeft, ChevronRight, Settings2, Archive } from 'lucide-react';
+import { Download, ChevronUp, ChevronDown, Trash2, X, Copy, FileDigit, Maximize2, Check, CheckSquare, ChevronLeft, ChevronRight, Settings2, Archive, PanelBottom } from 'lucide-react';
 import { useGeneration } from '../contexts/GenerationContext';
 import { legacyCellToCenter } from '../services/characterPosition';
 import { useDragDrop } from '../contexts/DragDropContext';
+import { useAgentDock } from '../contexts/AgentDockContext';
+import { useHistorySlot } from './desktop/dock/HistoryColumnSlot';
 import { processImageForSave, getSaveExt, isWatermarkExportActive, type SaveFormat } from '../utils/imageMetadata';
 import { coerceSamplerId } from '../utils/generationOptions';
 import { generateImageFileName } from '../utils/fileSystem';
@@ -27,6 +29,10 @@ const readInitialDockMode = (): DockMode => {
 export const HistoryDock: React.FC = () => {
   const { history, imageUrl, selectHistoryItem, clearHistory, deleteHistoryItem, deleteHistoryItems, setSeedSetting, isGenerating, isQueuing, previewUrl, currentStep, totalSteps, queuePosition, viewingHistory, setViewingHistory } = useGeneration();
   const { setPendingFile } = useDragDrop();
+  const { dock } = useAgentDock();
+  // 右栏开了「生成历史」面板时,缩略图列 portal 到那里,底部只留标题栏当把手(状态都还在这里)
+  const historySlot = useHistorySlot();
+  const dockedRight = historySlot !== null;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -506,10 +512,10 @@ export const HistoryDock: React.FC = () => {
     </div>
   );
 
-  // 单条历史缩略图（strip = 单行条；grid = 展开网格，支持多选）
-  const renderHistoryTile = (item: typeof history[0], variant: 'strip' | 'grid') => {
-    const inGrid = variant === 'grid';
-    const selectable = inGrid && isSelectMode;
+  // 单条历史缩略图（strip = 单行条；grid = 展开网格，支持多选；column = 停在右栏的竖排列，不进多选）
+  const renderHistoryTile = (item: typeof history[0], variant: 'strip' | 'grid' | 'column') => {
+    const inGrid = variant !== 'strip';
+    const selectable = variant === 'grid' && isSelectMode;
     const isActive = selectable
       ? selectedItems.has(item.id)
       : imageUrl === item.imageUrl && (!(isGenerating || isQueuing) || viewingHistory);
@@ -612,7 +618,7 @@ export const HistoryDock: React.FC = () => {
           )}
         </div>
         <div className="flex items-center gap-1">
-          {dockMode !== 'hidden' && history.length > 0 && (
+          {(dockedRight || dockMode !== 'hidden') && history.length > 0 && (
             <>
               <button
                 onClick={handleZipAllWithSettings}
@@ -639,7 +645,17 @@ export const HistoryDock: React.FC = () => {
               <div className="w-px h-4 bg-gray-800 mx-1" />
             </>
           )}
-          {dockMode !== 'expanded' && (
+          {dockedRight && (
+            <button
+              onClick={() => dock.toggle('history')}
+              className="px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors rounded hover:bg-white/5 flex items-center gap-1.5"
+              title="把历史移回底部"
+            >
+              <PanelBottom className="w-4 h-4" />
+              停在右侧 · 移回底部
+            </button>
+          )}
+          {!dockedRight && dockMode !== 'expanded' && (
             <button
               onClick={() => setDockMode('expanded')}
               className={headerButtonClass}
@@ -648,7 +664,7 @@ export const HistoryDock: React.FC = () => {
               <ChevronUp className="w-4 h-4" />
             </button>
           )}
-          {dockMode !== 'strip' && (
+          {!dockedRight && dockMode !== 'strip' && (
             <button
               onClick={() => setDockMode('strip')}
               className={headerButtonClass}
@@ -657,7 +673,7 @@ export const HistoryDock: React.FC = () => {
               {dockMode === 'hidden' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           )}
-          {dockMode === 'strip' && (
+          {!dockedRight && dockMode === 'strip' && (
             <button
               onClick={() => setDockMode('hidden')}
               className={headerButtonClass}
@@ -670,7 +686,7 @@ export const HistoryDock: React.FC = () => {
       </div>
 
       {/* 单行缩略图条 */}
-      {dockMode === 'strip' && (
+      {!dockedRight && dockMode === 'strip' && (
         <div
           ref={stripScrollRef}
           className="h-24 flex gap-2 overflow-x-auto overflow-y-hidden p-2 custom-scrollbar"
@@ -687,8 +703,23 @@ export const HistoryDock: React.FC = () => {
         </div>
       )}
 
+      {/* 停在右栏:竖排缩略图列,生成中那张在最上面 */}
+      {historySlot && createPortal(
+        <div className="p-2">
+          {history.length === 0 && !isGenerating && !isQueuing ? (
+            <div className="py-8 text-center text-gray-500 text-xs">暂无历史记录</div>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
+              {generatingTile && <div className="aspect-square">{generatingTile}</div>}
+              {history.map((item) => renderHistoryTile(item, 'column'))}
+            </div>
+          )}
+        </div>,
+        historySlot,
+      )}
+
       {/* 展开的多行网格 */}
-      {dockMode === 'expanded' && (
+      {!dockedRight && dockMode === 'expanded' && (
         <div className="h-[38vh] overflow-y-auto p-3 custom-scrollbar">
           {history.length === 0 && !isGenerating && !isQueuing ? (
             <div className="flex items-center justify-center h-full text-gray-500 text-xs">
@@ -703,8 +734,8 @@ export const HistoryDock: React.FC = () => {
         </div>
       )}
 
-      {/* 右键菜单 */}
-      {contextMenu && (
+      {/* 右键菜单:portal 到 body。缩略图在右栏时,菜单若留在本组件的 z-10 层叠上下文里会被右栏盖住 */}
+      {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
           className="fixed bg-nai-panel border border-gray-700 rounded-lg shadow-xl py-1 z-50 min-w-[120px]"
@@ -728,7 +759,8 @@ export const HistoryDock: React.FC = () => {
           <button className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center gap-2" onClick={() => handleDeleteImage(contextMenu.itemId)}>
             <Trash2 className="w-3 h-3" /> 删除
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* 全览模式弹窗 - 使用 Portal 渲染到 body */}
