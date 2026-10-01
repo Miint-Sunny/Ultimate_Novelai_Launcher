@@ -42,6 +42,12 @@ execFileSync('uv', [
   '--specpath', specDir,
   '--paths', root,
   '--collect-all', 'curl_cffi',
+  // sidecar 是无界面的服务,用不到 Tk。Pillow 的 SpiderImagePlugin 带一个 tkPhotoImage(),PyInstaller 的钩子
+  // 本该把 tkinter 排掉,但这层排除不稳:2026-10-01 同一版本、同一份锁,Linux 那次把 _tkinter 收了进来,
+  // 它链接的 libtcl9.0.so 又没被收,linuxdeploy 找不到依赖,AppImage 打包失败。这里硬排除,三个平台都不再带。
+  '--exclude-module', 'tkinter',
+  '--exclude-module', '_tkinter',
+  '--exclude-module', 'PIL.ImageTk',
   '--add-data', `${promptResource}${path.delimiter}server/agent_router/resources`,
   '--add-data', `${skillResources}${path.delimiter}server/agent_router/resources/skills`,
   path.join(root, 'scripts', 'sidecar-entry.py'),
