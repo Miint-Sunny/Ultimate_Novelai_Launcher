@@ -6,6 +6,17 @@ export default {
   ],
   theme: {
     extend: {
+      // 全站唯一一份界面字体栈:src/index.css 的 :root 用 theme('fontFamily.sans') 引同一份,
+      // App 根上的 font-sans 也是它。系统字体打头(Apple 平台即 SF + 苹方),中文字体显式列出:
+      // Windows 上只靠系统回退时,汉字可能落到日文字体上。没有随包加载的字体(以前的 Inter)不要写进来。
+      fontFamily: {
+        sans: [
+          'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto',
+          '"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', '"Noto Sans SC"',
+          '"Helvetica Neue"', 'sans-serif',
+          '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Noto Color Emoji"',
+        ],
+      },
       colors: {
         // 色值统一定义在 src/index.css 的 :root 变量层(石墨中性基底,亮度与旧海军蓝板逐档等亮)
         'nai-bg': 'rgb(var(--nai-bg) / <alpha-value>)',
